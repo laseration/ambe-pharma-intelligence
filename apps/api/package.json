@@ -10,9 +10,9 @@
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
     "test": "tsx --test src/**/*.test.ts",
-    "db:generate": "dotenv -e .env -e ../../.env -- prisma generate",
-    "db:migrate": "dotenv -e .env -e ../../.env -- prisma migrate dev",
-    "db:seed": "dotenv -e .env -e ../../.env -- tsx prisma/seed.ts"
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed"
   },
   "dependencies": {
     "@ambe/shared": "workspace:*",
@@ -27,7 +27,6 @@
     "@types/express": "^5.0.1",
     "@types/multer": "^2.1.0",
     "@types/node": "^22.13.10",
-    "dotenv-cli": "^8.0.0",
     "prisma": "^6.6.0",
     "tsx": "^4.19.3"
   }

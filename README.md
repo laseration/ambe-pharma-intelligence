@@ -39,6 +39,8 @@ For the API and Prisma commands, environment loading works in this order:
 2. repo root `.env`
 
 `apps/api/.env` is the primary location. The root `.env` is only a fallback when `DATABASE_URL` is missing in `apps/api/.env`.
+Prisma loads these files through [apps/api/prisma.config.ts](/d:/Users/User/Desktop/ambe-pharma-intelligence/apps/api/prisma.config.ts:1) before it reads the schema.
+Prisma resolves those env files relative to `process.cwd()`, so when you run `pnpm --filter @ambe/api ...`, the expected primary file is `apps/api/.env`.
 
 ## Useful Scripts
 
@@ -76,6 +78,7 @@ pnpm --filter @ambe/api db:seed
 ```
 
 `db:migrate` creates and applies the development migration against your Neon database. `db:seed` loads a very small fake dataset for development.
+These commands are plain Prisma commands. Environment loading is handled centrally in `apps/api/prisma.config.ts`, not by shell wrappers.
 
 ## Import API
 
@@ -144,8 +147,6 @@ Sample files for local testing live in:
 - `apps/api/fixtures/imports/inventory.csv`
 - `apps/api/fixtures/imports/sales.csv`
 
-These commands explicitly load `apps/api/.env` first and the repo root `.env` second, so Prisma can resolve `DATABASE_URL` reliably in the monorepo.
-
 ### Debugging Env Detection
 
 Run the API and check:
@@ -166,12 +167,14 @@ Example response:
 
 If Prisma says `Environment variable not found: DATABASE_URL`:
 
-- Ensure `apps/api/.env` exists. This is the first file Prisma checks.
+- Ensure `apps/api/.env` exists. This is the first file Prisma config checks.
 - If `apps/api/.env` does not define `DATABASE_URL`, ensure the repo root `.env` exists.
 - Ensure the file is named exactly `.env`, not `.env.txt`.
 - Ensure the connection string looks like `postgresql://user:password@host.neon.tech/dbname?sslmode=require`.
 - Run Prisma through the workspace script, for example `pnpm --filter @ambe/api db:generate`.
 - If you run commands manually inside `apps/api`, make sure the current directory is `apps/api`.
+- Prisma config resolves env paths from `process.cwd()`, so the working directory matters for where it looks first.
+- Prisma logs the database host from `prisma.config.ts` on startup, which helps confirm the correct env file was loaded without exposing secrets.
 
 ### Optional Legacy Local Postgres
 
