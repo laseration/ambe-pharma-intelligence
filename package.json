@@ -1,0 +1,22 @@
+{
+  "name": "ambe-pharma-intelligence",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "format": "prettier --check .",
+    "format:write": "prettier --write ."
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.24.1",
+    "@typescript-eslint/parser": "^8.24.1",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^15.2.4",
+    "eslint-config-prettier": "^10.0.1",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2"
+  }
+}
