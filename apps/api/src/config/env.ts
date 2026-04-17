@@ -30,4 +30,8 @@ export const env = {
   nodeEnv: readNodeEnv(process.env.NODE_ENV),
   port: readPort(process.env.PORT, 4000),
   logLevel: readString(process.env.LOG_LEVEL, 'info'),
+  databaseUrl: readString(
+    process.env.DATABASE_URL,
+    'postgresql://postgres:postgres@localhost:5432/ambe_pharma_intelligence?schema=public',
+  ),
 };
