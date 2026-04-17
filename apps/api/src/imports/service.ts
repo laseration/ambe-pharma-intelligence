@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { db } from '../lib/db';
 import { normalizeText } from './normalization';
 import { parseUploadedFile } from './parsers';
+import { logger } from '../lib/logger';
 import type {
   ImportResponse,
   ImportSummary,
@@ -126,19 +127,30 @@ async function findOrCreateProduct(
 ) {
   const existing = await db.product.findFirst({
     where: {
-      normalizedName: candidates.normalizedName,
+      OR: [
+        { normalizedName: candidates.normalizedKey },
+        { normalizedName: candidates.normalizedName },
+      ],
     },
   });
 
   if (existing) {
     await ensureProductAlias(existing.id, rawProductName, sourceSystem);
+    logger.info('Product normalization matched existing product', {
+      confidence: candidates.confidence,
+      existingProductId: existing.id,
+      normalizedKey: candidates.normalizedKey,
+      normalizedName: candidates.normalizedName,
+      rawProductName,
+      rulesApplied: candidates.explanation.rulesApplied,
+    });
     return existing;
   }
 
   const product = await db.product.create({
     data: {
       name: rawProductName,
-      normalizedName: candidates.normalizedName,
+      normalizedName: candidates.normalizedKey,
       strength: candidates.strength,
       dosageForm: candidates.formulation,
       packSize: candidates.packSize,
@@ -149,6 +161,14 @@ async function findOrCreateProduct(
         },
       },
     },
+  });
+
+  logger.info('Product normalization created new product', {
+    confidence: candidates.confidence,
+    normalizedKey: candidates.normalizedKey,
+    normalizedName: candidates.normalizedName,
+    rawProductName,
+    rulesApplied: candidates.explanation.rulesApplied,
   });
 
   return product;
@@ -182,7 +202,7 @@ async function persistSupplierPriceRows(
         supplierId,
         productId: product.id,
         rawProductName: row.rawProductName,
-        normalizedProductName: row.productCandidates.normalizedName,
+        normalizedProductName: row.productCandidates.normalizedKey,
         candidateStrength: row.productCandidates.strength,
         candidateFormulation: row.productCandidates.formulation,
         candidatePackSize: row.productCandidates.packSize,
@@ -214,7 +234,7 @@ async function persistInventoryRows(importBatchId: string, rows: InventoryRowInp
         supplierId: supplier?.id,
         rawProductName: row.rawProductName,
         rawSupplierName: row.rawSupplierName,
-        normalizedProductName: row.productCandidates.normalizedName,
+        normalizedProductName: row.productCandidates.normalizedKey,
         candidateStrength: row.productCandidates.strength,
         candidateFormulation: row.productCandidates.formulation,
         candidatePackSize: row.productCandidates.packSize,
@@ -247,7 +267,7 @@ async function persistSalesRows(importBatchId: string, rows: SalesRowInput[]) {
         rawProductName: row.rawProductName,
         rawCustomerName: row.rawCustomerName,
         rawSupplierName: row.rawSupplierName,
-        normalizedProductName: row.productCandidates.normalizedName,
+        normalizedProductName: row.productCandidates.normalizedKey,
         candidateStrength: row.productCandidates.strength,
         candidateFormulation: row.productCandidates.formulation,
         candidatePackSize: row.productCandidates.packSize,

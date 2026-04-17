@@ -1,6 +1,7 @@
 import express from 'express';
 
 import { env } from './config/env';
+import { importsDebugRouter } from './imports/debugRoutes';
 import { apiRouter } from './routes';
 
 export function createApp() {
@@ -20,6 +21,8 @@ export function createApp() {
       databaseUrlDetected: Boolean(env.databaseUrl),
     });
   });
+
+  app.use('/api/debug', importsDebugRouter);
 
   app.use('/api', apiRouter);
 

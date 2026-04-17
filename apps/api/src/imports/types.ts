@@ -26,6 +26,18 @@ export type ProductCandidates = {
   strength: string | null;
   formulation: string | null;
   packSize: string | null;
+  normalizedKey: string;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  explanation: {
+    cleanedInput: string;
+    tokens: string[];
+    rulesApplied: string[];
+    extracted: {
+      strength: string | null;
+      formulation: string | null;
+      packSize: string | null;
+    };
+  };
 };
 
 export type SupplierPriceListRowInput = {

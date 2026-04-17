@@ -176,6 +176,35 @@ If Prisma says `Environment variable not found: DATABASE_URL`:
 - Prisma config resolves env paths from `process.cwd()`, so the working directory matters for where it looks first.
 - Prisma logs the database host from `prisma.config.ts` on startup, which helps confirm the correct env file was loaded without exposing secrets.
 
+## Product Normalization
+
+Medicine names are normalized with a rule-based service in [apps/api/src/imports/normalization.ts](/d:/Users/User/Desktop/ambe-pharma-intelligence/apps/api/src/imports/normalization.ts:1). It preserves raw source text and produces:
+
+- canonical `normalizedKey`
+- extracted `strength`
+- extracted `formulation`
+- extracted `packSize`
+- confidence label
+- structured explanation of the rules applied
+
+Normalization is cautious. It helps group obvious variants like `tabs` and `tablets`, but it does not aggressively auto-merge unlike products.
+
+Detailed rules and limitations are documented in [docs/product-normalization.md](/d:/Users/User/Desktop/ambe-pharma-intelligence/docs/product-normalization.md:1).
+
+### Normalization Preview
+
+Use the debug endpoint to preview normalization without importing data:
+
+```bash
+curl "http://localhost:4000/api/debug/normalize?input=Amlodipine%205mg%20tabs%2028"
+```
+
+You can also pass multiple `input` query values:
+
+```bash
+curl "http://localhost:4000/api/debug/normalize?input=Amlodipine%205mg%20tabs%2028&input=Amlodipine%205%20mg%20tablets%20x%2028"
+```
+
 ### Optional Legacy Local Postgres
 
 `docker-compose.yml` is still in the repo as an optional legacy local Postgres setup, but Neon is now the default and recommended database workflow.
