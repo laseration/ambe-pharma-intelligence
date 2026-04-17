@@ -205,6 +205,76 @@ You can also pass multiple `input` query values:
 curl "http://localhost:4000/api/debug/normalize?input=Amlodipine%205mg%20tabs%2028&input=Amlodipine%205%20mg%20tablets%20x%2028"
 ```
 
+## Opportunity Scoring
+
+The API includes an internal, deterministic opportunity scoring engine for imported supplier, inventory, and sales data.
+
+### Opportunity Types
+
+- `BUY`
+- `PUSH`
+- `DEAD_STOCK`
+- `PRICE_ALERT`
+- `LOW_MARGIN`
+- `RESTOCK`
+
+### How It Works
+
+The scorer evaluates current product state using:
+
+- latest supplier buy price
+- previous supplier buy price when available
+- current available stock
+- recency of the latest inventory snapshot
+- recent 30-day sales velocity
+- average recent sale price
+- estimated margin percentage
+
+Thresholds and base scores live in [apps/api/src/opportunities/config.ts](/d:/Users/User/Desktop/ambe-pharma-intelligence/apps/api/src/opportunities/config.ts:1).
+
+Each generated opportunity stores:
+
+- `type`
+- `score`
+- explanation text in `description`
+- structured score breakdown and metrics in `metadata`
+
+### Opportunity Endpoints
+
+- `GET /api/opportunities`
+- `POST /api/opportunities/regenerate`
+
+Optional filters for listing:
+
+- `type`
+- `status`
+
+### Usage Examples
+
+Regenerate opportunities:
+
+```bash
+curl -X POST http://localhost:4000/api/opportunities/regenerate
+```
+
+List all opportunities:
+
+```bash
+curl http://localhost:4000/api/opportunities
+```
+
+Filter by type and status:
+
+```bash
+curl "http://localhost:4000/api/opportunities?type=RESTOCK&status=OPEN"
+```
+
+### Explanation Examples
+
+- `Low stock with positive recent sales velocity over last 30 days.`
+- `High stock with no recent sales; potential dead stock risk.`
+- `Supplier price lower than recent benchmark with acceptable demand.`
+
 ### Optional Legacy Local Postgres
 
 `docker-compose.yml` is still in the repo as an optional legacy local Postgres setup, but Neon is now the default and recommended database workflow.

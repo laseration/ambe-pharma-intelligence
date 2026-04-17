@@ -19,6 +19,8 @@ enum OpportunityType {
   PUSH
   DEAD_STOCK
   PRICE_ALERT
+  LOW_MARGIN
+  RESTOCK
 }
 
 enum OpportunityStatus {
@@ -298,6 +300,7 @@ model Opportunity {
   title           String
   description     String?
   score           Int
+  metadata        Json?
   customerId      String?
   productId       String?
   supplierId      String?
