@@ -1,0 +1,3 @@
+productName,packDescription,unitPrice,currencyCode,minimumOrderQuantity,isAvailable
+Paracetamol 500mg Tablets 100 tablets,100 tablets,2.35,USD,50,yes
+Broken Price Row,100 tablets,abc,USD,10,yes

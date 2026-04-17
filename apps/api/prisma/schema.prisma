@@ -55,6 +55,18 @@ enum SettingType {
   JSON
 }
 
+enum ImportKind {
+  SUPPLIER_PRICE_LIST
+  INVENTORY
+  SALES
+}
+
+enum ImportStatus {
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  FAILED
+}
+
 model User {
   id             String        @id @default(cuid())
   email          String        @unique
@@ -101,6 +113,42 @@ model ProductAlias {
   @@index([productId])
 }
 
+model ImportBatch {
+  id                 String              @id @default(cuid())
+  kind               ImportKind
+  status             ImportStatus        @default(COMPLETED)
+  fileName           String
+  fileMimeType       String?
+  fileSizeBytes      Int?
+  totalRows          Int                 @default(0)
+  validRows          Int                 @default(0)
+  invalidRows        Int                 @default(0)
+  warnings           Json?
+  errors             ImportError[]
+  inventorySnapshots InventorySnapshot[]
+  salesRecords       SalesRecord[]
+  supplierPriceList  SupplierPriceList?
+  uploadedAt         DateTime            @default(now())
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([kind, uploadedAt])
+}
+
+model ImportError {
+  id            String      @id @default(cuid())
+  importBatchId String
+  rowNumber     Int?
+  fieldName     String?
+  message       String
+  rawRow        Json?
+  importBatch   ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([importBatchId, rowNumber])
+}
+
 model Supplier {
   id                 String              @id @default(cuid())
   name               String
@@ -122,11 +170,15 @@ model Supplier {
 model SupplierPriceList {
   id              String              @id @default(cuid())
   supplierId      String
+  importBatchId   String?             @unique
   fileName        String
+  fileMimeType    String?
+  fileSizeBytes   Int?
   sourceDate      DateTime?
   uploadedAt      DateTime            @default(now())
   currencyCode    String              @default("USD")
   notes           String?
+  importBatch     ImportBatch?        @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
   supplier        Supplier            @relation(fields: [supplierId], references: [id], onDelete: Cascade)
   supplierPrices  SupplierPriceItem[]
   createdAt       DateTime            @default(now())
@@ -142,11 +194,15 @@ model SupplierPriceItem {
   productId             String?
   rawProductName        String
   normalizedProductName String?
+  candidateStrength     String?
+  candidateFormulation  String?
+  candidatePackSize     String?
   packDescription       String?
   unitPrice             Decimal            @db.Decimal(12, 2)
   currencyCode          String             @default("USD")
   minimumOrderQuantity  Int?
   isAvailable           Boolean            @default(true)
+  rawRow                Json?
   product               Product?           @relation(fields: [productId], references: [id], onDelete: SetNull)
   supplier              Supplier           @relation(fields: [supplierId], references: [id], onDelete: Cascade)
   supplierPriceList     SupplierPriceList  @relation(fields: [supplierPriceListId], references: [id], onDelete: Cascade)
@@ -160,8 +216,15 @@ model SupplierPriceItem {
 
 model InventorySnapshot {
   id                String    @id @default(cuid())
+  importBatchId     String?
   productId         String
   supplierId        String?
+  rawProductName    String
+  rawSupplierName   String?
+  normalizedProductName String?
+  candidateStrength String?
+  candidateFormulation String?
+  candidatePackSize String?
   warehouseCode     String
   snapshotDate      DateTime
   quantityOnHand    Int
@@ -169,6 +232,8 @@ model InventorySnapshot {
   quantityAvailable Int
   unitCost          Decimal?  @db.Decimal(12, 2)
   totalValue        Decimal?  @db.Decimal(14, 2)
+  rawRow            Json?
+  importBatch       ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
   product           Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
   supplier          Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   createdAt         DateTime  @default(now())
@@ -197,14 +262,24 @@ model Customer {
 
 model SalesRecord {
   id            String    @id @default(cuid())
+  importBatchId String?
   saleDate      DateTime
   customerId    String
   productId     String
   supplierId    String?
+  rawProductName String
+  rawCustomerName String
+  rawSupplierName String?
+  normalizedProductName String?
+  candidateStrength String?
+  candidateFormulation String?
+  candidatePackSize String?
   quantity      Int
   unitPrice     Decimal   @db.Decimal(12, 2)
   totalRevenue  Decimal   @db.Decimal(14, 2)
   currencyCode  String    @default("USD")
+  rawRow        Json?
+  importBatch   ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
   customer      Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
   supplier      Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)

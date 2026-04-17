@@ -1,6 +1,12 @@
+import path from 'node:path';
+
 import dotenv from 'dotenv';
 
-dotenv.config();
+const apiRoot = path.resolve(__dirname, '../..');
+const repoRoot = path.resolve(apiRoot, '../..');
+
+dotenv.config({ path: path.join(apiRoot, '.env'), override: false });
+dotenv.config({ path: path.join(repoRoot, '.env'), override: false });
 
 type NodeEnv = 'development' | 'test' | 'production';
 
@@ -26,12 +32,24 @@ function readNodeEnv(value: string | undefined): NodeEnv {
   return 'development';
 }
 
+function readDatabaseHost(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    return new URL(trimmed).host;
+  } catch {
+    return null;
+  }
+}
+
 export const env = {
   nodeEnv: readNodeEnv(process.env.NODE_ENV),
   port: readPort(process.env.PORT, 4000),
   logLevel: readString(process.env.LOG_LEVEL, 'info'),
-  databaseUrl: readString(
-    process.env.DATABASE_URL,
-    'postgresql://postgres:postgres@localhost:5432/ambe_pharma_intelligence?schema=public',
-  ),
+  databaseUrl: process.env.DATABASE_URL?.trim() || '',
+  databaseHost: readDatabaseHost(process.env.DATABASE_URL),
 };

@@ -1,0 +1,3 @@
+productName,supplierName,warehouseCode,snapshotDate,quantityOnHand,quantityReserved,quantityAvailable,unitCost,totalValue
+Paracetamol 500mg Tablets 100 tablets,Ambe Pharma Sourcing,MAIN,2026-04-15,120,20,100,1.90,228.00
+Missing Warehouse,Ambe Pharma Sourcing,,2026-04-15,50,0,50,1.90,95.00

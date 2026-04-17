@@ -15,6 +15,12 @@ export function createApp() {
     });
   });
 
+  app.get('/api/debug/env', (_request, response) => {
+    response.json({
+      databaseUrlDetected: Boolean(env.databaseUrl),
+    });
+  });
+
   app.use('/api', apiRouter);
 
   return app;
