@@ -1,0 +1,27 @@
+{
+  "update_id": 500002,
+  "message": {
+    "message_id": 102,
+    "date": 1776387900,
+    "caption": "latest inventory stock export",
+    "chat": {
+      "id": -1001234567890,
+      "type": "supergroup",
+      "title": "Ambe Internal Ops"
+    },
+    "from": {
+      "id": 123456789,
+      "is_bot": false,
+      "first_name": "Ambe",
+      "last_name": "Operator",
+      "username": "ambe_ops"
+    },
+    "document": {
+      "file_id": "telegram-file-id-inventory-xlsx",
+      "file_unique_id": "telegram-file-unique-inventory-xlsx",
+      "file_name": "inventory-stock.xlsx",
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "file_size": 4096
+    }
+  }
+}

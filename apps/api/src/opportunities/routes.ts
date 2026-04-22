@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import type { OpportunityStatus, OpportunityType } from '@prisma/client';
+import { z } from 'zod';
 
-import { listOpportunities, regenerateOpportunities } from './service';
+import { requireInternalOperatorAccess } from '../http/auth';
+import { asyncHandler, requireFound } from '../http/errors';
+import { idParamSchema, parseRequest } from '../http/validation';
+import { getOpportunityScoringAudit, listOpportunities, regenerateOpportunities } from './service';
 
 const VALID_TYPES: OpportunityType[] = [
   'BUY',
@@ -14,45 +18,47 @@ const VALID_TYPES: OpportunityType[] = [
 
 const VALID_STATUSES: OpportunityStatus[] = ['OPEN', 'REVIEWED', 'ACTIONED', 'DISMISSED'];
 
-function parseType(value: unknown): OpportunityType | undefined {
-  return typeof value === 'string' && VALID_TYPES.includes(value as OpportunityType)
-    ? (value as OpportunityType)
-    : undefined;
-}
-
-function parseStatus(value: unknown): OpportunityStatus | undefined {
-  return typeof value === 'string' && VALID_STATUSES.includes(value as OpportunityStatus)
-    ? (value as OpportunityStatus)
-    : undefined;
-}
-
 export const opportunitiesRouter = Router();
 
-opportunitiesRouter.get('/', async (request, response) => {
-  try {
-    const opportunities = await listOpportunities({
-      type: parseType(request.query.type),
-      status: parseStatus(request.query.status),
-    });
-
-    response.json({
-      items: opportunities,
-    });
-  } catch (error) {
-    response.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to list opportunities.',
-    });
-  }
+const listOpportunitiesQuerySchema = z.object({
+  type: z.enum(VALID_TYPES).optional(),
+  status: z.enum(VALID_STATUSES).optional(),
 });
 
-opportunitiesRouter.post('/regenerate', async (_request, response) => {
-  try {
-    const result = await regenerateOpportunities();
+opportunitiesRouter.get('/', asyncHandler(async (request, response) => {
+  const { query } = parseRequest<unknown, z.infer<typeof listOpportunitiesQuerySchema>>(request, {
+    query: listOpportunitiesQuerySchema,
+  });
 
-    response.status(201).json(result);
-  } catch (error) {
-    response.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to regenerate opportunities.',
-    });
-  }
+  const opportunities = await listOpportunities({
+    type: query.type,
+    status: query.status,
+  });
+
+  response.json({
+    items: opportunities,
+  });
+}));
+
+const opportunityAuditParamSchema = z.object({
+  productId: z.string().trim().min(1),
 });
+
+opportunitiesRouter.get('/audit/:productId', asyncHandler(async (request, response) => {
+  const { params } = parseRequest<z.infer<typeof opportunityAuditParamSchema>>(request, {
+    params: opportunityAuditParamSchema,
+  });
+
+  const audit = requireFound(
+    await getOpportunityScoringAudit(params.productId),
+    'Product scoring context not found.',
+  );
+
+  response.json(audit);
+}));
+
+opportunitiesRouter.post('/regenerate', requireInternalOperatorAccess, asyncHandler(async (_request, response) => {
+  const result = await regenerateOpportunities();
+
+  response.status(201).json(result);
+}));

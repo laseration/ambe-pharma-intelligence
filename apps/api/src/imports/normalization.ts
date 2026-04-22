@@ -140,7 +140,7 @@ export function normalizeText(value: string): string {
   return cleanWhitespace(value).toLowerCase();
 }
 
-export function normalizeMedicineName(rawProductName: string): ProductCandidates {
+export function buildCanonicalProductIdentity(rawProductName: string) {
   const cleanedInput = cleanWhitespace(rawProductName);
   const normalizedText = normalizeText(cleanedInput);
   const tokens = tokenize(cleanedInput);
@@ -170,28 +170,49 @@ export function normalizeMedicineName(rawProductName: string): ProductCandidates
   }
 
   const baseNameTokens = buildBaseNameTokens(tokens, formulation, packSize);
-  const baseName = baseNameTokens.join(' ');
-  const normalizedKeyParts = [baseName || normalizedText, strength, formulation, packSize].filter(Boolean);
-  const normalizedKey = normalizedKeyParts.join('|');
-  const confidence = deriveConfidence(baseNameTokens, strength, formulation);
+  const baseName = baseNameTokens.join(' ') || normalizedText;
 
   rulesApplied.push('built canonical normalized key from base name and extracted attributes');
 
   return {
-    normalizedName: baseName || normalizedText,
+    baseName,
+    cleanedInput,
+    normalizedText,
+    tokens,
+    rulesApplied,
     strength,
     formulation,
     packSize,
+    confidence: deriveConfidence(baseNameTokens, strength, formulation),
+  };
+}
+
+export function normalizeMedicineName(rawProductName: string): ProductCandidates {
+  const canonicalIdentity = buildCanonicalProductIdentity(rawProductName);
+  const normalizedKeyParts = [
+    canonicalIdentity.baseName || canonicalIdentity.normalizedText,
+    canonicalIdentity.strength,
+    canonicalIdentity.formulation,
+    canonicalIdentity.packSize,
+  ].filter(Boolean);
+  const normalizedKey = normalizedKeyParts.join('|');
+
+  return {
+    baseName: canonicalIdentity.baseName,
+    normalizedName: canonicalIdentity.baseName || canonicalIdentity.normalizedText,
+    strength: canonicalIdentity.strength,
+    formulation: canonicalIdentity.formulation,
+    packSize: canonicalIdentity.packSize,
     normalizedKey,
-    confidence,
+    confidence: canonicalIdentity.confidence,
     explanation: {
-      cleanedInput,
-      tokens,
-      rulesApplied,
+      cleanedInput: canonicalIdentity.cleanedInput,
+      tokens: canonicalIdentity.tokens,
+      rulesApplied: canonicalIdentity.rulesApplied,
       extracted: {
-        strength,
-        formulation,
-        packSize,
+        strength: canonicalIdentity.strength,
+        formulation: canonicalIdentity.formulation,
+        packSize: canonicalIdentity.packSize,
       },
     },
   };

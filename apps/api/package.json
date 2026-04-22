@@ -10,6 +10,8 @@
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
     "test": "tsx --test src/**/*.test.ts",
+    "telegram:replay": "tsx scripts/replay-telegram-fixture.ts",
+    "email:device-code": "tsx scripts/microsoft-device-code.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed"
@@ -17,11 +19,16 @@
   "dependencies": {
     "@ambe/shared": "workspace:*",
     "@prisma/client": "^6.6.0",
+    "@types/nodemailer": "^8.0.0",
     "csv-parse": "^6.2.1",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "multer": "^2.1.1",
-    "xlsx": "^0.18.5"
+    "nodemailer": "^8.0.5",
+    "pdf-parse": "^2.4.5",
+    "tesseract.js": "^7.0.0",
+    "xlsx": "^0.18.5",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/express": "^5.0.1",

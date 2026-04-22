@@ -41,6 +41,7 @@ export function validateSupplierPriceRows(
       ['productName', 'rawProductName', 'product', 'name'],
       'productName',
     );
+    const manufacturer = optionalString(context, ['manufacturer', 'manufacturerName', 'mfr', 'brand']);
     const unitPrice = requireDecimal(context, ['unitPrice', 'price'], 'unitPrice');
     const packDescription = optionalString(context, ['packDescription', 'packSize']);
     const minimumOrderQuantity = optionalInteger(
@@ -61,6 +62,7 @@ export function validateSupplierPriceRows(
       rowNumber,
       rawRow,
       rawProductName,
+      manufacturer,
       packDescription,
       unitPrice,
       currencyCode,
@@ -88,6 +90,7 @@ export function validateInventoryRows(rows: ParsedTableRow[]): ValidationResult<
       ['productName', 'rawProductName', 'product', 'name'],
       'productName',
     );
+    const manufacturer = optionalString(context, ['manufacturer', 'manufacturerName', 'mfr', 'brand']);
     const rawSupplierName = optionalString(context, ['supplierName', 'supplier']);
     const warehouseCode = requireString(context, ['warehouseCode', 'warehouse'], 'warehouseCode');
     const snapshotDate = requireDate(context, ['snapshotDate', 'date'], 'snapshotDate');
@@ -118,6 +121,7 @@ export function validateInventoryRows(rows: ParsedTableRow[]): ValidationResult<
       rowNumber,
       rawRow,
       rawProductName,
+      manufacturer,
       rawSupplierName,
       warehouseCode,
       snapshotDate,
@@ -154,6 +158,7 @@ export function validateSalesRows(rows: ParsedTableRow[]): ValidationResult<Sale
       ['productName', 'rawProductName', 'product', 'name'],
       'productName',
     );
+    const manufacturer = optionalString(context, ['manufacturer', 'manufacturerName', 'mfr', 'brand']);
     const rawSupplierName = optionalString(context, ['supplierName', 'supplier']);
     const quantity = requireInteger(context, ['quantity', 'units'], 'quantity');
     const unitPrice = requireDecimal(context, ['unitPrice', 'price'], 'unitPrice');
@@ -180,6 +185,7 @@ export function validateSalesRows(rows: ParsedTableRow[]): ValidationResult<Sale
       rowNumber,
       rawRow,
       rawProductName,
+      manufacturer,
       rawCustomerName,
       rawSupplierName,
       saleDate,

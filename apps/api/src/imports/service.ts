@@ -1,8 +1,13 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, type Product } from '@prisma/client';
 
 import { db } from '../lib/db';
+import { opportunityConfig } from '../opportunities/config';
 import { normalizeText } from './normalization';
 import { parseUploadedFile } from './parsers';
+import {
+  determineProductMatchDecision,
+  findMatchingAliasVariant,
+} from './productMatching';
 import { logger } from '../lib/logger';
 import type {
   ImportResponse,
@@ -15,8 +20,14 @@ import type {
   SalesRowInput,
   SupplierPriceListImportRequest,
   SupplierPriceListRowInput,
+  ProductMatchDecision,
+  ProductCandidates,
+  ProductPriceIntelligence,
 } from './types';
 import { validateInventoryRows, validateSalesRows, validateSupplierPriceRows } from './validators';
+
+type DbClient = typeof db | Prisma.TransactionClient;
+const MILLISECONDS_PER_DAY = 1000 * 60 * 60 * 24;
 
 function buildSummary(
   totalRows: number,
@@ -61,10 +72,383 @@ async function createImportBatch(
   });
 }
 
-async function findOrCreateSupplier(rawSupplierName: string) {
+function roundNumber(value: number | null, precision = 4): number | null {
+  if (value === null) {
+    return null;
+  }
+
+  const factor = 10 ** precision;
+  return Math.round(value * factor) / factor;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function toNumber(value: Prisma.Decimal | number | null | undefined): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  return value.toNumber();
+}
+
+function toDecimal(value: number | null): Prisma.Decimal | null {
+  if (value === null) {
+    return null;
+  }
+
+  return new Prisma.Decimal(roundNumber(value, 2) ?? value);
+}
+
+function calculatePriceDeltaFromMarketPct(
+  currentPrice: number | null,
+  marketPrice: number | null,
+): number | null {
+  if (currentPrice === null || marketPrice === null || marketPrice <= 0) {
+    return null;
+  }
+
+  return roundNumber((currentPrice - marketPrice) / marketPrice);
+}
+
+function calculateVolatilityScore(prices: number[]): number | null {
+  if (prices.length === 0) {
+    return null;
+  }
+
+  if (prices.length === 1) {
+    return 0;
+  }
+
+  const averagePrice = prices.reduce((total, price) => total + price, 0) / prices.length;
+  if (averagePrice <= 0) {
+    return null;
+  }
+
+  const variance =
+    prices.reduce((total, price) => total + (price - averagePrice) ** 2, 0) / prices.length;
+  return roundNumber(clamp(Math.sqrt(variance) / averagePrice, 0, 1));
+}
+
+function calculateMarketConfidence(
+  sampleCount: number,
+  latestObservedAt: Date | null,
+  prices: number[],
+  referenceDate: Date,
+): number | null {
+  if (sampleCount === 0 || !latestObservedAt || prices.length === 0) {
+    return null;
+  }
+
+  const sampleScore = clamp(
+    sampleCount / Math.max(1, opportunityConfig.marketMinSampleCount),
+    0,
+    1,
+  );
+  const latestAgeDays = Math.max(
+    0,
+    (referenceDate.getTime() - latestObservedAt.getTime()) / MILLISECONDS_PER_DAY,
+  );
+  const recencyScore = clamp(
+    1 - latestAgeDays / Math.max(1, opportunityConfig.marketLookbackDays),
+    0,
+    1,
+  );
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  const averagePrice = prices.reduce((total, price) => total + price, 0) / prices.length;
+  const spreadConsistency =
+    averagePrice > 0 ? clamp(1 - (maxPrice - minPrice) / averagePrice, 0, 1) : 0;
+
+  return roundNumber(sampleScore * (0.5 + 0.3 * recencyScore + 0.2 * spreadConsistency));
+}
+
+function buildProductPriceIntelligence(
+  observations: Array<{ createdAt: Date; unitPrice: number }>,
+  currentUnitPrice: number | null,
+  referenceDate: Date,
+): ProductPriceIntelligence {
+  const prices = observations.map((observation) => observation.unitPrice);
+  const latestObservedPrice = observations[0]?.unitPrice ?? null;
+  const rollingAveragePrice =
+    prices.length > 0 ? roundNumber(prices.reduce((total, price) => total + price, 0) / prices.length) : null;
+  const bestObservedPrice = prices.length > 0 ? roundNumber(Math.min(...prices)) : null;
+  const weightedTotals = observations.reduce(
+    (totals, observation) => {
+      const ageDays = Math.max(
+        0,
+        (referenceDate.getTime() - observation.createdAt.getTime()) / MILLISECONDS_PER_DAY,
+      );
+      const weight = 1 / (1 + ageDays / Math.max(1, opportunityConfig.marketRecentWeightDays));
+
+      return {
+        weightTotal: totals.weightTotal + weight,
+        weightedPriceTotal: totals.weightedPriceTotal + observation.unitPrice * weight,
+      };
+    },
+    {
+      weightTotal: 0,
+      weightedPriceTotal: 0,
+    },
+  );
+  const simulatedMarketPrice =
+    weightedTotals.weightTotal > 0
+      ? roundNumber(weightedTotals.weightedPriceTotal / weightedTotals.weightTotal)
+      : null;
+
+  return {
+    latestObservedPrice,
+    rollingAveragePrice,
+    bestObservedPrice,
+    simulatedMarketPrice,
+    marketConfidence: calculateMarketConfidence(
+      observations.length,
+      observations[0]?.createdAt ?? null,
+      prices,
+      referenceDate,
+    ),
+    volatilityScore: calculateVolatilityScore(prices),
+    sampleCount: observations.length,
+    priceDeltaFromMarketPct: calculatePriceDeltaFromMarketPct(
+      currentUnitPrice,
+      simulatedMarketPrice,
+    ),
+  };
+}
+
+async function loadRecentProductPriceIntelligence(
+  productId: string,
+  currencyCode: string,
+  currentUnitPrice: number | null,
+  client: DbClient = db,
+) {
+  const lookbackStart = new Date(
+    Date.now() - opportunityConfig.marketLookbackDays * MILLISECONDS_PER_DAY,
+  );
+  const recentPrices = await client.supplierPriceItem.findMany({
+    where: {
+      productId,
+      currencyCode,
+      isAvailable: true,
+      createdAt: {
+        gte: lookbackStart,
+      },
+    },
+    orderBy: [{ createdAt: 'desc' }],
+    select: {
+      createdAt: true,
+      unitPrice: true,
+    },
+  });
+
+  return buildProductPriceIntelligence(
+    recentPrices.map((price) => ({
+      createdAt: price.createdAt,
+      unitPrice: price.unitPrice.toNumber(),
+    })),
+    currentUnitPrice,
+    new Date(),
+  );
+}
+
+function getStructuredCompatibility(product: Product, candidates: ProductCandidates) {
+  const conflictFields: Array<'strength' | 'formulation' | 'packSize'> = [];
+
+  if (product.strength && candidates.strength && product.strength !== candidates.strength) {
+    conflictFields.push('strength');
+  }
+
+  if (
+    product.dosageForm &&
+    candidates.formulation &&
+    product.dosageForm !== candidates.formulation
+  ) {
+    conflictFields.push('formulation');
+  }
+
+  if (product.packSize && candidates.packSize && product.packSize !== candidates.packSize) {
+    conflictFields.push('packSize');
+  }
+
+  return {
+    compatible: conflictFields.length === 0,
+    conflictFields,
+  };
+}
+
+function countStructuredMatches(product: Product, candidates: ProductCandidates): number {
+  return [
+    product.strength && candidates.strength && product.strength === candidates.strength,
+    product.dosageForm &&
+      candidates.formulation &&
+      product.dosageForm === candidates.formulation,
+    product.packSize && candidates.packSize && product.packSize === candidates.packSize,
+  ].filter(Boolean).length;
+}
+
+async function findStructuredBaseNameProductMatch(
+  candidates: ProductCandidates,
+  client: DbClient = db,
+): Promise<Product | null> {
+  const candidateBaseName = candidates.baseName.trim();
+  const structuredSignalCount = [candidates.strength, candidates.formulation, candidates.packSize].filter(
+    Boolean,
+  ).length;
+
+  if (!candidateBaseName || structuredSignalCount === 0) {
+    return null;
+  }
+
+  const matches = await client.product.findMany({
+    where: {
+      OR: [{ baseName: candidateBaseName }, { normalizedName: candidateBaseName }],
+    },
+  });
+
+  const compatibleMatches = matches
+    .map((product) => ({
+      product,
+      compatibility: getStructuredCompatibility(product, candidates),
+      exactStructuredMatches: countStructuredMatches(product, candidates),
+      prefersBaseNameField: product.baseName === candidateBaseName,
+    }))
+    .filter(
+      (entry) => entry.compatibility.compatible && entry.exactStructuredMatches > 0,
+    )
+    .sort((left, right) => {
+      if (Number(left.prefersBaseNameField) !== Number(right.prefersBaseNameField)) {
+        return Number(right.prefersBaseNameField) - Number(left.prefersBaseNameField);
+      }
+
+      return right.exactStructuredMatches - left.exactStructuredMatches;
+    });
+
+  return compatibleMatches[0]?.product ?? null;
+}
+
+async function updateProductCanonicalFields(
+  product: Product,
+  candidates: ProductCandidates,
+  manufacturer: string | null | undefined,
+  client: DbClient = db,
+): Promise<Product> {
+  const data: Prisma.ProductUpdateInput = {};
+
+  if (manufacturer?.trim() && !product.manufacturer) {
+    data.manufacturer = manufacturer.trim();
+  }
+
+  if (candidates.baseName && !product.baseName) {
+    data.baseName = candidates.baseName;
+  }
+
+  if (Object.keys(data).length === 0) {
+    return product;
+  }
+
+  return client.product.update({
+    where: { id: product.id },
+    data,
+  });
+}
+
+async function applySupplierReliabilityFeedback(
+  supplierId: string,
+  productId: string,
+  saleDate: Date,
+  saleUnitPrice: Prisma.Decimal,
+  currencyCode: string,
+  client: DbClient = db,
+) {
+  const recentSupplierPrice = await client.supplierPriceItem.findFirst({
+    where: {
+      supplierId,
+      productId,
+      currencyCode,
+      createdAt: {
+        gte: new Date(saleDate.getTime() - opportunityConfig.marketLookbackDays * MILLISECONDS_PER_DAY),
+        lte: saleDate,
+      },
+    },
+    orderBy: [{ createdAt: 'desc' }],
+    select: {
+      unitPrice: true,
+      marketPriceEstimate: true,
+      marketPriceConfidence: true,
+      priceDeltaFromMarketPct: true,
+    },
+  });
+
+  if (!recentSupplierPrice) {
+    return;
+  }
+
+  const saleUnitPriceNumber = saleUnitPrice.toNumber();
+  const supplierUnitPrice = recentSupplierPrice.unitPrice.toNumber();
+  if (saleUnitPriceNumber <= 0 || supplierUnitPrice <= 0) {
+    return;
+  }
+
+  const realizedMarginPct = (saleUnitPriceNumber - supplierUnitPrice) / saleUnitPriceNumber;
+  const marketPriceEstimate = toNumber(recentSupplierPrice.marketPriceEstimate);
+  const priceDeltaFromMarketPct =
+    recentSupplierPrice.priceDeltaFromMarketPct ??
+    calculatePriceDeltaFromMarketPct(supplierUnitPrice, marketPriceEstimate);
+
+  let adjustment = 0;
+
+  if (
+    realizedMarginPct >= opportunityConfig.pushMinMarginVsMarketPct &&
+    (priceDeltaFromMarketPct === null || priceDeltaFromMarketPct <= 0)
+  ) {
+    adjustment = opportunityConfig.supplierReliabilityAdjustmentStep;
+  } else if (
+    realizedMarginPct < 0 &&
+    (recentSupplierPrice.marketPriceConfidence ?? 0) >= opportunityConfig.marketConfidenceMinForBuy
+  ) {
+    adjustment = -opportunityConfig.supplierReliabilityAdjustmentStep;
+  }
+
+  if (adjustment === 0) {
+    return;
+  }
+
+  const supplier = await client.supplier.findUnique({
+    where: { id: supplierId },
+    select: {
+      reliabilityScore: true,
+    },
+  });
+
+  if (!supplier) {
+    return;
+  }
+
+  const nextReliabilityScore = roundNumber(
+    clamp(supplier.reliabilityScore + adjustment, 0, 1),
+  );
+
+  if (nextReliabilityScore === null || nextReliabilityScore === supplier.reliabilityScore) {
+    return;
+  }
+
+  await client.supplier.update({
+    where: { id: supplierId },
+    data: {
+      reliabilityScore: nextReliabilityScore,
+    },
+  });
+}
+
+export async function findOrCreateSupplier(rawSupplierName: string, client: DbClient = db) {
   const normalizedName = normalizeText(rawSupplierName);
 
-  const existing = await db.supplier.findUnique({
+  const existing = await client.supplier.findUnique({
     where: { normalizedName },
   });
 
@@ -72,7 +456,7 @@ async function findOrCreateSupplier(rawSupplierName: string) {
     return existing;
   }
 
-  return db.supplier.create({
+  return client.supplier.create({
     data: {
       name: rawSupplierName,
       normalizedName,
@@ -80,10 +464,10 @@ async function findOrCreateSupplier(rawSupplierName: string) {
   });
 }
 
-async function findOrCreateCustomer(rawCustomerName: string) {
+async function findOrCreateCustomer(rawCustomerName: string, client: DbClient = db) {
   const normalizedName = normalizeText(rawCustomerName);
 
-  const existing = await db.customer.findUnique({
+  const existing = await client.customer.findUnique({
     where: { normalizedName },
   });
 
@@ -91,7 +475,7 @@ async function findOrCreateCustomer(rawCustomerName: string) {
     return existing;
   }
 
-  return db.customer.create({
+  return client.customer.create({
     data: {
       name: rawCustomerName,
       normalizedName,
@@ -99,19 +483,35 @@ async function findOrCreateCustomer(rawCustomerName: string) {
   });
 }
 
-async function ensureProductAlias(productId: string, rawProductName: string, sourceSystem: string) {
-  const existingAlias = await db.productAlias.findFirst({
+async function ensureProductAlias(
+  productId: string,
+  rawProductName: string,
+  sourceSystem: string,
+  client: DbClient = db,
+) {
+  const exactRawAlias = await client.productAlias.findFirst({
     where: {
       productId,
       aliasName: rawProductName,
     },
   });
 
-  if (existingAlias) {
-    return existingAlias;
+  if (exactRawAlias) {
+    return exactRawAlias;
   }
 
-  return db.productAlias.create({
+  const existingAliasesForProduct = await client.productAlias.findMany({
+    where: {
+      productId,
+    },
+  });
+  const existingAliasVariant = findMatchingAliasVariant(existingAliasesForProduct, rawProductName);
+
+  if (existingAliasVariant.alias) {
+    return existingAliasVariant.alias;
+  }
+
+  return client.productAlias.create({
     data: {
       productId,
       aliasName: rawProductName,
@@ -120,37 +520,120 @@ async function ensureProductAlias(productId: string, rawProductName: string, sou
   });
 }
 
-async function findOrCreateProduct(
+function logProductMatchDecision(
+  decision: ProductMatchDecision,
+  matchedProductId: string | null,
+  rulesApplied: string[],
+) {
+  logger.info('Import product match decision', {
+    outcome: decision.outcome,
+    reasonCode: decision.reasonCode,
+    rawProductName: decision.rawProductName,
+    normalizedKey: decision.normalizedKey,
+    normalizedName: decision.normalizedName,
+    confidence: decision.confidence,
+    matchedProductId,
+    aliasMatchType: decision.aliasMatchType ?? null,
+    structuredCompatibilityChecked: decision.structuredCompatibility?.checked ?? false,
+    structuredCompatibilityPassed: decision.structuredCompatibility?.compatible ?? true,
+    structuredCompatibilityConflictFields: decision.structuredCompatibility?.conflictFields ?? [],
+    rulesApplied,
+  });
+}
+
+export async function findOrCreateProduct(
   rawProductName: string,
   candidates: SupplierPriceListRowInput['productCandidates'],
   sourceSystem: string,
+  manufacturer?: string | null,
+  client: DbClient = db,
 ) {
-  const existing = await db.product.findFirst({
-    where: {
-      OR: [
-        { normalizedName: candidates.normalizedKey },
-        { normalizedName: candidates.normalizedName },
-      ],
+  const decision = await determineProductMatchDecision(
+    {
+      findProductByStoredCanonicalField: async (storedCanonicalField) =>
+        client.product.findFirst({
+          where: { normalizedName: storedCanonicalField },
+        }),
+      findAliasByRawName: async (aliasName) =>
+        client.productAlias.findFirst({
+          where: { aliasName },
+          include: {
+            product: true,
+          },
+        }),
+      listAliasesForCanonicalComparison: async () =>
+        client.productAlias.findMany({
+          include: {
+            product: true,
+          },
+        }),
     },
-  });
-
-  if (existing) {
-    await ensureProductAlias(existing.id, rawProductName, sourceSystem);
-    logger.info('Product normalization matched existing product', {
-      confidence: candidates.confidence,
-      existingProductId: existing.id,
-      normalizedKey: candidates.normalizedKey,
-      normalizedName: candidates.normalizedName,
+    {
       rawProductName,
-      rulesApplied: candidates.explanation.rulesApplied,
+      candidates,
+    },
+  );
+
+  if (decision.matchedProductId) {
+    const existingProduct = await client.product.findUnique({
+      where: { id: decision.matchedProductId },
     });
+
+    if (!existingProduct) {
+      throw new Error(`Matched product ${decision.matchedProductId} was not found during persistence.`);
+    }
+
+    const existing = await updateProductCanonicalFields(
+      existingProduct,
+      candidates,
+      manufacturer,
+      client,
+    );
+
+    await ensureProductAlias(existing.id, rawProductName, sourceSystem, client);
+    logProductMatchDecision(decision, existing.id, candidates.explanation.rulesApplied);
     return existing;
   }
 
-  const product = await db.product.create({
+  const structuredBaseNameMatch = await findStructuredBaseNameProductMatch(candidates, client);
+
+  if (structuredBaseNameMatch) {
+    const matchedProduct = await updateProductCanonicalFields(
+      structuredBaseNameMatch,
+      candidates,
+      manufacturer,
+      client,
+    );
+
+    await ensureProductAlias(matchedProduct.id, rawProductName, sourceSystem, client);
+    logProductMatchDecision(
+      {
+        outcome: 'EXISTING_PRODUCT',
+        matchedProductId: matchedProduct.id,
+        reasonCode: 'STRUCTURED_BASE_NAME_MATCH',
+        normalizedKey: candidates.normalizedKey,
+        normalizedName: candidates.normalizedName,
+        rawProductName,
+        confidence: candidates.confidence,
+        structuredCompatibility: {
+          checked: true,
+          compatible: true,
+          conflictFields: [],
+        },
+      },
+      matchedProduct.id,
+      candidates.explanation.rulesApplied,
+    );
+
+    return matchedProduct;
+  }
+
+  const product = await client.product.create({
     data: {
       name: rawProductName,
       normalizedName: candidates.normalizedKey,
+      baseName: candidates.baseName,
+      manufacturer: manufacturer?.trim() || null,
       strength: candidates.strength,
       dosageForm: candidates.formulation,
       packSize: candidates.packSize,
@@ -163,13 +646,14 @@ async function findOrCreateProduct(
     },
   });
 
-  logger.info('Product normalization created new product', {
-    confidence: candidates.confidence,
-    normalizedKey: candidates.normalizedKey,
-    normalizedName: candidates.normalizedName,
-    rawProductName,
-    rulesApplied: candidates.explanation.rulesApplied,
-  });
+  logProductMatchDecision(
+    {
+      ...decision,
+      matchedProductId: product.id,
+    },
+    product.id,
+    candidates.explanation.rulesApplied,
+  );
 
   return product;
 }
@@ -194,9 +678,10 @@ async function persistSupplierPriceRows(
       row.rawProductName,
       row.productCandidates,
       'import:supplier-price-list',
+      row.manufacturer,
     );
 
-    await db.supplierPriceItem.create({
+    const supplierPriceItem = await db.supplierPriceItem.create({
       data: {
         supplierPriceListId,
         supplierId,
@@ -214,6 +699,23 @@ async function persistSupplierPriceRows(
         rawRow: row.rawRow,
       },
     });
+
+    const priceIntelligence = await loadRecentProductPriceIntelligence(
+      product.id,
+      row.currencyCode,
+      supplierPriceItem.unitPrice.toNumber(),
+    );
+
+    await db.supplierPriceItem.update({
+      where: {
+        id: supplierPriceItem.id,
+      },
+      data: {
+        marketPriceEstimate: toDecimal(priceIntelligence.simulatedMarketPrice),
+        marketPriceConfidence: priceIntelligence.marketConfidence,
+        priceDeltaFromMarketPct: priceIntelligence.priceDeltaFromMarketPct,
+      },
+    });
   }
 }
 
@@ -223,6 +725,7 @@ async function persistInventoryRows(importBatchId: string, rows: InventoryRowInp
       row.rawProductName,
       row.productCandidates,
       'import:inventory',
+      row.manufacturer,
     );
 
     const supplier = row.rawSupplierName ? await findOrCreateSupplier(row.rawSupplierName) : null;
@@ -253,7 +756,12 @@ async function persistInventoryRows(importBatchId: string, rows: InventoryRowInp
 
 async function persistSalesRows(importBatchId: string, rows: SalesRowInput[]) {
   for (const row of rows) {
-    const product = await findOrCreateProduct(row.rawProductName, row.productCandidates, 'import:sales');
+    const product = await findOrCreateProduct(
+      row.rawProductName,
+      row.productCandidates,
+      'import:sales',
+      row.manufacturer,
+    );
     const customer = await findOrCreateCustomer(row.rawCustomerName);
     const supplier = row.rawSupplierName ? await findOrCreateSupplier(row.rawSupplierName) : null;
 
@@ -278,6 +786,16 @@ async function persistSalesRows(importBatchId: string, rows: SalesRowInput[]) {
         rawRow: row.rawRow,
       },
     });
+
+    if (supplier?.id) {
+      await applySupplierReliabilityFeedback(
+        supplier.id,
+        product.id,
+        row.saleDate,
+        row.unitPrice,
+        row.currencyCode,
+      );
+    }
   }
 }
 

@@ -1,31 +1,18 @@
 import { parse } from 'csv-parse/sync';
 
-import type { ParsedFileResult, ParsedTableRow, UploadFile } from '../types';
-
-function normalizeCell(value: unknown): string {
-  if (value === null || value === undefined) {
-    return '';
-  }
-
-  return String(value).trim();
-}
+import type { ParsedFileResult, UploadFile } from '../types';
+import { parseTableRows } from './tableParser';
 
 export function parseCsvFile(file: UploadFile): ParsedFileResult {
   const records = parse(file.buffer, {
     bom: true,
-    columns: true,
+    columns: false,
     skip_empty_lines: true,
-    trim: true,
-  }) as Record<string, unknown>[];
+    relax_column_count: true,
+  }) as unknown[][];
 
-  const rows: ParsedTableRow[] = records.map((record) =>
-    Object.fromEntries(
-      Object.entries(record).map(([key, value]) => [key.trim(), normalizeCell(value)]),
-    ),
-  );
-
-  return {
-    rows,
-    warnings: [],
-  };
+  return parseTableRows({
+    sourceLabel: 'CSV import',
+    rows: records,
+  });
 }

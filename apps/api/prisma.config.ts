@@ -37,6 +37,9 @@ console.log('Prisma using DB host:', host);
 
 export default defineConfig({
   schema: path.join(currentDir, 'prisma/schema.prisma'),
+  datasource: {
+    url: process.env.DATABASE_URL,
+  },
   migrations: {
     seed: 'tsx prisma/seed.ts',
   },

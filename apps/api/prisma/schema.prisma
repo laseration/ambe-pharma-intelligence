@@ -50,6 +50,23 @@ enum TelegramPostStatus {
   FAILED
 }
 
+enum TelegramInboundFileType {
+  CSV
+  XLSX
+  PDF
+  IMAGE
+  UNKNOWN
+}
+
+enum TelegramInboundProcessingStatus {
+  RECEIVED
+  IMPORTED
+  NEEDS_REVIEW
+  REVIEW_REQUIRED
+  IGNORED
+  FAILED
+}
+
 enum SettingType {
   STRING
   NUMBER
@@ -69,35 +86,330 @@ enum ImportStatus {
   FAILED
 }
 
+enum InboundEmailProcessingStatus {
+  RECEIVED
+  TRIAGED
+  EXTRACTED
+  STAGED
+  AUTO_PROMOTED
+  REVIEW_REQUIRED
+  REJECTED
+  FAILED
+}
+
+enum InboundEmailDocumentKind {
+  SUBJECT
+  BODY_MAIN
+  BODY_FORWARDED
+  SIGNATURE
+  DISCLAIMER
+  ATTACHMENT_TEXT
+  ATTACHMENT_TABLE
+}
+
+enum EmailExtractionMethod {
+  DETERMINISTIC
+  AI_FALLBACK
+}
+
+enum EmailExtractionRunStatus {
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  FAILED
+}
+
+enum EmailDerivedOfferStatus {
+  STAGED
+  AUTO_PROMOTED
+  REVIEW_REQUIRED
+  REJECTED
+}
+
+enum EntityResolutionType {
+  PRODUCT
+  SUPPLIER
+  MANUFACTURER
+}
+
+enum PromotionDecisionStatus {
+  AUTO_PROMOTED
+  REVIEW_REQUIRED
+  REJECTED
+}
+
+enum OfferWorkflowStatus {
+  NEW
+  IN_REVIEW
+  NEEDS_INFO
+  APPROVED_TO_BUY
+  REJECTED
+  ORDERED
+  CLOSED
+}
+
+enum OfferWorkflowPriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum OfferWorkflowActionType {
+  CREATED
+  REOPENED
+  ASSIGNED
+  STARTED_REVIEW
+  MARKED_NEEDS_INFO
+  APPROVED_TO_BUY
+  REJECTED
+  MARKED_ORDERED
+  CLOSED
+  NOTE_ADDED
+  AUTO_CLOSED
+}
+
+enum BuyDecisionApprovalStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum BuyDecisionOrderStatus {
+  NOT_ORDERED
+  ORDERED
+  PARTIALLY_FULFILLED
+  FULFILLED
+  CANCELLED
+}
+
+enum BuyDecisionActionType {
+  CREATED
+  APPROVED
+  REJECTED
+  MARKED_ORDERED
+  MARKED_PARTIALLY_FULFILLED
+  MARKED_FULFILLED
+  CANCELLED
+  NOTE_ADDED
+  UPDATED_REFERENCE
+}
+
+enum BuyExecutionFulfillmentStatus {
+  NOT_STARTED
+  ORDER_PLACED
+  ORDER_CONFIRMED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum BuyExecutionReconciliationStatus {
+  NOT_RECONCILED
+  MATCHED
+  PRICE_DRIFT
+  QUANTITY_DRIFT
+  CURRENCY_MISMATCH
+  REQUIRES_REVIEW
+}
+
+enum BuyExecutionActionType {
+  CREATED
+  ORDER_PLACED
+  ORDER_CONFIRMED
+  RECEIVED
+  PARTIALLY_RECEIVED
+  INVOICE_RECORDED
+  CANCELLED
+  RECONCILED
+  NOTE_ADDED
+  UPDATED_REFERENCE
+}
+
+enum TradeOpportunityStatus {
+  OPEN
+  ON_HOLD
+  DROPPED
+  WON
+  LOST
+}
+
+enum TradeOpportunityStage {
+  NEW
+  REVIEW
+  READY_FOR_SUPPLIER_OUTREACH
+  READY_FOR_BUY
+  BUY_APPROVED
+  BUY_ORDERED
+  READY_FOR_BUYER_OUTREACH
+  BUYER_CONTACTED
+  NEGOTIATING
+  DEAL_CONFIRMED
+  CLOSED
+}
+
+enum TradeOpportunitySourceType {
+  EMAIL_DERIVED_OFFER
+  WORKFLOW_ITEM
+  BUY_DECISION
+  OPERATOR_CREATED
+}
+
+enum TradeOpportunityActionType {
+  CREATED
+  UPDATED
+  STAGE_CHANGED
+  STATUS_CHANGED
+  SUPPLIER_OUTREACH_DRAFTED
+  BUYER_OUTREACH_DRAFTED
+  BUY_APPROVAL_LINKED
+  BUY_ORDER_LINKED
+  MARKED_NEGOTIATING
+  WON
+  LOST
+  DROPPED
+  NOTE_ADDED
+}
+
+enum TradeMessageDraftDirection {
+  TO_SUPPLIER
+  TO_BUYER
+  INTERNAL
+}
+
+enum TradeMessageDraftStatus {
+  DRAFT
+  READY_FOR_REVIEW
+  APPROVED
+  REJECTED
+  SENT
+  CANCELLED
+}
+
+enum TradeMessagePurpose {
+  INITIAL_BUYER_OFFER
+  INITIAL_SUPPLIER_ENQUIRY
+  PRICE_CONFIRMATION
+  AVAILABILITY_CHECK
+  NEGOTIATION_REPLY
+  INTERNAL_SUMMARY
+}
+
+enum AutomationGlobalMode {
+  OBSERVE_ONLY
+  INTERNAL_SIGNALS_ONLY
+  DRAFTS_ONLY
+  ASSISTED_OUTREACH
+  FULLY_BLOCKED
+}
+
+enum AutomationReadinessActionType {
+  CREATED
+  UPDATED
+  MODE_CHANGED
+  SEND_BLOCKED
+  SEND_ELIGIBILITY_CHANGED
+  NOTE_ADDED
+}
+
+enum OperatorFeedbackType {
+  EXTRACTION
+  SUPPLIER_RESOLUTION
+  SIGNAL
+  DEAL
+  DRAFT
+}
+
+enum OperatorFeedbackVerdict {
+  CORRECT
+  PARTIALLY_CORRECT
+  INCORRECT
+  USEFUL
+  NOT_USEFUL
+  SAFE
+  POLICY_ISSUE
+}
+
+enum OfferCorrectionStatus {
+  APPLIED
+  SUPERSEDED
+  REJECTED
+}
+
+enum OfferCorrectionActionType {
+  CREATED
+  UPDATED
+  APPLIED
+  SUPERSEDED
+  REJECTED
+  NOTE_ADDED
+}
+
+enum SourceReliabilityTier {
+  TRUSTED
+  WATCH
+  RISKY
+}
+
+enum SupplierQualificationStatus {
+  UNKNOWN
+  PENDING_REVIEW
+  APPROVED
+  RESTRICTED
+  BLOCKED
+}
+
+enum SupplierTrustTier {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum SupplierQualificationActionType {
+  CREATED
+  REVIEWED
+  APPROVED
+  RESTRICTED
+  BLOCKED
+  EXPIRED
+  NOTE_ADDED
+}
+
 model User {
-  id             String        @id @default(cuid())
-  email          String        @unique
-  fullName       String
-  role           UserRole      @default(ANALYST)
-  isActive       Boolean       @default(true)
-  alerts         Alert[]
-  opportunities  Opportunity[] @relation("OpportunityOwner")
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id                         String              @id @default(cuid())
+  email                      String              @unique
+  fullName                   String
+  role                       UserRole            @default(ANALYST)
+  isActive                   Boolean             @default(true)
+  alerts                     Alert[]
+  opportunities              Opportunity[]       @relation("OpportunityOwner")
+  assignedOfferWorkflowItems OfferWorkflowItem[]
+  ownedTradeOpportunities    TradeOpportunity[]  @relation("TradeOpportunityOwner")
+  createdAt                  DateTime            @default(now())
+  updatedAt                  DateTime            @updatedAt
 }
 
 model Product {
-  id                 String              @id @default(cuid())
-  sku                String?             @unique
-  name               String
-  normalizedName     String
-  manufacturer       String?
-  strength           String?
-  dosageForm         String?
-  packSize           String?
-  isActive           Boolean             @default(true)
-  aliases            ProductAlias[]
-  inventorySnapshots InventorySnapshot[]
-  opportunities      Opportunity[]
-  salesRecords       SalesRecord[]
-  supplierPriceItems SupplierPriceItem[]
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  id                        String              @id @default(cuid())
+  sku                       String?             @unique
+  name                      String
+  normalizedName            String
+  baseName                  String?
+  manufacturer              String?
+  strength                  String?
+  dosageForm                String?
+  packSize                  String?
+  isActive                  Boolean             @default(true)
+  aliases                   ProductAlias[]
+  inventorySnapshots        InventorySnapshot[]
+  opportunities             Opportunity[]
+  salesRecords              SalesRecord[]
+  supplierPriceItems        SupplierPriceItem[]
+  buyDecisions              BuyDecision[]
+  buyExecutions             BuyExecution[]
+  tradeOpportunities        TradeOpportunity[]
+  correctedOfferCorrections OfferCorrection[]
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
 
   @@index([normalizedName])
 }
@@ -116,23 +428,24 @@ model ProductAlias {
 }
 
 model ImportBatch {
-  id                 String              @id @default(cuid())
-  kind               ImportKind
-  status             ImportStatus        @default(COMPLETED)
-  fileName           String
-  fileMimeType       String?
-  fileSizeBytes      Int?
-  totalRows          Int                 @default(0)
-  validRows          Int                 @default(0)
-  invalidRows        Int                 @default(0)
-  warnings           Json?
-  errors             ImportError[]
-  inventorySnapshots InventorySnapshot[]
-  salesRecords       SalesRecord[]
-  supplierPriceList  SupplierPriceList?
-  uploadedAt         DateTime            @default(now())
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  id                   String                @id @default(cuid())
+  kind                 ImportKind
+  status               ImportStatus          @default(COMPLETED)
+  fileName             String
+  fileMimeType         String?
+  fileSizeBytes        Int?
+  totalRows            Int                   @default(0)
+  validRows            Int                   @default(0)
+  invalidRows          Int                   @default(0)
+  warnings             Json?
+  errors               ImportError[]
+  telegramInboundItems TelegramInboundItem[]
+  inventorySnapshots   InventorySnapshot[]
+  salesRecords         SalesRecord[]
+  supplierPriceList    SupplierPriceList?
+  uploadedAt           DateTime              @default(now())
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
   @@index([kind, uploadedAt])
 }
@@ -152,94 +465,793 @@ model ImportError {
 }
 
 model Supplier {
-  id                 String              @id @default(cuid())
-  name               String
-  normalizedName     String
-  country            String?
-  contactEmail       String?
-  isActive           Boolean             @default(true)
-  inventorySnapshots InventorySnapshot[]
-  opportunities      Opportunity[]
-  priceLists         SupplierPriceList[]
-  salesRecords       SalesRecord[]
-  supplierPriceItems SupplierPriceItem[]
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  id                        String                     @id @default(cuid())
+  name                      String
+  normalizedName            String
+  country                   String?
+  contactEmail              String?
+  reliabilityScore          Float                      @default(0.5)
+  isActive                  Boolean                    @default(true)
+  inventorySnapshots        InventorySnapshot[]
+  opportunities             Opportunity[]
+  priceLists                SupplierPriceList[]
+  salesRecords              SalesRecord[]
+  supplierPriceItems        SupplierPriceItem[]
+  qualification             SupplierQualification?
+  buyDecisions              BuyDecision[]
+  buyExecutions             BuyExecution[]
+  tradeOpportunities        TradeOpportunity[]
+  correctedOfferCorrections OfferCorrection[]
+  sourceReliabilityProfiles SourceReliabilityProfile[]
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
 
   @@unique([normalizedName])
 }
 
-model SupplierPriceList {
-  id              String              @id @default(cuid())
-  supplierId      String
-  importBatchId   String?             @unique
-  fileName        String
-  fileMimeType    String?
-  fileSizeBytes   Int?
-  sourceDate      DateTime?
-  uploadedAt      DateTime            @default(now())
-  currencyCode    String              @default("USD")
-  notes           String?
-  importBatch     ImportBatch?        @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
-  supplier        Supplier            @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  supplierPrices  SupplierPriceItem[]
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+model InboundEmail {
+  id                        String                       @id @default(cuid())
+  sourceSystem              String                       @default("MICROSOFT_GRAPH")
+  externalMessageId         String?
+  internetMessageId         String?
+  conversationId            String?
+  fromEmail                 String
+  fromName                  String?
+  subject                   String?
+  rawHtml                   String?
+  rawText                   String?
+  bodyHash                  String?
+  senderDomain              String?
+  sourceTemplateFingerprint String?
+  attachmentSummary         Json?
+  processingStatus          InboundEmailProcessingStatus @default(RECEIVED)
+  triageStatus              String?
+  sourceTrustScore          Int?
+  structureConfidence       Int?
+  businessWorthinessScore   Int?
+  parserConfidence          String?
+  reviewReason              String?
+  receivedAt                DateTime?
+  processedAt               DateTime?
+  documents                 InboundEmailDocument[]
+  extractionRuns            EmailExtractionRun[]
+  derivedOffers             EmailDerivedOffer[]
+  offerWorkflowItems        OfferWorkflowItem[]
+  buyDecisions              BuyDecision[]
+  tradeOpportunities        TradeOpportunity[]
+  offerCorrections          OfferCorrection[]
+  promotionDecisions        PromotionDecision[]
+  promotedPriceLists        SupplierPriceList[]
+  createdAt                 DateTime                     @default(now())
+  updatedAt                 DateTime                     @updatedAt
 
+  @@unique([sourceSystem, externalMessageId])
+  @@index([fromEmail, createdAt])
+  @@index([senderDomain, createdAt])
+  @@index([sourceSystem, sourceTemplateFingerprint])
+  @@index([processingStatus, createdAt])
+}
+
+model InboundEmailDocument {
+  id             String                      @id @default(cuid())
+  inboundEmailId String
+  kind           InboundEmailDocumentKind
+  documentIndex  Int
+  label          String?
+  textContent    String
+  metadata       Json?
+  inboundEmail   InboundEmail                @relation(fields: [inboundEmailId], references: [id], onDelete: Cascade)
+  derivedOffers  EmailDerivedOffer[]
+  evidences      EmailDerivedOfferEvidence[]
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+
+  @@unique([inboundEmailId, kind, documentIndex])
+  @@index([inboundEmailId, kind, documentIndex])
+}
+
+model EmailExtractionRun {
+  id               String                   @id @default(cuid())
+  inboundEmailId   String
+  method           EmailExtractionMethod
+  status           EmailExtractionRunStatus @default(COMPLETED)
+  extractorVersion String
+  aiPromptVersion  String?
+  requestId        String?
+  notes            Json?
+  inboundEmail     InboundEmail             @relation(fields: [inboundEmailId], references: [id], onDelete: Cascade)
+  derivedOffers    EmailDerivedOffer[]
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  @@index([inboundEmailId, method, createdAt])
+}
+
+model EmailDerivedOffer {
+  id                             String                       @id @default(cuid())
+  inboundEmailId                 String
+  extractionRunId                String?
+  sourceDocumentId               String?
+  status                         EmailDerivedOfferStatus      @default(STAGED)
+  sourceKind                     String
+  sourceBlockText                String
+  rawProductText                 String?
+  normalizedProductNameCandidate String?
+  strengthCandidate              String?
+  dosageFormCandidate            String?
+  packSizeCandidate              String?
+  manufacturerCandidate          String?
+  supplierCandidate              String?
+  priceCandidate                 Decimal?                     @db.Decimal(12, 2)
+  currencyCandidate              String?
+  minimumOrderQuantityCandidate  Int?
+  availabilityCandidate          String?
+  sourceTrustScore               Int?
+  structureConfidence            Int?
+  fieldConfidence                Int?
+  entityResolutionConfidence     Int?
+  promotionConfidence            Int?
+  aiAssisted                     Boolean                      @default(false)
+  reviewReason                   String?
+  offerFingerprint               String?
+  metadata                       Json?
+  inboundEmail                   InboundEmail                 @relation(fields: [inboundEmailId], references: [id], onDelete: Cascade)
+  extractionRun                  EmailExtractionRun?          @relation(fields: [extractionRunId], references: [id], onDelete: SetNull)
+  sourceDocument                 InboundEmailDocument?        @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+  evidences                      EmailDerivedOfferEvidence[]
+  resolutionCandidates           EntityResolutionCandidate[]
+  promotionDecisions             PromotionDecision[]
+  workflowItem                   OfferWorkflowItem?
+  buyDecision                    BuyDecision?
+  tradeOpportunities             TradeOpportunity[]
+  operatorFeedbacks              OperatorValidationFeedback[]
+  offerCorrections               OfferCorrection[]
+  createdAt                      DateTime                     @default(now())
+  updatedAt                      DateTime                     @updatedAt
+
+  @@unique([inboundEmailId, offerFingerprint])
+  @@index([inboundEmailId, status, createdAt])
+  @@index([sourceDocumentId])
+}
+
+model OfferWorkflowItem {
+  id                              String                       @id @default(cuid())
+  emailDerivedOfferId             String                       @unique
+  inboundEmailId                  String?
+  status                          OfferWorkflowStatus          @default(NEW)
+  priority                        OfferWorkflowPriority        @default(MEDIUM)
+  priorityReason                  String?
+  assigneeUserId                  String?
+  assigneeLabel                   String?
+  latestNote                      String?
+  sourceKind                      String?
+  sourceReviewReason              String?
+  aiAssisted                      Boolean                      @default(false)
+  hasUnresolvedSupplier           Boolean                      @default(false)
+  hasConflictingSupplierCues      Boolean                      @default(false)
+  hasManufacturerAmbiguity        Boolean                      @default(false)
+  supplierQualificationStatus     SupplierQualificationStatus  @default(UNKNOWN)
+  hasUnknownSupplierQualification Boolean                      @default(true)
+  hasRestrictedSupplier           Boolean                      @default(false)
+  hasBlockedSupplier              Boolean                      @default(false)
+  qualificationRiskNote           String?
+  createdByType                   String                       @default("SYSTEM")
+  createdByIdentifier             String?
+  completedAt                     DateTime?
+  emailDerivedOffer               EmailDerivedOffer            @relation(fields: [emailDerivedOfferId], references: [id], onDelete: Cascade)
+  inboundEmail                    InboundEmail?                @relation(fields: [inboundEmailId], references: [id], onDelete: SetNull)
+  assigneeUser                    User?                        @relation(fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  events                          OfferWorkflowEvent[]
+  buyDecision                     BuyDecision?
+  tradeOpportunities              TradeOpportunity[]
+  operatorFeedbacks               OperatorValidationFeedback[]
+  offerCorrections                OfferCorrection[]
+  createdAt                       DateTime                     @default(now())
+  updatedAt                       DateTime                     @updatedAt
+
+  @@index([status, priority, createdAt])
+  @@index([assigneeUserId, status, priority])
+  @@index([assigneeLabel, status, priority])
+  @@index([inboundEmailId, status, priority])
+}
+
+model OfferWorkflowEvent {
+  id              String                  @id @default(cuid())
+  workflowItemId  String
+  actionType      OfferWorkflowActionType
+  previousStatus  OfferWorkflowStatus?
+  newStatus       OfferWorkflowStatus?
+  actorType       String                  @default("SYSTEM")
+  actorIdentifier String?
+  note            String?
+  metadata        Json?
+  workflowItem    OfferWorkflowItem       @relation(fields: [workflowItemId], references: [id], onDelete: Cascade)
+  createdAt       DateTime                @default(now())
+
+  @@index([workflowItemId, createdAt])
+}
+
+model BuyDecision {
+  id                             String                      @id @default(cuid())
+  emailDerivedOfferId            String                      @unique
+  offerWorkflowItemId            String?                     @unique
+  inboundEmailId                 String?
+  supplierId                     String?
+  productId                      String?
+  rawProductText                 String?
+  normalizedProductNameCandidate String?
+  manufacturerCandidate          String?
+  quotedUnitPrice                Decimal?                    @db.Decimal(12, 2)
+  quotedCurrencyCode             String?
+  quotedMinimumOrderQuantity     Int?
+  quotedAvailability             String?
+  sourceKind                     String?
+  sourceBlockText                String?
+  supplierQualificationStatus    SupplierQualificationStatus @default(UNKNOWN)
+  hasQualificationRisk           Boolean                     @default(true)
+  qualificationRiskNote          String?
+  approvalStatus                 BuyDecisionApprovalStatus   @default(PENDING_APPROVAL)
+  approvalNote                   String?
+  approvedByType                 String?
+  approvedByIdentifier           String?
+  approvedAt                     DateTime?
+  orderStatus                    BuyDecisionOrderStatus      @default(NOT_ORDERED)
+  orderedAt                      DateTime?
+  externalOrderReference         String?
+  metadata                       Json?
+  emailDerivedOffer              EmailDerivedOffer           @relation(fields: [emailDerivedOfferId], references: [id], onDelete: Cascade)
+  offerWorkflowItem              OfferWorkflowItem?          @relation(fields: [offerWorkflowItemId], references: [id], onDelete: SetNull)
+  inboundEmail                   InboundEmail?               @relation(fields: [inboundEmailId], references: [id], onDelete: SetNull)
+  supplier                       Supplier?                   @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  product                        Product?                    @relation(fields: [productId], references: [id], onDelete: SetNull)
+  execution                      BuyExecution?
+  tradeOpportunities             TradeOpportunity[]
+  events                         BuyDecisionEvent[]
+  createdAt                      DateTime                    @default(now())
+  updatedAt                      DateTime                    @updatedAt
+
+  @@index([approvalStatus, approvedAt])
+  @@index([orderStatus, orderedAt])
+  @@index([supplierId, approvalStatus, orderStatus])
+  @@index([productId, approvalStatus, orderStatus])
+}
+
+model BuyDecisionEvent {
+  id                     String                     @id @default(cuid())
+  buyDecisionId          String
+  actionType             BuyDecisionActionType
+  previousApprovalStatus BuyDecisionApprovalStatus?
+  newApprovalStatus      BuyDecisionApprovalStatus?
+  previousOrderStatus    BuyDecisionOrderStatus?
+  newOrderStatus         BuyDecisionOrderStatus?
+  actorType              String                     @default("SYSTEM")
+  actorIdentifier        String?
+  note                   String?
+  metadata               Json?
+  buyDecision            BuyDecision                @relation(fields: [buyDecisionId], references: [id], onDelete: Cascade)
+  createdAt              DateTime                   @default(now())
+
+  @@index([buyDecisionId, createdAt])
+}
+
+model BuyExecution {
+  id                          String                           @id @default(cuid())
+  buyDecisionId               String                           @unique
+  supplierId                  String?
+  productId                   String?
+  orderedQuantity             Int?
+  orderedUnitPrice            Decimal?                         @db.Decimal(12, 2)
+  orderedCurrencyCode         String?
+  orderedMinimumOrderQuantity Int?
+  confirmedAvailability       Boolean?
+  externalOrderReference      String?
+  orderPlacedAt               DateTime?
+  orderConfirmedAt            DateTime?
+  expectedDeliveryDate        DateTime?
+  receivedQuantity            Int?
+  receivedAt                  DateTime?
+  invoicedUnitPrice           Decimal?                         @db.Decimal(12, 2)
+  invoicedCurrencyCode        String?
+  invoiceReference            String?
+  invoicedAt                  DateTime?
+  fulfillmentStatus           BuyExecutionFulfillmentStatus    @default(NOT_STARTED)
+  reconciliationStatus        BuyExecutionReconciliationStatus @default(NOT_RECONCILED)
+  hasPriceDrift               Boolean                          @default(false)
+  hasQuantityDrift            Boolean                          @default(false)
+  hasCurrencyMismatch         Boolean                          @default(false)
+  hasAvailabilityDrift        Boolean                          @default(false)
+  notes                       String?
+  metadata                    Json?
+  buyDecision                 BuyDecision                      @relation(fields: [buyDecisionId], references: [id], onDelete: Cascade)
+  supplier                    Supplier?                        @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  product                     Product?                         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  tradeOpportunities          TradeOpportunity[]
+  events                      BuyExecutionEvent[]
+  createdAt                   DateTime                         @default(now())
+  updatedAt                   DateTime                         @updatedAt
+
+  @@index([fulfillmentStatus, orderPlacedAt])
+  @@index([reconciliationStatus, updatedAt])
+  @@index([supplierId, fulfillmentStatus, reconciliationStatus])
+  @@index([productId, fulfillmentStatus, reconciliationStatus])
+}
+
+model BuyExecutionEvent {
+  id                           String                            @id @default(cuid())
+  buyExecutionId               String
+  actionType                   BuyExecutionActionType
+  previousFulfillmentStatus    BuyExecutionFulfillmentStatus?
+  newFulfillmentStatus         BuyExecutionFulfillmentStatus?
+  previousReconciliationStatus BuyExecutionReconciliationStatus?
+  newReconciliationStatus      BuyExecutionReconciliationStatus?
+  actorType                    String                            @default("SYSTEM")
+  actorIdentifier              String?
+  note                         String?
+  metadata                     Json?
+  buyExecution                 BuyExecution                      @relation(fields: [buyExecutionId], references: [id], onDelete: Cascade)
+  createdAt                    DateTime                          @default(now())
+
+  @@index([buyExecutionId, createdAt])
+}
+
+model TradeOpportunity {
+  id                                  String                           @id @default(cuid())
+  status                              TradeOpportunityStatus           @default(OPEN)
+  stage                               TradeOpportunityStage            @default(NEW)
+  sourceType                          TradeOpportunitySourceType
+  emailDerivedOfferId                 String?
+  offerWorkflowItemId                 String?
+  inboundEmailId                      String?
+  buyDecisionId                       String?
+  buyExecutionId                      String?
+  supplierId                          String?
+  productId                           String?
+  ownerUserId                         String?
+  rawProductText                      String?
+  normalizedProductNameCandidate      String?
+  manufacturerCandidate               String?
+  sourceSupplierNameSnapshot          String?
+  targetBuyerNameSnapshot             String?
+  targetBuyerCompanySnapshot          String?
+  supplierQualificationStatusSnapshot SupplierQualificationStatus      @default(UNKNOWN)
+  quotedBuyUnitPrice                  Decimal?                         @db.Decimal(12, 2)
+  quotedBuyCurrencyCode               String?
+  quotedBuyMinimumOrderQuantity       Int?
+  quotedAvailability                  String?
+  targetSellUnitPrice                 Decimal?                         @db.Decimal(12, 2)
+  targetSellCurrencyCode              String?
+  minimumMarginAmount                 Decimal?                         @db.Decimal(12, 2)
+  minimumMarginPct                    Decimal?                         @db.Decimal(8, 4)
+  estimatedMarginAmount               Decimal?                         @db.Decimal(12, 2)
+  estimatedMarginPct                  Decimal?                         @db.Decimal(8, 4)
+  quantityTarget                      Int?
+  rationale                           String?
+  riskFlags                           Json?
+  hasQualificationBlock               Boolean                          @default(false)
+  isMarginFloorMet                    Boolean                          @default(false)
+  isActionable                        Boolean                          @default(false)
+  hasMessagingPolicyViolations        Boolean                          @default(false)
+  messagingPolicyViolationCount       Int                              @default(0)
+  ownerLabel                          String?
+  createdByType                       String                           @default("SYSTEM")
+  createdByIdentifier                 String?
+  closeReason                         String?
+  metadata                            Json?
+  closedAt                            DateTime?
+  emailDerivedOffer                   EmailDerivedOffer?               @relation(fields: [emailDerivedOfferId], references: [id], onDelete: SetNull)
+  offerWorkflowItem                   OfferWorkflowItem?               @relation(fields: [offerWorkflowItemId], references: [id], onDelete: SetNull)
+  inboundEmail                        InboundEmail?                    @relation(fields: [inboundEmailId], references: [id], onDelete: SetNull)
+  buyDecision                         BuyDecision?                     @relation(fields: [buyDecisionId], references: [id], onDelete: SetNull)
+  buyExecution                        BuyExecution?                    @relation(fields: [buyExecutionId], references: [id], onDelete: SetNull)
+  supplier                            Supplier?                        @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  product                             Product?                         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  ownerUser                           User?                            @relation("TradeOpportunityOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  messagingPolicy                     TradeOpportunityMessagingPolicy?
+  drafts                              TradeMessageDraft[]
+  events                              TradeOpportunityEvent[]
+  operatorFeedbacks                   OperatorValidationFeedback[]
+  createdAt                           DateTime                         @default(now())
+  updatedAt                           DateTime                         @updatedAt
+
+  @@index([status, stage, updatedAt])
+  @@index([emailDerivedOfferId, status, stage])
+  @@index([offerWorkflowItemId, status, stage])
+  @@index([buyDecisionId, status, stage])
+  @@index([buyExecutionId, status, stage])
+  @@index([supplierId, status, stage])
+  @@index([productId, status, stage])
+}
+
+model TradeOpportunityEvent {
+  id                 String                     @id @default(cuid())
+  tradeOpportunityId String
+  actionType         TradeOpportunityActionType
+  previousStatus     TradeOpportunityStatus?
+  newStatus          TradeOpportunityStatus?
+  previousStage      TradeOpportunityStage?
+  newStage           TradeOpportunityStage?
+  actorType          String                     @default("SYSTEM")
+  actorIdentifier    String?
+  note               String?
+  metadata           Json?
+  tradeOpportunity   TradeOpportunity           @relation(fields: [tradeOpportunityId], references: [id], onDelete: Cascade)
+  createdAt          DateTime                   @default(now())
+
+  @@index([tradeOpportunityId, createdAt])
+}
+
+model TradeOpportunityMessagingPolicy {
+  id                             String           @id @default(cuid())
+  tradeOpportunityId             String           @unique
+  allowSupplierOutreachDrafts    Boolean          @default(true)
+  allowBuyerOutreachDrafts       Boolean          @default(true)
+  blockSupplierIdentityLeak      Boolean          @default(true)
+  blockBuyerIdentityLeak         Boolean          @default(true)
+  requireHumanApprovalBeforeSend Boolean          @default(true)
+  allowedMessageTypes            Json?
+  notes                          String?
+  tradeOpportunity               TradeOpportunity @relation(fields: [tradeOpportunityId], references: [id], onDelete: Cascade)
+  createdAt                      DateTime         @default(now())
+  updatedAt                      DateTime         @updatedAt
+}
+
+model TradeMessageDraft {
+  id                             String                       @id @default(cuid())
+  tradeOpportunityId             String
+  direction                      TradeMessageDraftDirection
+  status                         TradeMessageDraftStatus      @default(DRAFT)
+  audienceLabel                  String?
+  recipientNameSnapshot          String?
+  recipientCompanySnapshot       String?
+  subject                        String
+  body                           String
+  messagePurpose                 TradeMessagePurpose
+  policyFlags                    Json?
+  policyViolations               Json?
+  contentHash                    String?
+  containsSupplierIdentity       Boolean                      @default(false)
+  containsBuyerIdentity          Boolean                      @default(false)
+  containsExternalContactDetails Boolean                      @default(false)
+  containsForwardedContent       Boolean                      @default(false)
+  approvedByType                 String?
+  approvedByIdentifier           String?
+  approvedAt                     DateTime?
+  sentAt                         DateTime?
+  metadata                       Json?
+  tradeOpportunity               TradeOpportunity             @relation(fields: [tradeOpportunityId], references: [id], onDelete: Cascade)
+  operatorFeedbacks              OperatorValidationFeedback[]
+  createdAt                      DateTime                     @default(now())
+  updatedAt                      DateTime                     @updatedAt
+
+  @@index([tradeOpportunityId, direction, status, updatedAt])
+  @@index([tradeOpportunityId, messagePurpose, updatedAt])
+}
+
+model AutomationReadinessPolicy {
+  id                                    String                     @id @default(cuid())
+  scopeName                             String                     @unique
+  globalMode                            AutomationGlobalMode       @default(INTERNAL_SIGNALS_ONLY)
+  allowInternalSignals                  Boolean                    @default(true)
+  allowDraftGeneration                  Boolean                    @default(true)
+  allowSupplierDraftApprovalFlow        Boolean                    @default(true)
+  allowBuyerDraftApprovalFlow           Boolean                    @default(true)
+  allowActualSend                       Boolean                    @default(false)
+  requireHumanApprovalBeforeSend        Boolean                    @default(true)
+  minimumExtractionPrecisionPct         Decimal?                   @db.Decimal(8, 4)
+  minimumSupplierResolutionPrecisionPct Decimal?                   @db.Decimal(8, 4)
+  minimumSignalAcceptancePct            Decimal?                   @db.Decimal(8, 4)
+  minimumDraftPolicyPassPct             Decimal?                   @db.Decimal(8, 4)
+  minimumSampleSize                     Int?
+  notes                                 String?
+  events                                AutomationReadinessEvent[]
+  createdAt                             DateTime                   @default(now())
+  updatedAt                             DateTime                   @updatedAt
+}
+
+model AutomationReadinessEvent {
+  id                          String                        @id @default(cuid())
+  automationReadinessPolicyId String
+  actionType                  AutomationReadinessActionType
+  previousGlobalMode          AutomationGlobalMode?
+  newGlobalMode               AutomationGlobalMode?
+  actorType                   String                        @default("SYSTEM")
+  actorIdentifier             String?
+  note                        String?
+  metadata                    Json?
+  automationReadinessPolicy   AutomationReadinessPolicy     @relation(fields: [automationReadinessPolicyId], references: [id], onDelete: Cascade)
+  createdAt                   DateTime                      @default(now())
+
+  @@index([automationReadinessPolicyId, createdAt])
+}
+
+model OperatorValidationFeedback {
+  id                  String                  @id @default(cuid())
+  emailDerivedOfferId String?
+  offerWorkflowItemId String?
+  tradeOpportunityId  String?
+  tradeMessageDraftId String?
+  feedbackType        OperatorFeedbackType
+  verdict             OperatorFeedbackVerdict
+  productTextCorrect  Boolean?
+  priceCorrect        Boolean?
+  currencyCorrect     Boolean?
+  supplierCorrect     Boolean?
+  manufacturerCorrect Boolean?
+  availabilityCorrect Boolean?
+  moqCorrect          Boolean?
+  actorType           String                  @default("SYSTEM")
+  actorIdentifier     String?
+  note                String?
+  flags               Json?
+  metadata            Json?
+  emailDerivedOffer   EmailDerivedOffer?      @relation(fields: [emailDerivedOfferId], references: [id], onDelete: SetNull)
+  offerWorkflowItem   OfferWorkflowItem?      @relation(fields: [offerWorkflowItemId], references: [id], onDelete: SetNull)
+  tradeOpportunity    TradeOpportunity?       @relation(fields: [tradeOpportunityId], references: [id], onDelete: SetNull)
+  tradeMessageDraft   TradeMessageDraft?      @relation(fields: [tradeMessageDraftId], references: [id], onDelete: SetNull)
+  createdAt           DateTime                @default(now())
+
+  @@index([feedbackType, createdAt])
+  @@index([emailDerivedOfferId, feedbackType, createdAt])
+  @@index([offerWorkflowItemId, feedbackType, createdAt])
+  @@index([tradeOpportunityId, feedbackType, createdAt])
+  @@index([tradeMessageDraftId, feedbackType, createdAt])
+}
+
+model OfferCorrection {
+  id                             String                 @id @default(cuid())
+  emailDerivedOfferId            String
+  offerWorkflowItemId            String?
+  inboundEmailId                 String?
+  correctionStatus               OfferCorrectionStatus  @default(APPLIED)
+  correctedSupplierId            String?
+  correctedSupplierName          String?
+  correctedProductId             String?
+  correctedRawProductText        String?
+  correctedNormalizedProductName String?
+  correctedStrength              String?
+  correctedDosageForm            String?
+  correctedPackSize              String?
+  correctedManufacturer          String?
+  correctedUnitPrice             Decimal?               @db.Decimal(12, 2)
+  correctedCurrencyCode          String?
+  correctedMinimumOrderQuantity  Int?
+  correctedAvailability          String?
+  actorType                      String                 @default("SYSTEM")
+  actorIdentifier                String?
+  note                           String?
+  metadata                       Json?
+  emailDerivedOffer              EmailDerivedOffer      @relation(fields: [emailDerivedOfferId], references: [id], onDelete: Cascade)
+  offerWorkflowItem              OfferWorkflowItem?     @relation(fields: [offerWorkflowItemId], references: [id], onDelete: SetNull)
+  inboundEmail                   InboundEmail?          @relation(fields: [inboundEmailId], references: [id], onDelete: SetNull)
+  correctedSupplier              Supplier?              @relation(fields: [correctedSupplierId], references: [id], onDelete: SetNull)
+  correctedProduct               Product?               @relation(fields: [correctedProductId], references: [id], onDelete: SetNull)
+  events                         OfferCorrectionEvent[]
+  createdAt                      DateTime               @default(now())
+  updatedAt                      DateTime               @updatedAt
+
+  @@index([emailDerivedOfferId, createdAt])
+  @@index([offerWorkflowItemId, createdAt])
+  @@index([inboundEmailId, createdAt])
+  @@index([correctionStatus, updatedAt])
+}
+
+model OfferCorrectionEvent {
+  id                String                    @id @default(cuid())
+  offerCorrectionId String
+  actionType        OfferCorrectionActionType
+  previousStatus    OfferCorrectionStatus?
+  newStatus         OfferCorrectionStatus?
+  actorType         String                    @default("SYSTEM")
+  actorIdentifier   String?
+  note              String?
+  metadata          Json?
+  offerCorrection   OfferCorrection           @relation(fields: [offerCorrectionId], references: [id], onDelete: Cascade)
+  createdAt         DateTime                  @default(now())
+
+  @@index([offerCorrectionId, createdAt])
+}
+
+model SourceReliabilityProfile {
+  id                              String                @id @default(cuid())
+  profileKey                      String                @unique
+  sourceSystem                    String
+  senderEmail                     String?
+  senderDomain                    String?
+  supplierId                      String?
+  templateFingerprint             String?
+  sampleCount                     Int                   @default(0)
+  acceptedExtractionCount         Int                   @default(0)
+  rejectedExtractionCount         Int                   @default(0)
+  correctedExtractionCount        Int                   @default(0)
+  acceptedSupplierResolutionCount Int                   @default(0)
+  rejectedSupplierResolutionCount Int                   @default(0)
+  aiAssistCount                   Int                   @default(0)
+  reviewRequiredCount             Int                   @default(0)
+  reliabilityScore                Decimal               @default(0) @db.Decimal(8, 4)
+  reliabilityTier                 SourceReliabilityTier @default(WATCH)
+  notes                           String?
+  metadata                        Json?
+  lastSeenAt                      DateTime?
+  supplier                        Supplier?             @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  createdAt                       DateTime              @default(now())
+  updatedAt                       DateTime              @updatedAt
+
+  @@index([sourceSystem, senderEmail])
+  @@index([senderDomain, reliabilityTier])
+  @@index([templateFingerprint, reliabilityTier])
+  @@index([supplierId, reliabilityTier])
+}
+
+model SupplierQualification {
+  id                         String                       @id @default(cuid())
+  supplierId                 String                       @unique
+  qualificationStatus        SupplierQualificationStatus  @default(UNKNOWN)
+  trustTier                  SupplierTrustTier            @default(LOW)
+  qualificationNote          String?
+  lastReviewedAt             DateTime?
+  reviewedByType             String?
+  reviewedByIdentifier       String?
+  expiresAt                  DateTime?
+  requiresManualApproval     Boolean                      @default(true)
+  canAutoApproveBuyDecisions Boolean                      @default(false)
+  metadata                   Json?
+  supplier                   Supplier                     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  events                     SupplierQualificationEvent[]
+  createdAt                  DateTime                     @default(now())
+  updatedAt                  DateTime                     @updatedAt
+
+  @@index([qualificationStatus, trustTier, updatedAt])
+}
+
+model SupplierQualificationEvent {
+  id                      String                          @id @default(cuid())
+  supplierQualificationId String
+  actionType              SupplierQualificationActionType
+  previousStatus          SupplierQualificationStatus?
+  newStatus               SupplierQualificationStatus?
+  actorType               String                          @default("SYSTEM")
+  actorIdentifier         String?
+  note                    String?
+  metadata                Json?
+  supplierQualification   SupplierQualification           @relation(fields: [supplierQualificationId], references: [id], onDelete: Cascade)
+  createdAt               DateTime                        @default(now())
+
+  @@index([supplierQualificationId, createdAt])
+}
+
+model EmailDerivedOfferEvidence {
+  id                  String                @id @default(cuid())
+  emailDerivedOfferId String
+  sourceDocumentId    String?
+  fieldName           String
+  evidenceType        String
+  rawText             String
+  startOffset         Int?
+  endOffset           Int?
+  confidence          Int?
+  metadata            Json?
+  emailDerivedOffer   EmailDerivedOffer     @relation(fields: [emailDerivedOfferId], references: [id], onDelete: Cascade)
+  sourceDocument      InboundEmailDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  @@index([emailDerivedOfferId, fieldName])
+  @@index([sourceDocumentId])
+}
+
+model EntityResolutionCandidate {
+  id                  String               @id @default(cuid())
+  emailDerivedOfferId String
+  entityType          EntityResolutionType
+  candidateId         String?
+  candidateName       String
+  confidence          Int
+  reason              String
+  selected            Boolean              @default(false)
+  metadata            Json?
+  emailDerivedOffer   EmailDerivedOffer    @relation(fields: [emailDerivedOfferId], references: [id], onDelete: Cascade)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([emailDerivedOfferId, entityType, confidence])
+}
+
+model PromotionDecision {
+  id                  String                  @id @default(cuid())
+  inboundEmailId      String?
+  emailDerivedOfferId String?
+  status              PromotionDecisionStatus
+  decidedByType       String                  @default("SYSTEM")
+  reason              String
+  metadata            Json?
+  inboundEmail        InboundEmail?           @relation(fields: [inboundEmailId], references: [id], onDelete: SetNull)
+  emailDerivedOffer   EmailDerivedOffer?      @relation(fields: [emailDerivedOfferId], references: [id], onDelete: SetNull)
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  @@index([inboundEmailId, status, createdAt])
+  @@index([emailDerivedOfferId, status, createdAt])
+}
+
+model SupplierPriceList {
+  id                   String              @id @default(cuid())
+  supplierId           String
+  importBatchId        String?             @unique
+  sourceInboundEmailId String?
+  fileName             String
+  fileMimeType         String?
+  fileSizeBytes        Int?
+  sourceDate           DateTime?
+  uploadedAt           DateTime            @default(now())
+  currencyCode         String              @default("USD")
+  notes                String?
+  importBatch          ImportBatch?        @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  sourceInboundEmail   InboundEmail?       @relation(fields: [sourceInboundEmailId], references: [id], onDelete: SetNull)
+  supplier             Supplier            @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  supplierPrices       SupplierPriceItem[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@unique([supplierId, sourceInboundEmailId])
   @@index([supplierId, uploadedAt])
 }
 
 model SupplierPriceItem {
-  id                    String             @id @default(cuid())
-  supplierPriceListId   String
-  supplierId            String
-  productId             String?
-  rawProductName        String
-  normalizedProductName String?
-  candidateStrength     String?
-  candidateFormulation  String?
-  candidatePackSize     String?
-  packDescription       String?
-  unitPrice             Decimal            @db.Decimal(12, 2)
-  currencyCode          String             @default("USD")
-  minimumOrderQuantity  Int?
-  isAvailable           Boolean            @default(true)
-  rawRow                Json?
-  product               Product?           @relation(fields: [productId], references: [id], onDelete: SetNull)
-  supplier              Supplier           @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  supplierPriceList     SupplierPriceList  @relation(fields: [supplierPriceListId], references: [id], onDelete: Cascade)
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
+  id                      String            @id @default(cuid())
+  supplierPriceListId     String
+  supplierId              String
+  productId               String?
+  rawProductName          String
+  normalizedProductName   String?
+  candidateStrength       String?
+  candidateFormulation    String?
+  candidatePackSize       String?
+  packDescription         String?
+  unitPrice               Decimal           @db.Decimal(12, 2)
+  marketPriceEstimate     Decimal?          @db.Decimal(12, 2)
+  marketPriceConfidence   Float?
+  priceDeltaFromMarketPct Float?
+  currencyCode            String            @default("USD")
+  minimumOrderQuantity    Int?
+  isAvailable             Boolean           @default(true)
+  promotionFingerprint    String?
+  rawRow                  Json?
+  product                 Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  supplier                Supplier          @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  supplierPriceList       SupplierPriceList @relation(fields: [supplierPriceListId], references: [id], onDelete: Cascade)
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
 
+  @@unique([supplierPriceListId, promotionFingerprint])
   @@index([supplierId, rawProductName])
   @@index([productId])
   @@index([supplierPriceListId])
 }
 
 model InventorySnapshot {
-  id                String    @id @default(cuid())
-  importBatchId     String?
-  productId         String
-  supplierId        String?
-  rawProductName    String
-  rawSupplierName   String?
+  id                    String       @id @default(cuid())
+  importBatchId         String?
+  productId             String
+  supplierId            String?
+  rawProductName        String
+  rawSupplierName       String?
   normalizedProductName String?
-  candidateStrength String?
-  candidateFormulation String?
-  candidatePackSize String?
-  warehouseCode     String
-  snapshotDate      DateTime
-  quantityOnHand    Int
-  quantityReserved  Int       @default(0)
-  quantityAvailable Int
-  unitCost          Decimal?  @db.Decimal(12, 2)
-  totalValue        Decimal?  @db.Decimal(14, 2)
-  rawRow            Json?
-  importBatch       ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
-  product           Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  supplier          Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  candidateStrength     String?
+  candidateFormulation  String?
+  candidatePackSize     String?
+  warehouseCode         String
+  snapshotDate          DateTime
+  quantityOnHand        Int
+  quantityReserved      Int          @default(0)
+  quantityAvailable     Int
+  unitCost              Decimal?     @db.Decimal(12, 2)
+  totalValue            Decimal?     @db.Decimal(14, 2)
+  rawRow                Json?
+  importBatch           ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  product               Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplier              Supplier?    @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
 
   @@index([productId, snapshotDate])
   @@index([warehouseCode, snapshotDate])
@@ -263,30 +1275,30 @@ model Customer {
 }
 
 model SalesRecord {
-  id            String    @id @default(cuid())
-  importBatchId String?
-  saleDate      DateTime
-  customerId    String
-  productId     String
-  supplierId    String?
-  rawProductName String
-  rawCustomerName String
-  rawSupplierName String?
+  id                    String       @id @default(cuid())
+  importBatchId         String?
+  saleDate              DateTime
+  customerId            String
+  productId             String
+  supplierId            String?
+  rawProductName        String
+  rawCustomerName       String
+  rawSupplierName       String?
   normalizedProductName String?
-  candidateStrength String?
-  candidateFormulation String?
-  candidatePackSize String?
-  quantity      Int
-  unitPrice     Decimal   @db.Decimal(12, 2)
-  totalRevenue  Decimal   @db.Decimal(14, 2)
-  currencyCode  String    @default("USD")
-  rawRow        Json?
-  importBatch   ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
-  customer      Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  supplier      Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  candidateStrength     String?
+  candidateFormulation  String?
+  candidatePackSize     String?
+  quantity              Int
+  unitPrice             Decimal      @db.Decimal(12, 2)
+  totalRevenue          Decimal      @db.Decimal(14, 2)
+  currencyCode          String       @default("USD")
+  rawRow                Json?
+  importBatch           ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  customer              Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product               Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplier              Supplier?    @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
 
   @@index([saleDate])
   @@index([customerId, saleDate])
@@ -294,25 +1306,26 @@ model SalesRecord {
 }
 
 model Opportunity {
-  id              String            @id @default(cuid())
-  type            OpportunityType
-  status          OpportunityStatus @default(OPEN)
-  title           String
-  description     String?
-  score           Int
-  metadata        Json?
-  customerId      String?
-  productId       String?
-  supplierId      String?
-  ownerUserId     String?
-  dueDate         DateTime?
-  customer        Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  owner           User?             @relation("OpportunityOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
-  product         Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
-  supplier        Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  alerts          Alert[]
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  id            String            @id @default(cuid())
+  type          OpportunityType
+  status        OpportunityStatus @default(OPEN)
+  title         String
+  description   String?
+  score         Int
+  metadata      Json?
+  customerId    String?
+  productId     String?
+  supplierId    String?
+  ownerUserId   String?
+  dueDate       DateTime?
+  customer      Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  owner         User?             @relation("OpportunityOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  product       Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  supplier      Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  alerts        Alert[]
+  telegramPosts TelegramPost[]
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
 
   @@index([type, status])
   @@index([customerId])
@@ -320,35 +1333,64 @@ model Opportunity {
 }
 
 model Alert {
-  id             String       @id @default(cuid())
-  type           AlertType
-  status         AlertStatus  @default(OPEN)
-  title          String
-  message        String
-  userId         String?
-  opportunityId  String?
-  triggeredAt    DateTime     @default(now())
-  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
-  opportunity    Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id            String       @id @default(cuid())
+  type          AlertType
+  status        AlertStatus  @default(OPEN)
+  title         String
+  message       String
+  userId        String?
+  opportunityId String?
+  triggeredAt   DateTime     @default(now())
+  user          User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   @@index([status, triggeredAt])
   @@index([userId])
 }
 
 model TelegramPost {
-  id               String             @id @default(cuid())
-  channelKey       String
-  status           TelegramPostStatus @default(PENDING)
-  messageText      String
+  id                String             @id @default(cuid())
+  opportunityId     String?
+  channelKey        String
+  status            TelegramPostStatus @default(PENDING)
+  messageText       String
+  contentHash       String?
   telegramMessageId String?
-  sentAt           DateTime?
-  errorMessage     String?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  sentAt            DateTime?
+  errorMessage      String?
+  metadata          Json?
+  opportunity       Opportunity?       @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   @@index([channelKey, status])
+  @@index([opportunityId, channelKey, status])
+}
+
+model TelegramInboundItem {
+  id                   String                          @id @default(cuid())
+  telegramMessageId    String
+  telegramUserId       String?
+  telegramChatId       String
+  senderDisplayName    String?
+  fileType             TelegramInboundFileType         @default(UNKNOWN)
+  fileName             String?
+  mimeType             String?
+  telegramFileId       String?
+  telegramFileUniqueId String?
+  caption              String?
+  processingStatus     TelegramInboundProcessingStatus @default(RECEIVED)
+  linkedImportBatchId  String?
+  errorMessage         String?
+  metadata             Json?
+  linkedImportBatch    ImportBatch?                    @relation(fields: [linkedImportBatchId], references: [id], onDelete: SetNull)
+  createdAt            DateTime                        @default(now())
+  updatedAt            DateTime                        @updatedAt
+
+  @@unique([telegramChatId, telegramMessageId])
+  @@index([processingStatus, createdAt])
 }
 
 model AppSetting {

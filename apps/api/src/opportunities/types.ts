@@ -34,6 +34,31 @@ export type OpportunityCandidate = {
   dedupeKey: string;
 };
 
+export type ScoringAuditCheck = {
+  label: string;
+  passed: boolean;
+  actual: number | string | boolean | null;
+  threshold?: number | string | null;
+};
+
+export type OpportunityScoringAuditEntry = {
+  type: OpportunityType;
+  eligible: boolean;
+  ruleChecks: ScoringAuditCheck[];
+  blockingReasons: string[];
+  scoreBreakdown: OpportunityScoreBreakdown | null;
+  keyMetrics: Record<string, number | null>;
+  thresholds: Record<string, number | string>;
+};
+
+export type OpportunityScoringAudit = {
+  productId: string;
+  productName: string;
+  generatedOpportunityTypes: OpportunityType[];
+  metrics: OpportunityMetrics;
+  opportunities: OpportunityScoringAuditEntry[];
+};
+
 export type ScoringContext = {
   now: Date;
   product: {

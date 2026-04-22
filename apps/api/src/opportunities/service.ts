@@ -3,8 +3,8 @@ import type { Opportunity, OpportunityStatus, OpportunityType } from '@prisma/cl
 import { db } from '../lib/db';
 import { logger } from '../lib/logger';
 import { opportunityConfig } from './config';
-import { scoreOpportunityCandidates } from './scoring';
-import type { OpportunityCandidate, ScoringContext } from './types';
+import { auditOpportunityScoring, scoreOpportunityCandidates } from './scoring';
+import type { OpportunityCandidate, OpportunityScoringAudit, ScoringContext } from './types';
 
 function startOfWindow(now: Date, days: number): Date {
   return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
@@ -18,11 +18,12 @@ function average(numbers: number[]): number | null {
   return numbers.reduce((total, value) => total + value, 0) / numbers.length;
 }
 
-async function buildScoringContexts(now: Date): Promise<ScoringContext[]> {
+async function buildScoringContexts(now: Date, productId?: string): Promise<ScoringContext[]> {
   const windowStart = startOfWindow(now, opportunityConfig.recentSalesWindowDays);
 
   const [products, inventorySnapshots, supplierPriceItems, salesRecords] = await Promise.all([
     db.product.findMany({
+      where: productId ? { id: productId } : undefined,
       select: {
         id: true,
         name: true,
@@ -44,7 +45,16 @@ async function buildScoringContexts(now: Date): Promise<ScoringContext[]> {
         productId: true,
         supplierId: true,
         unitPrice: true,
+        currencyCode: true,
         createdAt: true,
+        marketPriceEstimate: true,
+        marketPriceConfidence: true,
+        priceDeltaFromMarketPct: true,
+        supplier: {
+          select: {
+            reliabilityScore: true,
+          },
+        },
       },
       where: {
         productId: {
@@ -97,23 +107,29 @@ async function buildScoringContexts(now: Date): Promise<ScoringContext[]> {
     const latestInventory = latestInventoryByProduct.get(product.id) ?? null;
     const supplierPriceHistory = supplierPricesByProduct.get(product.id) ?? [];
     const recentSales = salesByProduct.get(product.id) ?? [];
+    const latestSupplierPriceItem = supplierPriceHistory[0] ?? null;
+    const comparableSupplierPriceHistory = latestSupplierPriceItem
+      ? supplierPriceHistory.filter(
+          (priceItem) => priceItem.currencyCode === latestSupplierPriceItem.currencyCode,
+        )
+      : supplierPriceHistory;
 
     return {
       now,
       product,
       latestInventory,
-      latestSupplierPrice: supplierPriceHistory[0]
+      latestSupplierPrice: comparableSupplierPriceHistory[0]
         ? {
-            supplierId: supplierPriceHistory[0].supplierId,
-            unitPrice: supplierPriceHistory[0].unitPrice.toNumber(),
-            createdAt: supplierPriceHistory[0].createdAt,
+            supplierId: comparableSupplierPriceHistory[0].supplierId,
+            unitPrice: comparableSupplierPriceHistory[0].unitPrice.toNumber(),
+            createdAt: comparableSupplierPriceHistory[0].createdAt,
           }
         : null,
-      previousSupplierPrice: supplierPriceHistory[1]
+      previousSupplierPrice: comparableSupplierPriceHistory[1]
         ? {
-            supplierId: supplierPriceHistory[1].supplierId,
-            unitPrice: supplierPriceHistory[1].unitPrice.toNumber(),
-            createdAt: supplierPriceHistory[1].createdAt,
+            supplierId: comparableSupplierPriceHistory[1].supplierId,
+            unitPrice: comparableSupplierPriceHistory[1].unitPrice.toNumber(),
+            createdAt: comparableSupplierPriceHistory[1].createdAt,
           }
         : null,
       recentSales: {
@@ -121,7 +137,16 @@ async function buildScoringContexts(now: Date): Promise<ScoringContext[]> {
         averageSalePrice: average(recentSales.map((record) => record.unitPrice.toNumber())),
         lastSaleDate: recentSales[0]?.saleDate ?? null,
       },
-    };
+      supplierPriceHistory: comparableSupplierPriceHistory.map((priceItem) => ({
+        supplierId: priceItem.supplierId,
+        unitPrice: priceItem.unitPrice.toNumber(),
+        createdAt: priceItem.createdAt,
+        marketPriceEstimate: priceItem.marketPriceEstimate?.toNumber() ?? null,
+        marketPriceConfidence: priceItem.marketPriceConfidence ?? null,
+        priceDeltaFromMarketPct: priceItem.priceDeltaFromMarketPct ?? null,
+        supplierReliabilityScore: priceItem.supplier.reliabilityScore,
+      })),
+    } as ScoringContext;
   });
 }
 
@@ -195,6 +220,16 @@ export async function regenerateOpportunities() {
     candidates,
     thresholds: opportunityConfig,
   };
+}
+
+export async function getOpportunityScoringAudit(productId: string): Promise<OpportunityScoringAudit | null> {
+  const [context] = await buildScoringContexts(new Date(), productId);
+
+  if (!context) {
+    return null;
+  }
+
+  return auditOpportunityScoring(context);
 }
 
 export async function listOpportunities(filters: {

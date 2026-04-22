@@ -22,6 +22,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
             <nav className="nav">
               <Link href="/">Login</Link>
               <Link href="/dashboard">Dashboard</Link>
+              <Link href="/dashboard/review">Review Queue</Link>
             </nav>
           </aside>
           <main className="content">{children}</main>

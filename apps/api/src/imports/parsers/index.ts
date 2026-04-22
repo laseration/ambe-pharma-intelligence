@@ -1,6 +1,7 @@
 import path from 'node:path';
 
 import { parseCsvFile } from './csvParser';
+export { parseTableRows } from './tableParser';
 import { parseXlsxFile } from './xlsxParser';
 import type { ParsedFileResult, UploadFile } from '../types';
 

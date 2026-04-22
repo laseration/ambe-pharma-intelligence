@@ -1,7 +1,10 @@
 import { createApp } from './app';
 import { env } from './config/env';
+import { createEmailInboundPollingWorker, isEmailInboundPollingActive } from './email/polling';
 import { db } from './lib/db';
 import { logger } from './lib/logger';
+import { verifyDatabaseReadiness } from './startup/databaseHealth';
+import { createTelegramPollingWorker, isTelegramPollingActive } from './telegram/polling';
 
 const app = createApp();
 
@@ -15,6 +18,9 @@ async function start() {
   }
 
   await db.$connect();
+  await verifyDatabaseReadiness();
+  const telegramPollingWorker = createTelegramPollingWorker();
+  const emailInboundPollingWorker = createEmailInboundPollingWorker();
 
   const server = app.listen(env.port, () => {
     logger.info('API server started', {
@@ -23,10 +29,34 @@ async function start() {
       nodeEnv: env.nodeEnv,
       logLevel: env.logLevel,
     });
+
+    logger.info('Telegram polling configuration', {
+      enabled: isTelegramPollingActive(),
+      intervalMs: env.telegramPollingIntervalMs,
+    });
+    logger.info('Email inbox polling configuration', {
+      enabled: isEmailInboundPollingActive(),
+      intervalMs: env.emailInboundPollingIntervalMs,
+      mailbox: env.microsoftGraphSenderMailbox || null,
+    });
+
+    if (env.telegramPollingEnabled && !env.telegramBotToken) {
+      logger.warn('Telegram polling is enabled but TELEGRAM_BOT_TOKEN is missing');
+    }
+
+    if (isTelegramPollingActive()) {
+      telegramPollingWorker.start();
+    }
+
+    if (isEmailInboundPollingActive()) {
+      emailInboundPollingWorker.start();
+    }
   });
 
   async function shutdown(signal: string) {
     logger.info('API server stopping', { signal });
+    telegramPollingWorker.stop();
+    emailInboundPollingWorker.stop();
 
     server.close(async () => {
       await db.$disconnect();

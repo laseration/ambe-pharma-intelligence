@@ -1,6 +1,8 @@
 import express from 'express';
 
 import { env } from './config/env';
+import { requireInternalAdminAccess } from './http/auth';
+import { errorHandler } from './http/errors';
 import { importsDebugRouter } from './imports/debugRoutes';
 import { apiRouter } from './routes';
 
@@ -16,15 +18,17 @@ export function createApp() {
     });
   });
 
-  app.get('/api/debug/env', (_request, response) => {
-    response.json({
-      databaseUrlDetected: Boolean(env.databaseUrl),
+  if (env.enableDebugRoutes) {
+    app.get('/api/debug/env', requireInternalAdminAccess, (_request, response) => {
+      response.json({
+        databaseUrlDetected: Boolean(env.databaseUrl),
+      });
     });
-  });
-
-  app.use('/api/debug', importsDebugRouter);
+    app.use('/api/debug', requireInternalAdminAccess, importsDebugRouter);
+  }
 
   app.use('/api', apiRouter);
+  app.use(errorHandler);
 
   return app;
 }

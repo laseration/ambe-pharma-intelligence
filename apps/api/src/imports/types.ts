@@ -22,6 +22,7 @@ export type UploadFile = {
 };
 
 export type ProductCandidates = {
+  baseName: string;
   normalizedName: string;
   strength: string | null;
   formulation: string | null;
@@ -40,10 +41,49 @@ export type ProductCandidates = {
   };
 };
 
+export type ProductMatchOutcome = 'EXISTING_PRODUCT' | 'EXISTING_ALIAS' | 'NEW_PRODUCT';
+
+export type ProductMatchReasonCode =
+  | 'EXACT_NORMALIZED_KEY_MATCH'
+  | 'EXACT_NORMALIZED_NAME_MATCH'
+  | 'STRUCTURED_BASE_NAME_MATCH'
+  | 'EXISTING_ALIAS_MATCH'
+  | 'NO_SAFE_MATCH_CREATED_NEW_PRODUCT';
+
+export type ProductMatchDecision = {
+  outcome: ProductMatchOutcome;
+  matchedProductId: string | null;
+  reasonCode: ProductMatchReasonCode;
+  normalizedKey: string;
+  normalizedName: string;
+  rawProductName: string;
+  confidence: ProductCandidates['confidence'];
+  aliasMatchType?: 'EXACT_RAW_ALIAS' | 'CANONICALIZED_ALIAS';
+  structuredCompatibility?: {
+    checked: boolean;
+    compatible: boolean;
+    conflictFields: Array<'strength' | 'formulation' | 'packSize'>;
+  };
+};
+
+export type MarketPriceSimulation = {
+  latestObservedPrice: number | null;
+  rollingAveragePrice: number | null;
+  bestObservedPrice: number | null;
+  simulatedMarketPrice: number | null;
+  marketConfidence: number | null;
+  volatilityScore: number | null;
+  sampleCount: number;
+  priceDeltaFromMarketPct: number | null;
+};
+
+export type ProductPriceIntelligence = MarketPriceSimulation;
+
 export type SupplierPriceListRowInput = {
   rowNumber: number;
   rawRow: ParsedTableRow;
   rawProductName: string;
+  manufacturer: string | null;
   packDescription: string | null;
   unitPrice: Prisma.Decimal;
   currencyCode: string;
@@ -56,6 +96,7 @@ export type InventoryRowInput = {
   rowNumber: number;
   rawRow: ParsedTableRow;
   rawProductName: string;
+  manufacturer: string | null;
   rawSupplierName: string | null;
   warehouseCode: string;
   snapshotDate: Date;
@@ -71,6 +112,7 @@ export type SalesRowInput = {
   rowNumber: number;
   rawRow: ParsedTableRow;
   rawProductName: string;
+  manufacturer: string | null;
   rawCustomerName: string;
   rawSupplierName: string | null;
   saleDate: Date;

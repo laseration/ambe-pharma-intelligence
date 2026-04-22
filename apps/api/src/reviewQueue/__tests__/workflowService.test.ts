@@ -1,0 +1,822 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import {
+  createOfferWorkflowService,
+  determineWorkflowPriority,
+  type SyncWorkflowItemInput,
+} from '../workflowService';
+
+function createRepositoryHarness() {
+  const workflowItems: Array<Record<string, any>> = [];
+  const workflowEvents: Array<Record<string, any>> = [];
+  const buyDecisions: Array<Record<string, any>> = [];
+  const buyDecisionEvents: Array<Record<string, any>> = [];
+  const buyExecutions: Array<Record<string, any>> = [];
+  const buyExecutionEvents: Array<Record<string, any>> = [];
+  const tradeOpportunities: Array<Record<string, any>> = [];
+  const tradeOpportunityEvents: Array<Record<string, any>> = [];
+  const feedbacks: Array<Record<string, any>> = [];
+  const supplierQualifications: Array<Record<string, any>> = [];
+  let idCounter = 0;
+  const nextId = (prefix: string) => `${prefix}-${++idCounter}`;
+
+  const makeWorkflowRecord = (overrides?: Record<string, unknown>) => ({
+    id: nextId('workflow'),
+    emailDerivedOfferId: 'offer-1',
+    inboundEmailId: 'email-1',
+    status: 'NEW',
+    priority: 'MEDIUM',
+    priorityReason: 'commercially relevant offer should be reviewed in the normal operator queue.',
+    assigneeUserId: null,
+    assigneeLabel: null,
+    latestNote: null,
+    sourceKind: 'STRICT_BODY_MAIN',
+    sourceReviewReason: 'promotion_threshold_not_met',
+    aiAssisted: false,
+    hasUnresolvedSupplier: false,
+    hasConflictingSupplierCues: false,
+    hasManufacturerAmbiguity: false,
+    supplierQualificationStatus: 'APPROVED',
+    hasUnknownSupplierQualification: false,
+    hasRestrictedSupplier: false,
+    hasBlockedSupplier: false,
+    qualificationRiskNote: null,
+    createdByType: 'SYSTEM',
+    createdByIdentifier: null,
+    completedAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    inboundEmail: {
+      id: 'email-1',
+      fromEmail: 'pricing@supplier.co',
+      fromName: 'Supplier',
+      subject: 'Offer',
+      receivedAt: new Date('2026-04-20T09:00:00.000Z'),
+    },
+    buyDecision: null,
+    emailDerivedOffer: {
+      id: 'offer-1',
+      status: 'REVIEW_REQUIRED',
+      reviewReason: 'promotion_threshold_not_met',
+      sourceKind: 'STRICT_BODY_MAIN',
+      sourceBlockText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
+      rawProductText: 'Amlodipine 5mg tabs 28',
+      normalizedProductNameCandidate: 'amlodipine 5mg tabs 28',
+      manufacturerCandidate: null,
+      priceCandidate: { toString: () => '8.40' },
+      currencyCandidate: 'GBP',
+      minimumOrderQuantityCandidate: null,
+      availabilityCandidate: 'available',
+      metadata: {
+        sender: 'pricing@supplier.co',
+        subject: 'Offer',
+      },
+      resolutionCandidates: [
+        {
+          entityType: 'SUPPLIER',
+          candidateId: 'supplier-1',
+          candidateName: 'Supplier One',
+          confidence: 88,
+          reason: 'sender_mapping',
+          selected: true,
+        },
+        {
+          entityType: 'PRODUCT',
+          candidateId: 'product-1',
+          candidateName: 'Amlodipine 5mg tabs 28',
+          confidence: 85,
+          reason: 'exact_normalized_name_match',
+          selected: true,
+        },
+      ],
+      buyDecision: null,
+      updatedAt: new Date(),
+    },
+    ...overrides,
+  });
+
+  const attachExecution = (decision: Record<string, any> | null) => {
+    if (!decision) {
+      return null;
+    }
+
+    return buyExecutions.find((item) => item.buyDecisionId === decision.id) ?? null;
+  };
+
+  const cloneState = () => ({
+    workflowItems: workflowItems.map((item) => ({
+      ...item,
+      inboundEmail: item.inboundEmail ? { ...item.inboundEmail } : item.inboundEmail,
+      buyDecision: item.buyDecision
+        ? { ...item.buyDecision, execution: item.buyDecision.execution ? { ...item.buyDecision.execution } : null }
+        : item.buyDecision,
+      emailDerivedOffer: item.emailDerivedOffer
+        ? {
+            ...item.emailDerivedOffer,
+            resolutionCandidates: item.emailDerivedOffer.resolutionCandidates.map((candidate: Record<string, any>) => ({
+              ...candidate,
+            })),
+            buyDecision: item.emailDerivedOffer.buyDecision
+              ? {
+                  ...item.emailDerivedOffer.buyDecision,
+                  execution: item.emailDerivedOffer.buyDecision.execution
+                    ? { ...item.emailDerivedOffer.buyDecision.execution }
+                    : null,
+                }
+              : item.emailDerivedOffer.buyDecision,
+          }
+        : item.emailDerivedOffer,
+    })),
+    workflowEvents: workflowEvents.map((item) => ({ ...item })),
+    buyDecisions: buyDecisions.map((item) => ({ ...item })),
+    buyDecisionEvents: buyDecisionEvents.map((item) => ({ ...item })),
+    buyExecutions: buyExecutions.map((item) => ({ ...item })),
+    buyExecutionEvents: buyExecutionEvents.map((item) => ({ ...item })),
+    tradeOpportunities: tradeOpportunities.map((item) => ({ ...item })),
+    tradeOpportunityEvents: tradeOpportunityEvents.map((item) => ({ ...item })),
+    feedbacks: feedbacks.map((item) => ({ ...item })),
+  });
+
+  const restoreState = (snapshot: ReturnType<typeof cloneState>) => {
+    workflowItems.splice(0, workflowItems.length, ...snapshot.workflowItems);
+    workflowEvents.splice(0, workflowEvents.length, ...snapshot.workflowEvents);
+    buyDecisions.splice(0, buyDecisions.length, ...snapshot.buyDecisions);
+    buyDecisionEvents.splice(0, buyDecisionEvents.length, ...snapshot.buyDecisionEvents);
+    buyExecutions.splice(0, buyExecutions.length, ...snapshot.buyExecutions);
+    buyExecutionEvents.splice(0, buyExecutionEvents.length, ...snapshot.buyExecutionEvents);
+    tradeOpportunities.splice(0, tradeOpportunities.length, ...snapshot.tradeOpportunities);
+    tradeOpportunityEvents.splice(0, tradeOpportunityEvents.length, ...snapshot.tradeOpportunityEvents);
+    feedbacks.splice(0, feedbacks.length, ...snapshot.feedbacks);
+  };
+
+  return {
+    workflowItems,
+    workflowEvents,
+    buyDecisions,
+    buyDecisionEvents,
+    buyExecutions,
+    buyExecutionEvents,
+    tradeOpportunities,
+    tradeOpportunityEvents,
+    feedbacks,
+    supplierQualifications,
+    makeWorkflowRecord,
+    repository: {
+      async transaction(callback: (repository: unknown) => Promise<unknown>) {
+        const snapshot = cloneState();
+        try {
+          return await callback(this as never);
+        } catch (error) {
+          restoreState(snapshot);
+          throw error;
+        }
+      },
+      async findWorkflowItemByOfferId(emailDerivedOfferId: string) {
+        return (workflowItems.find((item) => item.emailDerivedOfferId === emailDerivedOfferId) ?? null) as never;
+      },
+      async findWorkflowItemById(workflowItemId: string) {
+        return (workflowItems.find((item) => item.id === workflowItemId) ?? null) as never;
+      },
+      async createWorkflowItem(data: Record<string, any>) {
+        const created = makeWorkflowRecord({
+          ...data,
+          id: nextId('workflow'),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        workflowItems.push(created);
+        return created as never;
+      },
+      async updateWorkflowItem(workflowItemId: string, data: Record<string, any>) {
+        const existing = workflowItems.find((item) => item.id === workflowItemId);
+        if (!existing) {
+          throw new Error('Offer workflow item not found.');
+        }
+
+        Object.assign(existing, data, { updatedAt: new Date() });
+        if (existing.emailDerivedOffer) {
+          const decision =
+            buyDecisions.find((item) => item.emailDerivedOfferId === existing.emailDerivedOfferId) ?? null;
+          existing.emailDerivedOffer.buyDecision =
+            decision ? { ...decision, execution: attachExecution(decision) } : null;
+        }
+        const decision = buyDecisions.find((item) => item.offerWorkflowItemId === existing.id) ?? null;
+        existing.buyDecision = decision ? { ...decision, execution: attachExecution(decision) } : null;
+        return existing as never;
+      },
+      async createWorkflowEvent(data: Record<string, any>) {
+        const created = {
+          ...data,
+          id: nextId('workflow-event'),
+          createdAt: new Date(),
+        };
+        workflowEvents.push(created);
+        return created as never;
+      },
+      async listWorkflowItems(filters: Record<string, any>) {
+        return workflowItems
+          .filter((item) => {
+            if (filters.status && item.status !== filters.status) {
+              return false;
+            }
+            if (filters.onlyOpen === true && ['REJECTED', 'CLOSED'].includes(item.status)) {
+              return false;
+            }
+            if (filters.blockedSupplier === true && item.hasBlockedSupplier !== true) {
+              return false;
+            }
+            if (filters.restrictedSupplier === true && item.hasRestrictedSupplier !== true) {
+              return false;
+            }
+            if (
+              filters.unknownQualification === true &&
+              item.hasUnknownSupplierQualification !== true
+            ) {
+              return false;
+            }
+            if (
+              typeof filters.hasBuyDecision === 'boolean' &&
+              Boolean(item.buyDecision) !== filters.hasBuyDecision
+            ) {
+              return false;
+            }
+            return true;
+          })
+          .sort((left, right) =>
+            filters.staleFirst === true
+              ? left.createdAt.getTime() - right.createdAt.getTime()
+              : right.updatedAt.getTime() - left.updatedAt.getTime(),
+          ) as never;
+      },
+      async listWorkflowEvents(workflowItemId: string) {
+        return workflowEvents.filter((item) => item.workflowItemId === workflowItemId) as never;
+      },
+      async findSupplierQualificationBySupplierId(supplierId: string) {
+        return (supplierQualifications.find((item) => item.supplierId === supplierId) ?? null) as never;
+      },
+      async findBuyDecisionByOfferId(emailDerivedOfferId: string) {
+        return (buyDecisions.find((item) => item.emailDerivedOfferId === emailDerivedOfferId) ?? null) as never;
+      },
+      async createBuyDecision(data: Record<string, any>) {
+        const created = {
+          id: nextId('buy-decision'),
+          emailDerivedOfferId: data.emailDerivedOfferId,
+          offerWorkflowItemId: data.offerWorkflowItemId ?? null,
+          supplierId: data.supplierId ?? null,
+          productId: data.productId ?? null,
+          quotedUnitPrice: data.quotedUnitPrice ?? null,
+          quotedCurrencyCode: data.quotedCurrencyCode ?? null,
+          quotedMinimumOrderQuantity: data.quotedMinimumOrderQuantity ?? null,
+          quotedAvailability: data.quotedAvailability ?? null,
+          approvalStatus: data.approvalStatus,
+          orderStatus: data.orderStatus,
+          approvalNote: data.approvalNote ?? null,
+          approvedAt: data.approvedAt ?? null,
+          externalOrderReference: null,
+          orderedAt: null,
+          supplierQualificationStatus: data.supplierQualificationStatus,
+          hasQualificationRisk: data.hasQualificationRisk,
+          qualificationRiskNote: data.qualificationRiskNote ?? null,
+          execution: null,
+        };
+        buyDecisions.push(created);
+        const workflow = workflowItems.find((item) => item.id === created.offerWorkflowItemId);
+        if (workflow) {
+          workflow.buyDecision = created;
+          if (workflow.emailDerivedOffer) {
+            workflow.emailDerivedOffer.buyDecision = created;
+          }
+        }
+        return created as never;
+      },
+      async updateBuyDecision(buyDecisionId: string, data: Record<string, any>) {
+        const existingIndex = buyDecisions.findIndex((item) => item.id === buyDecisionId);
+        const existing = existingIndex >= 0 ? buyDecisions[existingIndex] : null;
+        if (!existing) {
+          throw new Error('Buy decision not found.');
+        }
+        const updated = { ...existing, ...data };
+        updated.execution = attachExecution(updated);
+        buyDecisions[existingIndex] = updated;
+        const workflow = workflowItems.find((item) => item.id === updated.offerWorkflowItemId);
+        if (workflow) {
+          workflow.buyDecision = updated;
+          if (workflow.emailDerivedOffer) {
+            workflow.emailDerivedOffer.buyDecision = updated;
+          }
+        }
+        return updated as never;
+      },
+      async createBuyDecisionEvent(data: Record<string, any>) {
+        buyDecisionEvents.push({
+          ...data,
+          id: nextId('buy-decision-event'),
+          createdAt: new Date(),
+        });
+      },
+      async findBuyExecutionByDecisionId(buyDecisionId: string) {
+        return (buyExecutions.find((item) => item.buyDecisionId === buyDecisionId) ?? null) as never;
+      },
+      async createBuyExecution(data: Record<string, any>) {
+        const created: Record<string, any> = {
+          id: nextId('buy-execution'),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...data,
+        };
+        buyExecutions.push(created);
+        const decision = buyDecisions.find((item) => item.id === created.buyDecisionId);
+        if (decision) {
+          decision.execution = created;
+        }
+        workflowItems.forEach((item) => {
+          if (item.buyDecision?.id === created.buyDecisionId) {
+            item.buyDecision.execution = created;
+          }
+          if (item.emailDerivedOffer?.buyDecision?.id === created.buyDecisionId) {
+            item.emailDerivedOffer.buyDecision.execution = created;
+          }
+        });
+        return created as never;
+      },
+      async updateBuyExecution(buyExecutionId: string, data: Record<string, any>) {
+        const index = buyExecutions.findIndex((item) => item.id === buyExecutionId);
+        const existing = index >= 0 ? buyExecutions[index] : null;
+        if (!existing) {
+          throw new Error('Buy execution not found.');
+        }
+        const updated: Record<string, any> = { ...existing, ...data, updatedAt: new Date() };
+        buyExecutions[index] = updated;
+        const decision = buyDecisions.find((item) => item.id === updated.buyDecisionId);
+        if (decision) {
+          decision.execution = updated;
+        }
+        workflowItems.forEach((item) => {
+          if (item.buyDecision?.id === updated.buyDecisionId) {
+            item.buyDecision.execution = updated;
+          }
+          if (item.emailDerivedOffer?.buyDecision?.id === updated.buyDecisionId) {
+            item.emailDerivedOffer.buyDecision.execution = updated;
+          }
+        });
+        return updated as never;
+      },
+      async createBuyExecutionEvent(data: Record<string, any>) {
+        const created = {
+          ...data,
+          id: nextId('buy-execution-event'),
+          createdAt: new Date(),
+        };
+        buyExecutionEvents.push(created);
+        return created as never;
+      },
+      async findRecentMatchingFeedback(input: Record<string, any>) {
+        return (
+          feedbacks.find(
+            (item) =>
+              item.createdAt >= input.createdAfter &&
+              item.emailDerivedOfferId === input.emailDerivedOfferId &&
+              item.offerWorkflowItemId === input.offerWorkflowItemId &&
+              item.tradeOpportunityId === input.tradeOpportunityId &&
+              item.tradeMessageDraftId === input.tradeMessageDraftId &&
+              item.feedbackType === input.feedbackType &&
+              item.verdict === input.verdict &&
+              item.actorType === input.actorType &&
+              item.actorIdentifier === input.actorIdentifier,
+          ) ?? null
+        ) as never;
+      },
+      async createFeedback(data: Record<string, any>) {
+        const created = {
+          id: nextId('feedback'),
+          createdAt: new Date(),
+          ...data,
+        };
+        feedbacks.push(created);
+        return created as never;
+      },
+      async listActiveTradeOpportunitiesByOfferId(emailDerivedOfferId: string) {
+        return tradeOpportunities.filter(
+          (item) =>
+            item.emailDerivedOfferId === emailDerivedOfferId &&
+            ['OPEN', 'ON_HOLD'].includes(item.status),
+        ) as never;
+      },
+      async updateTradeOpportunity(tradeOpportunityId: string, data: Record<string, any>) {
+        const existing = tradeOpportunities.find((item) => item.id === tradeOpportunityId);
+        if (!existing) {
+          throw new Error('Trade opportunity not found.');
+        }
+
+        Object.assign(existing, data, { updatedAt: new Date() });
+        return existing as never;
+      },
+      async createTradeOpportunityEvent(data: Record<string, any>) {
+        const created = {
+          ...data,
+          id: nextId('trade-opportunity-event'),
+          createdAt: new Date(),
+        };
+        tradeOpportunityEvents.push(created);
+        return created as never;
+      },
+    },
+  };
+}
+
+function createSyncInput(overrides?: Partial<SyncWorkflowItemInput>): SyncWorkflowItemInput {
+  return {
+    emailDerivedOfferId: 'offer-1',
+    inboundEmailId: 'email-1',
+    offerStatus: 'REVIEW_REQUIRED',
+    sourceKind: 'STRICT_BODY_MAIN',
+    reviewReason: 'promotion_threshold_not_met',
+    aiAssisted: false,
+    sourceTrustScore: 72,
+    promotionConfidence: 74,
+    pricePresent: true,
+    supplierCandidate: 'Supplier One',
+    manufacturerCandidate: null,
+    resolutionCandidates: [
+      {
+        entityType: 'SUPPLIER',
+        candidateId: 'supplier-1',
+        candidateName: 'Supplier One',
+        confidence: 88,
+        reason: 'sender_mapping',
+        selected: true,
+      },
+    ],
+    supplierQualificationStatus: 'APPROVED',
+    ...overrides,
+  };
+}
+
+test('review-required offer creates one workflow item and does not duplicate on sync', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+
+  const first = await service.syncWorkflowItemForOfferReview(createSyncInput());
+  const second = await service.syncWorkflowItemForOfferReview(createSyncInput());
+
+  assert.equal(harness.workflowItems.length, 1);
+  assert.equal(first?.id, second?.id);
+  assert.equal(harness.workflowEvents.length, 1);
+  assert.equal(harness.workflowEvents[0]?.actionType, 'CREATED');
+});
+
+test('approving a workflow item creates exactly one buy decision and reapproval does not duplicate it', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  harness.workflowItems.push(harness.makeWorkflowRecord());
+  harness.tradeOpportunities.push({
+    id: 'trade-1',
+    emailDerivedOfferId: 'offer-1',
+    status: 'OPEN',
+    stage: 'REVIEW',
+    sourceType: 'WORKFLOW_ITEM',
+    supplierId: 'supplier-1',
+    productId: 'product-1',
+    sourceSupplierNameSnapshot: 'Supplier One',
+    supplierQualificationStatusSnapshot: 'APPROVED',
+    quotedBuyUnitPrice: { toString: () => '8.40' },
+    quotedBuyCurrencyCode: 'GBP',
+    quotedBuyMinimumOrderQuantity: null,
+    quotedAvailability: 'available',
+    targetSellUnitPrice: { toString: () => '10.10' },
+    minimumMarginAmount: null,
+    minimumMarginPct: null,
+    estimatedMarginAmount: 1.7,
+    estimatedMarginPct: 0.1683,
+    buyDecisionId: null,
+    buyExecutionId: null,
+    riskFlags: ['no_buy_approval', 'no_execution'],
+    hasMessagingPolicyViolations: false,
+    messagingPolicyViolationCount: 0,
+    hasQualificationBlock: false,
+    isMarginFloorMet: true,
+    isActionable: true,
+    metadata: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  await service.approveToBuy({
+    workflowItemId: harness.workflowItems[0]!.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+    note: 'Approved for purchase.',
+  });
+  await service.approveToBuy({
+    workflowItemId: harness.workflowItems[0]!.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+    note: 'Approved for purchase.',
+  });
+
+  assert.equal(harness.workflowItems[0]?.status, 'APPROVED_TO_BUY');
+  assert.equal(harness.buyDecisions.length, 1);
+  assert.equal(harness.buyDecisions[0]?.approvalStatus, 'APPROVED');
+  assert.equal(harness.tradeOpportunities[0]?.buyDecisionId, harness.buyDecisions[0]?.id);
+  assert.equal(harness.tradeOpportunities[0]?.stage, 'BUY_APPROVED');
+  assert.equal(
+    harness.buyDecisionEvents.filter((event) => event.actionType === 'CREATED').length,
+    1,
+  );
+});
+
+test('workflow approval can record linked operator feedback in the same transaction', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  harness.workflowItems.push(harness.makeWorkflowRecord());
+
+  await service.approveToBuy({
+    workflowItemId: harness.workflowItems[0]!.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+    feedback: {
+      feedbackType: 'EXTRACTION',
+      verdict: 'CORRECT',
+      productTextCorrect: true,
+      priceCorrect: true,
+      note: 'Looks accurate.',
+    },
+  });
+
+  assert.equal(harness.feedbacks.length, 1);
+  assert.equal(harness.feedbacks[0]?.offerWorkflowItemId, harness.workflowItems[0]?.id);
+  assert.equal(harness.feedbacks[0]?.emailDerivedOfferId, 'offer-1');
+  assert.equal(harness.feedbacks[0]?.feedbackType, 'EXTRACTION');
+});
+
+test('marking ordered updates the linked buy decision and does not duplicate order events', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  harness.workflowItems.push(harness.makeWorkflowRecord());
+  harness.tradeOpportunities.push({
+    id: 'trade-1',
+    emailDerivedOfferId: 'offer-1',
+    status: 'OPEN',
+    stage: 'REVIEW',
+    sourceType: 'WORKFLOW_ITEM',
+    supplierId: 'supplier-1',
+    productId: 'product-1',
+    sourceSupplierNameSnapshot: 'Supplier One',
+    supplierQualificationStatusSnapshot: 'APPROVED',
+    quotedBuyUnitPrice: { toString: () => '8.40' },
+    quotedBuyCurrencyCode: 'GBP',
+    quotedBuyMinimumOrderQuantity: null,
+    quotedAvailability: 'available',
+    targetSellUnitPrice: { toString: () => '10.10' },
+    minimumMarginAmount: null,
+    minimumMarginPct: null,
+    estimatedMarginAmount: 1.7,
+    estimatedMarginPct: 0.1683,
+    buyDecisionId: null,
+    buyExecutionId: null,
+    riskFlags: ['no_buy_approval', 'no_execution'],
+    hasMessagingPolicyViolations: false,
+    messagingPolicyViolationCount: 0,
+    hasQualificationBlock: false,
+    isMarginFloorMet: true,
+    isActionable: true,
+    metadata: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  await service.approveToBuy({
+    workflowItemId: harness.workflowItems[0]!.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+  await service.markOrdered({
+    workflowItemId: harness.workflowItems[0]!.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+    externalOrderReference: 'PO-001',
+  });
+  await service.markOrdered({
+    workflowItemId: harness.workflowItems[0]!.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+    externalOrderReference: 'PO-001',
+  });
+
+  assert.equal(harness.workflowItems[0]?.status, 'ORDERED');
+  assert.equal(harness.buyDecisions[0]?.orderStatus, 'ORDERED');
+  assert.equal(harness.buyDecisions[0]?.externalOrderReference, 'PO-001');
+  assert.equal(harness.buyExecutions.length, 1);
+  assert.equal(harness.buyExecutions[0]?.externalOrderReference, 'PO-001');
+  assert.equal(harness.buyExecutions[0]?.fulfillmentStatus, 'ORDER_PLACED');
+  assert.equal(harness.tradeOpportunities[0]?.buyExecutionId, harness.buyExecutions[0]?.id);
+  assert.equal(harness.tradeOpportunities[0]?.stage, 'BUY_ORDERED');
+  assert.equal(
+    harness.buyDecisionEvents.filter((event) => event.actionType === 'MARKED_ORDERED').length,
+    1,
+  );
+  assert.equal(
+    harness.buyExecutionEvents.filter((event) => event.actionType === 'ORDER_PLACED').length,
+    1,
+  );
+});
+
+test('mark ordered rolls back workflow and decision changes when execution write fails', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService({
+    ...(harness.repository as any),
+    async createBuyExecution() {
+      throw new Error('execution failure');
+    },
+  });
+  harness.workflowItems.push(harness.makeWorkflowRecord());
+
+  await service.approveToBuy({
+    workflowItemId: harness.workflowItems[0]!.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+
+  await assert.rejects(
+    service.markOrdered({
+      workflowItemId: harness.workflowItems[0]!.id,
+      actorType: 'USER',
+      actorIdentifier: 'buyer-1',
+      externalOrderReference: 'PO-001',
+    }),
+    /execution failure/i,
+  );
+
+  assert.equal(harness.workflowItems[0]?.status, 'APPROVED_TO_BUY');
+  assert.equal(harness.buyDecisions[0]?.orderStatus, 'NOT_ORDERED');
+  assert.equal(harness.buyExecutions.length, 0);
+});
+
+test('workflow and buy-decision writes rollback together when buy-decision creation fails', async () => {
+  const harness = createRepositoryHarness();
+  harness.workflowItems.push(harness.makeWorkflowRecord());
+  const service = createOfferWorkflowService({
+    ...(harness.repository as any),
+    async createBuyDecision() {
+      throw new Error('simulated failure');
+    },
+  });
+
+  await assert.rejects(
+    service.approveToBuy({
+      workflowItemId: harness.workflowItems[0]!.id,
+      actorType: 'USER',
+      actorIdentifier: 'buyer-1',
+    }),
+    /simulated failure/i,
+  );
+
+  assert.equal(harness.workflowItems[0]?.status, 'NEW');
+  assert.equal(harness.workflowEvents.length, 0);
+  assert.equal(harness.buyDecisions.length, 0);
+});
+
+test('blocked supplier prevents the normal approval-to-buy path', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  harness.supplierQualifications.push({
+    id: 'qual-1',
+    supplierId: 'supplier-1',
+    qualificationStatus: 'BLOCKED',
+    trustTier: 'LOW',
+    qualificationNote: 'Blocked',
+    requiresManualApproval: true,
+    canAutoApproveBuyDecisions: false,
+    expiresAt: null,
+  });
+  harness.workflowItems.push(
+    harness.makeWorkflowRecord({
+      supplierQualificationStatus: 'BLOCKED',
+      hasBlockedSupplier: true,
+    }),
+  );
+
+  await assert.rejects(
+    service.approveToBuy({
+      workflowItemId: harness.workflowItems[0]!.id,
+      actorType: 'USER',
+      actorIdentifier: 'buyer-1',
+    }),
+    /blocked supplier/i,
+  );
+
+  assert.equal(harness.workflowItems[0]?.status, 'NEW');
+  assert.equal(harness.buyDecisions.length, 0);
+});
+
+test('unknown qualification requires explicit operator confirmation to approve', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  harness.workflowItems.push(
+    harness.makeWorkflowRecord({
+      supplierQualificationStatus: 'UNKNOWN',
+      hasUnknownSupplierQualification: true,
+      qualificationRiskNote: 'Supplier qualification is unknown and should be reviewed before purchase.',
+    }),
+  );
+
+  await assert.rejects(
+    service.approveToBuy({
+      workflowItemId: harness.workflowItems[0]!.id,
+      actorType: 'USER',
+      actorIdentifier: 'buyer-1',
+    }),
+    /qualification risk requires explicit operator confirmation/i,
+  );
+
+  await service.approveToBuy({
+    workflowItemId: harness.workflowItems[0]!.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+    allowQualificationRisk: true,
+    note: 'Approved despite unknown qualification.',
+  });
+
+  assert.equal(harness.buyDecisions.length, 1);
+  assert.equal(harness.buyDecisions[0]?.hasQualificationRisk, true);
+  assert.equal(harness.workflowItems[0]?.status, 'APPROVED_TO_BUY');
+});
+
+test('queue listing can return stale open items first', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  harness.workflowItems.push(
+    harness.makeWorkflowRecord({
+      id: 'workflow-older',
+      emailDerivedOfferId: 'offer-older',
+      createdAt: new Date('2026-04-19T10:00:00.000Z'),
+    }),
+    harness.makeWorkflowRecord({
+      id: 'workflow-newer',
+      emailDerivedOfferId: 'offer-newer',
+      createdAt: new Date('2026-04-20T10:00:00.000Z'),
+    }),
+  );
+
+  const items = await service.listWorkflowItems({
+    onlyOpen: true,
+    staleFirst: true,
+  });
+
+  assert.equal(items[0]?.id, 'workflow-older');
+  assert.equal(items[1]?.id, 'workflow-newer');
+});
+
+test('auto-promoted offers do not create review workflow items', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+
+  const item = await service.syncWorkflowItemForOfferReview(
+    createSyncInput({
+      offerStatus: 'AUTO_PROMOTED',
+    }),
+  );
+
+  assert.equal(item, null);
+  assert.equal(harness.workflowItems.length, 0);
+  assert.equal(harness.workflowEvents.length, 0);
+});
+
+test('conflicting supplier cues and qualification risk drive explainable priority', () => {
+  const conflicting = determineWorkflowPriority(
+    createSyncInput({
+      reviewReason: 'conflicting_supplier_cues',
+      supplierQualificationStatus: 'RESTRICTED',
+      resolutionCandidates: [
+        {
+          entityType: 'SUPPLIER',
+          candidateId: null,
+          candidateName: 'Supplier One',
+          confidence: 80,
+          reason: 'sender_mapping',
+          selected: false,
+        },
+        {
+          entityType: 'SUPPLIER',
+          candidateId: null,
+          candidateName: 'Supplier Two',
+          confidence: 78,
+          reason: 'signature_cue',
+          selected: false,
+        },
+      ],
+    }),
+  );
+  const blocked = determineWorkflowPriority(
+    createSyncInput({
+      supplierQualificationStatus: 'BLOCKED',
+    }),
+  );
+
+  assert.equal(conflicting.priority, 'HIGH');
+  assert.equal(conflicting.hasConflictingSupplierCues, true);
+  assert.equal(conflicting.hasRestrictedSupplier, true);
+  assert.equal(blocked.priority, 'HIGH');
+  assert.equal(blocked.hasBlockedSupplier, true);
+});
