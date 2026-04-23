@@ -59,7 +59,11 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
 
   revalidatePath('/dashboard/review');
   if (inboundEmailId) {
+    const remainingItems = await listReviewWorkflowItems({ inboundEmailId });
     revalidatePath(`/dashboard/review/${inboundEmailId}`);
+    if (remainingItems.length === 0) {
+      redirect(`/dashboard/review?updated=${encodeURIComponent(action)}`);
+    }
     redirect(`/dashboard/review/${inboundEmailId}?updated=${encodeURIComponent(action)}`);
   }
 

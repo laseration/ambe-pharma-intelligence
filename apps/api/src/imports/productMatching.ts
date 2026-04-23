@@ -1,5 +1,6 @@
 import type { Product, ProductAlias } from '@prisma/client';
 
+import { buildProductCandidates } from './normalization';
 import type { ProductCandidates, ProductMatchDecision } from './types';
 
 type ProductMatchingSemantics = {
@@ -41,6 +42,15 @@ function buildProductMatchingSemantics(input: {
 }
 
 export function canonicalizeProductAliasName(aliasName: string): string {
+  const candidates = buildProductCandidates(aliasName);
+  const structuredSignalCount = [candidates.strength, candidates.formulation, candidates.packSize].filter(
+    Boolean,
+  ).length;
+
+  if (structuredSignalCount > 0 && candidates.confidence !== 'LOW') {
+    return candidates.normalizedKey;
+  }
+
   return aliasName.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
@@ -73,6 +83,16 @@ export function findMatchingAliasVariant<TAlias extends { aliasName: string; pro
   );
 
   if (canonicalizedAliasMatches.length === 1) {
+    return {
+      alias: canonicalizedAliasMatches[0] ?? null,
+      matchType: 'CANONICALIZED_ALIAS',
+    };
+  }
+
+  if (
+    canonicalizedAliasMatches.length > 1 &&
+    new Set(canonicalizedAliasMatches.map((alias) => alias.productId)).size === 1
+  ) {
     return {
       alias: canonicalizedAliasMatches[0] ?? null,
       matchType: 'CANONICALIZED_ALIAS',
@@ -232,5 +252,44 @@ export async function determineProductMatchDecision(
       compatible: fallbackStructuredCompatibility.compatible,
       conflictFields: fallbackStructuredCompatibility.conflictFields,
     },
+  };
+}
+
+export function evaluateNewProductAutoCreationEligibility(input: {
+  rawProductName: string;
+  candidates: ProductCandidates;
+}): {
+  allowed: boolean;
+  reason: string | null;
+} {
+  const missingFields: string[] = [];
+
+  if (!input.candidates.strength) {
+    missingFields.push('strength');
+  }
+
+  if (!input.candidates.formulation) {
+    missingFields.push('formulation');
+  }
+
+  if (input.candidates.confidence === 'HIGH') {
+    return {
+      allowed: true,
+      reason: null,
+    };
+  }
+
+  const missingFieldsText =
+    missingFields.length > 0
+      ? ` Missing structured product fields: ${missingFields.join(', ')}.`
+      : '';
+
+  return {
+    allowed: false,
+    reason:
+      'No safe existing product match was found. ' +
+      'A new canonical product was not created because the product identity is too incomplete or weak for safe catalog creation.' +
+      missingFieldsText +
+      ' This row needs product review before catalog creation.',
   };
 }

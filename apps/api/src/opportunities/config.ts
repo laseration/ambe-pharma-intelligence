@@ -32,11 +32,9 @@ export type OpportunityConfig = {
   lowMarginBaseScore: number;
 };
 
-export const opportunityConfig: OpportunityConfig = {
-  businessMode: env.opportunityBusinessMode as OpportunityBusinessMode,
+const sharedOpportunityThresholds = {
   recentSalesWindowDays: 30,
   duplicateWindowDays: 7,
-
   buyPriceImprovementPct: 0.05,
   priceAlertChangePct: 0.08,
   marketLookbackDays: 45,
@@ -47,20 +45,42 @@ export const opportunityConfig: OpportunityConfig = {
   priceAlertDropVsHistoryPct: 0.08,
   supplierReliabilityAdjustmentStep: 0.02,
   marketConfidenceMinForBuy: 0.45,
-  lowMarginThresholdPct: 0.15,
-
   lowStockThresholdUnits: 80,
   highStockThresholdUnits: 250,
-  healthyDemandUnits30d: 40,
   weakDemandMaxUnits30d: 20,
   maxInventorySnapshotAgeDays: 45,
   deadStockNoSalesWindowDays: 30,
   restockMaxCoverageDays: 21,
-
   restockBaseScore: 70,
   buyBaseScore: 72,
   pushBaseScore: 68,
   deadStockBaseScore: 78,
   priceAlertBaseScore: 64,
   lowMarginBaseScore: 66,
+} as const;
+
+const modeSpecificOpportunityThresholds: Record<
+  OpportunityBusinessMode,
+  Pick<OpportunityConfig, 'healthyDemandUnits30d' | 'lowMarginThresholdPct'>
+> = {
+  STOCKHOLDING: {
+    healthyDemandUnits30d: 40,
+    lowMarginThresholdPct: 0.15,
+  },
+  TRADING: {
+    healthyDemandUnits30d: 30,
+    lowMarginThresholdPct: 0.17,
+  },
 };
+
+export function buildOpportunityConfig(businessMode: OpportunityBusinessMode): OpportunityConfig {
+  return {
+    businessMode,
+    ...sharedOpportunityThresholds,
+    ...modeSpecificOpportunityThresholds[businessMode],
+  };
+}
+
+export const opportunityConfig: OpportunityConfig = buildOpportunityConfig(
+  env.opportunityBusinessMode as OpportunityBusinessMode,
+);

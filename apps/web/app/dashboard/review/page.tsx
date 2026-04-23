@@ -4,6 +4,12 @@ import { listReviewWorkflowItems, type ReviewWorkflowListItem } from '../../../l
 
 export const dynamic = 'force-dynamic';
 
+type PageProps = {
+  searchParams?: Promise<{
+    sort?: string;
+  }>;
+};
+
 type ReviewEmailGroup = {
   id: string;
   fromEmail: string;
@@ -15,13 +21,22 @@ type ReviewEmailGroup = {
   items: ReviewWorkflowListItem[];
 };
 
+type ReviewQueueSortMode = 'priority' | 'stale';
+
 const PRIORITY_ORDER: Record<string, number> = {
   HIGH: 0,
   MEDIUM: 1,
   LOW: 2,
 };
 
-function groupWorkflowItemsByInboundEmail(items: ReviewWorkflowListItem[]): ReviewEmailGroup[] {
+function normalizeReviewQueueSortMode(value: string | undefined): ReviewQueueSortMode {
+  return value === 'stale' ? 'stale' : 'priority';
+}
+
+function groupWorkflowItemsByInboundEmail(
+  items: ReviewWorkflowListItem[],
+  sortMode: ReviewQueueSortMode,
+): ReviewEmailGroup[] {
   const groups = new Map<string, ReviewEmailGroup>();
 
   for (const item of items) {
@@ -59,14 +74,21 @@ function groupWorkflowItemsByInboundEmail(items: ReviewWorkflowListItem[]): Revi
       return leftPriority - rightPriority;
     }
 
-    return (right.receivedAt ?? '').localeCompare(left.receivedAt ?? '');
+    return sortMode === 'stale'
+      ? (left.receivedAt ?? '').localeCompare(right.receivedAt ?? '')
+      : (right.receivedAt ?? '').localeCompare(left.receivedAt ?? '');
   });
 }
 
-export default async function ReviewQueuePage() {
+export default async function ReviewQueuePage({ searchParams }: PageProps) {
+  const query = searchParams ? await searchParams : undefined;
+  const sortMode = normalizeReviewQueueSortMode(query?.sort);
+
   try {
-    const items = await listReviewWorkflowItems();
-    const emailGroups = groupWorkflowItemsByInboundEmail(items);
+    const items = await listReviewWorkflowItems({
+      staleFirst: sortMode === 'stale',
+    });
+    const emailGroups = groupWorkflowItemsByInboundEmail(items, sortMode);
 
     return (
       <section className="review-layout">
@@ -79,6 +101,22 @@ export default async function ReviewQueuePage() {
               every extracted spreadsheet row.
             </p>
           </div>
+        </div>
+
+        <div className="dashboard-filter-row">
+          <span className="dashboard-filter-label">Order queue:</span>
+          <Link
+            className={`pill ${sortMode === 'priority' ? 'pill-high' : 'pill-neutral'}`}
+            href="/dashboard/review"
+          >
+            Priority first
+          </Link>
+          <Link
+            className={`pill ${sortMode === 'stale' ? 'pill-high' : 'pill-neutral'}`}
+            href="/dashboard/review?sort=stale"
+          >
+            Stale first
+          </Link>
         </div>
 
         {emailGroups.length === 0 ? (

@@ -582,7 +582,8 @@ test('review queue includes open email-derived workflow items with priority meta
   assert.equal(items[0]?.processingStatus, 'NEW');
   assert.equal(items[0]?.workflowPriority, 'HIGH');
   assert.equal(items[0]?.workflowAssignee, 'buyer-desk');
-  assert.equal(items[0]?.reason, 'conflicting_supplier_cues');
+  assert.equal(items[0]?.reason, 'Conflicting supplier cues');
+  assert.equal(items[0]?.reviewSummary?.reviewReason, 'Conflicting supplier cues');
   assert.equal(items[0]?.qualificationStatus, 'UNKNOWN');
   assert.match(items[0]?.qualificationRiskSummary ?? '', /unknown/i);
   assert.equal(items[0]?.hasBuyExecution, true);

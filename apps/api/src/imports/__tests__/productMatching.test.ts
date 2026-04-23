@@ -4,6 +4,7 @@ import type { Product, ProductAlias } from '@prisma/client';
 
 import {
   determineProductMatchDecision,
+  evaluateNewProductAutoCreationEligibility,
   findMatchingAliasVariant,
 } from '../productMatching';
 import type { ProductCandidates } from '../types';
@@ -248,6 +249,32 @@ test('returns canonicalized alias match decision for whitespace and case variant
   assert.equal(decision.aliasMatchType, 'CANONICALIZED_ALIAS');
 });
 
+test('returns canonicalized alias match decision for deterministic structured variant', async () => {
+  const product = createProduct('product-structured-alias', 'amlodipine|5mg|tablet|28');
+  const alias = createAlias(
+    'alias-structured-1',
+    'product-structured-alias',
+    'Amlodipine (5 mg) tab. x28',
+    product,
+  );
+  const decision = await determineProductMatchDecision(
+    {
+      findProductByStoredCanonicalField: async () => null,
+      findAliasByRawName: async () => null,
+      listAliasesForCanonicalComparison: async () => [alias],
+    },
+    {
+      rawProductName: 'Amlodipine 5mg tablets 28s',
+      candidates: createCandidates(),
+    },
+  );
+
+  assert.equal(decision.outcome, 'EXISTING_ALIAS');
+  assert.equal(decision.reasonCode, 'EXISTING_ALIAS_MATCH');
+  assert.equal(decision.matchedProductId, 'product-structured-alias');
+  assert.equal(decision.aliasMatchType, 'CANONICALIZED_ALIAS');
+});
+
 test('canonicalized alias does not match when medically meaningful text differs', async () => {
   const product = createProduct('product-medical-difference', 'amlodipine|5mg|tablet|28');
   const alias = createAlias('alias-3', 'product-medical-difference', 'Amlodipine 10mg tablets 28', product);
@@ -289,12 +316,79 @@ test('returns new product decision when no safe match exists', async () => {
   assert.equal(decision.matchedProductId, null);
 });
 
+test('allows automatic new product creation when structured identity confidence is high', () => {
+  const eligibility = evaluateNewProductAutoCreationEligibility({
+    rawProductName: 'Ondansetron 2mg/1ml injection',
+    candidates: createCandidates({
+      baseName: 'ondansetron',
+      normalizedName: 'ondansetron',
+      normalizedKey: 'ondansetron|2mg/1ml|injection',
+      strength: '2mg/1ml',
+      formulation: 'injection',
+      packSize: null,
+      confidence: 'HIGH',
+    }),
+  });
+
+  assert.equal(eligibility.allowed, true);
+  assert.equal(eligibility.reason, null);
+});
+
+test('blocks automatic new product creation when structured identity is underspecified', () => {
+  const eligibility = evaluateNewProductAutoCreationEligibility({
+    rawProductName: 'Aspirin sachets',
+    candidates: createCandidates({
+      baseName: 'aspirin',
+      normalizedName: 'aspirin',
+      normalizedKey: 'aspirin|sachet',
+      strength: null,
+      formulation: 'sachet',
+      packSize: null,
+      confidence: 'MEDIUM',
+    }),
+  });
+
+  assert.equal(eligibility.allowed, false);
+  assert.match(
+    eligibility.reason ?? '',
+    /no safe existing product match was found/i,
+  );
+  assert.match(
+    eligibility.reason ?? '',
+    /new canonical product was not created because the product identity is too incomplete or weak/i,
+  );
+  assert.match(eligibility.reason ?? '', /missing structured product fields: strength/i);
+  assert.match(eligibility.reason ?? '', /needs product review before catalog creation/i);
+});
+
 test('does not create duplicate alias for whitespace or case only variants', () => {
   const product = createProduct('product-duplicate-alias', 'amlodipine|5mg|tablet|28');
   const alias = createAlias('alias-4', 'product-duplicate-alias', 'Amlodipine 5MG Tablets 28', product);
   const match = findMatchingAliasVariant([alias], '  amlodipine   5mg tablets 28 ');
 
   assert.equal(match.alias?.id, 'alias-4');
+  assert.equal(match.matchType, 'CANONICALIZED_ALIAS');
+});
+
+test('canonicalized alias match stays safe when duplicate variants belong to the same product', () => {
+  const product = createProduct('product-same-product-aliases', 'amlodipine|5mg|tablet|28');
+  const aliases = [
+    createAlias(
+      'alias-duplicate-1',
+      'product-same-product-aliases',
+      'Amlodipine 5MG Tablets 28',
+      product,
+    ),
+    createAlias(
+      'alias-duplicate-2',
+      'product-same-product-aliases',
+      'Amlodipine (5 mg) tab. x28',
+      product,
+    ),
+  ];
+  const match = findMatchingAliasVariant(aliases, 'Amlodipine 5mg tablets 28s');
+
+  assert.equal(match.alias?.productId, 'product-same-product-aliases');
   assert.equal(match.matchType, 'CANONICALIZED_ALIAS');
 });
 

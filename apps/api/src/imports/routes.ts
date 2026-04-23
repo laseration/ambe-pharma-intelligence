@@ -3,10 +3,16 @@ import multer from 'multer';
 import { z } from 'zod';
 
 import { getInternalAuthContext, requireInternalOperatorAccess } from '../http/auth';
-import { asyncHandler, ValidationError } from '../http/errors';
+import { asyncHandler, requireFound, ValidationError } from '../http/errors';
 import { logger } from '../lib/logger';
-import { optionalTrimmedStringSchema, parseRequest } from '../http/validation';
-import { importInventory, importSales, importSupplierPriceList } from './service';
+import { idParamSchema, optionalTrimmedStringSchema, parseRequest } from '../http/validation';
+import {
+  getImportBatchDetail,
+  importInventory,
+  importSales,
+  importSupplierPriceList,
+  listRecentImportBatches,
+} from './service';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -24,6 +30,41 @@ function requireFile(file: Express.Multer.File | undefined) {
 }
 
 export const importsRouter = Router();
+
+const listImportBatchesQuerySchema = z.object({
+  take: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+importsRouter.get(
+  '/batches',
+  requireInternalOperatorAccess,
+  asyncHandler(async (request, response) => {
+    const { query } = parseRequest<unknown, z.infer<typeof listImportBatchesQuerySchema>>(request, {
+      query: listImportBatchesQuerySchema,
+    });
+
+    response.json({
+      items: await listRecentImportBatches(query.take ?? 20),
+    });
+  }),
+);
+
+importsRouter.get(
+  '/batches/:id',
+  requireInternalOperatorAccess,
+  asyncHandler(async (request, response) => {
+    const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {
+      params: idParamSchema,
+    });
+
+    response.json({
+      item: requireFound(
+        await getImportBatchDetail(params.id),
+        'Import batch not found.',
+      ),
+    });
+  }),
+);
 
 const supplierPriceListBodySchema = z.object({
   supplierName: optionalTrimmedStringSchema,

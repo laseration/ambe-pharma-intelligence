@@ -6,6 +6,7 @@ import { normalizeText } from './normalization';
 import { parseUploadedFile } from './parsers';
 import {
   determineProductMatchDecision,
+  evaluateNewProductAutoCreationEligibility,
   findMatchingAliasVariant,
 } from './productMatching';
 import { logger } from '../lib/logger';
@@ -29,6 +30,37 @@ import { validateInventoryRows, validateSalesRows, validateSupplierPriceRows } f
 type DbClient = typeof db | Prisma.TransactionClient;
 const MILLISECONDS_PER_DAY = 1000 * 60 * 60 * 24;
 
+export type ImportBatchListItem = {
+  id: string;
+  kind: 'SUPPLIER_PRICE_LIST' | 'INVENTORY' | 'SALES';
+  status: string;
+  fileName: string;
+  fileMimeType: string | null;
+  fileSizeBytes: number | null;
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  warningCount: number;
+  errorCount: number;
+  uploadedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type ImportBatchErrorItem = {
+  id: string;
+  rowNumber: number | null;
+  fieldName: string | null;
+  message: string;
+  rawRow: Prisma.JsonValue | null;
+  createdAt: Date;
+};
+
+export type ImportBatchDetail = ImportBatchListItem & {
+  warnings: string[];
+  errors: ImportBatchErrorItem[];
+};
+
 function buildSummary(
   totalRows: number,
   validRows: number,
@@ -40,6 +72,138 @@ function buildSummary(
     validRows,
     invalidRows,
     warnings,
+  };
+}
+
+function countWarnings(warnings: Prisma.JsonValue | null | undefined): number {
+  return Array.isArray(warnings) ? warnings.length : 0;
+}
+
+function extractWarnings(
+  warnings: Prisma.JsonValue | null | undefined,
+  take = 10,
+): string[] {
+  if (!Array.isArray(warnings)) {
+    return [];
+  }
+
+  return warnings
+    .filter((warning): warning is string => typeof warning === 'string' && warning.trim().length > 0)
+    .slice(0, take);
+}
+
+export async function listRecentImportBatches(take = 20): Promise<ImportBatchListItem[]> {
+  const batches = await db.importBatch.findMany({
+    orderBy: { uploadedAt: 'desc' },
+    take,
+    select: {
+      id: true,
+      kind: true,
+      status: true,
+      fileName: true,
+      fileMimeType: true,
+      fileSizeBytes: true,
+      totalRows: true,
+      validRows: true,
+      invalidRows: true,
+      warnings: true,
+      uploadedAt: true,
+      createdAt: true,
+      updatedAt: true,
+      _count: {
+        select: {
+          errors: true,
+        },
+      },
+    },
+  });
+
+  return batches.map((batch) => ({
+    id: batch.id,
+    kind: batch.kind,
+    status: batch.status,
+    fileName: batch.fileName,
+    fileMimeType: batch.fileMimeType,
+    fileSizeBytes: batch.fileSizeBytes,
+    totalRows: batch.totalRows,
+    validRows: batch.validRows,
+    invalidRows: batch.invalidRows,
+    warningCount: countWarnings(batch.warnings),
+    errorCount: batch._count.errors,
+    uploadedAt: batch.uploadedAt,
+    createdAt: batch.createdAt,
+    updatedAt: batch.updatedAt,
+  }));
+}
+
+export async function getImportBatchDetail(
+  importBatchId: string,
+  errorTake = 10,
+): Promise<ImportBatchDetail | null> {
+  const batch = await db.importBatch.findUnique({
+    where: { id: importBatchId },
+    select: {
+      id: true,
+      kind: true,
+      status: true,
+      fileName: true,
+      fileMimeType: true,
+      fileSizeBytes: true,
+      totalRows: true,
+      validRows: true,
+      invalidRows: true,
+      warnings: true,
+      uploadedAt: true,
+      createdAt: true,
+      updatedAt: true,
+      errors: {
+        orderBy: [{ rowNumber: 'asc' }, { createdAt: 'asc' }],
+        take: errorTake,
+        select: {
+          id: true,
+          rowNumber: true,
+          fieldName: true,
+          message: true,
+          rawRow: true,
+          createdAt: true,
+        },
+      },
+      _count: {
+        select: {
+          errors: true,
+        },
+      },
+    },
+  });
+
+  if (!batch) {
+    return null;
+  }
+
+  return {
+    id: batch.id,
+    kind: batch.kind,
+    status: batch.status,
+    fileName: batch.fileName,
+    fileMimeType: batch.fileMimeType,
+    fileSizeBytes: batch.fileSizeBytes,
+    totalRows: batch.totalRows,
+    validRows: batch.validRows,
+    invalidRows: batch.invalidRows,
+    warningCount: countWarnings(batch.warnings),
+    errorCount: batch._count.errors,
+    warnings: extractWarnings(batch.warnings),
+    uploadedAt: batch.uploadedAt,
+    createdAt: batch.createdAt,
+    updatedAt: batch.updatedAt,
+    errors: batch.errors.map((error) => ({
+      id: error.id,
+      rowNumber: error.rowNumber,
+      fieldName: error.fieldName,
+      message: error.message,
+      rawRow: error.rawRow,
+      createdAt: error.createdAt,
+    })),
   };
 }
 
@@ -306,6 +470,8 @@ async function findStructuredBaseNameProductMatch(
 
   const matches = await client.product.findMany({
     where: {
+      // Prefer baseName for current records, but keep normalizedName base-name lookup
+      // for compatibility with products created before baseName was populated consistently.
       OR: [{ baseName: candidateBaseName }, { normalizedName: candidateBaseName }],
     },
   });
@@ -329,6 +495,16 @@ async function findStructuredBaseNameProductMatch(
     });
 
   return compatibleMatches[0]?.product ?? null;
+}
+
+async function findProductByStoredCanonicalField(
+  storedCanonicalField: string,
+  client: DbClient = db,
+): Promise<Product | null> {
+  // Product.normalizedName currently stores the composite normalized key persisted by imports.
+  return client.product.findFirst({
+    where: { normalizedName: storedCanonicalField },
+  });
 }
 
 async function updateProductCanonicalFields(
@@ -551,9 +727,7 @@ export async function findOrCreateProduct(
   const decision = await determineProductMatchDecision(
     {
       findProductByStoredCanonicalField: async (storedCanonicalField) =>
-        client.product.findFirst({
-          where: { normalizedName: storedCanonicalField },
-        }),
+        findProductByStoredCanonicalField(storedCanonicalField, client),
       findAliasByRawName: async (aliasName) =>
         client.productAlias.findFirst({
           where: { aliasName },
@@ -628,9 +802,33 @@ export async function findOrCreateProduct(
     return matchedProduct;
   }
 
+  const autoCreationEligibility = evaluateNewProductAutoCreationEligibility({
+    rawProductName,
+    candidates,
+  });
+
+  if (!autoCreationEligibility.allowed) {
+    logProductMatchDecision(decision, null, candidates.explanation.rulesApplied);
+    logger.warn('Import product auto-creation blocked', {
+      rawProductName,
+      normalizedKey: candidates.normalizedKey,
+      normalizedName: candidates.normalizedName,
+      confidence: candidates.confidence,
+      manufacturer: manufacturer?.trim() || null,
+      reason: autoCreationEligibility.reason,
+      rulesApplied: candidates.explanation.rulesApplied,
+    });
+
+    throw new Error(
+      autoCreationEligibility.reason ??
+        'No safe existing product match was found. This row needs product review before catalog creation.',
+    );
+  }
+
   const product = await client.product.create({
     data: {
       name: rawProductName,
+      // Current schema persists the composite normalized key in Product.normalizedName.
       normalizedName: candidates.normalizedKey,
       baseName: candidates.baseName,
       manufacturer: manufacturer?.trim() || null,

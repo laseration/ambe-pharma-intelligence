@@ -392,7 +392,10 @@ model Product {
   id                        String              @id @default(cuid())
   sku                       String?             @unique
   name                      String
+  /// Current imports persist the composite normalized product key here.
+  /// This is not guaranteed to be the base-name-style normalized text.
   normalizedName            String
+  /// Base-name-style normalized product text emitted by the normalizer when available.
   baseName                  String?
   manufacturer              String?
   strength                  String?

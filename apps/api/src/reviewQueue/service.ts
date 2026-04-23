@@ -13,7 +13,7 @@ import {
 import { listStoredEmailReviewItems, type StoredEmailReviewItem } from '../email/inbound/reviewStore';
 import { supplierScorecardService, type SupplierScorecardRecord } from '../suppliers/scorecardService';
 import { listInboundItems } from '../telegram/inbound/service';
-import { buildReviewSummary, type ReviewSummary } from './summary';
+import { buildReviewSummary, describeReviewReason, type ReviewSummary } from './summary';
 import { offerWorkflowService } from './workflowService';
 
 type TelegramReviewItem = Awaited<ReturnType<typeof listInboundItems>>[number];
@@ -142,7 +142,7 @@ function mapTelegramItem(item: TelegramReviewItem): ReviewQueueItem | null {
     fileName: item.fileName,
     subject: item.caption,
     processingStatus: item.processingStatus,
-    reason,
+    reason: describeReviewReason({ reason }),
     reviewSummary,
     linkedImportBatch: item.linkedImportBatch
       ? {
@@ -187,7 +187,7 @@ function mapEmailItem(item: StoredEmailReviewItem): ReviewQueueItem | null {
     fileName: item.attachment.fileName,
     subject: item.email.subject || null,
     processingStatus: item.processingStatus,
-    reason: item.error || item.reason || 'Queued for internal review.',
+    reason: describeReviewReason({ reason: item.error || item.reason || 'Queued for internal review.' }),
     reviewSummary,
     linkedImportBatch: item.importBatchId
       ? {
@@ -281,7 +281,12 @@ function mapEmailDerivedOfferItem(
     fileName: null,
     subject: typeof metadata?.subject === 'string' ? metadata.subject : null,
     processingStatus: item.status,
-    reason: item.sourceReviewReason ?? 'Email-derived offer requires review.',
+    reason: describeReviewReason({
+      reason: item.sourceReviewReason ?? 'Email-derived offer requires review.',
+      hasUnresolvedSupplier: item.hasUnresolvedSupplier,
+      hasConflictingSupplierCues: item.hasConflictingSupplierCues,
+      hasManufacturerAmbiguity: item.hasManufacturerAmbiguity,
+    }),
     workflowPriority: item.priority,
     workflowAssignee: item.assigneeLabel,
     qualificationStatus: item.supplierQualificationStatus,

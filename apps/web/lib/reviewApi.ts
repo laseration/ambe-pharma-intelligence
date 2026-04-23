@@ -125,7 +125,10 @@ export type ReviewWorkflowEvent = {
 
 type ListReviewWorkflowItemsOptions = {
   inboundEmailId?: string;
+  staleFirst?: boolean;
 };
+
+const MANUAL_REVIEW_WORKFLOW_STATUSES = new Set(['NEW', 'IN_REVIEW', 'NEEDS_INFO']);
 
 function getInternalApiBaseUrl(): string {
   return (
@@ -191,10 +194,14 @@ export async function listReviewWorkflowItems(
     searchParams.set('inboundEmailId', options.inboundEmailId);
   }
 
+  if (options?.staleFirst) {
+    searchParams.set('staleFirst', 'true');
+  }
+
   const payload = await requestJson<{ items: ReviewWorkflowListItem[] }>(
     `/review-queue/workflows?${searchParams.toString()}`,
   );
-  return payload.items;
+  return payload.items.filter((item) => MANUAL_REVIEW_WORKFLOW_STATUSES.has(item.status));
 }
 
 export async function getReviewWorkflowItem(workflowItemId: string): Promise<ReviewWorkflowDetail> {

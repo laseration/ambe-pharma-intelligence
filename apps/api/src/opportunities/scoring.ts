@@ -15,6 +15,7 @@ import type {
 type ExtendedSupplierPriceHistoryItem = {
   supplierId: string;
   unitPrice: number;
+  currencyCode: string | null;
   createdAt: Date;
   marketPriceEstimate: number | null;
   marketPriceConfidence: number | null;
@@ -263,12 +264,13 @@ function buildBreakdown(baseScore: number) {
   };
 }
 
-function formatPrice(value: number | null): string | null {
+function formatPrice(value: number | null, currencyCode?: string | null): string | null {
   if (value === null) {
     return null;
   }
 
-  return `\u00A3${value.toFixed(2)}`;
+  const normalizedCurrencyCode = currencyCode?.trim().toUpperCase();
+  return normalizedCurrencyCode ? `${normalizedCurrencyCode} ${value.toFixed(2)}` : value.toFixed(2);
 }
 
 function formatPct(value: number | null): string | null {
@@ -289,7 +291,8 @@ function isBestRecentKnownSupplierOffer(metrics: ExtendedOpportunityMetrics): bo
   );
 }
 
-function buildCommercialContext(metrics: ExtendedOpportunityMetrics) {
+function buildCommercialContext(context: ScoringContext, metrics: ExtendedOpportunityMetrics) {
+  const supplierCurrencyCode = getExtendedContext(context).supplierPriceHistory?.[0]?.currencyCode ?? null;
   const hasBestRecentKnownOffer = isBestRecentKnownSupplierOffer(metrics);
   const supplierSavingPct =
     metrics.latestSupplierBuyPrice !== null &&
@@ -315,6 +318,7 @@ function buildCommercialContext(metrics: ExtendedOpportunityMetrics) {
     priceDeltaVsMarketPct: metrics.priceDeltaVsMarketPct,
     supplierReliabilityScore: metrics.supplierReliabilityScore,
     volatilityScore: metrics.volatilityScore,
+    supplierCurrencyCode,
   };
 }
 
@@ -421,6 +425,7 @@ function evaluateBuyRule(
   metrics: ExtendedOpportunityMetrics,
   config: OpportunityConfig,
 ): RuleEvaluation {
+  const isTradingMode = config.businessMode === 'TRADING';
   const salesUnits = metrics.recentSalesUnits30d;
   const stockQty = metrics.currentStockQty;
   const priceChange = metrics.supplierPriceChangePct;
@@ -446,10 +451,15 @@ function evaluateBuyRule(
     meetsPriceImprovement ||
     (meetsMarketDiscount && marketConfidenceStrongEnough && supplierReliabilityNotWeak);
   const meetsDemand = salesUnits >= config.healthyDemandUnits30d;
-  const inventoryNotAlreadyHigh =
-    stockQty === null || stockQty < config.highStockThresholdUnits;
-  const inventorySnapshotFreshEnough =
-    inventoryAgeDays === null || inventoryAgeDays < config.maxInventorySnapshotAgeDays;
+  const inventoryNotAlreadyHigh = isTradingMode
+    ? true
+    : stockQty === null || stockQty < config.highStockThresholdUnits;
+  const inventorySnapshotFreshEnough = isTradingMode
+    ? true
+    : inventoryAgeDays === null || inventoryAgeDays < config.maxInventorySnapshotAgeDays;
+  const strongSellSideMargin =
+    metrics.estimatedMarginPct !== null &&
+    metrics.estimatedMarginPct >= config.pushMinMarginVsMarketPct;
 
   const eligible =
     hasLatestSupplierPrice &&
@@ -472,18 +482,32 @@ function evaluateBuyRule(
       salesUnits,
       config.healthyDemandUnits30d,
     ),
-    check(
-      'Current stock is below BUY stock-suppression threshold',
-      inventoryNotAlreadyHigh,
-      stockQty,
-      config.highStockThresholdUnits,
-    ),
-    check(
-      'Inventory snapshot is fresh enough for BUY',
-      inventorySnapshotFreshEnough,
-      inventoryAgeDays,
-      config.maxInventorySnapshotAgeDays,
-    ),
+    isTradingMode
+      ? check(
+          'Inventory posture does not suppress BUY in TRADING mode',
+          true,
+          config.businessMode,
+          'TRADING',
+        )
+      : check(
+          'Current stock is below BUY stock-suppression threshold',
+          inventoryNotAlreadyHigh,
+          stockQty,
+          config.highStockThresholdUnits,
+        ),
+    isTradingMode
+      ? check(
+          'Inventory freshness is not required for BUY in TRADING mode',
+          true,
+          config.businessMode,
+          'TRADING',
+        )
+      : check(
+          'Inventory snapshot is fresh enough for BUY',
+          inventorySnapshotFreshEnough,
+          inventoryAgeDays,
+          config.maxInventorySnapshotAgeDays,
+        ),
     check(
       'Market confidence is strong enough when simulated-market BUY path is used',
       marketConfidenceStrongEnough,
@@ -526,8 +550,11 @@ function evaluateBuyRule(
       builder.add('Supplier reliability supports repeatable BUY execution', 4);
     }
     builder.add('Healthy recent sales demand', Math.min(10, Math.floor(salesUnits / 10)));
+    if (isTradingMode && strongSellSideMargin) {
+      builder.add('Trading-mode sell-side margin supports acting on the BUY signal', 6);
+    }
     scoreBreakdown = builder.finalize();
-    const commercialContext = buildCommercialContext(metrics);
+    const commercialContext = buildCommercialContext(context, metrics);
     candidate = createCandidate(
       context,
       'BUY',
@@ -539,10 +566,13 @@ function evaluateBuyRule(
           : null,
         commercialContext.simulatedMarketPrice !== null &&
         commercialContext.priceDeltaVsMarketPct !== null
-          ? `Current supplier price sits about ${formatPct(Math.abs(commercialContext.priceDeltaVsMarketPct))} ${commercialContext.priceDeltaVsMarketPct < 0 ? 'below' : 'above'} the simulated market reference of ${formatPrice(commercialContext.simulatedMarketPrice)}.`
+          ? `Current supplier price sits about ${formatPct(Math.abs(commercialContext.priceDeltaVsMarketPct))} ${commercialContext.priceDeltaVsMarketPct < 0 ? 'below' : 'above'} the simulated market reference of ${formatPrice(commercialContext.simulatedMarketPrice, commercialContext.supplierCurrencyCode)}.`
           : null,
         commercialContext.estimatedMarginPct !== null && commercialContext.averageSalePrice !== null
           ? `At the current average sale price of ${formatPrice(commercialContext.averageSalePrice)}, estimated margin is about ${formatPct(commercialContext.estimatedMarginPct)}.`
+          : null,
+        isTradingMode && strongSellSideMargin
+          ? 'Current sell-side margin also looks strong enough for trading-led buying.'
           : null,
       ]),
       scoreBreakdown,
@@ -585,6 +615,7 @@ function evaluatePriceAlertRule(
   metrics: ExtendedOpportunityMetrics,
   config: OpportunityConfig,
 ): RuleEvaluation {
+  const isTradingMode = config.businessMode === 'TRADING';
   const priceChange = metrics.supplierPriceChangePct;
   const hasLatestSupplierPrice = metrics.latestSupplierBuyPrice !== null;
   const hasPriceChange = priceChange !== null;
@@ -632,6 +663,13 @@ function evaluatePriceAlertRule(
       Math.abs(value) > Math.abs(strongest) ? value : strongest,
     );
     const strongestAbsoluteChange = Math.abs(strongestDirectionalChange);
+    const lowerPriceSignal = strongestDirectionalChange < 0;
+    const tradingDemandMakesAlertActionable =
+      isTradingMode && lowerPriceSignal && metrics.recentSalesUnits30d >= config.healthyDemandUnits30d;
+    const tradingMarginStillViable =
+      tradingDemandMakesAlertActionable &&
+      metrics.estimatedMarginPct !== null &&
+      metrics.estimatedMarginPct >= config.lowMarginThresholdPct;
     const builder = buildBreakdown(config.priceAlertBaseScore);
     builder.add(
       'Supplier price changed against prior reference',
@@ -643,9 +681,15 @@ function evaluatePriceAlertRule(
     if (meetsMarketDropThreshold) {
       builder.add('Current supplier price dropped against simulated market', 8);
     }
+    if (tradingDemandMakesAlertActionable) {
+      builder.add('Trading-mode demand makes the lower supplier price actionable', 6);
+    }
+    if (tradingMarginStillViable) {
+      builder.add('Sell-side margin remains viable after the supplier price move', 4);
+    }
     scoreBreakdown = builder.finalize();
     const direction = strongestDirectionalChange < 0 ? 'lower' : 'higher';
-    const commercialContext = buildCommercialContext(metrics);
+    const commercialContext = buildCommercialContext(context, metrics);
     candidate = createCandidate(
       context,
       'PRICE_ALERT',
@@ -659,7 +703,10 @@ function evaluatePriceAlertRule(
           ? `Current supplier price is about ${formatPct(Math.abs(dropVsRollingAveragePct))} below the rolling supplier average.`
           : null,
         priceDeltaVsMarketPct !== null && priceDeltaVsMarketPct < 0 && commercialContext.simulatedMarketPrice !== null
-          ? `Current supplier price is about ${formatPct(Math.abs(priceDeltaVsMarketPct))} below the simulated market reference of ${formatPrice(commercialContext.simulatedMarketPrice)}.`
+          ? `Current supplier price is about ${formatPct(Math.abs(priceDeltaVsMarketPct))} below the simulated market reference of ${formatPrice(commercialContext.simulatedMarketPrice, commercialContext.supplierCurrencyCode)}.`
+          : null,
+        tradingDemandMakesAlertActionable
+          ? 'Healthy downstream demand makes this lower supplier price more actionable in trading mode.'
           : null,
         direction === 'higher' && commercialContext.estimatedMarginPct !== null
           ? `Review selling price cover because estimated margin is now about ${formatPct(commercialContext.estimatedMarginPct)}.`
@@ -707,13 +754,14 @@ function evaluatePushRule(
   const isTradingMode = config.businessMode === 'TRADING';
   const hasHealthyDemand = salesUnits >= config.healthyDemandUnits30d;
   const hasHighStock = stockQty >= config.highStockThresholdUnits;
+  const hasMargin = marginPct !== null;
   const marginNotWeak = marginPct === null || marginPct >= config.lowMarginThresholdPct;
   const strongMargin = marginPct !== null && marginPct >= config.pushMinMarginVsMarketPct;
   const buyPriceFavorableVsMarket = priceDeltaVsMarketPct !== null && priceDeltaVsMarketPct <= 0;
   const inventorySnapshotFreshEnough =
     inventoryAgeDays === null || inventoryAgeDays < config.maxInventorySnapshotAgeDays;
   const eligible = isTradingMode
-    ? hasHealthyDemand && marginNotWeak
+    ? hasHealthyDemand && hasMargin && marginNotWeak
     : hasHighStock && hasHealthyDemand && marginNotWeak && inventorySnapshotFreshEnough;
   const ruleChecks = [
     check(
@@ -722,6 +770,16 @@ function evaluatePushRule(
       salesUnits,
       config.healthyDemandUnits30d,
     ),
+    ...(isTradingMode
+      ? [
+          check(
+            'Estimated margin is available for trading-led PUSH',
+            hasMargin,
+            marginPct,
+            'required_in_trading',
+          ),
+        ]
+      : []),
     check(
       'Estimated margin is not weak for PUSH',
       marginNotWeak,
@@ -769,13 +827,16 @@ function evaluatePushRule(
       }
     }
     if (buyPriceFavorableVsMarket) {
-      builder.add('Current buy price remains favorable versus simulated market', 6);
+      builder.add(
+        'Current buy price remains favorable versus simulated market',
+        isTradingMode ? 8 : 6,
+      );
     }
     if (metrics.supplierReliabilityScore !== null && metrics.supplierReliabilityScore >= 0.65) {
-      builder.add('Reliable supplier pricing improves push confidence', 3);
+      builder.add('Reliable supplier pricing improves push confidence', isTradingMode ? 4 : 3);
     }
     scoreBreakdown = builder.finalize();
-    const commercialContext = buildCommercialContext(metrics);
+    const commercialContext = buildCommercialContext(context, metrics);
     candidate = createCandidate(
       context,
       'PUSH',
@@ -788,6 +849,10 @@ function evaluatePushRule(
               : null,
             commercialContext.priceDeltaVsMarketPct !== null && commercialContext.priceDeltaVsMarketPct <= 0
               ? 'Current supplier pricing also remains favorable against the simulated market reference.'
+              : null,
+            commercialContext.supplierReliabilityScore !== null &&
+            commercialContext.supplierReliabilityScore >= 0.65
+              ? 'Supplier reliability also supports acting on this trading-led push.'
               : null,
           ])
         : joinSentences([
@@ -946,6 +1011,7 @@ function evaluateLowMarginRule(
   metrics: ExtendedOpportunityMetrics,
   config: OpportunityConfig,
 ): RuleEvaluation {
+  const isTradingMode = config.businessMode === 'TRADING';
   const marginPct = metrics.estimatedMarginPct;
   const salesUnits = metrics.recentSalesUnits30d;
   const hasMargin = marginPct !== null;
@@ -970,10 +1036,18 @@ function evaluateLowMarginRule(
   let candidate: OpportunityCandidate | null = null;
 
   if (eligible) {
+    const hasHealthyDemand = salesUnits >= config.healthyDemandUnits30d;
+    const buyPriceAboveMarket = metrics.priceDeltaVsMarketPct !== null && metrics.priceDeltaVsMarketPct > 0;
     const builder = buildBreakdown(config.lowMarginBaseScore);
     builder.add('Estimated margin below threshold', 12);
+    if (isTradingMode && hasHealthyDemand) {
+      builder.add('Healthy recent demand makes the low margin commercially urgent', 4);
+    }
+    if (isTradingMode && buyPriceAboveMarket) {
+      builder.add('Current buy price sits above the simulated market reference', 6);
+    }
     scoreBreakdown = builder.finalize();
-    const commercialContext = buildCommercialContext(metrics);
+    const commercialContext = buildCommercialContext(context, metrics);
     candidate = createCandidate(
       context,
       'LOW_MARGIN',
@@ -981,7 +1055,13 @@ function evaluateLowMarginRule(
       joinSentences([
         'Estimated margin is below the configured threshold.',
         commercialContext.averageSalePrice !== null && commercialContext.latestSupplierBuyPrice !== null
-          ? `Average sale price is ${formatPrice(commercialContext.averageSalePrice)} against a supplier buy price of ${formatPrice(commercialContext.latestSupplierBuyPrice)}, leaving only about ${formatPct(commercialContext.estimatedMarginPct)} margin.`
+          ? `Average sale price is ${formatPrice(commercialContext.averageSalePrice)} against a supplier buy price of ${formatPrice(commercialContext.latestSupplierBuyPrice, commercialContext.supplierCurrencyCode)}, leaving only about ${formatPct(commercialContext.estimatedMarginPct)} margin.`
+          : null,
+        isTradingMode &&
+        commercialContext.priceDeltaVsMarketPct !== null &&
+        commercialContext.priceDeltaVsMarketPct > 0 &&
+        commercialContext.simulatedMarketPrice !== null
+          ? `Current supplier buy price also sits above the simulated market reference of ${formatPrice(commercialContext.simulatedMarketPrice, commercialContext.supplierCurrencyCode)}.`
           : null,
       ]),
       scoreBreakdown,
@@ -1114,9 +1194,26 @@ function evaluateOpportunityRules(
   metrics: ExtendedOpportunityMetrics,
   config: OpportunityConfig,
 ): RuleEvaluation[] {
+  const buyEvaluation = evaluateBuyRule(context, metrics, config);
+  const priceAlertEvaluation = evaluatePriceAlertRule(context, metrics, config);
+
+  const normalizedPriceAlertEvaluation =
+    buyEvaluation.eligible && priceAlertEvaluation.eligible
+      ? {
+          ...priceAlertEvaluation,
+          eligible: false,
+          blockingReasons: [
+            ...priceAlertEvaluation.blockingReasons,
+            'Actionable BUY opportunity already captures this supplier price move',
+          ],
+          scoreBreakdown: null,
+          candidate: null,
+        }
+      : priceAlertEvaluation;
+
   return [
-    evaluateBuyRule(context, metrics, config),
-    evaluatePriceAlertRule(context, metrics, config),
+    buyEvaluation,
+    normalizedPriceAlertEvaluation,
     evaluatePushRule(context, metrics, config),
     evaluateDeadStockRule(context, metrics, config),
     evaluateLowMarginRule(context, metrics, config),

@@ -1,10 +1,41 @@
-import type { Opportunity, OpportunityStatus, OpportunityType } from '@prisma/client';
+import type { Opportunity, OpportunityStatus, OpportunityType, Prisma } from '@prisma/client';
 
 import { db } from '../lib/db';
 import { logger } from '../lib/logger';
 import { opportunityConfig } from './config';
 import { auditOpportunityScoring, scoreOpportunityCandidates } from './scoring';
 import type { OpportunityCandidate, OpportunityScoringAudit, ScoringContext } from './types';
+
+const opportunityListInclude = {
+  product: {
+    select: {
+      id: true,
+      name: true,
+      normalizedName: true,
+    },
+  },
+  supplier: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+} satisfies Prisma.OpportunityInclude;
+
+type OpportunityTriageActor = {
+  actorType: string;
+  actorIdentifier: string | null;
+};
+
+type OpportunityTriageInput = OpportunityTriageActor & {
+  opportunityId: string;
+  status: Extract<OpportunityStatus, 'REVIEWED' | 'ACTIONED' | 'DISMISSED'>;
+  note?: string | null;
+};
+
+type OpportunityWithListRelations = Prisma.OpportunityGetPayload<{
+  include: typeof opportunityListInclude;
+}>;
 
 function startOfWindow(now: Date, days: number): Date {
   return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
@@ -30,6 +61,7 @@ async function buildScoringContexts(now: Date, productId?: string): Promise<Scor
       },
     }),
     db.inventorySnapshot.findMany({
+      where: productId ? { productId } : undefined,
       orderBy: { snapshotDate: 'desc' },
       select: {
         productId: true,
@@ -57,13 +89,27 @@ async function buildScoringContexts(now: Date, productId?: string): Promise<Scor
         },
       },
       where: {
-        productId: {
-          not: null,
-        },
+        ...(productId
+          ? {
+              AND: [
+                {
+                  productId: {
+                    not: null,
+                  },
+                },
+                { productId },
+              ],
+            }
+          : {
+              productId: {
+                not: null,
+              },
+            }),
       },
     }),
     db.salesRecord.findMany({
       where: {
+        ...(productId ? { productId } : {}),
         saleDate: {
           gte: windowStart,
         },
@@ -140,6 +186,7 @@ async function buildScoringContexts(now: Date, productId?: string): Promise<Scor
       supplierPriceHistory: comparableSupplierPriceHistory.map((priceItem) => ({
         supplierId: priceItem.supplierId,
         unitPrice: priceItem.unitPrice.toNumber(),
+        currencyCode: priceItem.currencyCode,
         createdAt: priceItem.createdAt,
         marketPriceEstimate: priceItem.marketPriceEstimate?.toNumber() ?? null,
         marketPriceConfidence: priceItem.marketPriceConfidence ?? null,
@@ -222,6 +269,102 @@ export async function regenerateOpportunities() {
   };
 }
 
+function getMetadataObject(metadata: Prisma.JsonValue | null): Prisma.JsonObject {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return {};
+  }
+
+  return { ...(metadata as Prisma.JsonObject) };
+}
+
+function getTriageHistory(metadata: Prisma.JsonObject): Prisma.JsonObject[] {
+  const triageValue = metadata.triage;
+  if (!triageValue || typeof triageValue !== 'object' || Array.isArray(triageValue)) {
+    return [];
+  }
+
+  const historyValue = (triageValue as Prisma.JsonObject).history;
+  if (!Array.isArray(historyValue)) {
+    return [];
+  }
+
+  return historyValue.filter(
+    (entry): entry is Prisma.JsonObject =>
+      Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry),
+  );
+}
+
+function buildTriageMetadata(
+  opportunity: Opportunity,
+  input: OpportunityTriageInput,
+): Prisma.InputJsonValue {
+  const metadata = getMetadataObject(opportunity.metadata);
+  const history = getTriageHistory(metadata);
+  const triageEntry: Prisma.JsonObject = {
+    previousStatus: opportunity.status,
+    newStatus: input.status,
+    actorType: input.actorType,
+    actorIdentifier: input.actorIdentifier,
+    note: input.note?.trim() || null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  return {
+    ...metadata,
+    triage: {
+      latest: triageEntry,
+      history: [...history.slice(-9), triageEntry],
+    },
+  } satisfies Prisma.InputJsonObject;
+}
+
+function isAllowedOpportunityStatusTransition(
+  currentStatus: OpportunityStatus,
+  nextStatus: OpportunityTriageInput['status'],
+): boolean {
+  if (currentStatus === nextStatus) {
+    return true;
+  }
+
+  if (currentStatus === 'OPEN') {
+    return true;
+  }
+
+  if (currentStatus === 'REVIEWED') {
+    return nextStatus === 'ACTIONED' || nextStatus === 'DISMISSED';
+  }
+
+  return false;
+}
+
+export async function updateOpportunityStatus(
+  input: OpportunityTriageInput,
+): Promise<OpportunityWithListRelations | null> {
+  const opportunity = await db.opportunity.findUnique({
+    where: { id: input.opportunityId },
+    include: opportunityListInclude,
+  });
+
+  if (!opportunity) {
+    return null;
+  }
+
+  if (!isAllowedOpportunityStatusTransition(opportunity.status, input.status)) {
+    throw new Error(
+      `Opportunity cannot move from ${opportunity.status} to ${input.status}.`,
+    );
+  }
+
+  return db.opportunity.update({
+    where: { id: input.opportunityId },
+    data: {
+      status: input.status,
+      metadata: buildTriageMetadata(opportunity, input),
+    },
+    include: opportunityListInclude,
+  });
+}
+
 export async function getOpportunityScoringAudit(productId: string): Promise<OpportunityScoringAudit | null> {
   const [context] = await buildScoringContexts(new Date(), productId);
 
@@ -235,27 +378,19 @@ export async function getOpportunityScoringAudit(productId: string): Promise<Opp
 export async function listOpportunities(filters: {
   type?: OpportunityType;
   status?: OpportunityStatus;
+  sortBy?: 'score' | 'updatedAt';
+  take?: number;
 }) {
   return db.opportunity.findMany({
     where: {
       ...(filters.type ? { type: filters.type } : {}),
       ...(filters.status ? { status: filters.status } : {}),
     },
-    orderBy: [{ score: 'desc' }, { createdAt: 'desc' }],
-    include: {
-      product: {
-        select: {
-          id: true,
-          name: true,
-          normalizedName: true,
-        },
-      },
-      supplier: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-    },
+    orderBy:
+      filters.sortBy === 'updatedAt'
+        ? [{ updatedAt: 'desc' }, { createdAt: 'desc' }]
+        : [{ score: 'desc' }, { createdAt: 'desc' }],
+    ...(filters.take ? { take: filters.take } : {}),
+    include: opportunityListInclude,
   });
 }

@@ -3,6 +3,7 @@ import test, { type TestContext } from 'node:test';
 
 import { db } from '../../../lib/db';
 import { env } from '../../../config/env';
+import { createReviewQueueService } from '../../../reviewQueue/service';
 import { mergeResolvedOffers, persistPromotion, stageInboundEmail } from '../pipeline';
 import type { EmailInboundResult } from '../types';
 
@@ -42,6 +43,67 @@ function createInboundResult(overrides?: Partial<EmailInboundResult['items'][num
       },
     ],
   };
+}
+
+function createResolvedOffer(overrides?: Record<string, unknown>) {
+  return {
+    sourceKind: 'STRICT_BODY_MAIN',
+    sourceBlockText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
+    rawProductText: 'Amlodipine 5mg tabs 28',
+    normalizedProductNameCandidate: 'amlodipine 5mg tabs 28',
+    strengthCandidate: '5mg',
+    dosageFormCandidate: 'tabs',
+    packSizeCandidate: '28',
+    manufacturerCandidate: null,
+    supplierCandidate: 'Supplier Co',
+    priceCandidate: { toString: () => '8.40' } as never,
+    currencyCandidate: 'GBP',
+    minimumOrderQuantityCandidate: null,
+    availabilityCandidate: 'available',
+    sourceTrustScore: 85,
+    structureConfidence: 90,
+    fieldConfidence: 90,
+    entityResolutionConfidence: 88,
+    promotionConfidence: 88,
+    reviewReason: null,
+    aiAssisted: false,
+    evidences: [],
+    sourceDocumentIndex: 0,
+    resolutionCandidates: [
+      {
+        entityType: 'SUPPLIER' as const,
+        candidateId: 'supplier-1',
+        candidateName: 'Supplier Co',
+        confidence: 88,
+        reason: 'sender_mapping',
+        selected: true,
+      },
+      {
+        entityType: 'PRODUCT' as const,
+        candidateId: 'product-1',
+        candidateName: 'Amlodipine 5mg tabs 28',
+        confidence: 88,
+        reason: 'normalized_key_match',
+        selected: true,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function seedStagedOffer(
+  state: ReturnType<typeof installDbMocks>,
+  offerId: string,
+  inboundEmailId: string,
+  overrides?: Record<string, unknown>,
+) {
+  state.offers.push({
+    id: offerId,
+    inboundEmailId,
+    status: 'STAGED',
+    ...createResolvedOffer(),
+    ...overrides,
+  });
 }
 
 function installDbMocks(t: TestContext) {
@@ -450,6 +512,10 @@ function installDbMocks(t: TestContext) {
   });
 
   stubMethod(db.supplier, 'findUnique', async ({ where }: any) => {
+    if (where?.id) {
+      return state.suppliers.find((item) => item.id === where.id) ?? null;
+    }
+
     return state.suppliers.find((item) => item.normalizedName === where.normalizedName) ?? null;
   });
 
@@ -461,6 +527,20 @@ function installDbMocks(t: TestContext) {
 
   stubMethod(db.product, 'findFirst', async ({ where }: any) => {
     return state.products.find((item) => item.normalizedName === where.normalizedName) ?? null;
+  });
+
+  stubMethod(db.product, 'findMany', async ({ where }: any) => {
+    if (!where?.OR || !Array.isArray(where.OR)) {
+      return [];
+    }
+
+    return state.products.filter((item) =>
+      where.OR.some(
+        (clause: any) =>
+          (clause.baseName && item.baseName === clause.baseName) ||
+          (clause.normalizedName && item.normalizedName === clause.normalizedName),
+      ),
+    );
   });
 
   stubMethod(db.product, 'findUnique', async ({ where }: any) => {
@@ -556,41 +636,16 @@ test('same inbound email processed twice does not duplicate staged offers', asyn
 
 test('persistPromotion is idempotent and reuses one supplier price list per inbound email batch', async (t) => {
   const state = installDbMocks(t);
+  state.suppliers.push({
+    id: 'supplier-1',
+    name: 'Supplier Co',
+    normalizedName: 'supplier co',
+  });
 
-  const baseOffer = {
-    sourceKind: 'STRICT_BODY_MAIN',
-    sourceBlockText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
-    rawProductText: 'Amlodipine 5mg tabs 28',
-    normalizedProductNameCandidate: 'amlodipine 5mg tabs 28',
-    strengthCandidate: '5mg',
-    dosageFormCandidate: 'tabs',
-    packSizeCandidate: '28',
-    manufacturerCandidate: null,
-    supplierCandidate: 'Supplier Co',
-    priceCandidate: { toString: () => '8.40' } as never,
-    currencyCandidate: 'GBP',
-    minimumOrderQuantityCandidate: null,
-    availabilityCandidate: 'available',
-    sourceTrustScore: 85,
-    structureConfidence: 90,
-    fieldConfidence: 90,
-    entityResolutionConfidence: 88,
-    promotionConfidence: 88,
-    reviewReason: null,
-    aiAssisted: false,
-    evidences: [],
-    sourceDocumentIndex: 0,
-    resolutionCandidates: [
-      {
-        entityType: 'SUPPLIER' as const,
-        candidateId: null,
-        candidateName: 'Supplier Co',
-        confidence: 88,
-        reason: 'sender_mapping',
-        selected: true,
-      },
-    ],
-  };
+  const baseOffer = createResolvedOffer();
+
+  seedStagedOffer(state, 'offer-1', 'email-1');
+  seedStagedOffer(state, 'offer-2', 'email-1');
 
   await persistPromotion('email-1', 'offer-1', baseOffer);
   await persistPromotion('email-1', 'offer-1', baseOffer);
@@ -611,6 +666,116 @@ test('persistPromotion is idempotent and reuses one supplier price list per inbo
     state.priceItems.filter((item) => item.rawProductName === 'Amlodipine 5mg tabs 28').length,
     1,
   );
+});
+
+test('persistPromotion derives explicit review reasons for review-only offers', async (t) => {
+  const scenarios = [
+    {
+      name: 'unresolved supplier',
+      overrides: {
+        resolutionCandidates: [
+          {
+            entityType: 'PRODUCT' as const,
+            candidateId: 'product-1',
+            candidateName: 'Amlodipine 5mg tabs 28',
+            confidence: 88,
+            reason: 'normalized_key_match',
+            selected: true,
+          },
+        ],
+      },
+      expectedReason: 'unresolved_supplier',
+    },
+    {
+      name: 'weak product match',
+      overrides: {
+        entityResolutionConfidence: 79,
+        resolutionCandidates: [
+          {
+            entityType: 'SUPPLIER' as const,
+            candidateId: 'supplier-1',
+            candidateName: 'Supplier Co',
+            confidence: 88,
+            reason: 'sender_mapping',
+            selected: true,
+          },
+        ],
+      },
+      expectedReason: 'weak_product_match',
+    },
+    {
+      name: 'missing price',
+      overrides: {
+        priceCandidate: null,
+      },
+      expectedReason: 'missing_price',
+    },
+    {
+      name: 'missing currency',
+      overrides: {
+        currencyCandidate: null,
+      },
+      expectedReason: 'missing_currency',
+    },
+    {
+      name: 'ocr text too weak',
+      overrides: {
+        sourceKind: 'STRICT_ATTACHMENT_TEXT',
+        structureConfidence: 84,
+      },
+      expectedReason: 'ocr_text_too_weak',
+    },
+    {
+      name: 'source trust too low',
+      overrides: {
+        sourceTrustScore: 54,
+      },
+      expectedReason: 'source_trust_too_low',
+    },
+    {
+      name: 'ai candidate review only',
+      overrides: {
+        aiAssisted: true,
+      },
+      expectedReason: 'ai_candidate_review_only',
+    },
+    {
+      name: 'promotion threshold missing or weak fields',
+      overrides: {
+        fieldConfidence: 74,
+      },
+      expectedReason: 'promotion_threshold_missing_or_weak_fields',
+    },
+  ];
+
+  for (const [index, scenario] of scenarios.entries()) {
+    await t.test(scenario.name, async (subtest) => {
+      const state = installDbMocks(subtest);
+      state.suppliers.push({
+        id: 'supplier-1',
+        name: 'Supplier Co',
+        normalizedName: 'supplier co',
+      });
+      seedStagedOffer(state, `offer-review-${index + 1}`, 'email-review', scenario.overrides);
+      const result = await persistPromotion(
+        'email-review',
+        `offer-review-${index + 1}`,
+        createResolvedOffer(scenario.overrides),
+      );
+
+      assert.deepEqual(result, {
+        offerStatus: 'REVIEW_REQUIRED',
+        decisionStatus: 'REVIEW_REQUIRED',
+        reviewReason: scenario.expectedReason,
+      });
+      assert.equal(state.offers[0]?.status, 'REVIEW_REQUIRED');
+      assert.equal(state.offers[0]?.reviewReason, scenario.expectedReason);
+      assert.equal(state.promotionDecisions[0]?.status, 'REVIEW_REQUIRED');
+      assert.equal(state.promotionDecisions[0]?.reason, scenario.expectedReason);
+      assert.equal(state.priceLists.length, 0);
+      assert.equal(state.priceItems.length, 0);
+    });
+  }
 });
 
 test('review-required offers do not remain staged when supplier cues conflict', async (t) => {
@@ -708,9 +873,276 @@ test('parent inbound email review reason falls back to promotion threshold when 
   );
 
   assert.equal(state.offers.length, 1);
-  assert.equal(state.offers[0]?.reviewReason, 'promotion_threshold_not_met');
+  assert.equal(state.offers[0]?.reviewReason, 'unresolved_supplier');
   assert.equal(state.inboundEmails[0]?.processingStatus, 'REVIEW_REQUIRED');
-  assert.equal(state.inboundEmails[0]?.reviewReason, 'promotion_threshold_not_met');
+  assert.equal(state.inboundEmails[0]?.reviewReason, 'unresolved_supplier');
+});
+
+test('specific promotion review reason carries through workflow and parent email status', async (t) => {
+  const state = installDbMocks(t);
+  const originalMappings = env.emailInboundSupplierMappings;
+  const originalAllowedSenders = env.emailInboundAllowedSenders;
+
+  env.emailInboundSupplierMappings = [{ pattern: 'pricing@supplier.co', supplierName: 'Supplier Co' }];
+  env.emailInboundAllowedSenders = ['pricing@supplier.co'];
+  state.products.push({
+    id: 'product-1',
+    name: 'Amlodipine 5mg tablets 28',
+    normalizedName: 'amlodipine|5mg|tablet|28',
+    baseName: 'amlodipine',
+    manufacturer: null,
+  });
+  state.suppliers.push({
+    id: 'supplier-1',
+    name: 'Supplier Co',
+    normalizedName: 'supplier co',
+  });
+
+  t.after(() => {
+    env.emailInboundSupplierMappings = originalMappings;
+    env.emailInboundAllowedSenders = originalAllowedSenders;
+  });
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'graph-missing-currency',
+      messageId: 'internet-missing-currency',
+      from: 'pricing@supplier.co',
+      subject: 'Offer',
+      bodyText: 'Amlodipine 5mg tabs 28 - 8.40',
+    },
+    createInboundResult(),
+  );
+
+  assert.equal(state.offers.length, 1);
+  assert.equal(state.offers[0]?.status, 'REVIEW_REQUIRED');
+  assert.equal(state.offers[0]?.reviewReason, 'missing_currency');
+  assert.equal(state.promotionDecisions[0]?.reason, 'missing_currency');
+  assert.equal(state.workflowItems.length, 1);
+  assert.equal(state.workflowItems[0]?.sourceReviewReason, 'missing_currency');
+  assert.equal(state.inboundEmails[0]?.processingStatus, 'REVIEW_REQUIRED');
+  assert.equal(state.inboundEmails[0]?.reviewReason, 'missing_currency');
+
+  const reviewQueueService = createReviewQueueService({
+    listTelegramInboundItems: async () => [],
+    listEmailReviewItems: () => [],
+    listEmailDerivedOfferItems: async () => (await db.offerWorkflowItem.findMany({})) as never,
+    getSupplierScorecardsForIds: async () => ({}),
+    getTradeOpportunitiesForOfferIds: async () => ({}),
+    getOfferFeedbackSummariesForOfferIds: async () => ({}),
+    getOfferLearningSummariesForOfferIds: async () => ({}),
+    getAutomationReadinessOverview: async () =>
+      ({
+        policy: {
+          globalMode: 'INTERNAL_SIGNALS_ONLY',
+        },
+        evaluation: {
+          readinessRecommendation: 'review more samples',
+        },
+        decisions: {
+          internalSignals: { eligible: false, blockedReasons: [] },
+          supplierDrafts: { eligible: false, blockedReasons: [] },
+          buyerDrafts: { eligible: false, blockedReasons: [] },
+        },
+        recommendedAction: 'review more samples',
+      }) as never,
+  });
+
+  const reviewQueueItems = await reviewQueueService.listItems();
+
+  assert.equal(reviewQueueItems.length, 1);
+  assert.equal(reviewQueueItems[0]?.reason, 'Missing currency');
+  assert.equal(reviewQueueItems[0]?.reviewSummary?.reviewReason, 'Missing currency');
+  assert.match(reviewQueueItems[0]?.reviewSummary?.missingOrUnclear ?? '', /currency is missing or unclear/i);
+});
+
+test('unresolved supplier review reason stays consistent across storage and queue surfaces', async (t) => {
+  const state = installDbMocks(t);
+  const originalMappings = env.emailInboundSupplierMappings;
+  const originalAllowedSenders = env.emailInboundAllowedSenders;
+
+  env.emailInboundSupplierMappings = [];
+  env.emailInboundAllowedSenders = ['pricing@supplier.co'];
+
+  t.after(() => {
+    env.emailInboundSupplierMappings = originalMappings;
+    env.emailInboundAllowedSenders = originalAllowedSenders;
+  });
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'graph-unresolved-supplier',
+      messageId: 'internet-unresolved-supplier',
+      from: 'pricing@supplier.co',
+      subject: 'Offer',
+      bodyText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
+    },
+    createInboundResult(),
+  );
+
+  assert.equal(state.offers.length, 1);
+  assert.equal(state.offers[0]?.status, 'REVIEW_REQUIRED');
+  assert.equal(state.offers[0]?.reviewReason, 'unresolved_supplier');
+  assert.equal(state.promotionDecisions[0]?.reason, 'unresolved_supplier');
+  assert.equal(state.workflowItems.length, 1);
+  assert.equal(state.workflowItems[0]?.sourceReviewReason, 'unresolved_supplier');
+  assert.equal(state.inboundEmails[0]?.processingStatus, 'REVIEW_REQUIRED');
+  assert.equal(state.inboundEmails[0]?.reviewReason, 'unresolved_supplier');
+
+  const reviewQueueService = createReviewQueueService({
+    listTelegramInboundItems: async () => [],
+    listEmailReviewItems: () => [],
+    listEmailDerivedOfferItems: async () => (await db.offerWorkflowItem.findMany({})) as never,
+    getSupplierScorecardsForIds: async () => ({}),
+    getTradeOpportunitiesForOfferIds: async () => ({}),
+    getOfferFeedbackSummariesForOfferIds: async () => ({}),
+    getOfferLearningSummariesForOfferIds: async () => ({}),
+    getAutomationReadinessOverview: async () =>
+      ({
+        policy: {
+          globalMode: 'INTERNAL_SIGNALS_ONLY',
+        },
+        evaluation: {
+          readinessRecommendation: 'review more samples',
+        },
+        decisions: {
+          internalSignals: { eligible: false, blockedReasons: [] },
+          supplierDrafts: { eligible: false, blockedReasons: [] },
+          buyerDrafts: { eligible: false, blockedReasons: [] },
+        },
+        recommendedAction: 'review more samples',
+      }) as never,
+  });
+
+  const reviewQueueItems = await reviewQueueService.listItems();
+
+  assert.equal(reviewQueueItems.length, 1);
+  assert.equal(reviewQueueItems[0]?.reason, 'Unresolved supplier');
+  assert.equal(reviewQueueItems[0]?.reviewSummary?.reviewReason, 'Unresolved supplier');
+  assert.match(
+    reviewQueueItems[0]?.reviewSummary?.missingOrUnclear ?? '',
+    /supplier could not be resolved safely/i,
+  );
+});
+
+test('mapped supplier cue without canonical supplier record stays unresolved', async (t) => {
+  const state = installDbMocks(t);
+  const originalMappings = env.emailInboundSupplierMappings;
+  const originalAllowedSenders = env.emailInboundAllowedSenders;
+
+  env.emailInboundSupplierMappings = [{ pattern: 'pricing@supplier.co', supplierName: 'Supplier Co' }];
+  env.emailInboundAllowedSenders = ['pricing@supplier.co'];
+  state.products.push({
+    id: 'product-1',
+    name: 'Amlodipine 5mg tablets 28',
+    normalizedName: 'amlodipine|5mg|tablet|28',
+    baseName: 'amlodipine',
+    manufacturer: null,
+  });
+
+  t.after(() => {
+    env.emailInboundSupplierMappings = originalMappings;
+    env.emailInboundAllowedSenders = originalAllowedSenders;
+  });
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'graph-mapped-but-unresolved-supplier',
+      messageId: 'internet-mapped-but-unresolved-supplier',
+      from: 'pricing@supplier.co',
+      subject: 'Offer',
+      bodyText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
+    },
+    createInboundResult(),
+  );
+
+  assert.equal(state.offers.length, 1);
+  assert.equal(state.offers[0]?.status, 'REVIEW_REQUIRED');
+  assert.equal(state.offers[0]?.reviewReason, 'unresolved_supplier');
+  assert.equal(state.offers[0]?.supplierCandidate, null);
+  assert.equal(state.promotionDecisions[0]?.reason, 'unresolved_supplier');
+  assert.equal(state.workflowItems.length, 1);
+  assert.equal(state.workflowItems[0]?.sourceReviewReason, 'unresolved_supplier');
+  assert.equal(state.priceLists.length, 0);
+  assert.equal(state.priceItems.length, 0);
+});
+
+test('weak product match review reason stays consistent across storage and queue surfaces', async (t) => {
+  const state = installDbMocks(t);
+  const originalMappings = env.emailInboundSupplierMappings;
+  const originalAllowedSenders = env.emailInboundAllowedSenders;
+
+  env.emailInboundSupplierMappings = [{ pattern: 'pricing@supplier.co', supplierName: 'Supplier Co' }];
+  env.emailInboundAllowedSenders = ['pricing@supplier.co'];
+
+  t.after(() => {
+    env.emailInboundSupplierMappings = originalMappings;
+    env.emailInboundAllowedSenders = originalAllowedSenders;
+  });
+
+  state.suppliers.push({
+    id: 'supplier-1',
+    name: 'Supplier Co',
+    normalizedName: 'supplier co',
+  });
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'graph-weak-product-match',
+      messageId: 'internet-weak-product-match',
+      from: 'pricing@supplier.co',
+      subject: 'Offer',
+      bodyText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
+    },
+    createInboundResult(),
+  );
+
+  assert.equal(state.offers.length, 1);
+  assert.equal(state.offers[0]?.status, 'REVIEW_REQUIRED');
+  assert.equal(state.offers[0]?.reviewReason, 'weak_product_match');
+  assert.equal(state.promotionDecisions[0]?.reason, 'weak_product_match');
+  assert.equal(state.workflowItems.length, 1);
+  assert.equal(state.workflowItems[0]?.sourceReviewReason, 'weak_product_match');
+  assert.equal(state.inboundEmails[0]?.processingStatus, 'REVIEW_REQUIRED');
+  assert.equal(state.inboundEmails[0]?.reviewReason, 'weak_product_match');
+
+  const reviewQueueService = createReviewQueueService({
+    listTelegramInboundItems: async () => [],
+    listEmailReviewItems: () => [],
+    listEmailDerivedOfferItems: async () => (await db.offerWorkflowItem.findMany({})) as never,
+    getSupplierScorecardsForIds: async () => ({}),
+    getTradeOpportunitiesForOfferIds: async () => ({}),
+    getOfferFeedbackSummariesForOfferIds: async () => ({}),
+    getOfferLearningSummariesForOfferIds: async () => ({}),
+    getAutomationReadinessOverview: async () =>
+      ({
+        policy: {
+          globalMode: 'INTERNAL_SIGNALS_ONLY',
+        },
+        evaluation: {
+          readinessRecommendation: 'review more samples',
+        },
+        decisions: {
+          internalSignals: { eligible: false, blockedReasons: [] },
+          supplierDrafts: { eligible: false, blockedReasons: [] },
+          buyerDrafts: { eligible: false, blockedReasons: [] },
+        },
+        recommendedAction: 'review more samples',
+      }) as never,
+  });
+
+  const reviewQueueItems = await reviewQueueService.listItems();
+
+  assert.equal(reviewQueueItems.length, 1);
+  assert.equal(reviewQueueItems[0]?.reason, 'Weak product match');
+  assert.equal(reviewQueueItems[0]?.reviewSummary?.reviewReason, 'Weak product match');
+  assert.match(
+    reviewQueueItems[0]?.reviewSummary?.missingOrUnclear ?? '',
+    /could not match it strongly enough/i,
+  );
 });
 
 test('mergeResolvedOffers preserves deterministic and ai extraction run provenance', () => {

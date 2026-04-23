@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client';
 import { env } from '../../config/env';
 import { parseUploadedFile } from '../../imports/parsers';
 import { buildProductCandidates } from '../../imports/normalization';
-import { findOrCreateProduct, findOrCreateSupplier } from '../../imports/service';
+import { findOrCreateProduct } from '../../imports/service';
 import { db } from '../../lib/db';
 import { logger } from '../../lib/logger';
 import { offerWorkflowService } from '../../reviewQueue/workflowService';
@@ -110,7 +110,68 @@ type ResolvedOfferCandidate = StagedOfferCandidate & {
 type PromotionResult = {
   offerStatus: 'AUTO_PROMOTED' | 'REVIEW_REQUIRED' | 'REJECTED';
   decisionStatus: 'AUTO_PROMOTED' | 'REVIEW_REQUIRED' | 'REJECTED';
+  reviewReason: string | null;
 };
+
+function findSelectedResolutionCandidate(
+  offer: ResolvedOfferCandidate,
+  entityType: 'PRODUCT' | 'SUPPLIER' | 'MANUFACTURER',
+) {
+  return (
+    offer.resolutionCandidates.find(
+      (candidate) => candidate.entityType === entityType && candidate.selected,
+    ) ?? null
+  );
+}
+
+function derivePromotionReviewReason(offer: ResolvedOfferCandidate): string {
+  if (offer.reviewReason) {
+    return offer.reviewReason;
+  }
+
+  const selectedSupplier = findSelectedResolutionCandidate(offer, 'SUPPLIER');
+  const selectedProduct = findSelectedResolutionCandidate(offer, 'PRODUCT');
+
+  if (offer.aiAssisted) {
+    return 'ai_candidate_review_only';
+  }
+
+  if (!selectedSupplier?.candidateId || !selectedSupplier.candidateName) {
+    return 'unresolved_supplier';
+  }
+
+  if (!offer.rawProductText || !selectedProduct) {
+    return 'weak_product_match';
+  }
+
+  if (!offer.priceCandidate) {
+    return 'missing_price';
+  }
+
+  if (!offer.currencyCandidate) {
+    return 'missing_currency';
+  }
+
+  if (offer.sourceTrustScore < 55) {
+    return 'source_trust_too_low';
+  }
+
+  if (offer.structureConfidence < 85) {
+    return offer.sourceKind.includes('ATTACHMENT_TEXT')
+      ? 'ocr_text_too_weak'
+      : 'weak_structured_content';
+  }
+
+  if (offer.fieldConfidence < 75) {
+    return 'promotion_threshold_missing_or_weak_fields';
+  }
+
+  if (offer.entityResolutionConfidence < 80) {
+    return 'weak_product_match';
+  }
+
+  return 'promotion_threshold_not_met';
+}
 
 function buildWorkflowSyncInput(
   createdOfferId: string,
@@ -123,7 +184,7 @@ function buildWorkflowSyncInput(
     inboundEmailId,
     offerStatus: promotionResult.offerStatus,
     sourceKind: offer.sourceKind,
-    reviewReason: offer.reviewReason,
+    reviewReason: promotionResult.reviewReason ?? offer.reviewReason,
     aiAssisted: offer.aiAssisted,
     sourceTrustScore: offer.sourceTrustScore ?? null,
     promotionConfidence: offer.promotionConfidence ?? null,
@@ -785,10 +846,11 @@ async function resolveOfferCandidates(
       (left, right) => right.confidence - left.confidence,
     );
     const supplierCueConflict = supplierCandidates.length > 1;
-    const selectedSupplierCandidate =
+    const selectedSupplierCue =
       supplierCueConflict
         ? null
         : supplierCandidates[0] ?? null;
+    let selectedResolvedSupplierName: string | null = null;
 
     for (const candidate of supplierCandidates) {
       const supplier = await db.supplier.findFirst({
@@ -796,16 +858,23 @@ async function resolveOfferCandidates(
           normalizedName: candidate.candidateName.trim().toLowerCase(),
         },
       });
+      const candidateSelected =
+        Boolean(selectedSupplierCue) &&
+        Boolean(supplier?.id) &&
+        normalizeFingerprintText(selectedSupplierCue?.candidateName) ===
+          normalizeFingerprintText(candidate.candidateName);
+
+      if (candidateSelected) {
+        selectedResolvedSupplierName = supplier?.name ?? candidate.candidateName;
+      }
+
       resolutionCandidates.push({
         entityType: 'SUPPLIER',
         candidateId: supplier?.id ?? null,
         candidateName: supplier?.name ?? candidate.candidateName,
         confidence: candidate.confidence,
         reason: candidate.reason,
-        selected:
-          Boolean(selectedSupplierCandidate) &&
-          normalizeFingerprintText(selectedSupplierCandidate?.candidateName) ===
-            normalizeFingerprintText(candidate.candidateName),
+        selected: candidateSelected,
         metadata: supplierCueConflict
           ? {
               ambiguous: true,
@@ -850,13 +919,15 @@ async function resolveOfferCandidates(
 
     resolvedOffers.push({
       ...offer,
-      supplierCandidate: selectedSupplierCandidate?.candidateName ?? null,
+      supplierCandidate: selectedResolvedSupplierName,
       reviewReason:
         offer.reviewReason ??
         (supplierCueConflict
           ? 'conflicting_supplier_cues'
-          : learnedHints.shouldForceReview
-            ? 'risky_source_profile_requires_review'
+          : !selectedResolvedSupplierName && offer.priceCandidate
+            ? 'unresolved_supplier'
+            : learnedHints.shouldForceReview
+              ? 'source_trust_too_low'
             : null),
       entityResolutionConfidence: bestResolutionConfidence,
       promotionConfidence,
@@ -914,7 +985,7 @@ export function buildAiOfferCandidates(
     fieldConfidence: row.confidence === 'HIGH' ? 68 : 55,
     entityResolutionConfidence: 0,
     promotionConfidence: 0,
-    reviewReason: 'ai_extracted_candidate_requires_review',
+    reviewReason: 'ai_candidate_review_only',
     aiAssisted: true,
     evidences: [
       {
@@ -992,7 +1063,8 @@ export async function persistPromotion(
 
   if (
     offer.aiAssisted ||
-    !selectedSupplier?.candidateName ||
+    !selectedSupplier?.candidateId ||
+    !selectedSupplier.candidateName ||
     !offer.rawProductText ||
     !offer.priceCandidate ||
     !offer.currencyCandidate ||
@@ -1002,12 +1074,13 @@ export async function persistPromotion(
     offer.entityResolutionConfidence < 80 ||
     offer.promotionConfidence < 80
   ) {
+    const reviewReason = derivePromotionReviewReason(offer);
     await db.$transaction(async (tx) => {
       await tx.emailDerivedOffer.update({
         where: { id: offerId },
         data: {
           status: 'REVIEW_REQUIRED',
-          reviewReason: offer.reviewReason ?? 'promotion_threshold_not_met',
+          reviewReason,
         },
       });
 
@@ -1016,7 +1089,7 @@ export async function persistPromotion(
           inboundEmailId,
           emailDerivedOfferId: offerId,
           status: 'REVIEW_REQUIRED',
-          reason: offer.reviewReason ?? 'promotion_threshold_not_met',
+          reason: reviewReason,
         },
       });
     });
@@ -1024,6 +1097,7 @@ export async function persistPromotion(
     return {
       offerStatus: 'REVIEW_REQUIRED',
       decisionStatus: 'REVIEW_REQUIRED',
+      reviewReason,
     };
   }
 
@@ -1032,7 +1106,16 @@ export async function persistPromotion(
   const unitPrice = offer.priceCandidate;
 
   await db.$transaction(async (tx) => {
-    const supplier = await findOrCreateSupplier(selectedSupplier.candidateName, tx);
+    const supplier = await tx.supplier.findUnique({
+      where: {
+        id: selectedSupplier.candidateId!,
+      },
+    });
+
+    if (!supplier) {
+      throw new Error(`Resolved supplier ${selectedSupplier.candidateId} was not found during promotion.`);
+    }
+
     const product = await findOrCreateProduct(
       rawProductText,
       buildProductCandidates(rawProductText),
@@ -1142,6 +1225,7 @@ export async function persistPromotion(
   return {
     offerStatus: 'AUTO_PROMOTED',
     decisionStatus: 'AUTO_PROMOTED',
+    reviewReason: null,
   };
 }
 
@@ -1395,6 +1479,7 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
     }
   }
   const finalOfferStatuses: PromotionResult['offerStatus'][] = [];
+  const finalOfferReviewReasons: string[] = [];
 
   for (const offer of resolvedOffers) {
     const sourceDocument = documents.find((document) => document.documentIndex === offer.sourceDocumentIndex) ?? null;
@@ -1511,6 +1596,9 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
       buildWorkflowSyncInput(createdOffer.id, inboundEmail.id, promotionResult, offer),
     );
     finalOfferStatuses.push(promotionResult.offerStatus);
+    if (promotionResult.reviewReason) {
+      finalOfferReviewReasons.push(promotionResult.reviewReason);
+    }
   }
 
   const currentOfferFingerprints = resolvedOffers.map((offer) =>
@@ -1558,9 +1646,11 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
             ? 'REJECTED'
             : 'STAGED';
   const resolvedOfferReviewReason = resolvedOffers.find((offer) => offer.reviewReason)?.reviewReason ?? null;
+  const promotionReviewReason = finalOfferReviewReasons[0] ?? null;
   const finalReviewReason =
     finalProcessingStatus === 'REVIEW_REQUIRED'
-      ? resolvedOfferReviewReason ??
+      ? promotionReviewReason ??
+        resolvedOfferReviewReason ??
         (finalOfferStatuses.some((status) => status === 'REVIEW_REQUIRED') ? 'promotion_threshold_not_met' : null) ??
         bodyItem?.reason ??
         result.reason ??

@@ -33,6 +33,170 @@ const REVIEW_STATUSES = new Set([
   'ORDERED',
 ]);
 
+type ReasonDetail = {
+  reviewReason: string;
+  missingOrUnclear: string;
+  suggestedAction: string;
+};
+
+function normalizeReasonCode(reason: string | null): string | null {
+  const trimmed = reason?.trim();
+  return trimmed ? trimmed.toLowerCase() : null;
+}
+
+function buildReasonDetail(input: ReviewSummaryInput): ReasonDetail | null {
+  const reasonCode = normalizeReasonCode(input.reason);
+
+  if (input.hasConflictingSupplierCues || reasonCode === 'conflicting_supplier_cues') {
+    return {
+      reviewReason: 'Conflicting supplier cues',
+      missingOrUnclear:
+        'The item contains more than one supplier signal, so the system could not choose one safely.',
+      suggestedAction:
+        'Check the sender, signature, forwarded text, and offer details, then confirm the correct supplier before proceeding.',
+    };
+  }
+
+  if (input.hasUnresolvedSupplier || reasonCode === 'unresolved_supplier') {
+    return {
+      reviewReason: 'Unresolved supplier',
+      missingOrUnclear:
+        'A commercial offer was found, but the supplier could not be resolved safely.',
+      suggestedAction:
+        'Confirm which supplier sent the offer before approving, promoting, or importing anything.',
+    };
+  }
+
+  if (input.hasManufacturerAmbiguity) {
+    return {
+      reviewReason: 'Manufacturer is unclear',
+      missingOrUnclear:
+        'There is more than one plausible manufacturer signal, so the manufacturer details are not safe yet.',
+      suggestedAction: 'Confirm the manufacturer details before approving or promoting the offer.',
+    };
+  }
+
+  switch (reasonCode) {
+    case 'weak_product_match':
+      return {
+        reviewReason: 'Weak product match',
+        missingOrUnclear:
+          'The product text was found, but the system could not match it strongly enough to an existing product.',
+        suggestedAction:
+          'Review the product wording, strength, formulation, and pack size before accepting the match or creating a new product.',
+      };
+    case 'missing_price':
+      return {
+        reviewReason: 'Missing price',
+        missingOrUnclear:
+          'The system found a possible offer, but no safe price could be extracted.',
+        suggestedAction: 'Open the item and confirm the unit price before proceeding.',
+      };
+    case 'missing_currency':
+      return {
+        reviewReason: 'Missing currency',
+        missingOrUnclear:
+          'A price was found, but the currency is missing or unclear.',
+        suggestedAction: 'Confirm the currency before approving or promoting the offer.',
+      };
+    case 'ocr_text_too_weak':
+      return {
+        reviewReason: 'OCR text too weak',
+        missingOrUnclear:
+          'Text was extracted from the attachment, but it was too weak or incomplete for safe automatic promotion.',
+        suggestedAction:
+          'Open the attachment, verify the commercial details manually, and correct any OCR mistakes before continuing.',
+      };
+    case 'source_trust_too_low':
+    case 'risky_source_profile_requires_review':
+      return {
+        reviewReason: 'Source trust too low',
+        missingOrUnclear:
+          'The source or sender is not trusted enough for automatic promotion.',
+        suggestedAction:
+          'Verify the sender and supplier identity first, then continue only if the offer is genuine and safe.',
+      };
+    case 'ai_candidate_review_only':
+    case 'ai_extracted_candidate_requires_review':
+      return {
+        reviewReason: 'AI candidate kept review-only',
+        missingOrUnclear:
+          'AI found a possible commercial offer, but AI output is not allowed to promote this directly.',
+        suggestedAction:
+          'Check the extracted fields against the original message and approve only if the offer is clearly correct.',
+      };
+    case 'deterministic_row_low_confidence':
+    case 'weak_structured_content':
+      return {
+        reviewReason: 'Structured text too weak',
+        missingOrUnclear:
+          'The item looks partly structured, but the extracted commercial line is too weak for safe automatic action.',
+        suggestedAction:
+          'Review the product, price, and pack details manually before accepting the row.',
+      };
+    case 'mixed_commercial_prose_requires_review':
+      return {
+        reviewReason: 'Mixed commercial prose',
+        missingOrUnclear:
+          'The message looks commercially relevant, but the offer details are embedded in messy prose.',
+        suggestedAction:
+          'Read the original message and confirm supplier, product, price, and MOQ manually.',
+      };
+    case 'promotion_threshold_missing_or_weak_fields':
+      return {
+        reviewReason: 'Missing or weak offer fields',
+        missingOrUnclear:
+          'Some commercial fields were found, but one or more required fields were still missing or too weak for safe promotion.',
+        suggestedAction:
+          'Check product, supplier, price, currency, and MOQ details, then decide whether the offer is complete enough to proceed.',
+      };
+    case 'no_viable_offer_candidates_extracted':
+      return {
+        reviewReason: 'No safe offer candidates found',
+        missingOrUnclear:
+          'The message looked commercially relevant, but no safe offer lines could be extracted for automatic handling.',
+        suggestedAction:
+          'Open the original message or attachment and confirm supplier, product, price, currency, and MOQ manually.',
+      };
+    case 'promotion_threshold_not_met':
+      return {
+        reviewReason: 'Promotion threshold not met',
+        missingOrUnclear:
+          'The offer looked commercially relevant, but one or more promotion checks were not strong enough.',
+        suggestedAction:
+          'Review the extracted fields, supplier resolution, and trust signals before deciding whether to continue manually.',
+      };
+    default:
+      return null;
+  }
+}
+
+export function describeReviewReason(input: {
+  reason: string | null;
+  hasUnresolvedSupplier?: boolean;
+  hasConflictingSupplierCues?: boolean;
+  hasManufacturerAmbiguity?: boolean;
+}): string {
+  const detail = buildReasonDetail({
+    processingStatus: 'REVIEW_REQUIRED',
+    fileType: null,
+    fileName: null,
+    inferredImportType: null,
+    reason: input.reason,
+    sender: null,
+    subjectOrCaption: null,
+    hasUnresolvedSupplier: input.hasUnresolvedSupplier,
+    hasConflictingSupplierCues: input.hasConflictingSupplierCues,
+    hasManufacturerAmbiguity: input.hasManufacturerAmbiguity,
+  });
+
+  if (detail) {
+    return detail.reviewReason;
+  }
+
+  return input.reason?.trim() || 'Queued for internal review.';
+}
+
 function humanizeImportType(importType: string | null): string | null {
   switch (importType) {
     case 'supplier-price-list':
@@ -90,6 +254,16 @@ export function buildReviewSummary(input: ReviewSummaryInput): ReviewSummary | n
       recognizedContent: buildRecognizedContent(input),
       missingOrUnclear: 'The file could not be processed safely with the current import pipeline.',
       suggestedAction: 'Open the item, check the file format and contents, and retry or import it manually.',
+    };
+  }
+
+  const explicitReasonDetail = buildReasonDetail(input);
+  if (explicitReasonDetail) {
+    return {
+      reviewReason: explicitReasonDetail.reviewReason,
+      recognizedContent: buildRecognizedContent(input),
+      missingOrUnclear: explicitReasonDetail.missingOrUnclear,
+      suggestedAction: explicitReasonDetail.suggestedAction,
     };
   }
 

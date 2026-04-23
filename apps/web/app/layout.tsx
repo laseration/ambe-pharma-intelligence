@@ -22,7 +22,10 @@ export default function RootLayout({ children }: RootLayoutProps) {
             <nav className="nav">
               <Link href="/">Login</Link>
               <Link href="/dashboard">Dashboard</Link>
+              <Link href="/dashboard/imports">Imports</Link>
+              <Link href="/dashboard/opportunities">Opportunities</Link>
               <Link href="/dashboard/review">Review Queue</Link>
+              <Link href="/dashboard/products">Product Duplicates</Link>
             </nav>
           </aside>
           <main className="content">{children}</main>
