@@ -1,9 +1,12 @@
+import { Prisma } from '@prisma/client';
+
 import { env } from '../../config/env';
 import { extractAttachmentText } from '../attachmentTextExtraction';
 import { parseStructuredPriceEmailBody, parseStructuredPriceText } from '../parsing';
 import { parseUploadedFile } from '../../imports/parsers';
 import { importInventory, importSales, importSupplierPriceList } from '../../imports/service';
 import type { ImportResponse, UploadFile } from '../../imports/types';
+import { db } from '../../lib/db';
 import { logger } from '../../lib/logger';
 import {
   extractManualSupplierOverride,
@@ -25,6 +28,31 @@ import type {
   EmailInboundResult,
   NormalizedEmailAttachment,
 } from './types';
+
+export type InboundEmailInboxStatusFilter = 'REVIEW_REQUIRED' | 'FAILED' | 'RECEIVED_ONLY';
+
+export type InboundEmailInboxListItem = {
+  id: string;
+  fromEmail: string;
+  fromName: string | null;
+  subject: string | null;
+  receivedAt: Date | null;
+  createdAt: Date;
+  processedAt: Date | null;
+  processingStatus: string;
+  triageStatus: string | null;
+  parserConfidence: string | null;
+  reviewReason: string | null;
+  sourceTrustScore: number | null;
+  structureConfidence: number | null;
+  businessWorthinessScore: number | null;
+  _count: {
+    documents: number;
+    extractionRuns: number;
+    derivedOffers: number;
+    offerWorkflowItems: number;
+  };
+};
 
 function createUploadFile(attachment: NormalizedEmailAttachment): UploadFile | null {
   if (!attachment.buffer) {
@@ -97,6 +125,69 @@ function buildTriageMetadata(item: EmailInboundItemResult, triage: ReturnType<ty
 
 function normalizeBodyFingerprint(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 500);
+}
+
+function normalizeInboxTake(value: number | null | undefined): number {
+  if (!value || Number.isNaN(value)) {
+    return 50;
+  }
+
+  return Math.min(Math.max(Math.trunc(value), 1), 100);
+}
+
+export async function listInboundEmailInboxItems(options?: {
+  take?: number;
+  status?: InboundEmailInboxStatusFilter;
+}): Promise<InboundEmailInboxListItem[]> {
+  const take = normalizeInboxTake(options?.take);
+  const where: Prisma.InboundEmailWhereInput =
+    options?.status === 'REVIEW_REQUIRED'
+      ? { processingStatus: 'REVIEW_REQUIRED' }
+      : options?.status === 'FAILED'
+        ? { processingStatus: 'FAILED' }
+        : options?.status === 'RECEIVED_ONLY'
+          ? {
+              processingStatus: 'RECEIVED',
+              derivedOffers: {
+                none: {},
+              },
+              offerWorkflowItems: {
+                none: {},
+              },
+            }
+          : {};
+
+  return db.inboundEmail.findMany({
+    where,
+    orderBy: {
+      createdAt: 'desc',
+    },
+    take,
+    select: {
+      id: true,
+      fromEmail: true,
+      fromName: true,
+      subject: true,
+      receivedAt: true,
+      createdAt: true,
+      processedAt: true,
+      processingStatus: true,
+      triageStatus: true,
+      parserConfidence: true,
+      reviewReason: true,
+      sourceTrustScore: true,
+      structureConfidence: true,
+      businessWorthinessScore: true,
+      _count: {
+        select: {
+          documents: true,
+          extractionRuns: true,
+          derivedOffers: true,
+          offerWorkflowItems: true,
+        },
+      },
+    },
+  });
 }
 
 export function createEmailInboundService(overrides?: Partial<EmailInboundDependencies>) {

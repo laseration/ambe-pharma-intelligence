@@ -16,8 +16,11 @@ function createRepositoryHarness() {
   const buyExecutionEvents: Array<Record<string, any>> = [];
   const tradeOpportunities: Array<Record<string, any>> = [];
   const tradeOpportunityEvents: Array<Record<string, any>> = [];
+  const tradeOpportunityPolicies: Array<Record<string, any>> = [];
   const feedbacks: Array<Record<string, any>> = [];
   const supplierQualifications: Array<Record<string, any>> = [];
+  const customers: Array<Record<string, any>> = [];
+  const salesRecords: Array<Record<string, any>> = [];
   let idCounter = 0;
   const nextId = (prefix: string) => `${prefix}-${++idCounter}`;
 
@@ -135,7 +138,10 @@ function createRepositoryHarness() {
     buyExecutionEvents: buyExecutionEvents.map((item) => ({ ...item })),
     tradeOpportunities: tradeOpportunities.map((item) => ({ ...item })),
     tradeOpportunityEvents: tradeOpportunityEvents.map((item) => ({ ...item })),
+    tradeOpportunityPolicies: tradeOpportunityPolicies.map((item) => ({ ...item })),
     feedbacks: feedbacks.map((item) => ({ ...item })),
+    customers: customers.map((item) => ({ ...item })),
+    salesRecords: salesRecords.map((item) => ({ ...item })),
   });
 
   const restoreState = (snapshot: ReturnType<typeof cloneState>) => {
@@ -147,7 +153,10 @@ function createRepositoryHarness() {
     buyExecutionEvents.splice(0, buyExecutionEvents.length, ...snapshot.buyExecutionEvents);
     tradeOpportunities.splice(0, tradeOpportunities.length, ...snapshot.tradeOpportunities);
     tradeOpportunityEvents.splice(0, tradeOpportunityEvents.length, ...snapshot.tradeOpportunityEvents);
+    tradeOpportunityPolicies.splice(0, tradeOpportunityPolicies.length, ...snapshot.tradeOpportunityPolicies);
     feedbacks.splice(0, feedbacks.length, ...snapshot.feedbacks);
+    customers.splice(0, customers.length, ...snapshot.customers);
+    salesRecords.splice(0, salesRecords.length, ...snapshot.salesRecords);
   };
 
   return {
@@ -159,8 +168,11 @@ function createRepositoryHarness() {
     buyExecutionEvents,
     tradeOpportunities,
     tradeOpportunityEvents,
+    tradeOpportunityPolicies,
     feedbacks,
     supplierQualifications,
+    customers,
+    salesRecords,
     makeWorkflowRecord,
     repository: {
       async transaction(callback: (repository: unknown) => Promise<unknown>) {
@@ -403,6 +415,27 @@ function createRepositoryHarness() {
             ['OPEN', 'ON_HOLD'].includes(item.status),
         ) as never;
       },
+      async createTradeOpportunity(data: Record<string, any>) {
+        const created = {
+          id: nextId('trade'),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          closedAt: null,
+          ...data,
+        };
+        tradeOpportunities.push(created);
+        return created as never;
+      },
+      async createTradeOpportunityPolicy(data: Record<string, any>) {
+        const created = {
+          id: nextId('trade-policy'),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...data,
+        };
+        tradeOpportunityPolicies.push(created);
+        return created as never;
+      },
       async updateTradeOpportunity(tradeOpportunityId: string, data: Record<string, any>) {
         const existing = tradeOpportunities.find((item) => item.id === tradeOpportunityId);
         if (!existing) {
@@ -420,6 +453,25 @@ function createRepositoryHarness() {
         };
         tradeOpportunityEvents.push(created);
         return created as never;
+      },
+      async listRecentSalesByProductId(input: { productId: string; windowStart: Date; currencyCode: string }) {
+        return salesRecords
+          .filter(
+            (item) =>
+              item.productId === input.productId &&
+              item.currencyCode === input.currencyCode &&
+              item.saleDate >= input.windowStart,
+          )
+          .sort((left, right) => right.saleDate.getTime() - left.saleDate.getTime())
+          .map((item) => ({
+            customerId: item.customerId,
+            customerName: customers.find((customer) => customer.id === item.customerId)?.name ?? 'Customer',
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            totalRevenue: item.totalRevenue,
+            saleDate: item.saleDate,
+            currencyCode: item.currencyCode,
+          })) as never;
       },
     },
   };
@@ -524,6 +576,135 @@ test('approving a workflow item creates exactly one buy decision and reapproval 
     harness.buyDecisionEvents.filter((event) => event.actionType === 'CREATED').length,
     1,
   );
+});
+
+test('approved offer with recent profitable sales creates one review-first trade opportunity', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  harness.workflowItems.push(harness.makeWorkflowRecord());
+  harness.customers.push(
+    { id: 'customer-1', name: 'Buyer One' },
+    { id: 'customer-2', name: 'Buyer Two' },
+  );
+  harness.salesRecords.push(
+    {
+      id: 'sale-1',
+      customerId: 'customer-1',
+      productId: 'product-1',
+      quantity: 12,
+      unitPrice: { toString: () => '11.20' },
+      totalRevenue: { toString: () => '134.40' },
+      currencyCode: 'GBP',
+      saleDate: new Date('2026-04-18T10:00:00.000Z'),
+    },
+    {
+      id: 'sale-2',
+      customerId: 'customer-2',
+      productId: 'product-1',
+      quantity: 6,
+      unitPrice: { toString: () => '10.80' },
+      totalRevenue: { toString: () => '64.80' },
+      currencyCode: 'GBP',
+      saleDate: new Date('2026-04-10T10:00:00.000Z'),
+    },
+  );
+
+  await service.approveToBuy({
+    workflowItemId: harness.workflowItems[0]!.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+
+  assert.equal(harness.tradeOpportunities.length, 1);
+  assert.equal(harness.tradeOpportunities[0]?.sourceType, 'BUY_DECISION');
+  assert.equal(harness.tradeOpportunities[0]?.status, 'OPEN');
+  assert.equal(harness.tradeOpportunities[0]?.stage, 'REVIEW');
+  assert.equal(harness.tradeOpportunities[0]?.buyDecisionId, harness.buyDecisions[0]?.id);
+  assert.equal(harness.tradeOpportunities[0]?.productId, 'product-1');
+  assert.equal(harness.tradeOpportunities[0]?.targetSellCurrencyCode, 'GBP');
+  assert.equal(harness.tradeOpportunities[0]?.metadata?.createdFrom, 'approved_buy_decision_demand_match');
+  assert.equal(harness.tradeOpportunities[0]?.metadata?.recentUnitsSold, 18);
+  assert.equal(harness.tradeOpportunities[0]?.metadata?.likelyBuyers?.length, 2);
+  assert.equal(harness.tradeOpportunityPolicies.length, 1);
+  assert.equal(harness.tradeOpportunityEvents.filter((event) => event.actionType === 'CREATED').length, 1);
+  assert.equal(
+    harness.tradeOpportunityEvents.some((event) =>
+      ['SUPPLIER_OUTREACH_DRAFTED', 'BUYER_OUTREACH_DRAFTED'].includes(event.actionType),
+    ),
+    false,
+  );
+});
+
+test('approved offer with no recent sales creates no trade opportunity', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  harness.workflowItems.push(harness.makeWorkflowRecord());
+
+  await service.approveToBuy({
+    workflowItemId: harness.workflowItems[0]!.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+
+  assert.equal(harness.tradeOpportunities.length, 0);
+  assert.equal(harness.tradeOpportunityPolicies.length, 0);
+});
+
+test('approved offer with non-profitable recent sales creates no trade opportunity', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  harness.workflowItems.push(harness.makeWorkflowRecord());
+  harness.customers.push({ id: 'customer-1', name: 'Buyer One' });
+  harness.salesRecords.push({
+    id: 'sale-1',
+    customerId: 'customer-1',
+    productId: 'product-1',
+    quantity: 10,
+    unitPrice: { toString: () => '8.00' },
+    totalRevenue: { toString: () => '80.00' },
+    currencyCode: 'GBP',
+    saleDate: new Date('2026-04-18T10:00:00.000Z'),
+  });
+
+  await service.approveToBuy({
+    workflowItemId: harness.workflowItems[0]!.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+
+  assert.equal(harness.tradeOpportunities.length, 0);
+});
+
+test('re-approving the same profitable offer does not create duplicate trade opportunities', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  harness.workflowItems.push(harness.makeWorkflowRecord());
+  harness.customers.push({ id: 'customer-1', name: 'Buyer One' });
+  harness.salesRecords.push({
+    id: 'sale-1',
+    customerId: 'customer-1',
+    productId: 'product-1',
+    quantity: 10,
+    unitPrice: { toString: () => '10.90' },
+    totalRevenue: { toString: () => '109.00' },
+    currencyCode: 'GBP',
+    saleDate: new Date('2026-04-18T10:00:00.000Z'),
+  });
+
+  await service.approveToBuy({
+    workflowItemId: harness.workflowItems[0]!.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+  await service.approveToBuy({
+    workflowItemId: harness.workflowItems[0]!.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+
+  assert.equal(harness.tradeOpportunities.length, 1);
+  assert.equal(harness.tradeOpportunityPolicies.length, 1);
+  assert.equal(harness.tradeOpportunityEvents.filter((event) => event.actionType === 'CREATED').length, 1);
 });
 
 test('workflow approval can record linked operator feedback in the same transaction', async () => {
@@ -816,7 +997,8 @@ test('conflicting supplier cues and qualification risk drive explainable priorit
 
   assert.equal(conflicting.priority, 'HIGH');
   assert.equal(conflicting.hasConflictingSupplierCues, true);
-  assert.equal(conflicting.hasRestrictedSupplier, true);
+  assert.equal(conflicting.hasRestrictedSupplier, false);
+  assert.equal(conflicting.hasUnknownSupplierQualification, true);
   assert.equal(blocked.priority, 'HIGH');
   assert.equal(blocked.hasBlockedSupplier, true);
 });

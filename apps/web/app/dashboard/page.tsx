@@ -231,20 +231,20 @@ function bucketOpportunities(items: OpportunityListItem[]): OpportunityBucket[] 
   return [
     {
       key: 'buy',
-      title: 'Buy Today',
-      description: 'Deterministic buy-side signals where current pricing or market position looks commercially interesting.',
+      title: 'Buying signals',
+      description: 'Products that look commercially worth checking now based on current pricing and market position.',
       items: items.filter((item) => item.type === 'BUY' || item.type === 'PRICE_ALERT'),
     },
     {
       key: 'push',
-      title: 'Sell Or Push Today',
-      description: 'Open push opportunities where margin and demand suggest immediate commercial follow-up.',
+      title: 'Products to push',
+      description: 'Items where demand or margin suggests it may be worth following up quickly.',
       items: items.filter((item) => item.type === 'PUSH'),
     },
     {
       key: 'watch',
-      title: 'Other Signals',
-      description: 'Secondary items worth monitoring or reviewing after the core buy and push work is covered.',
+      title: 'Watchlist',
+      description: 'Secondary signals to keep in view once the main buying and selling work is covered.',
       items: items.filter((item) => item.type !== 'BUY' && item.type !== 'PRICE_ALERT' && item.type !== 'PUSH'),
     },
   ];
@@ -420,21 +420,31 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
     return (
       <section className="dashboard-layout">
-        <section className="panel dashboard-panel">
-          <p className="eyebrow">Dashboard</p>
-          <h2 className="title">Today&apos;s Trading Signals</h2>
-          <p className="copy">
-            Surface the strongest current buy and push opportunities first, then move into review
-            work that still needs operator judgment.
-          </p>
+        <section className="panel dashboard-panel dashboard-hero-panel">
+          <div className="dashboard-hero">
+            <div className="dashboard-hero-copy">
+              <p className="eyebrow">Ambe Intelligence</p>
+              <h2 className="title">Your trading desk, simplified</h2>
+              <p className="copy">
+                Review supplier offers, check opportunities, and keep buying decisions clear.
+              </p>
+            </div>
+            <div className="dashboard-hero-status">
+              <p className="dashboard-summary-label">Signal freshness</p>
+              <div className="dashboard-hero-pill-row">
+                <span className={`pill ${opportunityFreshness.pillClassName}`}>{opportunityFreshness.label}</span>
+                <p className="dashboard-summary-note">{opportunityFreshness.detail}</p>
+              </div>
+            </div>
+          </div>
           {query?.updated ? (
             <p className="dashboard-inline-message dashboard-inline-message-success">
-              Opportunity marked {query.updated.replace(/_/g, ' ')}.
+              Opportunity updated: {query.updated.replace(/_/g, ' ')}.
             </p>
           ) : null}
           {query?.refreshed ? (
             <p className="dashboard-inline-message dashboard-inline-message-success">
-              Opportunities refreshed. {query.refreshed} signals were created or updated in this pass.
+              Opportunities refreshed. {query.refreshed} signals were created or updated.
             </p>
           ) : null}
           {query?.error ? (
@@ -442,13 +452,51 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               {query.error}
             </p>
           ) : null}
-          <p className="dashboard-summary-note">
-            Open signal freshness:
-            {' '}
-            <span className={`pill ${opportunityFreshness.pillClassName}`}>{opportunityFreshness.label}</span>
-            {' '}
-            {opportunityFreshness.detail}
-          </p>
+          <div className="actions">
+            <Link className="button button-primary" href="/dashboard/review">
+              Open reviews
+            </Link>
+            <Link className="button" href="/dashboard/opportunities">
+              View opportunities
+            </Link>
+            <form action={submitOpportunityRefreshAction}>
+              <button className="button" type="submit">
+                Refresh opportunities
+              </button>
+            </form>
+          </div>
+          <div className="dashboard-feature-grid">
+            <Link className="dashboard-feature-card" href="/dashboard/review">
+              <p className="dashboard-feature-title">Supplier offers</p>
+              <p className="dashboard-feature-copy">
+                Check new prices before they enter the system.
+              </p>
+            </Link>
+            <Link className="dashboard-feature-card" href="/dashboard/opportunities">
+              <p className="dashboard-feature-title">Buying signals</p>
+              <p className="dashboard-feature-copy">
+                See which products may be worth acting on.
+              </p>
+            </Link>
+            <Link className="dashboard-feature-card" href="/dashboard/products">
+              <p className="dashboard-feature-title">Clean records</p>
+              <p className="dashboard-feature-copy">
+                Keep supplier, product, and email data organised.
+              </p>
+            </Link>
+          </div>
+        </section>
+
+        <section className="panel dashboard-panel">
+          <div className="dashboard-section-header">
+            <div>
+              <p className="eyebrow">Business Overview</p>
+              <h3 className="section-title">Today at a glance</h3>
+              <p className="copy">
+                A quick view of the work waiting for the team and the records that may need cleanup.
+              </p>
+            </div>
+          </div>
           <div className="dashboard-filter-row">
             <span className="dashboard-filter-label">Focus open opportunities:</span>
             {OPEN_OPPORTUNITY_FILTER_OPTIONS.map((option) => {
@@ -468,32 +516,22 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
           {selectedOpenOpportunityType ? (
             <p className="dashboard-summary-note">
-              Showing only {selectedOpenOpportunityFilterLabel.replace('_', ' ')} open opportunities.
+              Showing only {selectedOpenOpportunityFilterLabel.replace('_', ' ')} opportunities.
             </p>
           ) : null}
           <div className="dashboard-summary-grid">
             <article className="dashboard-summary-card">
               <p className="dashboard-summary-value">{buyCount}</p>
-              <p className="dashboard-summary-label">Buy-side signals</p>
+              <p className="dashboard-summary-label">Buying signals</p>
             </article>
             <article className="dashboard-summary-card">
               <p className="dashboard-summary-value">{pushCount}</p>
-              <p className="dashboard-summary-label">Push signals</p>
+              <p className="dashboard-summary-label">Products to push</p>
             </article>
             <article className="dashboard-summary-card">
               <p className="dashboard-summary-value">{otherCount}</p>
-              <p className="dashboard-summary-label">Other open signals</p>
+              <p className="dashboard-summary-label">Watchlist items</p>
             </article>
-          </div>
-          <div className="actions">
-            <Link className="button button-primary" href="/dashboard/review">
-              Open Review Queue
-            </Link>
-            <form action={submitOpportunityRefreshAction}>
-              <button className="button" type="submit">
-                Refresh opportunities
-              </button>
-            </form>
           </div>
         </section>
 
@@ -501,14 +539,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <div className="dashboard-section-header">
             <div>
               <p className="eyebrow">Operational Snapshot</p>
-              <h3 className="section-title">Pilot Proof</h3>
+              <h3 className="section-title">What the system is doing</h3>
               <p className="copy">
-                A compact view of whether the system is generating work, being processed by operators,
-                and surfacing catalog issues that affect signal quality.
+                A compact view of whether work is being created, reviewed, and kept clean enough to trust.
               </p>
             </div>
             <Link className="button" href="/dashboard/products">
-              View duplicates
+              View records
             </Link>
           </div>
 
@@ -531,11 +568,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <section className="panel dashboard-panel">
           <div className="dashboard-section-header">
             <div>
-              <p className="eyebrow">Pilot Snapshot</p>
-              <h3 className="section-title">Value And Trust At A Glance</h3>
+              <p className="eyebrow">Pilot Readiness</p>
+              <h3 className="section-title">Value and trust at a glance</h3>
               <p className="copy">
-                A compact readout of current signal volume, operator workload, and feedback-based
-                trust metrics for the last 30 days.
+                A compact readout of signal volume, operator workload, and trust signals from the last 30 days.
               </p>
             </div>
             <span className="pill pill-neutral">
@@ -564,27 +600,26 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             </>
           ) : (
             <p className="copy">
-              Pilot trust metrics are temporarily unavailable. The open signal view is still shown
-              below.
+              Pilot trust metrics are temporarily unavailable. Your open opportunities are still shown below.
             </p>
           )}
         </section>
 
         {opportunities.length === 0 ? (
           <section className="panel dashboard-panel" id="open-opportunities">
-            <h3 className="section-title">No Open Signals</h3>
+            <h3 className="section-title">No open opportunities</h3>
             <p className="copy">
-              No open opportunities are stored right now. Once supplier pricing, sales, or other
-              commercial inputs generate signals, they will appear here in score order.
+              Everything is up to date. New opportunities will appear here when fresh supplier, sales,
+              or pricing data creates a signal worth reviewing.
             </p>
           </section>
         ) : filteredOpenOpportunities.length === 0 ? (
           <section className="panel dashboard-panel" id="open-opportunities">
-            <h3 className="section-title">No Matching Open Signals</h3>
+            <h3 className="section-title">No matching opportunities</h3>
             <p className="copy">
               There are no open {selectedOpenOpportunityFilterLabel.replace('_', ' ')} opportunities right now.
               {' '}
-              <Link href="/dashboard#open-opportunities">Show all open signals</Link>.
+              <Link href="/dashboard#open-opportunities">Show all opportunities</Link>.
             </p>
           </section>
         ) : (
@@ -611,7 +646,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                         <div>
                           <p className="dashboard-opportunity-title">{item.title}</p>
                           <p className="dashboard-opportunity-meta">
-                            {item.product?.name ?? 'Unknown product'}
+                            {item.product?.name ?? 'Product not found'}
                             {item.supplier?.name ? ` | ${item.supplier.name}` : ''}
                           </p>
                         </div>
@@ -657,10 +692,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <section className="panel dashboard-panel" id="recently-triaged">
             <div className="dashboard-section-header">
               <div>
-                <h3 className="section-title">Recently Triaged Opportunities</h3>
+                <h3 className="section-title">Recently updated opportunities</h3>
                 <p className="copy">
-                  A small confirmation view of the most recent reviewed, actioned, or dismissed
-                  signals.
+                  A short record of what was recently reviewed, actioned, or dismissed.
                 </p>
               </div>
               <span className="pill pill-neutral">{recentlyTriaged.length} recent</span>
@@ -673,7 +707,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                     <div>
                       <p className="dashboard-opportunity-title">{item.title}</p>
                       <p className="dashboard-opportunity-meta">
-                        {item.product?.name ?? 'Unknown product'}
+                        {item.product?.name ?? 'Product not found'}
                         {item.supplier?.name ? ` | ${item.supplier.name}` : ''}
                       </p>
                     </div>
@@ -698,14 +732,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   } catch (error) {
     return (
       <section className="panel">
-        <p className="eyebrow">Dashboard</p>
-        <h2 className="title">Signal View Unavailable</h2>
+        <p className="eyebrow">Ambe Intelligence</p>
+        <h2 className="title">Dashboard unavailable</h2>
         <p className="copy">
           {error instanceof Error ? error.message : 'Failed to load open opportunities.'}
         </p>
         <div className="actions">
           <Link className="button" href="/dashboard/review">
-            Open Review Queue
+            Open reviews
           </Link>
         </div>
       </section>

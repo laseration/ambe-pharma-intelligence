@@ -37,14 +37,27 @@ const AVAILABILITY_PATTERN =
   /\b(available|in stock|instock|limited stock|limited|ready stock|eta\s+\w+)\b/i;
 const MANUFACTURER_PATTERN =
   /\b(?:manufacturer|mfr|brand|by|from)\s*[:=-]?\s*([A-Z][A-Za-z0-9&.,\- ]{1,60}?)(?=\s+(?:at|for|moq|min(?:imum)?|available|limited|\u00A3|\$|€|\d)|$)/i;
-const FORWARDED_HEADER_PATTERN = /^(?:from|sent|subject|to):/im;
+const FORWARDED_HEADER_PATTERN = /^\s*(?:from|sent|subject|to|cc):/im;
 const ON_WROTE_PATTERN = /^on .+wrote:$/im;
 const SIGNATURE_PATTERN =
-  /\n(?:kind regards|best regards|regards|best|thanks|many thanks|cheers)[,\s]*\n/i;
+  /\n\s*(?:kind regards|best regards|regards|best|thanks|many thanks|cheers)[,\s]*\n/i;
 const DISCLAIMER_PATTERN =
   /\n(?:this e-?mail(?: and any attachments)? is confidential|confidentiality notice|please consider the environment before printing this email|the information contained in this email is intended only for the named recipient)[\s\S]*$/i;
 const SUPPLIER_NAME_PATTERN =
-  /\b([A-Z][A-Za-z0-9&.,\- ]{2,60}\b(?:pharma|pharmaceuticals|laboratories|labs|health|medical|ltd|limited|inc|llc|gmbh|uk))\b/i;
+  /\b([A-Z][-A-Za-z0-9&.,'’ ]{1,60}?(?:\s+(?:pharma|pharmaceuticals|laboratories|labs|health|medical|ltd|limited|inc|llc|gmbh|uk|bv|nv|plc|corp|company|co)|pharma[-A-Za-z0-9&.,'’]*))\b/i;
+const FORWARDED_SENDER_EMAIL_PATTERN =
+  /\bfrom\s*:\s*(?:[^<\n]*<)?([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i;
+const DOMAIN_COMPANY_FALLBACK_BLOCKLIST = new Set([
+  'gmail',
+  'outlook',
+  'hotmail',
+  'live',
+  'yahoo',
+  'icloud',
+  'googlemail',
+  'microsoft',
+  'office',
+]);
 
 type DocumentSegment = {
   kind:
@@ -480,8 +493,66 @@ function parsePriceMatch(
 }
 
 function extractSupplierCue(text: string): string | null {
-  const match = text.match(SUPPLIER_NAME_PATTERN);
-  return match?.[1]?.trim() || null;
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    if (line.includes('@') || /^from\s*:/i.test(line)) {
+      continue;
+    }
+
+    const match = line.match(SUPPLIER_NAME_PATTERN);
+    if (match?.[1]?.trim()) {
+      return match[1].trim();
+    }
+  }
+
+  return null;
+}
+
+function extractForwardedSenderEmail(text: string): string | null {
+  return text.match(FORWARDED_SENDER_EMAIL_PATTERN)?.[1]?.trim().toLowerCase() ?? null;
+}
+
+function extractForwardedSenderHeaderCue(text: string): string | null {
+  const senderLine = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => /^from\s*:/i.test(line));
+
+  if (!senderLine) {
+    return null;
+  }
+
+  const withoutPrefix = senderLine.replace(/^from\s*:\s*/i, '');
+  const withoutEmail = withoutPrefix.replace(/\s*<[^>]+>.*/, '').trim();
+
+  return extractSupplierCue(withoutEmail);
+}
+
+function inferSupplierNameFromDomain(domain: string | null): string | null {
+  if (!domain) {
+    return null;
+  }
+
+  const labels = domain
+    .trim()
+    .toLowerCase()
+    .split('.')
+    .filter(Boolean);
+  const companyLabel = labels.find((label) => !DOMAIN_COMPANY_FALLBACK_BLOCKLIST.has(label) && label.length > 2);
+
+  if (!companyLabel) {
+    return null;
+  }
+
+  return companyLabel
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }
 
 function deriveSourceTrustScore(message: EmailInboundMessage, result: EmailInboundResult): number {
@@ -812,6 +883,17 @@ async function resolveOfferCandidates(
         reason: learnedHints.supplierSuggestion?.reason ?? 'learned_source_supplier_hint',
       },
       {
+        candidateName: extractSupplierCue(
+          documents
+            .filter((document) => ['BODY_MAIN', 'BODY_FORWARDED'].includes(document.kind))
+            .map((document) => document.textContent)
+            .join('\n\n'),
+        ),
+        confidence: 70,
+        reason: 'body_company_cue',
+        supportsConflict: false,
+      },
+      {
         candidateName: extractSupplierCue(documents.find((document) => document.kind === 'SIGNATURE')?.textContent ?? ''),
         confidence: 66,
         reason: 'signature_company_cue',
@@ -823,14 +905,57 @@ async function resolveOfferCandidates(
         confidence: 62,
         reason: 'forwarded_company_cue',
       },
+      {
+        candidateName: extractForwardedSenderHeaderCue(
+          documents
+            .filter((document) => ['BODY_MAIN', 'BODY_FORWARDED'].includes(document.kind))
+            .map((document) => document.textContent)
+            .join('\n\n'),
+        ),
+        confidence: 74,
+        reason: 'forwarded_sender_header',
+      },
+      {
+        candidateName: inferSupplierNameFromDomain(
+          extractSenderDomain(
+            extractForwardedSenderEmail(
+              documents
+                .filter((document) => ['BODY_MAIN', 'BODY_FORWARDED'].includes(document.kind))
+                .map((document) => document.textContent)
+                .join('\n\n'),
+            ) ?? '',
+          ),
+        ),
+        confidence: 72,
+        reason: 'forwarded_sender_domain',
+      },
+      {
+        candidateName: extractSupplierCue(
+          documents
+            .filter((document) => document.kind === 'ATTACHMENT_TEXT')
+            .map((document) => document.textContent)
+            .join('\n\n'),
+        ),
+        confidence: 54,
+        reason: 'attachment_text_company_cue',
+        supportsConflict: false,
+      },
     ].filter(
-      (cue): cue is { candidateName: string; confidence: number; reason: string } =>
+      (
+        cue,
+      ): cue is {
+        candidateName: string;
+        confidence: number;
+        reason: string;
+        supportsConflict?: boolean;
+      } =>
         Boolean(cue.candidateName?.trim()),
     );
+    const hasForwardedSenderDomainCue = supplierCues.some((cue) => cue.reason === 'forwarded_sender_domain');
 
     const groupedSupplierCues = new Map<
       string,
-      { candidateName: string; confidence: number; reason: string }
+      { candidateName: string; confidence: number; reason: string; supportsConflict: boolean }
     >();
 
     for (const cue of supplierCues) {
@@ -838,18 +963,26 @@ async function resolveOfferCandidates(
       const existingCue = groupedSupplierCues.get(normalizedName);
 
       if (!existingCue || cue.confidence > existingCue.confidence) {
-        groupedSupplierCues.set(normalizedName, cue);
+        groupedSupplierCues.set(normalizedName, {
+          ...cue,
+          supportsConflict:
+            cue.reason === 'signature_company_cue' && hasForwardedSenderDomainCue
+              ? false
+              : cue.supportsConflict ?? true,
+        });
       }
     }
 
     const supplierCandidates = Array.from(groupedSupplierCues.values()).sort(
       (left, right) => right.confidence - left.confidence,
     );
-    const supplierCueConflict = supplierCandidates.length > 1;
+    const supplierCueConflict = supplierCandidates.filter((candidate) => candidate.supportsConflict).length > 1;
     const selectedSupplierCue =
       supplierCueConflict
         ? null
         : supplierCandidates[0] ?? null;
+    const bestDetectedSupplierName =
+      selectedSupplierCue?.candidateName ?? supplierCandidates[0]?.candidateName ?? null;
     let selectedResolvedSupplierName: string | null = null;
 
     for (const candidate of supplierCandidates) {
@@ -919,7 +1052,7 @@ async function resolveOfferCandidates(
 
     resolvedOffers.push({
       ...offer,
-      supplierCandidate: selectedResolvedSupplierName,
+      supplierCandidate: selectedResolvedSupplierName ?? bestDetectedSupplierName,
       reviewReason:
         offer.reviewReason ??
         (supplierCueConflict

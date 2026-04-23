@@ -64,6 +64,10 @@ const STRUCTURED_PRICE_LINE_PATTERN =
   /^(?<product>.+?)(?:\s*[-:]\s*|\s+)(?<currencySymbol>\u00A3|\$|\u20AC)?\s*(?<price>\d+(?:\.\d{1,2})?)\s*(?<currencyCode>[A-Z]{3})?$/i;
 
 const PRICE_LIKE_PATTERN = /(?:\u00A3|\$|\u20AC|\b(?:usd|gbp|eur)\b|\d+[.,]\d{2})/i;
+const SHARED_PRICE_PATTERN =
+  /^prices?\s+for\s+both\s+refs?\s+are\s+(?<price>\d+(?:\.\d{1,2})?)\s*(?<currency>euro|eur|gbp|usd|\u20AC|\u00A3|\$)\b.*$/i;
+const NON_PRODUCT_SHARED_PRICE_PREFIX_PATTERN =
+  /^(?:from|sent|subject|to|cc|dear|kind regards|regards|thanks|best|supplier name)\b/i;
 
 export function normalizeEmailTextForParsing(rawText: string): string {
   return rawText
@@ -251,6 +255,120 @@ function parseLine(
   };
 }
 
+function normalizeSharedPriceCurrency(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+
+  if (normalized === 'euro' || normalized === 'eur' || normalized === '\u20ac') {
+    return 'EUR';
+  }
+
+  if (normalized === 'gbp' || normalized === '\u00a3') {
+    return 'GBP';
+  }
+
+  if (normalized === 'usd' || normalized === '$') {
+    return 'USD';
+  }
+
+  return null;
+}
+
+function isSharedPriceCandidateLine(line: string): boolean {
+  const trimmed = line.trim();
+
+  if (!trimmed || PRICE_LIKE_PATTERN.test(trimmed) || NON_PRODUCT_SHARED_PRICE_PREFIX_PATTERN.test(trimmed)) {
+    return false;
+  }
+
+  const productCandidates = buildProductCandidates(trimmed);
+
+  return productCandidates.confidence !== 'LOW';
+}
+
+function buildSharedPriceRows(lines: string[], existingRows: ParsedEmailBodyRow[]): {
+  parsedRows: ParsedEmailBodyRow[];
+  consumedLineNumbers: Set<number>;
+} {
+  const parsedLineNumbers = new Set(existingRows.map((row) => row.lineNumber));
+  const sharedRows: ParsedEmailBodyRow[] = [];
+  const consumedLineNumbers = new Set<number>();
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+    const sharedMatch = trimmed.match(SHARED_PRICE_PATTERN);
+
+    if (!sharedMatch?.groups?.price || !sharedMatch.groups.currency) {
+      return;
+    }
+
+    const sharedPriceAmount = sharedMatch.groups.price;
+    const currencyCode = normalizeSharedPriceCurrency(sharedMatch.groups.currency);
+    if (!currencyCode) {
+      return;
+    }
+
+    const precedingCandidates: Array<{ lineNumber: number; rawLine: string }> = [];
+
+    for (let previousIndex = index - 1; previousIndex >= 0 && precedingCandidates.length < 2; previousIndex -= 1) {
+      const previousLine = lines[previousIndex]?.trim() ?? '';
+
+      if (!previousLine) {
+        continue;
+      }
+
+      const lineNumber = previousIndex + 1;
+      if (parsedLineNumbers.has(lineNumber) || PRICE_LIKE_PATTERN.test(previousLine) || !isSharedPriceCandidateLine(previousLine)) {
+        break;
+      }
+
+      precedingCandidates.unshift({
+        lineNumber,
+        rawLine: previousLine,
+      });
+    }
+
+    if (precedingCandidates.length !== 2) {
+      return;
+    }
+
+    precedingCandidates.forEach((candidate) => {
+      const productCandidates = buildProductCandidates(candidate.rawLine);
+      const confidenceResult = deriveRowConfidence({
+        productName: candidate.rawLine,
+        strength: productCandidates.strength,
+        formulation: productCandidates.formulation,
+        packSize: productCandidates.packSize,
+        currencyCode,
+        usedExplicitSeparator: false,
+      });
+
+      sharedRows.push({
+        lineNumber: candidate.lineNumber,
+        rawLine: candidate.rawLine,
+        evidenceText: trimmed,
+        rawProductName: candidate.rawLine,
+        rawProductText: candidate.rawLine,
+        strength: productCandidates.strength,
+        formulation: productCandidates.formulation,
+        packSize: productCandidates.packSize,
+        price: Number(sharedPriceAmount),
+        currencyCode,
+        productCandidates,
+        confidence: confidenceResult.confidence,
+        explanation: `Applied shared price from line ${index + 1}: ${trimmed}`,
+      });
+      consumedLineNumbers.add(candidate.lineNumber);
+    });
+
+    consumedLineNumbers.add(index + 1);
+  });
+
+  return {
+    parsedRows: sharedRows,
+    consumedLineNumbers,
+  };
+}
+
 function confidenceRank(confidence: EmailParseConfidence): number {
   if (confidence === 'HIGH') {
     return 3;
@@ -399,7 +517,7 @@ function shouldUseAiResult(
 export function parseStructuredPriceEmailBody(rawBodyText: string): ParsedEmailBodyResult {
   const lines = normalizeEmailTextForParsing(rawBodyText).split(/\n/);
   const parsedRows: ParsedEmailBodyRow[] = [];
-  const skippedLines: SkippedEmailBodyLine[] = [];
+  let skippedLines: SkippedEmailBodyLine[] = [];
 
   lines.forEach((line, index) => {
     const result = parseLine(line, index + 1);
@@ -413,6 +531,12 @@ export function parseStructuredPriceEmailBody(rawBodyText: string): ParsedEmailB
     }
   });
 
+  const sharedPriceRows = buildSharedPriceRows(lines, parsedRows);
+  if (sharedPriceRows.parsedRows.length > 0) {
+    parsedRows.push(...sharedPriceRows.parsedRows);
+    skippedLines = skippedLines.filter((line) => !sharedPriceRows.consumedLineNumbers.has(line.lineNumber));
+  }
+
   const overallConfidence = deriveOverallConfidence(parsedRows, skippedLines);
   const reviewRecommended = overallConfidence !== 'HIGH';
   const reviewRequired = reviewRecommended;
@@ -421,7 +545,7 @@ export function parseStructuredPriceEmailBody(rawBodyText: string): ParsedEmailB
   return {
     totalLines: lines.length,
     candidateLines: parsedRows.length,
-    parsedRows,
+    parsedRows: parsedRows.sort((left, right) => left.lineNumber - right.lineNumber),
     skippedLines,
     overallConfidence,
     reviewRecommended,
@@ -491,4 +615,3 @@ export async function parseStructuredPriceText(
     notes: [...(aiAssistedResult.notes ?? []), aiAttempt.reason],
   };
 }
-

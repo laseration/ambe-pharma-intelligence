@@ -8,7 +8,10 @@ import {
   recordOperatorValidationFeedbackWithRepository,
   type OperatorValidationFeedbackCreateInput,
 } from '../automation/service';
-import { syncTradeOpportunityCommercialState } from '../deals/service';
+import {
+  createDemandMatchedTradeOpportunityFromApprovedBuyDecision,
+  syncTradeOpportunityCommercialState,
+} from '../deals/service';
 import type { SupplierQualificationStatus } from '../suppliers/qualificationService';
 
 type WorkflowStatus =
@@ -165,6 +168,7 @@ type WorkflowRecord = {
     rawProductText: string | null;
     normalizedProductNameCandidate: string | null;
     manufacturerCandidate: string | null;
+    supplierCandidate: string | null;
     priceCandidate: unknown;
     currencyCandidate: string | null;
     minimumOrderQuantityCandidate: number | null;
@@ -308,8 +312,25 @@ type WorkflowRepository = {
     typeof recordOperatorValidationFeedbackWithRepository
   >[0]['findTradeMessageDraftById'];
   listActiveTradeOpportunitiesByOfferId: (emailDerivedOfferId: string) => Promise<any[]>;
+  createTradeOpportunity: (data: Record<string, unknown>) => Promise<any>;
+  createTradeOpportunityPolicy: (data: Record<string, unknown>) => Promise<any>;
   updateTradeOpportunity: (tradeOpportunityId: string, data: Record<string, unknown>) => Promise<any>;
   createTradeOpportunityEvent: (data: Record<string, unknown>) => Promise<any>;
+  listRecentSalesByProductId: (input: {
+    productId: string;
+    windowStart: Date;
+    currencyCode: string;
+  }) => Promise<
+    Array<{
+      customerId: string;
+      customerName: string;
+      quantity: number;
+      unitPrice: unknown;
+      totalRevenue: unknown;
+      saleDate: Date;
+      currencyCode: string;
+    }>
+  >;
 };
 
 type NormalizedActor = {
@@ -648,6 +669,14 @@ function createWorkflowRepository(client: typeof db = db, inTransaction = false)
           },
         },
       }) as Promise<any[]>,
+    createTradeOpportunity: async (data) =>
+      client.tradeOpportunity.create({
+        data: data as never,
+      }) as Promise<any>,
+    createTradeOpportunityPolicy: async (data) =>
+      client.tradeOpportunityMessagingPolicy.create({
+        data: data as never,
+      }) as Promise<any>,
     updateTradeOpportunity: async (tradeOpportunityId, data) =>
       client.tradeOpportunity.update({
         where: { id: tradeOpportunityId },
@@ -657,6 +686,35 @@ function createWorkflowRepository(client: typeof db = db, inTransaction = false)
       client.tradeOpportunityEvent.create({
         data: data as never,
       }) as Promise<any>,
+    listRecentSalesByProductId: async ({ productId, windowStart, currencyCode }) =>
+      client.salesRecord.findMany({
+        where: {
+          productId,
+          saleDate: {
+            gte: windowStart,
+          },
+          currencyCode,
+        },
+        include: {
+          customer: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: [{ saleDate: 'desc' }],
+      }).then((items) =>
+        items.map((item) => ({
+          customerId: item.customerId,
+          customerName: item.customer.name,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalRevenue: item.totalRevenue,
+          saleDate: item.saleDate,
+          currencyCode: item.currencyCode,
+        })),
+      ) as Promise<any>,
   };
 }
 
@@ -668,18 +726,29 @@ function buildWorkflowFlags(input: SyncWorkflowItemInput): {
   const selectedSuppliers = input.resolutionCandidates.filter(
     (candidate) => candidate.entityType === 'SUPPLIER' && candidate.selected,
   );
+  const selectedResolvedSuppliers = selectedSuppliers.filter((candidate) => Boolean(candidate.candidateId));
   const supplierCandidates = input.resolutionCandidates.filter(
     (candidate) => candidate.entityType === 'SUPPLIER',
+  );
+  const primaryConflictSupplierCandidates = supplierCandidates.filter(
+    (candidate) => !['body_company_cue', 'attachment_text_company_cue'].includes(candidate.reason),
   );
   const manufacturerCandidates = input.resolutionCandidates.filter(
     (candidate) => candidate.entityType === 'MANUFACTURER',
   );
 
   return {
-    hasUnresolvedSupplier: !input.supplierCandidate && selectedSuppliers.length === 0,
+    hasUnresolvedSupplier: selectedResolvedSuppliers.length === 0,
     hasConflictingSupplierCues:
       input.reviewReason === 'conflicting_supplier_cues' ||
-      (supplierCandidates.length > 1 && selectedSuppliers.length === 0),
+      supplierCandidates.some((candidate) => {
+        if (!candidate.metadata || typeof candidate.metadata !== 'object' || Array.isArray(candidate.metadata)) {
+          return false;
+        }
+
+        return (candidate.metadata as { ambiguous?: boolean }).ambiguous === true;
+      }) ||
+      (primaryConflictSupplierCandidates.length > 1 && selectedResolvedSuppliers.length === 0),
     hasManufacturerAmbiguity:
       !input.manufacturerCandidate &&
       manufacturerCandidates.filter((candidate) => candidate.confidence >= 50).length > 1,
@@ -1374,6 +1443,21 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
             buyExecution: decisionForTradeSync.execution ?? null,
             actor,
             note: input.note,
+          },
+        );
+
+        await createDemandMatchedTradeOpportunityFromApprovedBuyDecision(
+          {
+            listActiveByOfferId: txRepository.listActiveTradeOpportunitiesByOfferId,
+            create: txRepository.createTradeOpportunity,
+            createPolicy: txRepository.createTradeOpportunityPolicy,
+            createTradeOpportunityEvent: txRepository.createTradeOpportunityEvent,
+            listRecentSalesByProductId: txRepository.listRecentSalesByProductId,
+          },
+          {
+            buyDecision: decisionForTradeSync,
+            sourceSupplierNameSnapshot: existing.emailDerivedOffer?.supplierCandidate ?? null,
+            actor,
           },
         );
         await recordWorkflowFeedbackIfPresent(txRepository, updatedWorkflow, input);

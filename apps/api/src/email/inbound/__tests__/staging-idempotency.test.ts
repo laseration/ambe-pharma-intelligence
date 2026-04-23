@@ -1061,12 +1061,128 @@ test('mapped supplier cue without canonical supplier record stays unresolved', a
   assert.equal(state.offers.length, 1);
   assert.equal(state.offers[0]?.status, 'REVIEW_REQUIRED');
   assert.equal(state.offers[0]?.reviewReason, 'unresolved_supplier');
-  assert.equal(state.offers[0]?.supplierCandidate, null);
+  assert.equal(state.offers[0]?.supplierCandidate, 'Supplier Co');
   assert.equal(state.promotionDecisions[0]?.reason, 'unresolved_supplier');
   assert.equal(state.workflowItems.length, 1);
   assert.equal(state.workflowItems[0]?.sourceReviewReason, 'unresolved_supplier');
   assert.equal(state.priceLists.length, 0);
   assert.equal(state.priceItems.length, 0);
+});
+
+test('forwarded supplier cues and shared pricing stay review-only but preserve supplier evidence', async (t) => {
+  const state = installDbMocks(t);
+  const bodyText = [
+    'Please review this supplier.',
+    '',
+    ' Sent from Outlook for Android',
+    ' From: carl.junius@delta-pharma.eu <carl.junius@delta-pharma.eu>',
+    ' Subject: NOVO NORDISK - NOVOFINE NEEDLES',
+    '',
+    ' NOVOFINE NEEDLES INJ TŰ 31G 6MM 100X',
+    ' NOVOFINE NEEDLES INJEKCIÓS TŰ 30G 100X',
+    '',
+    ' Prices for both refs are 7 euro a pack.',
+    '',
+    '  Kind regards,',
+    '   Carl Junius',
+    '  Delta BE bv',
+  ].join('\n');
+  const message = {
+    sourceSystem: 'MICROSOFT_GRAPH',
+    externalMessageId: 'graph-forwarded-delta',
+    messageId: 'internet-forwarded-delta',
+    from: 'sandeep@ambemedical.com',
+    subject: 'Fw: NOVO NORDISK - NOVOFINE NEEDLES',
+    bodyText,
+    attachments: [
+      {
+        fileName: 'image001.png',
+        mimeType: 'image/png',
+        content: Buffer.from('fake-image').toString('base64'),
+      },
+    ],
+  };
+  const result = {
+    ignored: false,
+    items: [
+      {
+        ...createInboundResult({
+          processingStatus: 'REVIEW_REQUIRED',
+          reason: 'forwarded supplier email',
+          email: {
+            messageId: 'internet-forwarded-delta',
+            from: 'sandeep@ambemedical.com',
+            subject: 'Fw: NOVO NORDISK - NOVOFINE NEEDLES',
+            bodyText,
+          },
+          attachment: {
+            fileName: 'image001.png',
+            mimeType: 'image/png',
+            size: null,
+            contentId: null,
+            disposition: null,
+          },
+          attachmentTextExtraction: {
+            method: 'IMAGE_OCR',
+            text: 'DeltaPharma',
+            extractedTextChars: 11,
+            warnings: [],
+          },
+        }).items[0]!,
+      },
+    ],
+  };
+
+  await stageInboundEmail(message, result);
+  await stageInboundEmail(message, result);
+
+  assert.equal(state.inboundEmails.length, 1);
+  assert.equal(state.offers.length, 2);
+  assert.equal(state.workflowItems.length, 2);
+  assert.equal(
+    state.documents.some(
+      (document) => document.kind === 'ATTACHMENT_TEXT' && document.label === 'image001.png' && document.textContent === 'DeltaPharma',
+    ),
+    true,
+  );
+  assert.deepEqual(
+    state.offers.map((offer) => ({
+      supplierCandidate: offer.supplierCandidate,
+      reviewReason: offer.reviewReason,
+      priceCandidate: offer.priceCandidate?.toString?.() ?? String(offer.priceCandidate),
+      currencyCandidate: offer.currencyCandidate,
+    })),
+    [
+      {
+        supplierCandidate: 'Delta Pharma',
+        reviewReason: 'unresolved_supplier',
+        priceCandidate: '7',
+        currencyCandidate: 'EUR',
+      },
+      {
+        supplierCandidate: 'Delta Pharma',
+        reviewReason: 'unresolved_supplier',
+        priceCandidate: '7',
+        currencyCandidate: 'EUR',
+      },
+    ],
+  );
+  assert.equal(
+    state.resolutionCandidates.some(
+      (candidate) =>
+        candidate.entityType === 'SUPPLIER' &&
+        candidate.candidateId === null &&
+        candidate.candidateName === 'Delta Pharma' &&
+        candidate.selected === false,
+    ),
+    true,
+  );
+  assert.equal(
+    state.workflowItems.every(
+      (item) => item.hasUnresolvedSupplier === true && item.sourceReviewReason === 'unresolved_supplier',
+    ),
+    true,
+  );
 });
 
 test('weak product match review reason stays consistent across storage and queue surfaces', async (t) => {

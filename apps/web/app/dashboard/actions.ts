@@ -23,7 +23,7 @@ function normalizeRedirectTarget(value: string): string {
 }
 
 function appendDashboardQuery(target: string, key: string, value: string): string {
-  const [pathnameWithQuery, hash = ''] = target.split('#');
+  const [pathnameWithQuery = '/dashboard', hash = ''] = target.split('#');
   const [pathname, query = ''] = pathnameWithQuery.split('?');
   const searchParams = new URLSearchParams(query);
   searchParams.set(key, value);

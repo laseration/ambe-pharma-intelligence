@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { parseStructuredPriceEmailBody } from '../../parsing';
 import { buildAiOfferCandidates, decomposeEmail, extractLooseOfferCandidate } from '../pipeline';
 
 test('decomposeEmail splits forwarded and signature segments', async () => {
@@ -195,5 +196,40 @@ test('buildAiOfferCandidates preserves extracted AI fields and segment linkage',
   assert.equal(
     candidates[0]?.evidences.some((evidence) => evidence.fieldName === 'minimumOrderQuantityCandidate'),
     true,
+  );
+});
+
+test('parseStructuredPriceEmailBody applies a shared price sentence to the two preceding product lines', () => {
+  const result = parseStructuredPriceEmailBody(
+    [
+      'NOVOFINE NEEDLES INJ TŰ 31G 6MM 100X',
+      'NOVOFINE NEEDLES INJEKCIÓS TŰ 30G 100X',
+      'Prices for both refs are 7 euro a pack.',
+    ].join('\n'),
+  );
+
+  assert.equal(result.parsedRows.length, 2);
+  assert.deepEqual(
+    result.parsedRows.map((row) => ({
+      rawProductText: row.rawProductText,
+      price: row.price,
+      currencyCode: row.currencyCode,
+    })),
+    [
+      {
+        rawProductText: 'NOVOFINE NEEDLES INJ TŰ 31G 6MM 100X',
+        price: 7,
+        currencyCode: 'EUR',
+      },
+      {
+        rawProductText: 'NOVOFINE NEEDLES INJEKCIÓS TŰ 30G 100X',
+        price: 7,
+        currencyCode: 'EUR',
+      },
+    ],
+  );
+  assert.equal(
+    result.skippedLines.some((line) => /both refs/i.test(line.rawLine)),
+    false,
   );
 });

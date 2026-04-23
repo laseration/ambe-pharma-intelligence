@@ -343,6 +343,9 @@ function createRepositoryHarness() {
           )
           .map((item) => attachRelations(item)) as never;
       },
+      async listRecentSalesByProductId() {
+        return [] as never;
+      },
       async listActiveByOfferId(emailDerivedOfferId: string) {
         return tradeOpportunities
           .filter(

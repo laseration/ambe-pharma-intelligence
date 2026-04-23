@@ -26,13 +26,23 @@ type OperatorSummary = {
   unclear: string;
   action: string;
   confidenceLimits: string[];
+  technicalDetails: Array<{
+    label: string;
+    value: string;
+  }>;
 };
 
 type ResolutionCandidate =
   NonNullable<NonNullable<ReviewWorkflowDetail['emailDerivedOffer']>['resolutionCandidates']>[number];
 
+type SupplierEvidence = {
+  displayName: string | null;
+  needsSupplierCheck: boolean;
+  sourceLabel: string | null;
+};
+
 function renderValue(value: string | number | null | undefined) {
-  return value === null || value === undefined || value === '' ? 'Unknown' : String(value);
+  return value === null || value === undefined || value === '' ? 'Not found' : String(value);
 }
 
 function titleCase(value: string): string {
@@ -63,7 +73,9 @@ const NON_PRODUCT_PREFIXES = [
 function normalizeForComparison(value: string): string {
   return value
     .normalize('NFKD')
-    .replace(/[^\x00-\x7F]/g, '')
+    .split('')
+    .filter((char) => char.charCodeAt(0) <= 0x7f)
+    .join('')
     .toLowerCase()
     .trim();
 }
@@ -127,12 +139,13 @@ function renderDocumentTitle(document: NonNullable<ReviewWorkflowDetail['inbound
 }
 
 function summarizeReason(items: ReviewWorkflowListItem[]) {
-  return (
+  const rawReason =
     items.find((item) => item.sourceReviewReason)?.sourceReviewReason ??
     items.find((item) => item.qualificationRiskNote)?.qualificationRiskNote ??
     items.find((item) => item.latestNote)?.latestNote ??
-    'Needs review.'
-  );
+    'Needs checking.';
+
+  return formatOperatorReason(rawReason);
 }
 
 function formatPctFromScore(score: number | null | undefined) {
@@ -151,6 +164,76 @@ function formatReasonLabel(reason: string): string {
   }
 
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function formatOperatorReason(reason: string | null | undefined): string {
+  switch ((reason ?? '').trim().toLowerCase()) {
+    case 'deterministic_row_low_confidence':
+      return 'Some details could not be read clearly';
+    case 'unresolved_supplier':
+      return 'Supplier needs checking';
+    case 'weak_product_match':
+      return 'Product match needs checking';
+    case 'missing_price':
+      return 'Price not found';
+    case 'missing_currency':
+      return 'Currency not found';
+    case 'conflicting_supplier_cues':
+      return 'Supplier details conflict';
+    case 'source_trust_too_low':
+      return 'Source needs checking';
+    case 'ocr_text_too_weak':
+      return 'Image text was unclear';
+    case 'weak_structured_content':
+      return 'Email layout was hard to read';
+    case 'promotion_threshold_missing_or_weak_fields':
+      return 'Price or pack size may need confirming';
+    case 'ai_candidate_review_only':
+    case 'ai_extracted_candidate_requires_review':
+      return 'Some extracted details still need checking';
+    case '':
+      return 'Needs checking';
+    default:
+      return reason ?? 'Needs checking';
+  }
+}
+
+function formatSupplierSourceLabel(reason: string | null | undefined): string | null {
+  switch ((reason ?? '').trim().toLowerCase()) {
+    case 'forwarded_sender_domain':
+      return 'Found from supplier domain';
+    case 'attachment_text_company_cue':
+      return 'Found in attachment text';
+    case 'forwarded_sender_header':
+    case 'forwarded_company_cue':
+    case 'body_company_cue':
+    case 'signature_company_cue':
+      return 'Found in forwarded email';
+    default:
+      return null;
+  }
+}
+
+function getSupplierEvidence(item: ReviewWorkflowDetail): SupplierEvidence {
+  const supplierCandidates = (item.emailDerivedOffer?.resolutionCandidates ?? [])
+    .filter((candidate) => candidate.entityType === 'SUPPLIER')
+    .sort(
+      (left, right) =>
+        Number(right.selected) - Number(left.selected) ||
+        right.confidence - left.confidence ||
+        left.candidateName.localeCompare(right.candidateName),
+    );
+  const selectedSupplier = supplierCandidates.find(
+    (candidate) => candidate.selected && candidate.candidateId,
+  );
+  const topSupplierCandidate = selectedSupplier ?? supplierCandidates[0] ?? null;
+  const displayName = item.emailDerivedOffer?.supplierCandidate ?? topSupplierCandidate?.candidateName ?? null;
+
+  return {
+    displayName,
+    needsSupplierCheck: Boolean(displayName) && !selectedSupplier,
+    sourceLabel: formatSupplierSourceLabel(topSupplierCandidate?.reason),
+  };
 }
 
 function getResolutionEvidenceGroups(
@@ -199,6 +282,7 @@ function getResolutionEvidenceGroups(
 }
 
 function buildRecognizedOfferText(item: ReviewWorkflowDetail): string {
+  const supplierEvidence = getSupplierEvidence(item);
   const parts = [
     extractDisplayProductName(item),
     item.emailDerivedOffer?.strengthCandidate,
@@ -210,16 +294,16 @@ function buildRecognizedOfferText(item: ReviewWorkflowDetail): string {
   const priceText = item.emailDerivedOffer?.priceCandidate
     ? `${item.emailDerivedOffer.priceCandidate}${item.emailDerivedOffer.currencyCandidate ? ` ${item.emailDerivedOffer.currencyCandidate}` : ''}`
     : null;
-  const supplierText = item.emailDerivedOffer?.supplierCandidate
-    ? `Supplier: ${item.emailDerivedOffer.supplierCandidate}.`
+  const supplierText = supplierEvidence.displayName
+    ? `Supplier: ${supplierEvidence.displayName}.`
     : null;
   const manufacturerText = item.emailDerivedOffer?.manufacturerCandidate
     ? `Manufacturer: ${item.emailDerivedOffer.manufacturerCandidate}.`
     : null;
 
   return [
-    parts.length > 0 ? `Recognized offer row for ${parts.join(' ')}.` : 'Recognized a possible commercial offer row.',
-    priceText ? `Price seen: ${priceText}.` : null,
+    parts.length > 0 ? `${parts.join(' ')}.` : 'A possible supplier offer was found.',
+    priceText ? `Price found: ${priceText}.` : null,
     supplierText,
     manufacturerText,
   ]
@@ -231,104 +315,100 @@ function buildSuggestedAction(item: ReviewWorkflowDetail): string {
   const reason = (item.sourceReviewReason ?? item.emailDerivedOffer?.reviewReason ?? '').trim().toLowerCase();
 
   if (item.hasBlockedSupplier) {
-    return 'Do not approve this row. Resolve the blocked supplier status before any buy action.';
+    return 'Do not approve this offer. Resolve the supplier issue first.';
   }
 
   if (item.hasRestrictedSupplier || item.hasUnknownSupplierQualification) {
-    return 'Confirm supplier qualification first, then approve only with explicit operator intent if the offer is commercially valid.';
+    return 'Check the supplier and product details. Approve only if the offer looks correct.';
   }
 
   if (reason === 'missing_price') {
-    return 'Open the source text and confirm the unit price before approving or rejecting.';
+    return 'Check the original email and confirm the price before approving.';
   }
 
   if (reason === 'missing_currency') {
-    return 'Confirm the currency from the source before making a buy decision.';
+    return 'Check the original email and confirm the currency before approving.';
   }
 
   if (reason === 'weak_product_match') {
-    return 'Check the product wording, strength, form, and pack size before accepting the match.';
+    return 'Check the product details. Approve only if the offer looks correct.';
   }
 
   if (reason === 'unresolved_supplier' || reason === 'conflicting_supplier_cues') {
-    return 'Confirm the correct supplier from the sender, signature, and source text before approving.';
+    return 'Check the supplier and product details. Approve only if the offer looks correct.';
   }
 
   if (reason === 'ai_candidate_review_only' || reason === 'ai_extracted_candidate_requires_review') {
-    return 'Verify every extracted field against the source text before approving anything.';
+    return 'Check the offer against the original email before approving.';
   }
 
-  return 'Review the extracted commercial facts against the source email, then approve to buy or reject this row.';
+  return 'Check the supplier and product details. Approve only if the offer looks correct.';
 }
 
 function buildConfidenceLimits(item: ReviewWorkflowDetail): string[] {
   const limits: string[] = [];
   const detail = item.emailDerivedOffer;
   const reason = (item.sourceReviewReason ?? detail?.reviewReason ?? '').trim().toLowerCase();
+  const supplierEvidence = getSupplierEvidence(item);
 
-  if (detail?.sourceTrustScore !== null && detail?.sourceTrustScore !== undefined && detail.sourceTrustScore < 80) {
-    limits.push(`Source trust is only ${formatPctFromScore(detail.sourceTrustScore)}.`);
-  }
-
-  if (detail?.structureConfidence !== null && detail?.structureConfidence !== undefined && detail.structureConfidence < 80) {
-    limits.push(`Structure confidence is only ${formatPctFromScore(detail.structureConfidence)}.`);
-  }
-
-  if (detail?.fieldConfidence !== null && detail?.fieldConfidence !== undefined && detail.fieldConfidence < 80) {
-    limits.push(`Field confidence is only ${formatPctFromScore(detail.fieldConfidence)}.`);
-  }
-
-  if (
-    detail?.entityResolutionConfidence !== null &&
-    detail?.entityResolutionConfidence !== undefined &&
-    detail.entityResolutionConfidence < 80
-  ) {
-    limits.push(
-      `Entity resolution confidence is only ${formatPctFromScore(detail.entityResolutionConfidence)}.`,
-    );
-  }
-
-  if (
-    detail?.promotionConfidence !== null &&
-    detail?.promotionConfidence !== undefined &&
-    detail.promotionConfidence < 80
-  ) {
-    limits.push(`Promotion confidence is only ${formatPctFromScore(detail.promotionConfidence)}.`);
-  }
-
-  if (item.hasBlockedSupplier || item.hasRestrictedSupplier || item.hasUnknownSupplierQualification) {
-    limits.push(item.qualificationRiskNote ?? 'Supplier qualification is limiting confidence.');
-  }
-
-  if (reason === 'missing_price') {
-    limits.push('No safe price was extracted.');
-  }
-
-  if (reason === 'missing_currency') {
-    limits.push('Currency is missing or unclear.');
+  if (supplierEvidence.needsSupplierCheck) {
+    limits.push('Supplier needs checking');
   }
 
   if (reason === 'weak_product_match') {
-    limits.push('Product matching was not strong enough for safe automatic handling.');
+    limits.push('Product details may be incomplete');
   }
 
-  if (reason === 'unresolved_supplier') {
-    limits.push('Supplier identity was not resolved safely.');
+  if (reason === 'missing_price' || reason === 'missing_currency' || reason === 'promotion_threshold_missing_or_weak_fields') {
+    limits.push('Price or pack size may need confirming');
   }
 
-  if (reason === 'conflicting_supplier_cues') {
-    limits.push('More than one supplier signal was found.');
+  if (reason === 'ocr_text_too_weak' || reason === 'weak_structured_content') {
+    limits.push('Image or email text was hard to read');
   }
 
-  if (reason === 'promotion_threshold_missing_or_weak_fields') {
-    limits.push('One or more required commercial fields stayed weak or incomplete.');
+  if (reason === 'source_trust_too_low') {
+    limits.push('Source needs checking');
   }
 
-  if (reason === 'ai_candidate_review_only' || reason === 'ai_extracted_candidate_requires_review') {
-    limits.push('AI assistance was used, so the row remains review-only by design.');
+  if (item.hasBlockedSupplier || item.hasRestrictedSupplier || item.hasUnknownSupplierQualification) {
+    limits.push(item.qualificationRiskNote ?? 'Supplier needs checking');
   }
 
   return Array.from(new Set(limits));
+}
+
+function buildTechnicalDetails(item: ReviewWorkflowDetail): Array<{ label: string; value: string }> {
+  const detail = item.emailDerivedOffer;
+  const metrics: Array<{ label: string; value: string | null }> = [
+    {
+      label: 'Source trust',
+      value: formatPctFromScore(detail?.sourceTrustScore),
+    },
+    {
+      label: 'Structure confidence',
+      value: formatPctFromScore(detail?.structureConfidence),
+    },
+    {
+      label: 'Field confidence',
+      value: formatPctFromScore(detail?.fieldConfidence),
+    },
+    {
+      label: 'Entity match confidence',
+      value: formatPctFromScore(detail?.entityResolutionConfidence),
+    },
+    {
+      label: 'Promotion confidence',
+      value: formatPctFromScore(detail?.promotionConfidence),
+    },
+  ];
+
+  return metrics
+    .filter((metric): metric is { label: string; value: string } => Boolean(metric.value))
+    .map((metric) => ({
+      label: metric.label,
+      value: metric.value,
+    }));
 }
 
 function buildOperatorSummary(item: ReviewWorkflowDetail): OperatorSummary {
@@ -337,10 +417,11 @@ function buildOperatorSummary(item: ReviewWorkflowDetail): OperatorSummary {
 
   return {
     recognized: buildRecognizedOfferText(item),
-    unclear: reason,
+    unclear: formatOperatorReason(reason),
     action: buildSuggestedAction(item),
     confidenceLimits:
       confidenceLimits.length > 0 ? confidenceLimits : ['The row still needs operator confirmation before any buy action.'],
+    technicalDetails: buildTechnicalDetails(item),
   };
 }
 
@@ -374,39 +455,38 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
     return (
       <section className="review-layout">
         <div className="review-header review-header-inline">
-          <div>
-            <p className="eyebrow">Email Review</p>
-            <h2 className="title">{inboundEmail?.subject ?? 'Pending supplier email'}</h2>
+            <div>
+            <p className="eyebrow">Supplier Email</p>
+            <h2 className="title">{inboundEmail?.subject ?? 'Supplier email'}</h2>
             <p className="copy">
-              Review this supplier email once, then approve or reject all extracted offer rows in
-              one action.
+              Check the offers found in this email and choose what to do next.
             </p>
           </div>
           <Link className="button" href="/dashboard/review">
-            Back to queue
+            Back
           </Link>
         </div>
 
         {query?.error ? <p className="alert alert-error">{query.error}</p> : null}
-        {query?.updated ? <p className="alert alert-success">Updated with {query.updated}.</p> : null}
+        {query?.updated ? <p className="alert alert-success">Saved with {query.updated}.</p> : null}
 
         <section className="panel review-section">
-          <h3 className="section-title">Operator Summary</h3>
+          <h3 className="section-title">Quick summary</h3>
           <div className="operator-summary-grid">
             <div className="operator-summary-card">
-              <dt>Recognized</dt>
+              <dt>What the bot found</dt>
               <dd>{emailSummary.recognized}</dd>
             </div>
             <div className="operator-summary-card">
-              <dt>Unclear</dt>
+              <dt>Needs checking</dt>
               <dd>{emailSummary.unclear}</dd>
             </div>
             <div className="operator-summary-card">
-              <dt>Suggested Action</dt>
+              <dt>Recommended next step</dt>
               <dd>{emailSummary.action}</dd>
             </div>
             <div className="operator-summary-card">
-              <dt>Why Confidence Is Limited</dt>
+              <dt>Why this needs review</dt>
               <dd>
                 <ul className="simple-list compact-list">
                   {emailSummary.confidenceLimits.map((limit) => (
@@ -416,19 +496,32 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
               </dd>
             </div>
           </div>
+          {emailSummary.technicalDetails.length > 0 ? (
+            <details className="document-card technical-details-card">
+              <summary>Technical details</summary>
+              <dl className="duplicate-product-details technical-details-grid">
+                {emailSummary.technicalDetails.map((detail) => (
+                  <div key={detail.label}>
+                    <dt>{detail.label}</dt>
+                    <dd>{detail.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
+          ) : null}
         </section>
 
         <section className="panel review-section">
-          <h3 className="section-title">Approve Or Reject</h3>
+          <h3 className="section-title">Decision</h3>
           <p className="copy review-summary-copy">
-            {visibleItems.length} extracted rows from {inboundEmail?.fromEmail ?? 'Unknown sender'}.
+            {visibleItems.length} {visibleItems.length === 1 ? 'offer' : 'offers'} from {inboundEmail?.fromEmail ?? 'Not found'}.
             {' '}
-            Review reason: {summarizeReason(items)}
+            Why this needs checking: {summarizeReason(items)}
           </p>
           {hiddenItemCount > 0 ? (
             <p className="copy review-summary-copy review-summary-note">
-              {hiddenItemCount} noisy low-confidence rows were hidden from this view because they
-              looked like forwarded headers, phone numbers, or signature text instead of products.
+              {hiddenItemCount} low-confidence rows were hidden because they looked like forwarded headers,
+              phone numbers, or signature text rather than real offers.
             </p>
           ) : null}
 
@@ -437,17 +530,17 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
               <input name="inboundEmailId" type="hidden" value={inboundEmailId} />
               <input name="action" type="hidden" value="APPROVE_TO_BUY" />
               <label>
-                Approval note
-                <textarea name="note" placeholder="Optional approval note" rows={3} />
+                Note
+                <textarea name="note" placeholder="Add a note if needed" rows={3} />
               </label>
               <label className="checkbox-row">
                 <input name="allowQualificationRisk" type="checkbox" />
-                Allow approval despite unknown or restricted supplier qualification
+                Approve even if supplier checks are incomplete
               </label>
               <SubmitButton
                 className="button button-primary button-large"
-                idleLabel="Approve All Rows"
-                pendingLabel="Approving All Rows..."
+                idleLabel="Approve all"
+                pendingLabel="Approving..."
               />
             </form>
 
@@ -455,23 +548,24 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
               <input name="inboundEmailId" type="hidden" value={inboundEmailId} />
               <input name="action" type="hidden" value="REJECT" />
               <label>
-                Rejection note
-                <textarea name="note" placeholder="Why this email should be rejected" rows={3} />
+                Reason
+                <textarea name="note" placeholder="Add a short reason" rows={3} />
               </label>
               <SubmitButton
                 className="button button-large"
-                idleLabel="Reject All Rows"
-                pendingLabel="Rejecting All Rows..."
+                idleLabel="Reject all"
+                pendingLabel="Rejecting..."
               />
             </form>
           </div>
         </section>
 
         <section className="panel review-section">
-          <h3 className="section-title">Extracted Rows</h3>
+          <h3 className="section-title">Offers found</h3>
           <div className="offer-row-list">
             {detailedVisibleItems.map(({ item, detail, summary }) => {
               const resolutionEvidenceGroups = getResolutionEvidenceGroups(detail);
+              const supplierEvidence = getSupplierEvidence(detail);
 
               return (
                 <article className="offer-row-card" key={item.id}>
@@ -498,7 +592,15 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
                   </div>
                   <div>
                     <dt>Supplier</dt>
-                    <dd>{renderValue(item.emailDerivedOffer?.supplierCandidate)}</dd>
+                    <dd className="offer-field-stack">
+                      <span>{renderValue(supplierEvidence.displayName)}</span>
+                      {supplierEvidence.needsSupplierCheck ? (
+                        <span className="pill pill-neutral">Needs supplier check</span>
+                      ) : null}
+                      {supplierEvidence.sourceLabel ? (
+                        <span className="offer-field-note">{supplierEvidence.sourceLabel}</span>
+                      ) : null}
+                    </dd>
                   </div>
                   <div>
                     <dt>Manufacturer</dt>
@@ -511,23 +613,25 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
                 </dl>
 
                 <p className="offer-row-copy">
-                  Review reason: {item.sourceReviewReason ?? item.qualificationRiskNote ?? item.latestNote ?? 'Needs review.'}
+                  Needs checking because {formatOperatorReason(
+                    item.sourceReviewReason ?? item.qualificationRiskNote ?? item.latestNote ?? 'this offer still needs review.',
+                  )}
                 </p>
                 <dl className="offer-row-summary">
                   <div>
-                    <dt>Recognized</dt>
+                    <dt>What the bot found</dt>
                     <dd>{summary.recognized}</dd>
                   </div>
                   <div>
-                    <dt>Unclear</dt>
+                    <dt>Needs checking</dt>
                     <dd>{summary.unclear}</dd>
                   </div>
                   <div>
-                    <dt>Suggested action</dt>
+                    <dt>Recommended next step</dt>
                     <dd>{summary.action}</dd>
                   </div>
                   <div>
-                    <dt>Why confidence is limited</dt>
+                    <dt>Why this needs review</dt>
                     <dd>
                       <ul className="simple-list compact-list">
                         {summary.confidenceLimits.map((limit) => (
@@ -537,12 +641,25 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
                     </dd>
                   </div>
                 </dl>
+                {summary.technicalDetails.length > 0 ? (
+                  <details className="document-card technical-details-card">
+                    <summary>Technical details</summary>
+                    <dl className="duplicate-product-details technical-details-grid">
+                      {summary.technicalDetails.map((technicalDetail) => (
+                        <div key={`${detail.id}-${technicalDetail.label}`}>
+                          <dt>{technicalDetail.label}</dt>
+                          <dd>{technicalDetail.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </details>
+                ) : null}
                 <section className="resolution-evidence">
                   <div className="resolution-evidence-header">
                     <div>
                       <h4 className="subsection-title">Resolution Evidence</h4>
                       <p className="copy resolution-evidence-copy">
-                        Candidate matches stored for this row&apos;s supplier, product, and manufacturer resolution.
+                        Candidate matches stored for this offer&apos;s supplier, product, and manufacturer checks.
                       </p>
                     </div>
                   </div>
@@ -574,7 +691,7 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
                                   </div>
                                 </div>
                                 <p className="resolution-candidate-copy">
-                                  Why this candidate looks related: {formatReasonLabel(candidate.reason)}.
+                                  Why this looks like a match: {formatReasonLabel(candidate.reason)}.
                                 </p>
                                 <p className="resolution-candidate-copy resolution-candidate-copy-secondary">
                                   {candidate.candidateId
@@ -600,7 +717,7 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
                     <input name="action" type="hidden" value="APPROVE_TO_BUY" />
                     <SubmitButton
                       className="button button-primary"
-                      idleLabel="Approve Row"
+                      idleLabel="Approve"
                       pendingLabel="Approving..."
                     />
                   </form>
@@ -610,7 +727,7 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
                     <input name="action" type="hidden" value="REJECT" />
                     <SubmitButton
                       className="button"
-                      idleLabel="Reject Row"
+                      idleLabel="Reject"
                       pendingLabel="Rejecting..."
                     />
                   </form>
@@ -622,36 +739,36 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
         </section>
 
         <section className="panel review-section">
-          <h3 className="section-title">Source Email</h3>
+          <h3 className="section-title">Original email</h3>
           <dl className="detail-list">
             <div>
               <dt>From</dt>
-              <dd>{inboundEmail?.fromEmail ?? 'Unknown'}</dd>
+              <dd>{inboundEmail?.fromEmail ?? 'Not found'}</dd>
             </div>
             <div>
               <dt>Subject</dt>
-              <dd>{inboundEmail?.subject ?? 'Unknown'}</dd>
+              <dd>{inboundEmail?.subject ?? 'Not found'}</dd>
             </div>
             <div>
-              <dt>Inbound status</dt>
-              <dd>{inboundEmail?.processingStatus ?? 'Unknown'}</dd>
+              <dt>Email status</dt>
+              <dd>{inboundEmail?.processingStatus ?? 'Not found'}</dd>
             </div>
             <div>
-              <dt>Email review reason</dt>
+              <dt>Why this needs checking</dt>
               <dd>{inboundEmail?.reviewReason ?? summarizeReason(items)}</dd>
             </div>
           </dl>
 
           <details className="document-card">
-            <summary>Show source context</summary>
+            <summary>Show email details</summary>
             <div className="review-context">
               <div className="source-block">
-                <h4 className="subsection-title">Raw body text</h4>
+                <h4 className="subsection-title">Raw email text</h4>
                 <pre>{inboundEmail?.rawText ?? 'No raw body text stored.'}</pre>
               </div>
 
               <div className="source-block">
-                <h4 className="subsection-title">Parsed email documents</h4>
+                <h4 className="subsection-title">Parsed attachments and documents</h4>
                 {inboundEmail?.documents.length ? (
                   <div className="document-list">
                     {inboundEmail.documents.map((document) => (
@@ -675,12 +792,12 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
   } catch (error) {
     return (
       <section className="panel">
-        <p className="eyebrow">Email Review</p>
-        <h2 className="title">Review Unavailable</h2>
+        <p className="eyebrow">Supplier Email</p>
+        <h2 className="title">Couldn&apos;t load this review</h2>
         <p className="copy">{error instanceof Error ? error.message : 'Failed to load review email.'}</p>
         <div className="actions">
           <Link className="button" href="/dashboard/review">
-            Back to queue
+            Back
           </Link>
         </div>
       </section>

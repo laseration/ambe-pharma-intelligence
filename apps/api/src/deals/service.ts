@@ -471,6 +471,16 @@ type TradeOpportunityDependencies = {
   getAutomationReadinessOverview: () => Promise<AutomationReadinessOverview>;
 };
 
+type RecentProductDemandRecord = {
+  customerId: string;
+  customerName: string;
+  quantity: number;
+  unitPrice: unknown;
+  totalRevenue: unknown;
+  saleDate: Date;
+  currencyCode: string;
+};
+
 type TradeOpportunityBuyDecisionLink = {
   id: string;
   emailDerivedOfferId: string;
@@ -520,6 +530,17 @@ export type TradeOpportunitySyncRepository = {
   ) => Promise<TradeOpportunityEventRecord | void>;
 };
 
+export type DemandMatchedTradeOpportunityRepository = Pick<
+  TradeOpportunityRepository,
+  'listActiveByOfferId' | 'create' | 'createPolicy' | 'createTradeOpportunityEvent'
+> & {
+  listRecentSalesByProductId: (input: {
+    productId: string;
+    windowStart: Date;
+    currencyCode: string;
+  }) => Promise<RecentProductDemandRecord[]>;
+};
+
 export type TradeOpportunityRepository = TradeOpportunitySyncRepository & {
   transaction: <T>(callback: (repository: TradeOpportunityRepository) => Promise<T>) => Promise<T>;
   findById: (tradeOpportunityId: string) => Promise<TradeOpportunityRecord | null>;
@@ -555,6 +576,11 @@ export type TradeOpportunityRepository = TradeOpportunitySyncRepository & {
   findBuyDecisionById: (buyDecisionId: string) => Promise<BuyDecisionSource | null>;
   findBuyExecutionById: (buyExecutionId: string) => Promise<BuyExecutionSource | null>;
   listActiveByOfferIds: (emailDerivedOfferIds: string[]) => Promise<TradeOpportunityRecord[]>;
+  listRecentSalesByProductId: (input: {
+    productId: string;
+    windowStart: Date;
+    currencyCode: string;
+  }) => Promise<RecentProductDemandRecord[]>;
 };
 
 const ACTIVE_TRADE_STATUSES = new Set<TradeOpportunityStatus>(['OPEN', 'ON_HOLD']);
@@ -887,6 +913,284 @@ function buildDefaultPolicy(tradeOpportunityId: string): Record<string, unknown>
     allowedMessageTypes: null,
     notes: null,
   };
+}
+
+const DEMAND_MATCH_WINDOW_DAYS = 90;
+
+function startOfDemandWindow(now: Date, days: number): Date {
+  return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+}
+
+function buildLikelyBuyers(sales: RecentProductDemandRecord[]) {
+  const grouped = new Map<
+    string,
+    {
+      customerId: string;
+      name: string;
+      units: number;
+      orderCount: number;
+      lastSaleAt: Date;
+    }
+  >();
+
+  for (const sale of sales) {
+    const existing = grouped.get(sale.customerId);
+    if (!existing) {
+      grouped.set(sale.customerId, {
+        customerId: sale.customerId,
+        name: sale.customerName,
+        units: sale.quantity,
+        orderCount: 1,
+        lastSaleAt: sale.saleDate,
+      });
+      continue;
+    }
+
+    existing.units += sale.quantity;
+    existing.orderCount += 1;
+    if (sale.saleDate > existing.lastSaleAt) {
+      existing.lastSaleAt = sale.saleDate;
+    }
+  }
+
+  return Array.from(grouped.values())
+    .sort((left, right) => {
+      if (right.units !== left.units) {
+        return right.units - left.units;
+      }
+      if (right.orderCount !== left.orderCount) {
+        return right.orderCount - left.orderCount;
+      }
+      return right.lastSaleAt.getTime() - left.lastSaleAt.getTime();
+    })
+    .slice(0, 3)
+    .map((buyer) => ({
+      customerId: buyer.customerId,
+      name: buyer.name,
+      units: buyer.units,
+      orderCount: buyer.orderCount,
+      lastSaleAt: buyer.lastSaleAt.toISOString(),
+    }));
+}
+
+export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision(
+  repository: DemandMatchedTradeOpportunityRepository,
+  input: {
+    buyDecision: TradeOpportunityBuyDecisionLink;
+    sourceSupplierNameSnapshot?: string | null;
+    actor?: TradeOpportunityActor;
+    recentDemandWindowDays?: number;
+  },
+): Promise<TradeOpportunityRecord | null> {
+  if (input.buyDecision.approvalStatus !== 'APPROVED') {
+    return null;
+  }
+
+  if (!input.buyDecision.emailDerivedOfferId || !input.buyDecision.productId) {
+    return null;
+  }
+
+  const quotedBuyUnitPrice = toNumber(input.buyDecision.quotedUnitPrice);
+  const quotedBuyCurrencyCode = normalizeCurrencyCode(input.buyDecision.quotedCurrencyCode);
+
+  if (quotedBuyUnitPrice === null || !quotedBuyCurrencyCode) {
+    return null;
+  }
+
+  const existingActive = await repository.listActiveByOfferId(input.buyDecision.emailDerivedOfferId);
+  const duplicate = existingActive.find(
+    (opportunity) =>
+      opportunity.buyDecisionId === input.buyDecision.id ||
+      opportunity.offerWorkflowItemId === input.buyDecision.offerWorkflowItemId ||
+      opportunity.emailDerivedOfferId === input.buyDecision.emailDerivedOfferId,
+  );
+
+  if (duplicate) {
+    return duplicate;
+  }
+
+  const actor = normalizeActor(input.actor);
+  const now = new Date();
+  const recentDemandWindowDays = input.recentDemandWindowDays ?? DEMAND_MATCH_WINDOW_DAYS;
+  const windowStart = startOfDemandWindow(now, recentDemandWindowDays);
+  const recentSales = await repository.listRecentSalesByProductId({
+    productId: input.buyDecision.productId,
+    windowStart,
+    currencyCode: quotedBuyCurrencyCode,
+  });
+
+  if (recentSales.length === 0) {
+    return null;
+  }
+
+  const recentUnitsSold = recentSales.reduce((total, sale) => total + sale.quantity, 0);
+  const recentRevenue = round(
+    recentSales.reduce((total, sale) => total + (toNumber(sale.totalRevenue) ?? 0), 0),
+    2,
+  );
+  const recentAverageSalePrice =
+    recentUnitsSold > 0 ? round((recentRevenue ?? 0) / recentUnitsSold, 2) : null;
+
+  if (!recentUnitsSold || recentAverageSalePrice === null || recentAverageSalePrice <= quotedBuyUnitPrice) {
+    return null;
+  }
+
+  const estimatedMarginAmount = round(recentAverageSalePrice - quotedBuyUnitPrice, 2);
+  const estimatedMarginPct =
+    estimatedMarginAmount !== null && recentAverageSalePrice > 0
+      ? round(estimatedMarginAmount / recentAverageSalePrice, 6)
+      : null;
+
+  if (estimatedMarginAmount === null || estimatedMarginAmount <= 0) {
+    return null;
+  }
+
+  const likelyBuyers = buildLikelyBuyers(recentSales);
+  const baseRecord = {
+    id: 'pending-trade-opportunity',
+    status: 'OPEN' as const,
+    stage: 'REVIEW' as const,
+    sourceType: 'BUY_DECISION' as const,
+    emailDerivedOfferId: input.buyDecision.emailDerivedOfferId,
+    offerWorkflowItemId: input.buyDecision.offerWorkflowItemId ?? null,
+    inboundEmailId: input.buyDecision.inboundEmailId ?? null,
+    buyDecisionId: input.buyDecision.id,
+    buyExecutionId: input.buyDecision.execution?.id ?? null,
+    supplierId: input.buyDecision.supplierId,
+    productId: input.buyDecision.productId,
+    ownerUserId: null,
+    rawProductText: input.buyDecision.rawProductText ?? null,
+    normalizedProductNameCandidate: input.buyDecision.normalizedProductNameCandidate ?? null,
+    manufacturerCandidate: input.buyDecision.manufacturerCandidate ?? null,
+    sourceSupplierNameSnapshot:
+      normalizeString(input.sourceSupplierNameSnapshot) ??
+      normalizeString(input.buyDecision.supplier?.name ?? null),
+    targetBuyerNameSnapshot: likelyBuyers[0]?.name ?? null,
+    targetBuyerCompanySnapshot: null,
+    supplierQualificationStatusSnapshot: input.buyDecision.supplierQualificationStatus,
+    quotedBuyUnitPrice,
+    quotedBuyCurrencyCode,
+    quotedBuyMinimumOrderQuantity: input.buyDecision.quotedMinimumOrderQuantity,
+    quotedAvailability: input.buyDecision.quotedAvailability,
+    targetSellUnitPrice: recentAverageSalePrice,
+    targetSellCurrencyCode: quotedBuyCurrencyCode,
+    minimumMarginAmount: null,
+    minimumMarginPct: null,
+    estimatedMarginAmount,
+    estimatedMarginPct,
+    quantityTarget: input.buyDecision.quotedMinimumOrderQuantity ?? recentUnitsSold,
+    rationale:
+      `Approved supplier offer matched recent demand for ${recentUnitsSold} units across ${likelyBuyers.length} likely buyer${likelyBuyers.length === 1 ? '' : 's'}. ` +
+      `Recent average sale price is ${quotedBuyCurrencyCode} ${recentAverageSalePrice.toFixed(2)} versus buy price ${quotedBuyCurrencyCode} ${quotedBuyUnitPrice.toFixed(2)}.`,
+    riskFlags: [],
+    hasQualificationBlock:
+      input.buyDecision.supplierQualificationStatus === 'BLOCKED' ||
+      input.buyDecision.supplierQualificationStatus === 'RESTRICTED',
+    isMarginFloorMet: true,
+    isActionable: true,
+    hasMessagingPolicyViolations: false,
+    messagingPolicyViolationCount: 0,
+    ownerLabel: null,
+    createdByType: actor.actorType,
+    createdByIdentifier: actor.actorIdentifier,
+    closeReason: null,
+    metadata: {
+      createdFrom: 'approved_buy_decision_demand_match',
+      recentDemandWindowDays,
+      recentUnitsSold,
+      recentRevenue,
+      recentAverageSalePrice,
+      likelyBuyers,
+    },
+    closedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    buyDecision: {
+      id: input.buyDecision.id,
+      approvalStatus: input.buyDecision.approvalStatus,
+      orderStatus: input.buyDecision.orderStatus,
+      supplierQualificationStatus: input.buyDecision.supplierQualificationStatus,
+      hasQualificationRisk: input.buyDecision.hasQualificationRisk,
+    },
+    buyExecution: input.buyDecision.execution
+      ? {
+          id: input.buyDecision.execution.id,
+          fulfillmentStatus: 'NOT_STARTED' as const,
+          reconciliationStatus: 'NOT_RECONCILED' as const,
+          hasPriceDrift: false,
+          hasQuantityDrift: false,
+          hasCurrencyMismatch: false,
+          hasAvailabilityDrift: false,
+        }
+      : null,
+    supplier: input.buyDecision.supplier ?? null,
+  };
+
+  const riskFlags = buildRiskFlags(baseRecord);
+  const created = await repository.create({
+    status: 'OPEN',
+    stage: 'REVIEW',
+    sourceType: 'BUY_DECISION',
+    emailDerivedOfferId: input.buyDecision.emailDerivedOfferId,
+    offerWorkflowItemId: input.buyDecision.offerWorkflowItemId ?? null,
+    inboundEmailId: input.buyDecision.inboundEmailId ?? null,
+    buyDecisionId: input.buyDecision.id,
+    buyExecutionId: input.buyDecision.execution?.id ?? null,
+    supplierId: input.buyDecision.supplierId,
+    productId: input.buyDecision.productId,
+    rawProductText: input.buyDecision.rawProductText ?? null,
+    normalizedProductNameCandidate: input.buyDecision.normalizedProductNameCandidate ?? null,
+    manufacturerCandidate: input.buyDecision.manufacturerCandidate ?? null,
+    sourceSupplierNameSnapshot: baseRecord.sourceSupplierNameSnapshot,
+    targetBuyerNameSnapshot: likelyBuyers[0]?.name ?? null,
+    targetBuyerCompanySnapshot: null,
+    supplierQualificationStatusSnapshot: input.buyDecision.supplierQualificationStatus,
+    quotedBuyUnitPrice,
+    quotedBuyCurrencyCode,
+    quotedBuyMinimumOrderQuantity: input.buyDecision.quotedMinimumOrderQuantity,
+    quotedAvailability: input.buyDecision.quotedAvailability,
+    targetSellUnitPrice: recentAverageSalePrice,
+    targetSellCurrencyCode: quotedBuyCurrencyCode,
+    minimumMarginAmount: null,
+    minimumMarginPct: null,
+    estimatedMarginAmount,
+    estimatedMarginPct,
+    quantityTarget: input.buyDecision.quotedMinimumOrderQuantity ?? recentUnitsSold,
+    rationale: baseRecord.rationale,
+    riskFlags,
+    hasQualificationBlock: baseRecord.hasQualificationBlock,
+    isMarginFloorMet: true,
+    isActionable: true,
+    hasMessagingPolicyViolations: false,
+    messagingPolicyViolationCount: 0,
+    ownerLabel: null,
+    createdByType: actor.actorType,
+    createdByIdentifier: actor.actorIdentifier,
+    metadata: baseRecord.metadata,
+  });
+
+  await repository.createPolicy(buildDefaultPolicy(created.id));
+  await logTradeOpportunityEvent(repository as Pick<TradeOpportunityRepository, 'createTradeOpportunityEvent'>, {
+    tradeOpportunityId: created.id,
+    actionType: 'CREATED',
+    previousStatus: null,
+    newStatus: created.status,
+    previousStage: null,
+    newStage: created.stage,
+    actorType: actor.actorType,
+    actorIdentifier: actor.actorIdentifier,
+    note: 'Created from an approved supplier offer with recent customer demand and positive margin.',
+    metadata: {
+      createdFrom: 'approved_buy_decision_demand_match',
+      buyDecisionId: input.buyDecision.id,
+      recentDemandWindowDays,
+      recentUnitsSold,
+      recentAverageSalePrice,
+      likelyBuyerCount: likelyBuyers.length,
+    },
+  });
+
+  return created;
 }
 
 function eventMetadataFromDraft(draft: TradeMessageDraftRecord): Record<string, unknown> {
@@ -1563,6 +1867,35 @@ export function createTradeOpportunityRepository(
           },
         },
       }) as Promise<TradeOpportunityRecord[]>,
+    listRecentSalesByProductId: async ({ productId, windowStart, currencyCode }) =>
+      client.salesRecord.findMany({
+        where: {
+          productId,
+          saleDate: {
+            gte: windowStart,
+          },
+          currencyCode,
+        },
+        include: {
+          customer: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: [{ saleDate: 'desc' }],
+      }).then((items) =>
+        items.map((item) => ({
+          customerId: item.customerId,
+          customerName: item.customer.name,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalRevenue: item.totalRevenue,
+          saleDate: item.saleDate,
+          currencyCode: item.currencyCode,
+        })),
+      ) as Promise<RecentProductDemandRecord[]>,
     listActiveByOfferId: async (emailDerivedOfferId) =>
       client.tradeOpportunity.findMany({
         where: {

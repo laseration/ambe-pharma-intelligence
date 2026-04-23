@@ -59,20 +59,25 @@ function installOpportunityDbMocks(t: TestContext, opportunity: OpportunityRecor
     return currentOpportunity;
   }) as typeof db.opportunity.findUnique;
 
-  db.opportunity.update = (async ({ where, data }) => {
+  db.opportunity.update = (async ({ where, data }: Prisma.OpportunityUpdateArgs) => {
     if (!currentOpportunity || where.id !== currentOpportunity.id) {
       throw new Error('Opportunity not found during update.');
     }
 
+    const nextStatus: Opportunity['status'] | undefined =
+      data.status && typeof data.status === 'object' && 'set' in data.status
+        ? (data.status.set as Opportunity['status'] | undefined)
+        : (data.status as Opportunity['status'] | undefined);
+
     currentOpportunity = {
       ...currentOpportunity,
-      status: data.status ?? currentOpportunity.status,
+      status: nextStatus ?? currentOpportunity.status,
       metadata: (data.metadata as Prisma.JsonValue) ?? currentOpportunity.metadata,
       updatedAt: new Date('2026-04-24T00:00:00.000Z'),
     };
 
     return currentOpportunity;
-  }) as typeof db.opportunity.update;
+  }) as unknown as typeof db.opportunity.update;
 
   t.after(() => {
     db.opportunity.findUnique = originalFindUnique;
@@ -83,8 +88,11 @@ function installOpportunityDbMocks(t: TestContext, opportunity: OpportunityRecor
 function installOpportunityListDbMock(t: TestContext, opportunities: OpportunityRecord[]) {
   const originalFindMany = db.opportunity.findMany;
 
-  db.opportunity.findMany = (async ({ where, orderBy, take }) => {
+  db.opportunity.findMany = (async (args?: Prisma.OpportunityFindManyArgs) => {
     let items = [...opportunities];
+    const where = args?.where;
+    const orderBy = args?.orderBy;
+    const take = args?.take;
 
     if (where && 'status' in where && where.status) {
       items = items.filter((item) => item.status === where.status);

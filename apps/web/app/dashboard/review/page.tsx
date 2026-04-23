@@ -33,6 +33,22 @@ function normalizeReviewQueueSortMode(value: string | undefined): ReviewQueueSor
   return value === 'stale' ? 'stale' : 'priority';
 }
 
+function formatDateTime(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(parsed);
+}
+
 function groupWorkflowItemsByInboundEmail(
   items: ReviewWorkflowListItem[],
   sortMode: ReviewQueueSortMode,
@@ -94,11 +110,10 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
       <section className="review-layout">
         <div className="review-header">
           <div>
-            <p className="eyebrow">Manual Review</p>
-            <h2 className="title">Pending Supplier Emails</h2>
+            <p className="eyebrow">Review</p>
+            <h2 className="title">Supplier emails to check</h2>
             <p className="copy">
-              Review one inbound supplier email at a time instead of opening a separate card for
-              every extracted spreadsheet row.
+              Review new supplier offers before they are added to the system.
             </p>
           </div>
         </div>
@@ -121,7 +136,8 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
 
         {emailGroups.length === 0 ? (
           <section className="panel">
-            <p className="copy">No open supplier emails need manual review right now.</p>
+            <p className="eyebrow">All clear</p>
+            <p className="copy">There are no supplier emails waiting for review.</p>
           </section>
         ) : (
           <div className="review-grid">
@@ -131,14 +147,16 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
                   <span className={`pill pill-${group.highestPriority.toLowerCase()}`}>
                     {group.highestPriority}
                   </span>
-                  <span className="pill pill-neutral">{group.rowCount} rows</span>
+                  <span className="pill pill-neutral">
+                    {group.rowCount} {group.rowCount === 1 ? 'offer' : 'offers'}
+                  </span>
                 </div>
                 <h3 className="review-card-title">{group.subject}</h3>
                 <p className="review-card-meta">
                   {group.fromEmail}
-                  {group.receivedAt ? ` | ${group.receivedAt}` : ''}
+                  {group.receivedAt ? ` • ${formatDateTime(group.receivedAt)}` : ''}
                 </p>
-                <p className="review-card-copy">{group.primaryReason}</p>
+                <p className="review-card-copy">Needs checking because {group.primaryReason}</p>
               </Link>
             ))}
           </div>
@@ -148,8 +166,8 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
   } catch (error) {
     return (
       <section className="panel">
-        <p className="eyebrow">Manual Review</p>
-        <h2 className="title">Review Queue Unavailable</h2>
+        <p className="eyebrow">Review</p>
+        <h2 className="title">Review queue unavailable</h2>
         <p className="copy">{error instanceof Error ? error.message : 'Failed to load review workflows.'}</p>
       </section>
     );

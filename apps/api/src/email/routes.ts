@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
 
-import { getInternalAuthContext, requireInternalAdminAccess } from '../http/auth';
+import {
+  getInternalAuthContext,
+  requireInternalAdminAccess,
+  requireInternalOperatorAccess,
+} from '../http/auth';
 import { asyncHandler } from '../http/errors';
 import { logger } from '../lib/logger';
 import {
@@ -10,7 +14,7 @@ import {
   optionalDateInputSchema,
   parseRequest,
 } from '../http/validation';
-import { ingestInboundEmail } from './inbound/service';
+import { ingestInboundEmail, listInboundEmailInboxItems } from './inbound/service';
 import {
   previewDailySummaryEmail,
   previewEmailBodyParsing,
@@ -49,6 +53,11 @@ const inboundMessageBodySchema = z.object({
   attachments: z.array(emailAttachmentSchema).optional(),
 });
 
+const listInboundMessagesQuerySchema = z.object({
+  take: z.coerce.number().int().min(1).max(100).optional(),
+  status: z.enum(['REVIEW_REQUIRED', 'FAILED', 'RECEIVED_ONLY']).optional(),
+});
+
 emailRouter.post('/body/parse-preview', asyncHandler(async (request, response) => {
   const { body } = parseRequest<unknown, unknown, z.infer<typeof parsePreviewBodySchema>>(request, {
     body: parsePreviewBodySchema,
@@ -71,6 +80,19 @@ emailRouter.post('/inbound/messages', requireInternalAdminAccess, asyncHandler(a
   });
 
   response.status(201).json(await ingestInboundEmail(body));
+}));
+
+emailRouter.get('/inbound/messages', requireInternalOperatorAccess, asyncHandler(async (request, response) => {
+  const { query } = parseRequest<unknown, z.infer<typeof listInboundMessagesQuerySchema>>(request, {
+    query: listInboundMessagesQuerySchema,
+  });
+
+  response.json({
+    items: await listInboundEmailInboxItems({
+      take: query.take,
+      status: query.status,
+    }),
+  });
 }));
 
 emailRouter.post('/opportunities/:id/preview', asyncHandler(async (request, response) => {
