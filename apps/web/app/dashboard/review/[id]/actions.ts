@@ -10,6 +10,29 @@ function value(formData: FormData, key: string): string {
   return typeof rawValue === 'string' ? rawValue.trim() : '';
 }
 
+function buildReviewRedirectTarget(
+  inboundEmailId: string,
+  params: Record<string, string>,
+): string {
+  const searchParams = new URLSearchParams(params);
+  return `/dashboard/review/${encodeURIComponent(inboundEmailId)}?${searchParams.toString()}#decision`;
+}
+
+function formatReviewActionErrorMessage(message: string, action: string): string {
+  if (
+    action === 'APPROVE_TO_BUY' &&
+    /qualification risk requires explicit operator confirmation/i.test(message)
+  ) {
+    return 'Supplier needs checking before approval. The supplier was detected, but it has not been matched to an approved supplier record yet. Use the checkbox below if you intentionally want to continue.';
+  }
+
+  if (action === 'APPROVE_TO_BUY' && /blocked supplier cannot be approved to buy/i.test(message)) {
+    return 'Approval is blocked. The supplier is currently blocked and must be reviewed before you can continue.';
+  }
+
+  return message || 'Workflow action failed.';
+}
+
 export async function submitInboundEmailReviewAction(formData: FormData) {
   const inboundEmailId = value(formData, 'inboundEmailId');
   const workflowItemId = value(formData, 'workflowItemId');
@@ -32,7 +55,11 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
       : await listReviewWorkflowItems({ inboundEmailId });
 
     if (items.length === 0) {
-      redirect(`/dashboard/review/${inboundEmailId}?error=No+open+workflow+items+found`);
+      redirect(
+        buildReviewRedirectTarget(inboundEmailId, {
+          error: 'No open workflow items were found for this email.',
+        }),
+      );
     }
 
     for (const item of items) {
@@ -53,8 +80,20 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
       });
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Workflow action failed.';
-    redirect(`/dashboard/review/${inboundEmailId || workflowItemId}?error=${encodeURIComponent(message)}`);
+    const message = formatReviewActionErrorMessage(
+      error instanceof Error ? error.message : 'Workflow action failed.',
+      action,
+    );
+
+    if (inboundEmailId) {
+      redirect(
+        buildReviewRedirectTarget(inboundEmailId, {
+          error: message,
+        }),
+      );
+    }
+
+    redirect(`/dashboard/review/${workflowItemId}?error=${encodeURIComponent(message)}`);
   }
 
   revalidatePath('/dashboard/review');

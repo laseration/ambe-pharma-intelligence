@@ -190,6 +190,9 @@ function createRepositoryHarness() {
       async findWorkflowItemById(workflowItemId: string) {
         return (workflowItems.find((item) => item.id === workflowItemId) ?? null) as never;
       },
+      async findWorkflowDetailById(workflowItemId: string) {
+        return (workflowItems.find((item) => item.id === workflowItemId) ?? null) as never;
+      },
       async createWorkflowItem(data: Record<string, any>) {
         const created = makeWorkflowRecord({
           ...data,
@@ -476,6 +479,102 @@ function createRepositoryHarness() {
     },
   };
 }
+
+test('workflow detail derives supplier contact from forwarded external email details', async () => {
+  const harness = createRepositoryHarness();
+  harness.workflowItems.push(
+    harness.makeWorkflowRecord({
+      id: 'workflow-contact-1',
+      hasUnresolvedSupplier: true,
+      sourceReviewReason: 'unresolved_supplier',
+      inboundEmail: {
+        id: 'email-contact-1',
+        fromEmail: 'sandeep@ambemedical.com',
+        fromName: 'Sandeep Patel',
+        subject: 'Fw: NOVO NORDISK - NOVOFINE NEEDLES',
+        receivedAt: new Date('2026-04-23T22:30:18.000Z'),
+        rawHtml: null,
+        rawText: 'Forwarded supplier email',
+        triageStatus: 'AUTO_PROCESSED',
+        processingStatus: 'REVIEW_REQUIRED',
+        reviewReason: 'unresolved_supplier',
+        documents: [
+          {
+            id: 'doc-main',
+            kind: 'BODY_MAIN',
+            documentIndex: 1,
+            label: 'body-main',
+            textContent: 'Ambe Medical Group\nPlease review this supplier email.',
+            metadata: null,
+          },
+          {
+            id: 'doc-forwarded',
+            kind: 'BODY_FORWARDED',
+            documentIndex: 2,
+            label: 'body-forwarded',
+            textContent: [
+              'From: carl.junius@delta-pharma.eu <carl.junius@delta-pharma.eu>',
+              'Subject: NOVO NORDISK - NOVOFINE NEEDLES',
+              '',
+              'Kind regards,',
+              'Carl Junius',
+              'Delta BE bv',
+              'm: +32 11 49 57 77',
+            ].join('\n'),
+            metadata: null,
+          },
+        ],
+      },
+      emailDerivedOffer: {
+        id: 'offer-contact-1',
+        status: 'REVIEW_REQUIRED',
+        reviewReason: 'unresolved_supplier',
+        sourceKind: 'STRICT_BODY_MAIN',
+        sourceBlockText: 'NOVOFINE NEEDLES INJ TŰ 31G 6MM 100X',
+        rawProductText: 'NOVOFINE NEEDLES INJ TŰ 31G 6MM 100X',
+        normalizedProductNameCandidate: 'novofine needles',
+        manufacturerCandidate: null,
+        priceCandidate: { toString: () => '7' },
+        currencyCandidate: 'EUR',
+        minimumOrderQuantityCandidate: null,
+        availabilityCandidate: null,
+        metadata: {
+          sender: 'sandeep@ambemedical.com',
+          subject: 'Fw: NOVO NORDISK - NOVOFINE NEEDLES',
+        },
+        resolutionCandidates: [
+          {
+            entityType: 'SUPPLIER',
+            candidateId: null,
+            candidateName: 'Delta Pharma',
+            confidence: 72,
+            reason: 'forwarded_sender_domain',
+            selected: false,
+          },
+          {
+            entityType: 'SUPPLIER',
+            candidateId: null,
+            candidateName: 'Delta BE bv',
+            confidence: 70,
+            reason: 'body_company_cue',
+            selected: false,
+          },
+        ],
+        buyDecision: null,
+        updatedAt: new Date(),
+      },
+    }),
+  );
+
+  const service = createOfferWorkflowService(harness.repository as never);
+  const detail = await service.getWorkflowItem('workflow-contact-1');
+
+  assert.equal(detail?.supplierContact?.companyName, 'Delta Pharma / Delta BE bv');
+  assert.equal(detail?.supplierContact?.contactName, 'Carl Junius');
+  assert.equal(detail?.supplierContact?.email, 'carl.junius@delta-pharma.eu');
+  assert.equal(detail?.supplierContact?.phone, '+32 11 49 57 77');
+  assert.equal(detail?.supplierContact?.source, 'Forwarded email');
+});
 
 function createSyncInput(overrides?: Partial<SyncWorkflowItemInput>): SyncWorkflowItemInput {
   return {
@@ -922,6 +1021,42 @@ test('unknown qualification requires explicit operator confirmation to approve',
   assert.equal(harness.buyDecisions.length, 1);
   assert.equal(harness.buyDecisions[0]?.hasQualificationRisk, true);
   assert.equal(harness.workflowItems[0]?.status, 'APPROVED_TO_BUY');
+});
+
+test('unresolved supplier requires explicit operator confirmation to approve', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  harness.workflowItems.push(
+    harness.makeWorkflowRecord({
+      supplierQualificationStatus: 'APPROVED',
+      hasUnresolvedSupplier: true,
+      hasUnknownSupplierQualification: false,
+      qualificationRiskNote: null,
+    }),
+  );
+
+  await assert.rejects(
+    service.approveToBuy({
+      workflowItemId: harness.workflowItems[0]!.id,
+      actorType: 'USER',
+      actorIdentifier: 'buyer-1',
+    }),
+    /qualification risk requires explicit operator confirmation/i,
+  );
+
+  await service.approveToBuy({
+    workflowItemId: harness.workflowItems[0]!.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+    allowQualificationRisk: true,
+    note: 'Approved despite unresolved supplier.',
+  });
+
+  assert.equal(harness.buyDecisions.length, 1);
+  assert.equal(harness.buyDecisions[0]?.supplierQualificationStatus, 'UNKNOWN');
+  assert.equal(harness.buyDecisions[0]?.hasQualificationRisk, true);
+  assert.equal(harness.workflowItems[0]?.status, 'APPROVED_TO_BUY');
+  assert.equal(harness.workflowItems[0]?.hasUnknownSupplierQualification, true);
 });
 
 test('queue listing can return stale open items first', async () => {

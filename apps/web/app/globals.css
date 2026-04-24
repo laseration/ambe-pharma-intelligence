@@ -953,6 +953,43 @@ summary {
   width: auto;
 }
 
+.review-guidance-card {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+}
+
+.review-guidance-card-info {
+  background: rgba(236, 253, 245, 0.72);
+  border-color: rgba(15, 118, 110, 0.14);
+}
+
+.review-guidance-card-warning {
+  background: var(--danger-soft);
+  border-color: rgba(180, 35, 24, 0.18);
+}
+
+.review-guidance-title {
+  margin: 0;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.review-guidance-copy,
+.form-helper {
+  margin: 8px 0 0;
+}
+
+.form-helper {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.review-inline-alert {
+  margin-top: 16px;
+}
+
 @media (max-width: 1080px) {
   .dashboard-proof-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));

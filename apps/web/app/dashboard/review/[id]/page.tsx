@@ -39,6 +39,15 @@ type SupplierEvidence = {
   displayName: string | null;
   needsSupplierCheck: boolean;
   sourceLabel: string | null;
+  aliases: string[];
+};
+
+type SupplierContact = NonNullable<ReviewWorkflowDetail['supplierContact']>;
+
+type ApprovalGuidance = {
+  title: string;
+  copy: string;
+  tone: 'info' | 'warning';
 };
 
 function renderValue(value: string | number | null | undefined) {
@@ -87,6 +96,20 @@ function looksLikeNonProductLabel(value: string): boolean {
   );
 }
 
+function looksLikeCodeHeavyValue(value: string | null | undefined): boolean {
+  const trimmed = value?.trim() ?? '';
+
+  if (!trimmed) {
+    return false;
+  }
+
+  const compact = trimmed.replace(/[\s()[\]-]+/g, '');
+  const alphaCount = (compact.match(/[A-Za-z]/g) ?? []).length;
+  const digitCount = (compact.match(/\d/g) ?? []).length;
+
+  return compact.length <= 14 && alphaCount > 0 && digitCount > 0 && /^[A-Za-z0-9]+$/.test(compact);
+}
+
 function extractDisplayProductName(item: ReviewWorkflowListItem): string {
   const rawProductText = item.emailDerivedOffer?.rawProductText?.trim();
   const normalizedName = item.emailDerivedOffer?.normalizedProductNameCandidate?.split('|')[0]?.trim();
@@ -128,6 +151,17 @@ function isLikelyDisplayableOffer(item: ReviewWorkflowListItem): boolean {
   }
 
   if (looksLikeNonProductLabel(title) && !hasStructuredProductSignal) {
+    return false;
+  }
+
+  const priceText = item.emailDerivedOffer?.priceCandidate?.trim() ?? '';
+  const hasCurrency = Boolean(item.emailDerivedOffer?.currencyCandidate);
+
+  if (
+    !hasStructuredProductSignal &&
+    item.sourceReviewReason === 'deterministic_row_low_confidence' &&
+    (looksLikeCodeHeavyValue(title) || (priceText !== '' && Number(priceText) <= 5 && !hasCurrency))
+  ) {
     return false;
   }
 
@@ -228,11 +262,22 @@ function getSupplierEvidence(item: ReviewWorkflowDetail): SupplierEvidence {
   );
   const topSupplierCandidate = selectedSupplier ?? supplierCandidates[0] ?? null;
   const displayName = item.emailDerivedOffer?.supplierCandidate ?? topSupplierCandidate?.candidateName ?? null;
+  const aliases =
+    topSupplierCandidate &&
+    topSupplierCandidate.metadata &&
+    typeof topSupplierCandidate.metadata === 'object' &&
+    !Array.isArray(topSupplierCandidate.metadata) &&
+    Array.isArray((topSupplierCandidate.metadata as { aliases?: unknown[] }).aliases)
+      ? (topSupplierCandidate.metadata as { aliases: unknown[] }).aliases
+          .filter((alias): alias is string => typeof alias === 'string' && alias.trim().length > 0)
+          .filter((alias) => normalizeForComparison(alias) !== normalizeForComparison(displayName ?? ''))
+      : [];
 
   return {
     displayName,
     needsSupplierCheck: Boolean(displayName) && !selectedSupplier,
     sourceLabel: formatSupplierSourceLabel(topSupplierCandidate?.reason),
+    aliases,
   };
 }
 
@@ -283,6 +328,16 @@ function getResolutionEvidenceGroups(
 
 function buildRecognizedOfferText(item: ReviewWorkflowDetail): string {
   const supplierEvidence = getSupplierEvidence(item);
+  const rawProductText = item.emailDerivedOffer?.rawProductText?.trim() ?? '';
+  const isLikelyNoisyRow =
+    item.emailDerivedOffer?.sourceKind?.includes('ATTACHMENT_TEXT') &&
+    !item.emailDerivedOffer?.currencyCandidate &&
+    looksLikeCodeHeavyValue(rawProductText);
+
+  if (isLikelyNoisyRow || (item.sourceReviewReason ?? item.emailDerivedOffer?.reviewReason) === 'deterministic_row_low_confidence') {
+    return 'Possible supplier offer found. Product details need checking.';
+  }
+
   const parts = [
     extractDisplayProductName(item),
     item.emailDerivedOffer?.strengthCandidate,
@@ -425,6 +480,50 @@ function buildOperatorSummary(item: ReviewWorkflowDetail): OperatorSummary {
   };
 }
 
+function getSupplierContact(detail: ReviewWorkflowDetail): SupplierContact | null {
+  const contact = detail.supplierContact;
+
+  if (!contact) {
+    return null;
+  }
+
+  return Object.values(contact).some((value) => Boolean(value)) ? contact : null;
+}
+
+function buildApprovalGuidance(items: Array<{ detail: ReviewWorkflowDetail }>): ApprovalGuidance | null {
+  const hasBlockedSupplier = items.some(({ detail }) => detail.hasBlockedSupplier);
+
+  if (hasBlockedSupplier) {
+    return {
+      title: 'Approval is blocked',
+      copy: 'A blocked supplier is linked to this offer. Review the supplier before trying to approve it.',
+      tone: 'warning',
+    };
+  }
+
+  const firstRiskyItem = items.find(
+    ({ detail }) =>
+      detail.hasUnknownSupplierQualification ||
+      detail.hasRestrictedSupplier ||
+      getSupplierEvidence(detail).needsSupplierCheck,
+  );
+
+  if (!firstRiskyItem) {
+    return null;
+  }
+
+  const supplierName = getSupplierEvidence(firstRiskyItem.detail).displayName;
+  const supplierText = supplierName
+    ? `${supplierName} was detected, but it has not been matched to an approved supplier record yet.`
+    : 'The supplier has not been matched to an approved supplier record yet.';
+
+  return {
+    title: 'Approval needs confirmation',
+    copy: `${supplierText} Approve all is blocked until you tick the checkbox below. Approving a single row counts as explicit operator intent for that row only.`,
+    tone: 'info',
+  };
+}
+
 export default async function ReviewInboundEmailPage({ params, searchParams }: PageProps) {
   const { id: inboundEmailId } = await params;
   const query = searchParams ? await searchParams : undefined;
@@ -451,6 +550,8 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
     const firstDetailForSummary = detailedVisibleItems[0]?.detail ?? (await getReviewWorkflowItem(items[0]!.id));
     const emailSummary = buildOperatorSummary(firstDetailForSummary);
     const inboundEmail = firstDetailForSummary.inboundEmail;
+    const supplierContact = getSupplierContact(firstDetailForSummary);
+    const approvalGuidance = buildApprovalGuidance(detailedVisibleItems);
 
     return (
       <section className="review-layout">
@@ -511,19 +612,70 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
           ) : null}
         </section>
 
-        <section className="panel review-section">
+        {supplierContact ? (
+          <section className="panel review-section">
+            <h3 className="section-title">Supplier contact</h3>
+            <dl className="detail-list">
+              {supplierContact.companyName ? (
+                <div>
+                  <dt>Company</dt>
+                  <dd>{supplierContact.companyName}</dd>
+                </div>
+              ) : null}
+              {supplierContact.contactName ? (
+                <div>
+                  <dt>Contact</dt>
+                  <dd>{supplierContact.contactName}</dd>
+                </div>
+              ) : null}
+              {supplierContact.email ? (
+                <div>
+                  <dt>Email</dt>
+                  <dd>{supplierContact.email}</dd>
+                </div>
+              ) : null}
+              {supplierContact.phone ? (
+                <div>
+                  <dt>Phone</dt>
+                  <dd>{supplierContact.phone}</dd>
+                </div>
+              ) : null}
+              {supplierContact.source ? (
+                <div>
+                  <dt>Source</dt>
+                  <dd>{supplierContact.source}</dd>
+                </div>
+              ) : null}
+            </dl>
+          </section>
+        ) : null}
+
+        <section className="panel review-section" id="decision">
           <h3 className="section-title">Decision</h3>
           <p className="copy review-summary-copy">
             {visibleItems.length} {visibleItems.length === 1 ? 'offer' : 'offers'} from {inboundEmail?.fromEmail ?? 'Not found'}.
             {' '}
             Why this needs checking: {summarizeReason(items)}
           </p>
+          {approvalGuidance ? (
+            <div
+              className={`review-guidance-card${
+                approvalGuidance.tone === 'warning'
+                  ? ' review-guidance-card-warning'
+                  : ' review-guidance-card-info'
+              }`}
+            >
+              <p className="review-guidance-title">{approvalGuidance.title}</p>
+              <p className="copy review-guidance-copy">{approvalGuidance.copy}</p>
+            </div>
+          ) : null}
           {hiddenItemCount > 0 ? (
             <p className="copy review-summary-copy review-summary-note">
               {hiddenItemCount} low-confidence rows were hidden because they looked like forwarded headers,
               phone numbers, or signature text rather than real offers.
             </p>
           ) : null}
+          {query?.error ? <p className="alert alert-error review-inline-alert">{query.error}</p> : null}
 
           <div className="action-row action-row-stacked-mobile">
             <form action={submitInboundEmailReviewAction} className="action-form">
@@ -535,8 +687,11 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
               </label>
               <label className="checkbox-row">
                 <input name="allowQualificationRisk" type="checkbox" />
-                Approve even if supplier checks are incomplete
+                Approve despite incomplete supplier checks
               </label>
+              <p className="form-helper">
+                Use this only if you intentionally want to continue even though the supplier still needs checking.
+              </p>
               <SubmitButton
                 className="button button-primary button-large"
                 idleLabel="Approve all"
@@ -599,6 +754,11 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
                       ) : null}
                       {supplierEvidence.sourceLabel ? (
                         <span className="offer-field-note">{supplierEvidence.sourceLabel}</span>
+                      ) : null}
+                      {supplierEvidence.aliases.length > 0 ? (
+                        <span className="offer-field-note">
+                          Also seen as: {supplierEvidence.aliases.join(', ')}
+                        </span>
                       ) : null}
                     </dd>
                   </div>
