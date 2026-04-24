@@ -160,6 +160,14 @@ test('workflow detail route returns inbound email context and staged offer data'
             },
           ],
         },
+        supplierContact: {
+          companyName: 'Shortline',
+          contactName: 'Carl Junius',
+          email: 'carl.junius@shortline.co',
+          phone: '+32 11 49 57 77',
+          domain: 'shortline.co',
+          source: 'Forwarded email',
+        },
         buyDecision: null,
       }) as any) as typeof offerWorkflowService.getWorkflowItem,
   );
@@ -176,6 +184,7 @@ test('workflow detail route returns inbound email context and staged offer data'
   assert.equal(payload.item.id, 'workflow-1');
   assert.equal(payload.item.emailDerivedOffer.rawProductText, 'Amlodipine 5mg tabs 28');
   assert.equal(payload.item.inboundEmail.documents[0].kind, 'BODY_MAIN');
+  assert.equal(payload.item.supplierContact.companyName, 'Shortline');
 });
 
 test('workflow detail route returns 404 when workflow is missing', async (t) => {

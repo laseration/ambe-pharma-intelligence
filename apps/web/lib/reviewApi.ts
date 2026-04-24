@@ -72,6 +72,7 @@ export type ReviewWorkflowDetail = ReviewWorkflowListItem & {
       confidence: number;
       reason: string;
       selected: boolean;
+      metadata?: unknown;
     }>;
     sourceDocument?: {
       id: string;
@@ -101,6 +102,14 @@ export type ReviewWorkflowDetail = ReviewWorkflowListItem & {
       textContent: string;
       metadata: unknown;
     }>;
+  } | null;
+  supplierContact?: {
+    companyName: string | null;
+    contactName: string | null;
+    email: string | null;
+    phone: string | null;
+    domain: string | null;
+    source: string | null;
   } | null;
   buyDecision?: {
     id: string;

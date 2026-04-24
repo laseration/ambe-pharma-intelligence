@@ -63,6 +63,118 @@ function normalizeSupplierIdentityToken(value: string | null | undefined): strin
   return normalizeFingerprintText(value).replace(/[^a-z0-9]+/g, '');
 }
 
+const SUPPLIER_FAMILY_SUFFIXES = [
+  'pharmaceuticals',
+  'pharmaceutical',
+  'pharma',
+  'medical',
+  'healthcare',
+  'health',
+  'group',
+  'company',
+  'limited',
+  'ltd',
+  'llc',
+  'gmbh',
+  'corp',
+  'co',
+  'plc',
+  'bv',
+  'nv',
+  'be',
+  'uk',
+  'eu',
+];
+
+const ATTACHMENT_TEXT_NOISE_PATTERN =
+  /\b(?:batch|lot|item number|quantity|pack ref|ref)\b|\(\d{2,3}\)|\b\d{6,}\b/i;
+const PRODUCT_WORD_SIGNAL_PATTERN =
+  /\b(?:needle|needles|inj|injection|tab|tabs|tablet|tablets|capsule|capsules|caplet|caplets|vial|vials|amp|amps|syrup|cream|ointment|pack|pcs|pieces|mg|ml|g|mm|novofine)\b/i;
+const EXPLICIT_PRICE_SIGNAL_PATTERN = /(?:£|\$|€|\b(?:gbp|eur|usd|price|prices|offer)\b)/i;
+
+function buildSupplierFamilyKey(value: string | null | undefined): string {
+  let normalized = normalizeSupplierIdentityToken(value);
+
+  if (!normalized) {
+    return '';
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+
+    for (const suffix of SUPPLIER_FAMILY_SUFFIXES) {
+      if (normalized.endsWith(suffix) && normalized.length > suffix.length + 2) {
+        normalized = normalized.slice(0, -suffix.length);
+        changed = true;
+      }
+    }
+  }
+
+  return normalized || normalizeSupplierIdentityToken(value);
+}
+
+function looksLikeCodeHeavyText(value: string | null | undefined): boolean {
+  const trimmed = value?.trim() ?? '';
+
+  if (!trimmed) {
+    return false;
+  }
+
+  const compact = trimmed.replace(/[\s()[\]-]+/g, '');
+  const alphaCount = (compact.match(/[A-Za-z]/g) ?? []).length;
+  const digitCount = (compact.match(/\d/g) ?? []).length;
+
+  return compact.length <= 14 && digitCount > 0 && alphaCount > 0 && /^[A-Za-z0-9]+$/.test(compact);
+}
+
+function shouldSuppressAttachmentTextOfferCandidate(candidate: StagedOfferCandidate): boolean {
+  if (!candidate.sourceKind.includes('ATTACHMENT_TEXT')) {
+    return false;
+  }
+
+  const rawProductText = candidate.rawProductText?.trim() ?? '';
+  const sourceBlockText = candidate.sourceBlockText.trim();
+  const hasExplicitPriceSignal = EXPLICIT_PRICE_SIGNAL_PATTERN.test(sourceBlockText);
+  const hasProductWordSignal = PRODUCT_WORD_SIGNAL_PATTERN.test(rawProductText) || PRODUCT_WORD_SIGNAL_PATTERN.test(sourceBlockText);
+  const hasStructuredProductDetail = Boolean(
+    candidate.strengthCandidate || candidate.dosageFormCandidate || candidate.packSizeCandidate,
+  );
+  const priceAmount = candidate.priceCandidate ? Number(candidate.priceCandidate.toString()) : null;
+  const strayLowPrice = priceAmount !== null && priceAmount <= 5 && !candidate.currencyCandidate && !hasExplicitPriceSignal;
+  const codeHeavyProductText = looksLikeCodeHeavyText(rawProductText);
+  const codeHeavySourceText = looksLikeCodeHeavyText(sourceBlockText);
+  const looksLikeReferenceNoise =
+    ATTACHMENT_TEXT_NOISE_PATTERN.test(sourceBlockText) ||
+    ATTACHMENT_TEXT_NOISE_PATTERN.test(rawProductText);
+
+  if (
+    !hasProductWordSignal &&
+    (codeHeavyProductText || codeHeavySourceText || looksLikeReferenceNoise) &&
+    !hasExplicitPriceSignal
+  ) {
+    return true;
+  }
+
+  if (
+    !hasStructuredProductDetail &&
+    !hasProductWordSignal &&
+    (codeHeavyProductText || codeHeavySourceText || looksLikeReferenceNoise || rawProductText.length < 14)
+  ) {
+    return true;
+  }
+
+  if ((codeHeavyProductText || looksLikeReferenceNoise) && strayLowPrice) {
+    return true;
+  }
+
+  if (!hasStructuredProductDetail && !hasProductWordSignal && !candidate.currencyCandidate && !hasExplicitPriceSignal) {
+    return true;
+  }
+
+  return false;
+}
+
 function isInternalSupplierDomain(domain: string | null | undefined): boolean {
   const normalizedDomain = normalizeFingerprintText(domain).replace(/^@+/, '');
 
@@ -1023,22 +1135,37 @@ async function resolveOfferCandidates(
 
     const groupedSupplierCues = new Map<
       string,
-      { candidateName: string; confidence: number; reason: string; supportsConflict: boolean }
+      {
+        candidateName: string;
+        confidence: number;
+        reason: string;
+        supportsConflict: boolean;
+        aliases: string[];
+      }
     >();
 
     for (const cue of supplierCues) {
-      const normalizedName = normalizeFingerprintText(cue.candidateName);
-      const existingCue = groupedSupplierCues.get(normalizedName);
+      const supplierFamilyKey = buildSupplierFamilyKey(cue.candidateName) || normalizeFingerprintText(cue.candidateName);
+      const existingCue = groupedSupplierCues.get(supplierFamilyKey);
 
       if (!existingCue || cue.confidence > existingCue.confidence) {
-        groupedSupplierCues.set(normalizedName, {
+        groupedSupplierCues.set(supplierFamilyKey, {
           ...cue,
           supportsConflict:
             cue.reason === 'signature_company_cue' && hasForwardedSenderDomainCue
               ? false
               : cue.supportsConflict ?? true,
+          aliases: Array.from(new Set([...(existingCue?.aliases ?? []), cue.candidateName])),
         });
+        continue;
       }
+
+      existingCue.aliases = Array.from(new Set([...existingCue.aliases, cue.candidateName]));
+      existingCue.supportsConflict =
+        existingCue.supportsConflict &&
+        (cue.reason === 'signature_company_cue' && hasForwardedSenderDomainCue
+          ? false
+          : cue.supportsConflict ?? true);
     }
 
     const supplierCandidates = Array.from(groupedSupplierCues.values()).sort(
@@ -1076,11 +1203,19 @@ async function resolveOfferCandidates(
         confidence: candidate.confidence,
         reason: candidate.reason,
         selected: candidateSelected,
-        metadata: supplierCueConflict
-          ? {
-              ambiguous: true,
-            }
-          : undefined,
+        metadata:
+          supplierCueConflict || candidate.aliases.length > 1
+            ? {
+                ...(supplierCueConflict
+                  ? {
+                      ambiguous: true,
+                    }
+                  : {}),
+                aliases: candidate.aliases.filter(
+                  (alias) => normalizeFingerprintText(alias) !== normalizeFingerprintText(candidate.candidateName),
+                ),
+              }
+            : undefined,
       });
     }
 
@@ -1606,7 +1741,7 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
 
       return [...strictOffers, ...looseOffers];
     }),
-  );
+  ).filter((candidate) => !shouldSuppressAttachmentTextOfferCandidate(candidate));
   const sourceLearningContext = {
     sourceSystem,
     senderEmail: message.from,

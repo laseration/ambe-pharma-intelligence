@@ -1,4 +1,5 @@
 import { db } from '../lib/db';
+import { env } from '../config/env';
 import {
   upsertExecutionForBuyDecision,
   type BuyExecutionRecord,
@@ -216,6 +217,15 @@ type WorkflowInboundEmailDocumentRecord = {
   metadata: unknown;
 };
 
+type SupplierContactDetails = {
+  companyName: string | null;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  domain: string | null;
+  source: string | null;
+};
+
 type WorkflowDetailRecord = WorkflowRecord & {
   emailDerivedOffer?: (NonNullable<WorkflowRecord['emailDerivedOffer']> & {
     strengthCandidate: string | null;
@@ -237,6 +247,7 @@ type WorkflowDetailRecord = WorkflowRecord & {
     reviewReason: string | null;
     documents: WorkflowInboundEmailDocumentRecord[];
   }) | null;
+  supplierContact?: SupplierContactDetails | null;
 };
 
 type WorkflowEventRecord = {
@@ -355,6 +366,192 @@ function normalizeActor(actor?: WorkflowActor): NormalizedActor {
 
 function isOpenWorkflowStatus(status: WorkflowStatus): boolean {
   return OPEN_WORKFLOW_STATUSES.has(status);
+}
+
+function normalizeSupplierIdentityToken(value: string | null | undefined): string {
+  return (value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function normalizeEmailDomain(value: string | null | undefined): string | null {
+  const trimmed = value?.trim().toLowerCase().replace(/^@+/, '') ?? '';
+  return trimmed || null;
+}
+
+function extractEmailDomain(email: string | null | undefined): string | null {
+  const trimmed = email?.trim().toLowerCase() ?? '';
+  const atIndex = trimmed.lastIndexOf('@');
+
+  if (atIndex < 0) {
+    return null;
+  }
+
+  return normalizeEmailDomain(trimmed.slice(atIndex + 1));
+}
+
+function isInternalSupplierDomain(domain: string | null | undefined): boolean {
+  const normalizedDomain = normalizeEmailDomain(domain);
+
+  if (!normalizedDomain) {
+    return false;
+  }
+
+  return env.emailInboundInternalDomains.some((entry) => {
+    const normalizedEntry = normalizeEmailDomain(entry);
+    return (
+      Boolean(normalizedEntry) &&
+      (normalizedDomain === normalizedEntry || normalizedDomain.endsWith(`.${normalizedEntry}`))
+    );
+  });
+}
+
+function isInternalSupplierCompanyName(candidateName: string | null | undefined): boolean {
+  const normalizedCandidate = normalizeSupplierIdentityToken(candidateName);
+
+  if (!normalizedCandidate) {
+    return false;
+  }
+
+  return env.emailInboundInternalCompanyNames.some((entry) => {
+    const normalizedEntry = normalizeSupplierIdentityToken(entry);
+    return (
+      Boolean(normalizedEntry) &&
+      (normalizedCandidate === normalizedEntry ||
+        normalizedCandidate.includes(normalizedEntry) ||
+        normalizedEntry.includes(normalizedCandidate))
+    );
+  });
+}
+
+function collectExternalEmails(
+  documents: WorkflowInboundEmailDocumentRecord[],
+): Array<{ value: string; kind: string }> {
+  const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+  const emails: Array<{ value: string; kind: string }> = [];
+  const seen = new Set<string>();
+
+  for (const document of documents) {
+    const matches = document.textContent.match(emailPattern) ?? [];
+
+    for (const match of matches) {
+      const normalizedEmail = match.trim().toLowerCase();
+      const domain = extractEmailDomain(normalizedEmail);
+
+      if (!normalizedEmail || isInternalSupplierDomain(domain) || seen.has(normalizedEmail)) {
+        continue;
+      }
+
+      seen.add(normalizedEmail);
+      emails.push({
+        value: normalizedEmail,
+        kind: document.kind,
+      });
+    }
+  }
+
+  return emails;
+}
+
+function collectPhoneNumbers(
+  documents: WorkflowInboundEmailDocumentRecord[],
+): Array<{ value: string; kind: string }> {
+  const phonePattern = /(?:^|[\s:])(\+?\d[\d\s()./-]{6,}\d)(?=$|\s)/g;
+  const phones: Array<{ value: string; kind: string }> = [];
+  const seen = new Set<string>();
+
+  for (const document of documents) {
+    const lines = document.textContent.split(/\r?\n/);
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || !/(?:^|\b)(?:m|mob|mobile|tel|telephone|phone|fax)\s*:|\+\d/.test(trimmed)) {
+        continue;
+      }
+
+      for (const match of trimmed.matchAll(phonePattern)) {
+        const phone = match[1]?.trim().replace(/\s{2,}/g, ' ') ?? '';
+
+        if (!phone || seen.has(phone)) {
+          continue;
+        }
+
+        seen.add(phone);
+        phones.push({
+          value: phone,
+          kind: document.kind,
+        });
+      }
+    }
+  }
+
+  return phones;
+}
+
+function extractContactName(documents: WorkflowInboundEmailDocumentRecord[]): string | null {
+  const preferredDocuments = documents.filter((document) =>
+    ['BODY_FORWARDED', 'SIGNATURE'].includes(document.kind),
+  );
+  const text = preferredDocuments.map((document) => document.textContent).join('\n\n');
+
+  const signoffMatch = text.match(
+    /(?:kind regards|best regards|regards|thanks|many thanks|best)[,\s]*\n+([A-Z][A-Za-z'’-]+(?:[ \t]+[A-Z][A-Za-z'’-]+){1,2})/i,
+  );
+  const candidate = signoffMatch?.[1]?.trim() ?? null;
+
+  if (!candidate || isInternalSupplierCompanyName(candidate)) {
+    return null;
+  }
+
+  return candidate;
+}
+
+function deriveSupplierContact(detail: WorkflowDetailRecord): SupplierContactDetails | null {
+  const documents = detail.inboundEmail?.documents ?? [];
+  const externalEmails = collectExternalEmails(documents);
+  const externalPhones = collectPhoneNumbers(documents);
+  const supplierCandidates = (detail.emailDerivedOffer?.resolutionCandidates ?? [])
+    .filter(
+      (candidate) =>
+        candidate.entityType === 'SUPPLIER' && !isInternalSupplierCompanyName(candidate.candidateName),
+    )
+    .sort(
+      (left, right) =>
+        Number(right.selected) - Number(left.selected) ||
+        right.confidence - left.confidence ||
+        left.candidateName.localeCompare(right.candidateName),
+    );
+  const companyNames = Array.from(
+    new Set(supplierCandidates.map((candidate) => candidate.candidateName.trim()).filter(Boolean)),
+  ).slice(0, 2);
+  const email = externalEmails[0] ?? null;
+  const phone = externalPhones[0] ?? null;
+  const contactName = extractContactName(documents);
+  const sourceKinds = new Set([
+    ...externalEmails.map((item) => item.kind),
+    ...externalPhones.map((item) => item.kind),
+  ]);
+  if (supplierCandidates.some((candidate) => candidate.reason.startsWith('forwarded_'))) {
+    sourceKinds.add('BODY_FORWARDED');
+  }
+  const source =
+    sourceKinds.has('BODY_FORWARDED') || sourceKinds.has('SIGNATURE')
+      ? 'Forwarded email'
+      : sourceKinds.size > 0
+        ? 'Email body'
+        : null;
+
+  const supplierContact: SupplierContactDetails = {
+    companyName: companyNames.length > 0 ? companyNames.join(' / ') : null,
+    contactName,
+    email: email?.value ?? null,
+    phone: phone?.value ?? null,
+    domain: email ? extractEmailDomain(email.value) : null,
+    source,
+  };
+
+  return Object.values(supplierContact).some((value) => Boolean(value)) ? supplierContact : null;
 }
 
 function createWorkflowRepository(client: typeof db = db, inTransaction = false): WorkflowRepository {
@@ -1179,7 +1376,15 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
     },
 
     async getWorkflowItem(workflowItemId: string): Promise<WorkflowDetailRecord | null> {
-      return repository.findWorkflowDetailById(workflowItemId);
+      const detail = await repository.findWorkflowDetailById(workflowItemId);
+      if (!detail) {
+        return null;
+      }
+
+      return {
+        ...detail,
+        supplierContact: deriveSupplierContact(detail),
+      };
     },
 
     async assignWorkflowItem(input: AssignWorkflowItemInput): Promise<WorkflowRecord> {

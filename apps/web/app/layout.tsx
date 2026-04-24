@@ -51,6 +51,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
               />
               <Link href="/dashboard/imports">Imports</Link>
               <Link href="/dashboard/opportunities">Opportunities</Link>
+              <Link href="/dashboard/deals">Deals</Link>
               <Link href="/dashboard/review">Review</Link>
               <Link href="/dashboard/products">Product Records</Link>
             </nav>

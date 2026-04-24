@@ -68,6 +68,9 @@ const SHARED_PRICE_PATTERN =
   /^prices?\s+for\s+both\s+refs?\s+are\s+(?<price>\d+(?:\.\d{1,2})?)\s*(?<currency>euro|eur|gbp|usd|\u20AC|\u00A3|\$)\b.*$/i;
 const NON_PRODUCT_SHARED_PRICE_PREFIX_PATTERN =
   /^(?:from|sent|subject|to|cc|dear|kind regards|regards|thanks|best|supplier name)\b/i;
+const CONTACT_OR_FOOTER_PREFIX_PATTERN =
+  /^(?:m|mob|mobile|tel|telephone|phone|fax|email|e-mail|from|sent|subject|to|cc)\s*:/i;
+const PHONE_ONLY_LINE_PATTERN = /^[+()0-9\s./-]{7,}$/;
 
 export function normalizeEmailTextForParsing(rawText: string): string {
   return rawText
@@ -183,6 +186,35 @@ function createSkippedLine(
   };
 }
 
+function isMostlyNumericOrPunctuation(line: string): boolean {
+  const alphaCount = (line.match(/[A-Za-z]/g) ?? []).length;
+  const digitCount = (line.match(/\d/g) ?? []).length;
+
+  return digitCount >= 5 && alphaCount <= 3;
+}
+
+function isObviousContactOrFooterLine(line: string): boolean {
+  const trimmed = line.trim();
+
+  if (!trimmed) {
+    return false;
+  }
+
+  if (CONTACT_OR_FOOTER_PREFIX_PATTERN.test(trimmed)) {
+    return true;
+  }
+
+  if (PHONE_ONLY_LINE_PATTERN.test(trimmed)) {
+    return true;
+  }
+
+  if (/@/.test(trimmed) && !PRICE_LIKE_PATTERN.test(trimmed)) {
+    return true;
+  }
+
+  return isMostlyNumericOrPunctuation(trimmed);
+}
+
 function parseLine(
   line: string,
   lineNumber: number,
@@ -193,6 +225,17 @@ function parseLine(
     return {
       parsedRow: null,
       skippedLine: null,
+    };
+  }
+
+  if (isObviousContactOrFooterLine(trimmed)) {
+    return {
+      parsedRow: null,
+      skippedLine: createSkippedLine(
+        lineNumber,
+        trimmed,
+        'Line looks like contact or footer text, not a product offer.',
+      ),
     };
   }
 
@@ -276,7 +319,12 @@ function normalizeSharedPriceCurrency(value: string): string | null {
 function isSharedPriceCandidateLine(line: string): boolean {
   const trimmed = line.trim();
 
-  if (!trimmed || PRICE_LIKE_PATTERN.test(trimmed) || NON_PRODUCT_SHARED_PRICE_PREFIX_PATTERN.test(trimmed)) {
+  if (
+    !trimmed ||
+    PRICE_LIKE_PATTERN.test(trimmed) ||
+    NON_PRODUCT_SHARED_PRICE_PREFIX_PATTERN.test(trimmed) ||
+    isObviousContactOrFooterLine(trimmed)
+  ) {
     return false;
   }
 

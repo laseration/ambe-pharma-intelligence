@@ -1142,8 +1142,8 @@ test('forwarded supplier cues and shared pricing stay review-only but preserve s
           },
           attachmentTextExtraction: {
             method: 'IMAGE_OCR',
-            text: 'DeltaPharma',
-            extractedTextChars: 11,
+            text: ['DeltaPharma', 'NDSE11M -1', '(10) NDSE11M-1 (17) 280400 (90) 1463010'].join('\n'),
+            extractedTextChars: 58,
             warnings: [],
           },
         }).items[0]!,
@@ -1159,7 +1159,11 @@ test('forwarded supplier cues and shared pricing stay review-only but preserve s
   assert.equal(state.workflowItems.length, 2);
   assert.equal(
     state.documents.some(
-      (document) => document.kind === 'ATTACHMENT_TEXT' && document.label === 'image001.png' && document.textContent === 'DeltaPharma',
+      (document) =>
+        document.kind === 'ATTACHMENT_TEXT' &&
+        document.label === 'image001.png' &&
+        /DeltaPharma/.test(document.textContent) &&
+        /NDSE11M -1/.test(document.textContent),
     ),
     true,
   );
@@ -1191,9 +1195,16 @@ test('forwarded supplier cues and shared pricing stay review-only but preserve s
         candidate.entityType === 'SUPPLIER' &&
         candidate.candidateId === null &&
         candidate.candidateName === 'Delta Pharma' &&
-        candidate.selected === false,
+        candidate.selected === false &&
+        Array.isArray((candidate.metadata as { aliases?: string[] } | null)?.aliases) &&
+        ((candidate.metadata as { aliases?: string[] }).aliases ?? []).includes('Delta BE bv') &&
+        ((candidate.metadata as { aliases?: string[] }).aliases ?? []).includes('DeltaPharma'),
     ),
     true,
+  );
+  assert.equal(
+    state.offers.some((offer) => /NDSE11M/i.test(String(offer.rawProductText ?? ''))),
+    false,
   );
   assert.equal(
     state.workflowItems.every(
