@@ -27,6 +27,33 @@ test('decomposeEmail splits forwarded and signature segments', async () => {
   assert.equal(segments.some((segment) => segment.kind === 'BODY_FORWARDED'), true);
 });
 
+test('decomposeEmail keeps forwarded supplier block even when wrapper text contains internal company details', async () => {
+  const bodyText = [
+    'Ambe Medical Group',
+    'Please review this supplier email.',
+    '',
+    'From: carl.junius@delta-pharma.eu <carl.junius@delta-pharma.eu>',
+    'Subject: NOVO NORDISK - NOVOFINE NEEDLES',
+    '',
+    'NOVOFINE NEEDLES INJ TÅ° 31G 6MM 100X',
+    '',
+    'Kind regards,',
+    'DeltaPharma',
+  ].join('\n');
+
+  const segments = await decomposeEmail({
+    from: 'sandeep@ambemedical.com',
+    subject: 'Fwd: NOVO NORDISK - NOVOFINE NEEDLES',
+    bodyText,
+  });
+
+  const forwardedSegment = segments.find((segment) => segment.kind === 'BODY_FORWARDED');
+
+  assert.ok(forwardedSegment);
+  assert.match(forwardedSegment?.textContent ?? '', /delta-pharma\.eu/i);
+  assert.match(forwardedSegment?.textContent ?? '', /NOVOFINE NEEDLES/i);
+});
+
 test('decomposeEmail includes extracted attachment text for PDF and image attachments', async () => {
   const segments = await decomposeEmail(
     {
@@ -231,5 +258,31 @@ test('parseStructuredPriceEmailBody applies a shared price sentence to the two p
   assert.equal(
     result.skippedLines.some((line) => /both refs/i.test(line.rawLine)),
     false,
+  );
+});
+
+test('parseStructuredPriceEmailBody skips forwarded contact lines and keeps only real product offers', () => {
+  const result = parseStructuredPriceEmailBody(
+    [
+      'NOVOFINE NEEDLES INJ TÅ° 31G 6MM 100X',
+      'NOVOFINE NEEDLES INJEKCIÃ“S TÅ° 30G 100X',
+      'Prices for both refs are 7 euro a pack.',
+      'm: +32 11 49 57 77',
+      'email: carl.junius@delta-pharma.eu',
+    ].join('\n'),
+  );
+
+  assert.equal(result.parsedRows.length, 2);
+  assert.equal(
+    result.parsedRows.some((row) => /49 57 77/.test(row.rawProductText)),
+    false,
+  );
+  assert.equal(
+    result.skippedLines.some(
+      (line) =>
+        /49 57 77/.test(line.rawLine) &&
+        /contact or footer text/i.test(line.reason),
+    ),
+    true,
   );
 });

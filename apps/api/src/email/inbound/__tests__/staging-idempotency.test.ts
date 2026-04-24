@@ -1071,9 +1071,27 @@ test('mapped supplier cue without canonical supplier record stays unresolved', a
 
 test('forwarded supplier cues and shared pricing stay review-only but preserve supplier evidence', async (t) => {
   const state = installDbMocks(t);
+  const originalInternalDomains = env.emailInboundInternalDomains;
+  const originalInternalCompanyNames = env.emailInboundInternalCompanyNames;
+  env.emailInboundInternalDomains = ['ambemedical.com'];
+  env.emailInboundInternalCompanyNames = [
+    'Ambe Medical',
+    'Ambe Medical Group',
+    'Ambemedical',
+    'Ambe Pharma',
+  ];
+
+  t.after(() => {
+    env.emailInboundInternalDomains = originalInternalDomains;
+    env.emailInboundInternalCompanyNames = originalInternalCompanyNames;
+  });
+
   const bodyText = [
+    'Ambe Medical Group',
     'Please review this supplier.',
+    'For AMBE MEDICAL only.',
     '',
+    ' From: sandeep@ambemedical.com <sandeep@ambemedical.com>',
     ' Sent from Outlook for Android',
     ' From: carl.junius@delta-pharma.eu <carl.junius@delta-pharma.eu>',
     ' Subject: NOVO NORDISK - NOVOFINE NEEDLES',
@@ -1182,6 +1200,75 @@ test('forwarded supplier cues and shared pricing stay review-only but preserve s
       (item) => item.hasUnresolvedSupplier === true && item.sourceReviewReason === 'unresolved_supplier',
     ),
     true,
+  );
+  assert.equal(
+    state.offers.some((offer) => /ambe medical/i.test(String(offer.supplierCandidate ?? ''))),
+    false,
+  );
+  assert.equal(
+    state.resolutionCandidates.some(
+      (candidate) =>
+        candidate.entityType === 'SUPPLIER' && /ambe medical/i.test(String(candidate.candidateName ?? '')),
+    ),
+    false,
+  );
+});
+
+test('internal company cue alone is ignored as a supplier candidate', async (t) => {
+  const state = installDbMocks(t);
+  const originalInternalDomains = env.emailInboundInternalDomains;
+  const originalInternalCompanyNames = env.emailInboundInternalCompanyNames;
+  env.emailInboundInternalDomains = ['ambemedical.com'];
+  env.emailInboundInternalCompanyNames = [
+    'Ambe Medical',
+    'Ambe Medical Group',
+    'Ambemedical',
+    'Ambe Pharma',
+  ];
+
+  t.after(() => {
+    env.emailInboundInternalDomains = originalInternalDomains;
+    env.emailInboundInternalCompanyNames = originalInternalCompanyNames;
+  });
+
+  state.products.push({
+    id: 'product-1',
+    name: 'Amlodipine 5mg tablets 28',
+    normalizedName: 'amlodipine|5mg|tablet|28',
+    baseName: 'amlodipine',
+    manufacturer: null,
+  });
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'graph-internal-wrapper-only',
+      messageId: 'internet-internal-wrapper-only',
+      from: 'sandeep@ambemedical.com',
+      subject: 'Fwd: supplier offer',
+      bodyText: [
+        'Ambe Medical Group',
+        'Please review this.',
+        '',
+        'Amlodipine 5mg tabs 28 - GBP 8.40',
+        '',
+        'Kind regards,',
+        'Ambe Medical',
+      ].join('\n'),
+    },
+    createInboundResult(),
+  );
+
+  assert.equal(state.offers.length, 1);
+  assert.equal(state.offers[0]?.supplierCandidate, null);
+  assert.equal(state.offers[0]?.reviewReason, 'unresolved_supplier');
+  assert.equal(state.workflowItems[0]?.sourceReviewReason, 'unresolved_supplier');
+  assert.equal(
+    state.resolutionCandidates.some(
+      (candidate) =>
+        candidate.entityType === 'SUPPLIER' && /ambe medical/i.test(String(candidate.candidateName ?? '')),
+    ),
+    false,
   );
 });
 

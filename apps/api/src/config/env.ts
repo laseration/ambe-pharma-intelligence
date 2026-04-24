@@ -11,6 +11,14 @@ dotenv.config({ path: path.join(repoRoot, '.env'), override: false });
 type NodeEnv = 'development' | 'test' | 'production';
 type OpportunityBusinessMode = 'STOCKHOLDING' | 'TRADING';
 
+const DEFAULT_EMAIL_INBOUND_INTERNAL_DOMAINS = ['ambemedical.com'];
+const DEFAULT_EMAIL_INBOUND_INTERNAL_COMPANY_NAMES = [
+  'Ambe Medical',
+  'Ambe Medical Group',
+  'Ambemedical',
+  'Ambe Pharma',
+];
+
 function readString(value: string | undefined, fallback: string): string {
   return value?.trim() || fallback;
 }
@@ -74,6 +82,10 @@ function readIdList(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+function readStringListWithDefaults(value: string | undefined, defaults: string[]): string[] {
+  return Array.from(new Set([...defaults, ...readIdList(value)]));
+}
+
 function readEmailInboundSupplierMappings(value: string | undefined) {
   return (value || '')
     .split(',')
@@ -133,6 +145,14 @@ export const env = {
   emailInboundAllowedSenders: readIdList(process.env.EMAIL_INBOUND_ALLOWED_SENDERS),
   emailInboundSupplierMappings: readEmailInboundSupplierMappings(
     process.env.EMAIL_INBOUND_SUPPLIER_MAPPINGS,
+  ),
+  emailInboundInternalDomains: readStringListWithDefaults(
+    process.env.EMAIL_INBOUND_INTERNAL_DOMAINS,
+    DEFAULT_EMAIL_INBOUND_INTERNAL_DOMAINS,
+  ),
+  emailInboundInternalCompanyNames: readStringListWithDefaults(
+    process.env.EMAIL_INBOUND_INTERNAL_COMPANY_NAMES,
+    DEFAULT_EMAIL_INBOUND_INTERNAL_COMPANY_NAMES,
   ),
   openAiApiKey: process.env.OPENAI_API_KEY?.trim() || '',
   openAiParserEnabled: readBoolean(process.env.OPENAI_PARSER_ENABLED, false),

@@ -59,6 +59,60 @@ const DOMAIN_COMPANY_FALLBACK_BLOCKLIST = new Set([
   'office',
 ]);
 
+function normalizeSupplierIdentityToken(value: string | null | undefined): string {
+  return normalizeFingerprintText(value).replace(/[^a-z0-9]+/g, '');
+}
+
+function isInternalSupplierDomain(domain: string | null | undefined): boolean {
+  const normalizedDomain = normalizeFingerprintText(domain).replace(/^@+/, '');
+
+  if (!normalizedDomain) {
+    return false;
+  }
+
+  return env.emailInboundInternalDomains.some((entry) => {
+    const normalizedEntry = normalizeFingerprintText(entry).replace(/^@+/, '');
+    return (
+      Boolean(normalizedEntry) &&
+      (normalizedDomain === normalizedEntry || normalizedDomain.endsWith(`.${normalizedEntry}`))
+    );
+  });
+}
+
+function isInternalSupplierCompanyName(candidateName: string | null | undefined): boolean {
+  const normalizedCandidate = normalizeSupplierIdentityToken(candidateName);
+
+  if (!normalizedCandidate) {
+    return false;
+  }
+
+  return env.emailInboundInternalCompanyNames.some((entry) => {
+    const normalizedEntry = normalizeSupplierIdentityToken(entry);
+    return (
+      Boolean(normalizedEntry) &&
+      (normalizedCandidate === normalizedEntry ||
+        normalizedCandidate.includes(normalizedEntry) ||
+        normalizedEntry.includes(normalizedCandidate))
+    );
+  });
+}
+
+function shouldIgnoreSupplierCue(input: {
+  candidateName: string | null | undefined;
+  sourceDomain?: string | null | undefined;
+}): boolean {
+  if (isInternalSupplierCompanyName(input.candidateName)) {
+    return true;
+  }
+
+  if (isInternalSupplierDomain(input.sourceDomain)) {
+    return true;
+  }
+
+  const candidateDomain = extractSenderDomain(input.candidateName ?? '');
+  return isInternalSupplierDomain(candidateDomain);
+}
+
 type DocumentSegment = {
   kind:
     | 'SUBJECT'
@@ -503,9 +557,12 @@ function extractSupplierCue(text: string): string | null {
       continue;
     }
 
-    const match = line.match(SUPPLIER_NAME_PATTERN);
-    if (match?.[1]?.trim()) {
-      return match[1].trim();
+    for (const match of line.matchAll(new RegExp(SUPPLIER_NAME_PATTERN.source, 'ig'))) {
+      const candidateName = match[1]?.trim();
+
+      if (candidateName && !shouldIgnoreSupplierCue({ candidateName })) {
+        return candidateName;
+      }
     }
   }
 
@@ -513,27 +570,38 @@ function extractSupplierCue(text: string): string | null {
 }
 
 function extractForwardedSenderEmail(text: string): string | null {
-  return text.match(FORWARDED_SENDER_EMAIL_PATTERN)?.[1]?.trim().toLowerCase() ?? null;
+  for (const match of text.matchAll(new RegExp(FORWARDED_SENDER_EMAIL_PATTERN.source, 'ig'))) {
+    const email = match[1]?.trim().toLowerCase() ?? null;
+
+    if (email && !isInternalSupplierDomain(extractSenderDomain(email))) {
+      return email;
+    }
+  }
+
+  return null;
 }
 
 function extractForwardedSenderHeaderCue(text: string): string | null {
-  const senderLine = text
+  const senderLines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .find((line) => /^from\s*:/i.test(line));
+    .filter((line) => /^from\s*:/i.test(line));
 
-  if (!senderLine) {
-    return null;
+  for (const senderLine of senderLines) {
+    const withoutPrefix = senderLine.replace(/^from\s*:\s*/i, '');
+    const withoutEmail = withoutPrefix.replace(/\s*<[^>]+>.*/, '').trim();
+    const supplierCue = extractSupplierCue(withoutEmail);
+
+    if (supplierCue && !shouldIgnoreSupplierCue({ candidateName: supplierCue })) {
+      return supplierCue;
+    }
   }
 
-  const withoutPrefix = senderLine.replace(/^from\s*:\s*/i, '');
-  const withoutEmail = withoutPrefix.replace(/\s*<[^>]+>.*/, '').trim();
-
-  return extractSupplierCue(withoutEmail);
+  return null;
 }
 
 function inferSupplierNameFromDomain(domain: string | null): string | null {
-  if (!domain) {
+  if (!domain || isInternalSupplierDomain(domain)) {
     return null;
   }
 
@@ -950,7 +1018,7 @@ async function resolveOfferCandidates(
         supportsConflict?: boolean;
       } =>
         Boolean(cue.candidateName?.trim()),
-    );
+    ).filter((cue) => !shouldIgnoreSupplierCue({ candidateName: cue.candidateName }));
     const hasForwardedSenderDomainCue = supplierCues.some((cue) => cue.reason === 'forwarded_sender_domain');
 
     const groupedSupplierCues = new Map<
