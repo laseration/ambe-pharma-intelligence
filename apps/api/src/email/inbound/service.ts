@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 
 import { env } from '../../config/env';
 import { extractAttachmentText } from '../attachmentTextExtraction';
+import { parseAmbePurchaseOrderPdfText } from '../purchaseOrderPdf';
 import { parseStructuredPriceEmailBody, parseStructuredPriceText } from '../parsing';
 import { parseUploadedFile } from '../../imports/parsers';
 import { importInventory, importSales, importSupplierPriceList } from '../../imports/service';
@@ -394,6 +395,10 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
           attachment.fileType === 'PDF' || attachment.fileType === 'IMAGE'
             ? await dependencies.extractAttachmentText(attachment)
             : null;
+        const purchaseOrderPdf =
+          attachment.fileType === 'PDF' && attachmentTextExtraction?.text
+            ? parseAmbePurchaseOrderPdfText(attachmentTextExtraction.text)
+            : null;
         const attachmentTextParsing = attachmentTextExtraction
           ? await dependencies.parseTextMessage(attachmentTextExtraction.text)
           : null;
@@ -438,7 +443,22 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
 
         if (attachment.fileType === 'PDF' || attachment.fileType === 'IMAGE') {
           decision =
-            extractedParsedRowCount > 0
+            purchaseOrderPdf?.detected
+              ? {
+                  processingStatus: 'NEEDS_REVIEW',
+                  inferredImportType: null,
+                  confidence: purchaseOrderPdf.confidence === 'HIGH' ? 'HIGH' : 'LOW',
+                  reason: [
+                    'Purchase order PDF found.',
+                    purchaseOrderPdf.supplierName ? `Supplier found: ${purchaseOrderPdf.supplierName}.` : null,
+                    purchaseOrderPdf.poNumber ? `Order no. ${purchaseOrderPdf.poNumber}.` : null,
+                    `${purchaseOrderPdf.lines.length} product line${purchaseOrderPdf.lines.length === 1 ? '' : 's'} found.`,
+                    'Review before importing into purchase history.',
+                  ]
+                    .filter((part): part is string => Boolean(part))
+                    .join(' '),
+                }
+              : extractedParsedRowCount > 0
               ? {
                   processingStatus: 'NEEDS_REVIEW',
                   inferredImportType: null,
@@ -497,6 +517,11 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
                   extractedTextChars: attachmentTextExtraction.text.length,
                   warnings: attachmentTextExtraction.warnings,
                 },
+              }
+            : {}),
+          ...(purchaseOrderPdf?.detected
+            ? {
+                purchaseOrderPdf,
               }
             : {}),
         };

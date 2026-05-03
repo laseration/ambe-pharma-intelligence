@@ -287,6 +287,75 @@ test('PDF attachment text can be extracted into structured review rows', async (
   assert.match(result.items[0]?.reason ?? '', /extracted structured text/i);
 });
 
+test('Ambe purchase order PDF is detected and queued with extracted PO preview data', async () => {
+  const pdfText = [
+    'Ambe Limited t/a Ambe Medical Group',
+    'PURCHASE ORDER',
+    'Supplier Name',
+    'DIXONS PHARMACEUTICALS UK LIMITED',
+    'Account No: DIXONS',
+    'Order No. 5981',
+    'Invoice / Tax date: 28/04/2026',
+    'Qty Stock Code Product Description Unit Price Net VAT Code',
+    '50 4006607 BRIVIACT TABS 100MG 56s 76.00 3800.00 T1',
+    '1 000BDE BATCH / EXPIRY 0.00 0.00 T1',
+    'Order Total: 3800.00',
+  ].join('\n');
+  const service = createEmailInboundService({
+    allowedSenders: ['ops@ambemedical.com'],
+    logger: createLogger(),
+    importSupplierPriceList: async () => {
+      throw new Error('supplier import should not run');
+    },
+    importInventory: async () => {
+      throw new Error('inventory import should not run');
+    },
+    importSales: async () => {
+      throw new Error('sales import should not run');
+    },
+    extractAttachmentText: async () => ({
+      method: 'PDF_TEXT',
+      text: pdfText,
+      warnings: [],
+    }),
+    parseTextMessage: async (rawText) => ({
+      totalLines: rawText.split('\n').length,
+      candidateLines: 0,
+      parsedRows: [],
+      skippedLines: [],
+      overallConfidence: 'LOW',
+      reviewRecommended: true,
+      reviewRequired: true,
+      rawBodyText: rawText,
+      rawBody: rawText,
+      parsingSource: 'DETERMINISTIC',
+      aiFallbackUsed: false,
+    }),
+  });
+
+  const result = await service.ingestMessage({
+    from: 'ops@ambemedical.com',
+    subject: 'DIXONS PO5981',
+    bodyText: 'PO attached.',
+    attachments: [
+      {
+        fileName: 'DIXONS PO5981.pdf',
+        mimeType: 'application/pdf',
+        content: Buffer.from('pdf').toString('base64'),
+      },
+    ],
+  });
+
+  assert.equal(result.items[0]?.processingStatus, 'NEEDS_REVIEW');
+  assert.equal(result.items[0]?.purchaseOrderPdf?.supplierName, 'DIXONS PHARMACEUTICALS UK LIMITED');
+  assert.equal(result.items[0]?.purchaseOrderPdf?.poNumber, '5981');
+  assert.equal(result.items[0]?.purchaseOrderPdf?.orderDate, '2026-04-28');
+  assert.equal(result.items[0]?.purchaseOrderPdf?.accountNo, 'DIXONS');
+  assert.equal(result.items[0]?.purchaseOrderPdf?.lines.length, 1);
+  assert.match(result.items[0]?.reason ?? '', /Purchase order PDF found/);
+  assert.match(result.items[0]?.reason ?? '', /Review before importing into purchase history/);
+});
+
 test('image attachment text can be extracted into structured review rows', async () => {
   const service = createEmailInboundService({
     allowedSenders: ['supplier@example.com'],

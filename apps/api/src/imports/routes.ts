@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { getInternalAuthContext, requireInternalOperatorAccess } from '../http/auth';
 import { asyncHandler, requireFound, ValidationError } from '../http/errors';
 import { logger } from '../lib/logger';
+import { purchaseOrderService } from '../purchaseOrders/service';
 import { idParamSchema, optionalTrimmedStringSchema, parseRequest } from '../http/validation';
 import {
   getImportBatchDetail,
@@ -142,6 +143,30 @@ importsRouter.post(
 
     const result = await importSales({
       file,
+    });
+
+    response.status(201).json(result);
+  }),
+);
+
+importsRouter.post(
+  '/purchase-orders',
+  requireInternalOperatorAccess,
+  upload.single('file'),
+  asyncHandler(async (request, response) => {
+    const file = requireFile(request.file);
+    const auth = getInternalAuthContext(request);
+
+    logger.info('Internal historical purchase order import requested', {
+      authRole: auth?.role ?? null,
+      callerLabel: auth?.callerLabel ?? null,
+      fileName: file.originalname,
+    });
+
+    const result = await purchaseOrderService.importPurchaseOrders({
+      file,
+      actorType: auth?.role ?? 'OPERATOR',
+      actorIdentifier: auth?.callerLabel ?? null,
     });
 
     response.status(201).json(result);

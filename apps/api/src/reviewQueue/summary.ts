@@ -14,6 +14,14 @@ type ReviewSummaryInput = {
   hasUnresolvedSupplier?: boolean;
   hasConflictingSupplierCues?: boolean;
   hasManufacturerAmbiguity?: boolean;
+  purchaseOrderPdf?: {
+    supplierName: string | null;
+    poNumber: string | null;
+    orderDate: string | null;
+    accountNo: string | null;
+    orderTotal: number | null;
+    lines: unknown[];
+  } | null;
 };
 
 export type ReviewSummary = {
@@ -212,6 +220,17 @@ function humanizeImportType(importType: string | null): string | null {
 }
 
 function buildRecognizedContent(input: ReviewSummaryInput): string {
+  if (input.purchaseOrderPdf) {
+    return [
+      'Purchase order PDF found.',
+      input.purchaseOrderPdf.supplierName ? `Supplier found: ${input.purchaseOrderPdf.supplierName}.` : null,
+      input.purchaseOrderPdf.poNumber ? `Order no. ${input.purchaseOrderPdf.poNumber}.` : null,
+      `${input.purchaseOrderPdf.lines.length} product line${input.purchaseOrderPdf.lines.length === 1 ? '' : 's'} found.`,
+    ]
+      .filter((part): part is string => Boolean(part))
+      .join(' ');
+  }
+
   if (input.parsedLineCount && input.parsedLineCount > 0) {
     return `Structured price text with ${input.parsedLineCount} parsed line${input.parsedLineCount === 1 ? '' : 's'}.`;
   }
@@ -278,6 +297,16 @@ export function buildReviewSummary(input: ReviewSummaryInput): ReviewSummary | n
       recognizedContent: buildRecognizedContent(input),
       missingOrUnclear: explicitReasonDetail.missingOrUnclear,
       suggestedAction: explicitReasonDetail.suggestedAction,
+    };
+  }
+
+  if (input.purchaseOrderPdf) {
+    return {
+      reviewReason: 'Purchase order PDF found',
+      recognizedContent: buildRecognizedContent(input),
+      missingOrUnclear:
+        'The purchase order details were extracted from PDF text, but they have not been imported into purchase history yet.',
+      suggestedAction: 'Review the supplier, order number, totals, and product lines before importing into purchase history.',
     };
   }
 

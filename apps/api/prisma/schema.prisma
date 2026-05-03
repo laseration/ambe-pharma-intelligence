@@ -424,6 +424,18 @@ enum RegulatoryActionType {
   FALSE_MATCH
 }
 
+enum PurchaseOrderImportStatus {
+  COMPLETED
+  COMPLETED_WITH_REVIEW
+  FAILED
+}
+
+enum PurchaseOrderLineStatus {
+  IMPORTED
+  NEEDS_REVIEW
+  IGNORED
+}
+
 model User {
   id                         String              @id @default(cuid())
   email                      String              @unique
@@ -464,6 +476,7 @@ model Product {
   regulatoryProductMatches  RegulatoryProductMatch[]
   regulatoryAlerts          RegulatoryAlert[]
   regulatoryReviewItems     RegulatoryReviewItem[]
+  purchaseOrderLines        PurchaseOrderLine[]
   createdAt                 DateTime            @default(now())
   updatedAt                 DateTime            @updatedAt
 
@@ -539,6 +552,7 @@ model Supplier {
   tradeOpportunities        TradeOpportunity[]
   correctedOfferCorrections OfferCorrection[]
   sourceReliabilityProfiles SourceReliabilityProfile[]
+  purchaseOrderLines        PurchaseOrderLine[]
   createdAt                 DateTime                   @default(now())
   updatedAt                 DateTime                   @updatedAt
 
@@ -1457,6 +1471,61 @@ model AppSetting {
   description String?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
+}
+
+model PurchaseOrderImport {
+  id            String                    @id @default(cuid())
+  status        PurchaseOrderImportStatus @default(COMPLETED)
+  fileName      String
+  fileMimeType  String?
+  fileSizeBytes Int?
+  totalRows     Int                       @default(0)
+  importedRows  Int                       @default(0)
+  reviewRows    Int                       @default(0)
+  ignoredRows   Int                       @default(0)
+  warnings      Json?
+  uploadedByType String                   @default("SYSTEM")
+  uploadedByIdentifier String?
+  lines         PurchaseOrderLine[]
+  uploadedAt    DateTime                  @default(now())
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  @@index([status, uploadedAt])
+}
+
+model PurchaseOrderLine {
+  id                    String                  @id @default(cuid())
+  purchaseOrderImportId String
+  sourceRowNumber       Int
+  rawRow                Json
+  poNumber              String?
+  orderDate             DateTime?
+  supplierText          String?
+  productText           String?
+  manufacturerText      String?
+  quantity              Int?
+  unitPrice             Decimal?                @db.Decimal(12, 2)
+  currency              String?
+  minimumOrderQuantity  Int?
+  matchedProductId      String?
+  matchedSupplierId     String?
+  productMatchConfidence Int?
+  supplierMatchConfidence Int?
+  matchReason           String?
+  matchEvidence         Json?
+  status                PurchaseOrderLineStatus @default(NEEDS_REVIEW)
+  reviewReason          String?
+  purchaseOrderImport   PurchaseOrderImport     @relation(fields: [purchaseOrderImportId], references: [id], onDelete: Cascade)
+  matchedProduct        Product?                @relation(fields: [matchedProductId], references: [id], onDelete: SetNull)
+  matchedSupplier       Supplier?               @relation(fields: [matchedSupplierId], references: [id], onDelete: SetNull)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  @@index([purchaseOrderImportId, sourceRowNumber])
+  @@index([matchedProductId, orderDate])
+  @@index([matchedSupplierId, orderDate])
+  @@index([status, createdAt])
 }
 
 model RegulatoryUpdate {

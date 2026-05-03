@@ -204,6 +204,73 @@ test('review queue includes email inbound review and failure items', async () =>
   assert.match(items[1]?.reviewSummary?.suggestedAction ?? '', /choose the correct import type manually/i);
 });
 
+test('review queue summarizes Ambe purchase order PDF extraction', async () => {
+  const service = createReviewQueueService({
+    listTelegramInboundItems: async () => [],
+    listEmailReviewItems: () => [
+      {
+        id: 'email-po-review',
+        createdAt: new Date('2026-04-28T09:00:00.000Z'),
+        updatedAt: new Date('2026-04-28T09:00:00.000Z'),
+        processingStatus: 'NEEDS_REVIEW',
+        inferredImportType: null,
+        confidence: 'HIGH',
+        reason:
+          'Purchase order PDF found. Supplier found: DIXONS PHARMACEUTICALS UK LIMITED. Order no. 5981. 5 product lines found. Review before importing into purchase history.',
+        fileType: 'PDF',
+        attachment: {
+          fileName: 'DIXONS PO5981.pdf',
+          mimeType: 'application/pdf',
+          size: 1000,
+          contentId: null,
+          disposition: null,
+        },
+        email: {
+          messageId: 'email-po',
+          from: 'ops@ambemedical.com',
+          subject: 'DIXONS PO5981',
+          bodyText: 'PO attached.',
+        },
+        purchaseOrderPdf: {
+          parserVersion: 'ambe-po-pdf-v1',
+          detected: true,
+          confidence: 'HIGH',
+          supplierName: 'DIXONS PHARMACEUTICALS UK LIMITED',
+          supplierAddressText: null,
+          poNumber: '5981',
+          orderDate: '2026-04-28',
+          accountNo: 'DIXONS',
+          totalNetAmount: null,
+          totalVatAmount: null,
+          orderTotal: 10956,
+          lines: [
+            {
+              quantity: 50,
+              stockCode: '4006607',
+              productDescription: 'BRIVIACT TABS 100MG 56s',
+              unitPrice: 76,
+              netAmount: 3800,
+              vatCode: 'T1',
+              rawLine: '50 4006607 BRIVIACT TABS 100MG 56s 76.00 3800.00 T1',
+            },
+          ],
+          evidence: ['PURCHASE ORDER', 'Supplier Name DIXONS PHARMACEUTICALS UK LIMITED'],
+        },
+      },
+    ],
+    listEmailDerivedOfferItems: async () => [],
+    getSupplierScorecardsForIds: async () => ({}),
+  });
+
+  const items = await service.listItems();
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0]?.reviewSummary?.reviewReason, 'Purchase order PDF found');
+  assert.match(items[0]?.reviewSummary?.recognizedContent ?? '', /Supplier found: DIXONS/i);
+  assert.match(items[0]?.reviewSummary?.recognizedContent ?? '', /Order no\. 5981/i);
+  assert.match(items[0]?.reviewSummary?.suggestedAction ?? '', /before importing into purchase history/i);
+});
+
 test('review queue output shape stays simple and excludes non-review imported items', async () => {
   const service = createReviewQueueService({
     listTelegramInboundItems: async () =>

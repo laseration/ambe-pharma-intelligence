@@ -186,6 +186,7 @@ function mapEmailItem(item: StoredEmailReviewItem): ReviewQueueItem | null {
     parsedLineCount: typeof textParsing?.parsedRows === 'object' && Array.isArray(textParsing.parsedRows)
       ? textParsing.parsedRows.length
       : null,
+    purchaseOrderPdf: item.purchaseOrderPdf ?? null,
   });
 
   return {

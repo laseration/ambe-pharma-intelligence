@@ -1,4 +1,5 @@
 import type { ParsedEmailBodyResult } from '../parsing';
+import type { PurchaseOrderPdfExtraction } from '../purchaseOrderPdf';
 import type { ImportResponse, UploadFile } from '../../imports/types';
 import type { EmailTriageResult, EmailTriageStatus } from './triage';
 
@@ -104,6 +105,7 @@ export type EmailInboundItemResult = {
     extractedTextChars: number;
     warnings: string[];
   };
+  purchaseOrderPdf?: PurchaseOrderPdfExtraction;
 };
 
 export type EmailInboundResult = {

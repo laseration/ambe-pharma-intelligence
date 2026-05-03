@@ -16,6 +16,7 @@ import {
   parseStructuredPriceEmailBody,
   parseStructuredPriceText,
 } from '../parsing';
+import { parseAmbePurchaseOrderPdfText } from '../purchaseOrderPdf';
 import {
   extractManualSupplierOverride,
   filterIgnorableEmailAttachments,
@@ -687,6 +688,11 @@ export async function decomposeEmail(
       }));
 
     if (extractedAttachmentText?.text) {
+      const purchaseOrderPdf =
+        fileName.toLowerCase().endsWith('.pdf') || mimeType === 'application/pdf'
+          ? parseAmbePurchaseOrderPdfText(extractedAttachmentText.text)
+          : null;
+
       segments.push({
         kind: 'ATTACHMENT_TEXT',
         label: fileName,
@@ -696,6 +702,11 @@ export async function decomposeEmail(
           extractionMethod: extractedAttachmentText.method,
           extractedTextChars: extractedAttachmentText.text.length,
           warnings: extractedAttachmentText.warnings,
+          ...(purchaseOrderPdf?.detected
+            ? {
+                purchaseOrderPdf,
+              }
+            : {}),
         },
       });
     }
