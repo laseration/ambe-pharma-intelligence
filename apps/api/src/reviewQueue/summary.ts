@@ -3,6 +3,7 @@ type ReviewSummaryInput = {
   fileType: string | null;
   fileName: string | null;
   inferredImportType: string | null;
+  sourceType?: string | null;
   reason: string | null;
   sender: string | null;
   subjectOrCaption: string | null;
@@ -254,6 +255,19 @@ export function buildReviewSummary(input: ReviewSummaryInput): ReviewSummary | n
       recognizedContent: buildRecognizedContent(input),
       missingOrUnclear: 'The file could not be processed safely with the current import pipeline.',
       suggestedAction: 'Open the item, check the file format and contents, and retry or import it manually.',
+    };
+  }
+
+  if (input.sourceType === 'REGULATORY_REVIEW') {
+    return {
+      reviewReason: 'Regulatory update needs review',
+      recognizedContent: input.subjectOrCaption
+        ? `Potentially relevant MHRA update: ${input.subjectOrCaption}.`
+        : 'Potentially relevant MHRA update found.',
+      missingOrUnclear:
+        input.reason?.trim() || 'Product match or regulatory impact needs review.',
+      suggestedAction:
+        'Review the source update and confirm affected stock before acting.',
     };
   }
 

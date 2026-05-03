@@ -541,6 +541,20 @@ export type DemandMatchedTradeOpportunityRepository = Pick<
   }) => Promise<RecentProductDemandRecord[]>;
 };
 
+export type DemandMatchedTradeOpportunityOutcome =
+  | 'CREATED'
+  | 'EXISTING_ACTIVE'
+  | 'SKIPPED_NOT_APPROVED'
+  | 'SKIPPED_MISSING_CONTEXT'
+  | 'SKIPPED_MISSING_PRICE'
+  | 'SKIPPED_NO_RECENT_DEMAND'
+  | 'SKIPPED_NON_POSITIVE_MARGIN';
+
+export type DemandMatchedTradeOpportunityResult = {
+  outcome: DemandMatchedTradeOpportunityOutcome;
+  tradeOpportunity: TradeOpportunityRecord | null;
+};
+
 export type TradeOpportunityRepository = TradeOpportunitySyncRepository & {
   transaction: <T>(callback: (repository: TradeOpportunityRepository) => Promise<T>) => Promise<T>;
   findById: (tradeOpportunityId: string) => Promise<TradeOpportunityRecord | null>;
@@ -981,20 +995,29 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
     actor?: TradeOpportunityActor;
     recentDemandWindowDays?: number;
   },
-): Promise<TradeOpportunityRecord | null> {
+) : Promise<DemandMatchedTradeOpportunityResult> {
   if (input.buyDecision.approvalStatus !== 'APPROVED') {
-    return null;
+    return {
+      outcome: 'SKIPPED_NOT_APPROVED',
+      tradeOpportunity: null,
+    };
   }
 
   if (!input.buyDecision.emailDerivedOfferId || !input.buyDecision.productId) {
-    return null;
+    return {
+      outcome: 'SKIPPED_MISSING_CONTEXT',
+      tradeOpportunity: null,
+    };
   }
 
   const quotedBuyUnitPrice = toNumber(input.buyDecision.quotedUnitPrice);
   const quotedBuyCurrencyCode = normalizeCurrencyCode(input.buyDecision.quotedCurrencyCode);
 
   if (quotedBuyUnitPrice === null || !quotedBuyCurrencyCode) {
-    return null;
+    return {
+      outcome: 'SKIPPED_MISSING_PRICE',
+      tradeOpportunity: null,
+    };
   }
 
   const existingActive = await repository.listActiveByOfferId(input.buyDecision.emailDerivedOfferId);
@@ -1006,7 +1029,10 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
   );
 
   if (duplicate) {
-    return duplicate;
+    return {
+      outcome: 'EXISTING_ACTIVE',
+      tradeOpportunity: duplicate,
+    };
   }
 
   const actor = normalizeActor(input.actor);
@@ -1020,7 +1046,10 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
   });
 
   if (recentSales.length === 0) {
-    return null;
+    return {
+      outcome: 'SKIPPED_NO_RECENT_DEMAND',
+      tradeOpportunity: null,
+    };
   }
 
   const recentUnitsSold = recentSales.reduce((total, sale) => total + sale.quantity, 0);
@@ -1032,7 +1061,10 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
     recentUnitsSold > 0 ? round((recentRevenue ?? 0) / recentUnitsSold, 2) : null;
 
   if (!recentUnitsSold || recentAverageSalePrice === null || recentAverageSalePrice <= quotedBuyUnitPrice) {
-    return null;
+    return {
+      outcome: !recentUnitsSold ? 'SKIPPED_NO_RECENT_DEMAND' : 'SKIPPED_NON_POSITIVE_MARGIN',
+      tradeOpportunity: null,
+    };
   }
 
   const estimatedMarginAmount = round(recentAverageSalePrice - quotedBuyUnitPrice, 2);
@@ -1042,7 +1074,10 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
       : null;
 
   if (estimatedMarginAmount === null || estimatedMarginAmount <= 0) {
-    return null;
+    return {
+      outcome: 'SKIPPED_NON_POSITIVE_MARGIN',
+      tradeOpportunity: null,
+    };
   }
 
   const likelyBuyers = buildLikelyBuyers(recentSales);
@@ -1190,7 +1225,10 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
     },
   });
 
-  return created;
+  return {
+    outcome: 'CREATED',
+    tradeOpportunity: created,
+  };
 }
 
 function eventMetadataFromDraft(draft: TradeMessageDraftRecord): Record<string, unknown> {

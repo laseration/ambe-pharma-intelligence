@@ -112,7 +112,16 @@ async function requestJson<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function listTradeOpportunities(): Promise<TradeOpportunityListItem[]> {
-  const payload = await requestJson<{ items: TradeOpportunityListItem[] }>('/deals');
+export async function listTradeOpportunities(filters?: {
+  emailDerivedOfferId?: string;
+}): Promise<TradeOpportunityListItem[]> {
+  const searchParams = new URLSearchParams();
+
+  if (filters?.emailDerivedOfferId) {
+    searchParams.set('emailDerivedOfferId', filters.emailDerivedOfferId);
+  }
+
+  const suffix = searchParams.size > 0 ? `?${searchParams.toString()}` : '';
+  const payload = await requestJson<{ items: TradeOpportunityListItem[] }>(`/deals${suffix}`);
   return payload.items;
 }

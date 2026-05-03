@@ -846,6 +846,32 @@ summary {
   border-color: rgba(15, 118, 110, 0.28);
 }
 
+.supplier-review-fields {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.supplier-review-fields legend {
+  padding: 0 6px;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.form-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.form-grid-two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .review-summary-copy {
   margin-bottom: 14px;
 }
@@ -1056,6 +1082,7 @@ summary {
   .dashboard-feature-grid,
   .duplicate-product-grid,
   .duplicate-product-details,
+  .form-grid-two,
   .offer-row-fields {
     grid-template-columns: 1fr;
   }

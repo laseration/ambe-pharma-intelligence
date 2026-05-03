@@ -3,11 +3,26 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-import { listReviewWorkflowItems, updateReviewWorkflowItem } from '../../../../lib/reviewApi';
+import {
+  listReviewWorkflowItems,
+  type ReviewWorkflowActionOutcome,
+  updateReviewWorkflowItem,
+} from '../../../../lib/reviewApi';
 
 function value(formData: FormData, key: string): string {
   const rawValue = formData.get(key);
   return typeof rawValue === 'string' ? rawValue.trim() : '';
+}
+
+function buildSupplierDetails(formData: FormData): Record<string, string | null> | undefined {
+  const supplierDetails = {
+    supplierName: value(formData, 'supplierName') || null,
+    contactName: value(formData, 'supplierContactName') || null,
+    email: value(formData, 'supplierEmail') || null,
+    phone: value(formData, 'supplierPhone') || null,
+  };
+
+  return Object.values(supplierDetails).some(Boolean) ? supplierDetails : undefined;
 }
 
 function buildReviewRedirectTarget(
@@ -33,6 +48,65 @@ function formatReviewActionErrorMessage(message: string, action: string): string
   return message || 'Workflow action failed.';
 }
 
+function buildApprovalMessage(outcomes: ReviewWorkflowActionOutcome[]): {
+  message: string;
+  dealId?: string;
+} {
+  const createdDeal = outcomes.find((outcome) => outcome.tradeOpportunityOutcome === 'CREATED');
+  const existingDeal = outcomes.find((outcome) => outcome.tradeOpportunityOutcome === 'EXISTING_ACTIVE');
+
+  if (createdDeal?.tradeOpportunityId) {
+    return {
+      message: 'Approved. A deal opportunity was created from recent demand.',
+      dealId: createdDeal.tradeOpportunityId,
+    };
+  }
+
+  if (existingDeal?.tradeOpportunityId) {
+    return {
+      message: 'Approved. A deal opportunity was already open for this supplier offer.',
+      dealId: existingDeal.tradeOpportunityId,
+    };
+  }
+
+  const hasBuyDecisionCreated = outcomes.some((outcome) => outcome.buyDecisionCreated);
+  const noDemand = outcomes.some((outcome) => outcome.tradeOpportunityOutcome === 'SKIPPED_NO_RECENT_DEMAND');
+  const noMargin = outcomes.some((outcome) => outcome.tradeOpportunityOutcome === 'SKIPPED_NON_POSITIVE_MARGIN');
+
+  if (noDemand) {
+    return {
+      message: hasBuyDecisionCreated
+        ? 'Approved. A buy decision was created. No deal was created because no recent demand was found.'
+        : 'Approved. No deal was created because no recent demand was found.',
+    };
+  }
+
+  if (noMargin) {
+    return {
+      message: hasBuyDecisionCreated
+        ? 'Approved. A buy decision was created. No deal was created because the margin was not positive.'
+        : 'Approved. No deal was created because the margin was not positive.',
+    };
+  }
+
+  if (hasBuyDecisionCreated) {
+    return {
+      message: 'Approved. A buy decision was created.',
+    };
+  }
+
+  return {
+    message: 'Approved.',
+  };
+}
+
+function buildReviewSuccessRedirectTarget(
+  inboundEmailId: string,
+  params: Record<string, string>,
+): string {
+  return buildReviewRedirectTarget(inboundEmailId, params);
+}
+
 export async function submitInboundEmailReviewAction(formData: FormData) {
   const inboundEmailId = value(formData, 'inboundEmailId');
   const workflowItemId = value(formData, 'workflowItemId');
@@ -43,11 +117,13 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
   }
 
   const note = value(formData, 'note') || undefined;
+  const supplierDetails = buildSupplierDetails(formData);
   const allowQualificationRisk = formData.get('allowQualificationRisk') === 'on';
   const actorPayload = {
     actorType: 'OPERATOR',
     actorIdentifier: 'web-review-console',
   };
+  const outcomes: ReviewWorkflowActionOutcome[] = [];
 
   try {
     const items = workflowItemId
@@ -64,20 +140,27 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
 
     for (const item of items) {
       if (action === 'APPROVE_TO_BUY') {
-        await updateReviewWorkflowItem(item.id, {
+        const result = await updateReviewWorkflowItem(item.id, {
           action,
           note,
           allowQualificationRisk: workflowItemId ? true : allowQualificationRisk,
+          supplierDetails,
           ...actorPayload,
         });
+        if (result.actionOutcome) {
+          outcomes.push(result.actionOutcome);
+        }
         continue;
       }
 
-      await updateReviewWorkflowItem(item.id, {
+      const result = await updateReviewWorkflowItem(item.id, {
         action,
         note,
         ...actorPayload,
       });
+      if (result.actionOutcome) {
+        outcomes.push(result.actionOutcome);
+      }
     }
   } catch (error) {
     const message = formatReviewActionErrorMessage(
@@ -97,14 +180,44 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
   }
 
   revalidatePath('/dashboard/review');
+  revalidatePath('/dashboard/deals');
+
+  const successPayload =
+    action === 'APPROVE_TO_BUY'
+      ? buildApprovalMessage(outcomes)
+      : {
+          message: 'Rejected.',
+        };
+
   if (inboundEmailId) {
     const remainingItems = await listReviewWorkflowItems({ inboundEmailId });
     revalidatePath(`/dashboard/review/${inboundEmailId}`);
     if (remainingItems.length === 0) {
-      redirect(`/dashboard/review?updated=${encodeURIComponent(action)}`);
+      const searchParams = new URLSearchParams({
+        updated: action,
+        message: successPayload.message,
+      });
+      if (successPayload.dealId) {
+        searchParams.set('dealId', successPayload.dealId);
+      }
+      redirect(`/dashboard/review?${searchParams.toString()}`);
     }
-    redirect(`/dashboard/review/${inboundEmailId}?updated=${encodeURIComponent(action)}`);
+    const nextParams: Record<string, string> = {
+      updated: action,
+      message: successPayload.message,
+    };
+    if (successPayload.dealId) {
+      nextParams.dealId = successPayload.dealId;
+    }
+    redirect(buildReviewSuccessRedirectTarget(inboundEmailId, nextParams));
   }
 
-  redirect('/dashboard/review?updated=row_action');
+  const searchParams = new URLSearchParams({
+    updated: action,
+    message: successPayload.message,
+  });
+  if (successPayload.dealId) {
+    searchParams.set('dealId', successPayload.dealId);
+  }
+  redirect(`/dashboard/review?${searchParams.toString()}`);
 }

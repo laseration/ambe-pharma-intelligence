@@ -54,6 +54,74 @@ test('review queue includes Telegram review items', async () => {
   assert.equal(items[0]?.linkedImportBatch?.id, 'batch-1');
 });
 
+test('review queue includes regulatory review items with safe wording', async () => {
+  const service = createReviewQueueService({
+    listTelegramInboundItems: async () => [],
+    listEmailReviewItems: () => [],
+    listEmailDerivedOfferItems: async () => [],
+    listRegulatoryReviewItems: async () =>
+      [
+        {
+          id: 'reg-review-1',
+          regulatorySignalId: 'signal-1',
+          regulatoryProductMatchId: null,
+          productId: null,
+          status: 'NEW',
+          priority: 'HIGH',
+          reason: 'No safe existing product match was found. Requires compliance review.',
+          latestNote: null,
+          assigneeLabel: null,
+          completedAt: null,
+          createdAt: new Date('2026-05-01T10:00:00.000Z'),
+          updatedAt: new Date('2026-05-01T10:00:00.000Z'),
+          product: null,
+          regulatoryProductMatch: null,
+          regulatorySignal: {
+            id: 'signal-1',
+            regulatoryUpdateId: 'update-1',
+            eventType: 'RECALL',
+            severity: 'HIGH',
+            summary: 'Potentially relevant update: Drug alert.',
+            affectedProductText: 'Amlodipine 5mg tablets 28',
+            activeSubstance: null,
+            manufacturer: null,
+            licenceNumber: null,
+            batchNumber: null,
+            parserVersion: 'test',
+            confidence: 80,
+            evidence: null,
+            createdAt: new Date('2026-05-01T10:00:00.000Z'),
+            updatedAt: new Date('2026-05-01T10:00:00.000Z'),
+            regulatoryUpdate: {
+              id: 'update-1',
+              sourceUrl: 'https://www.gov.uk/drug-device-alerts/example',
+              title: 'Drug Alert: Amlodipine 5mg tablets',
+              publishedAt: new Date('2026-05-01T09:00:00.000Z'),
+              rawText: 'Product: Amlodipine 5mg tablets 28',
+              regulator: 'MHRA',
+              category: 'Drug alert',
+              evidence: null,
+              contentHash: 'hash',
+              createdAt: new Date('2026-05-01T10:00:00.000Z'),
+              updatedAt: new Date('2026-05-01T10:00:00.000Z'),
+            },
+          },
+        },
+      ] as never,
+    getSupplierScorecardsForIds: async () => ({}),
+  });
+
+  const items = await service.listItems();
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0]?.sourceType, 'REGULATORY_REVIEW');
+  assert.equal(items[0]?.workflowPriority, 'HIGH');
+  assert.equal(items[0]?.regulatoryEventType, 'RECALL');
+  assert.equal(items[0]?.reviewSummary?.reviewReason, 'Regulatory update needs review');
+  assert.match(items[0]?.reviewSummary?.recognizedContent ?? '', /Potentially relevant MHRA update/);
+  assert.match(items[0]?.reviewSummary?.suggestedAction ?? '', /confirm affected stock/i);
+});
+
 test('review queue includes email inbound review and failure items', async () => {
   const service = createReviewQueueService({
     listTelegramInboundItems: async () => [],

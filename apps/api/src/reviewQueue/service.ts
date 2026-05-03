@@ -11,6 +11,7 @@ import {
   type EnrichedTradeOpportunityRecord,
 } from '../deals/service';
 import { listStoredEmailReviewItems, type StoredEmailReviewItem } from '../email/inbound/reviewStore';
+import { listOpenRegulatoryReviewQueueItems } from '../regulatory/service';
 import { supplierScorecardService, type SupplierScorecardRecord } from '../suppliers/scorecardService';
 import { listInboundItems } from '../telegram/inbound/service';
 import { buildReviewSummary, describeReviewReason, type ReviewSummary } from './summary';
@@ -18,10 +19,11 @@ import { offerWorkflowService } from './workflowService';
 
 type TelegramReviewItem = Awaited<ReturnType<typeof listInboundItems>>[number];
 type OfferWorkflowReviewItem = Awaited<ReturnType<typeof offerWorkflowService.listWorkflowItems>>[number];
+type RegulatoryReviewItem = Awaited<ReturnType<typeof listOpenRegulatoryReviewQueueItems>>[number];
 
 export type ReviewQueueItem = {
   id: string;
-  sourceType: 'TELEGRAM_INBOUND' | 'EMAIL_INBOUND' | 'EMAIL_DERIVED_OFFER';
+  sourceType: 'TELEGRAM_INBOUND' | 'EMAIL_INBOUND' | 'EMAIL_DERIVED_OFFER' | 'REGULATORY_REVIEW';
   receivedAt: Date | null;
   sender: string | null;
   fileName: string | null;
@@ -81,12 +83,19 @@ export type ReviewQueueItem = {
         invalidRows?: number | null;
       }
     | null;
+  regulatoryReviewItemId?: string | null;
+  regulatorySignalId?: string | null;
+  regulatoryAlertId?: string | null;
+  regulatorySeverity?: string | null;
+  regulatoryEventType?: string | null;
+  sourceUrl?: string | null;
 };
 
 type ReviewQueueDependencies = {
   listTelegramInboundItems: () => Promise<TelegramReviewItem[]>;
   listEmailReviewItems: () => StoredEmailReviewItem[];
   listEmailDerivedOfferItems: () => Promise<OfferWorkflowReviewItem[]>;
+  listRegulatoryReviewItems: () => Promise<RegulatoryReviewItem[]>;
   getSupplierScorecardsForIds: (
     supplierIds: string[],
   ) => Promise<Record<string, SupplierScorecardRecord>>;
@@ -342,6 +351,50 @@ function mapEmailDerivedOfferItem(
   };
 }
 
+function mapRegulatoryReviewItem(item: RegulatoryReviewItem): ReviewQueueItem | null {
+  if (!['NEW', 'REVIEWING'].includes(item.status)) {
+    return null;
+  }
+
+  const update = item.regulatorySignal.regulatoryUpdate;
+  const reviewSummary = buildReviewSummary({
+    processingStatus: item.status,
+    sourceType: 'REGULATORY_REVIEW',
+    fileType: null,
+    fileName: null,
+    inferredImportType: null,
+    reason: item.reason,
+    sender: update.regulator,
+    subjectOrCaption: update.title,
+  });
+
+  return {
+    id: `regulatory-review-${item.id}`,
+    sourceType: 'REGULATORY_REVIEW',
+    receivedAt: update.publishedAt ?? item.createdAt,
+    sender: update.regulator,
+    fileName: null,
+    subject: update.title,
+    processingStatus: item.status,
+    reason: describeReviewReason({ reason: 'Regulatory update needs review' }),
+    workflowPriority:
+      item.priority === 'CRITICAL' || item.priority === 'HIGH'
+        ? 'HIGH'
+        : item.priority === 'LOW'
+          ? 'LOW'
+          : 'MEDIUM',
+    workflowAssignee: item.assigneeLabel,
+    recommendedNextAction: 'review regulatory update',
+    reviewSummary,
+    linkedImportBatch: null,
+    regulatoryReviewItemId: item.id,
+    regulatorySignalId: item.regulatorySignalId,
+    regulatorySeverity: item.regulatorySignal.severity,
+    regulatoryEventType: item.regulatorySignal.eventType,
+    sourceUrl: update.sourceUrl,
+  };
+}
+
 export function createReviewQueueService(overrides?: Partial<ReviewQueueDependencies>) {
   const dependencies: ReviewQueueDependencies = {
     listTelegramInboundItems: async () => listInboundItems({}),
@@ -361,6 +414,13 @@ export function createReviewQueueService(overrides?: Partial<ReviewQueueDependen
         return [];
       }
     },
+    listRegulatoryReviewItems: async () => {
+      try {
+        return await listOpenRegulatoryReviewQueueItems();
+      } catch {
+        return [];
+      }
+    },
     getSupplierScorecardsForIds: async (supplierIds) =>
       supplierScorecardService.getScorecardsForSupplierIds(supplierIds),
     getTradeOpportunitiesForOfferIds: async (emailDerivedOfferIds) =>
@@ -375,10 +435,11 @@ export function createReviewQueueService(overrides?: Partial<ReviewQueueDependen
 
   return {
     async listItems(): Promise<ReviewQueueItem[]> {
-      const [telegramItems, emailItems, emailDerivedOfferItems] = await Promise.all([
+      const [telegramItems, emailItems, emailDerivedOfferItems, regulatoryReviewItems] = await Promise.all([
         dependencies.listTelegramInboundItems(),
         Promise.resolve(dependencies.listEmailReviewItems()),
         dependencies.listEmailDerivedOfferItems(),
+        dependencies.listRegulatoryReviewItems(),
       ]);
       const supplierScorecards = await dependencies.getSupplierScorecardsForIds(
         emailDerivedOfferItems.flatMap((item) => {
@@ -422,6 +483,7 @@ export function createReviewQueueService(overrides?: Partial<ReviewQueueDependen
       return [
         ...telegramItems.map(mapTelegramItem),
         ...emailItems.map(mapEmailItem),
+        ...regulatoryReviewItems.map(mapRegulatoryReviewItem),
         ...emailDerivedOfferItems.map((item) =>
           mapEmailDerivedOfferItem(
             item,

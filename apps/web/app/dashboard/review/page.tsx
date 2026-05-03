@@ -7,6 +7,9 @@ export const dynamic = 'force-dynamic';
 type PageProps = {
   searchParams?: Promise<{
     sort?: string;
+    message?: string;
+    error?: string;
+    dealId?: string;
   }>;
 };
 
@@ -133,6 +136,19 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
             Stale first
           </Link>
         </div>
+
+        {query?.error ? <p className="alert alert-error">{query.error}</p> : null}
+        {query?.message ? (
+          <p className="alert alert-success">
+            {query.message}
+            {query.dealId ? (
+              <>
+                {' '}
+                <Link href="/dashboard/deals">Open deal</Link>
+              </>
+            ) : null}
+          </p>
+        ) : null}
 
         {emailGroups.length === 0 ? (
           <section className="panel">

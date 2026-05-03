@@ -132,6 +132,21 @@ export type ReviewWorkflowEvent = {
   createdAt: string;
 };
 
+export type ReviewWorkflowActionOutcome = {
+  action: 'APPROVE_TO_BUY' | 'REJECT';
+  buyDecisionId?: string;
+  buyDecisionCreated?: boolean;
+  tradeOpportunityId?: string | null;
+  tradeOpportunityOutcome?:
+    | 'CREATED'
+    | 'EXISTING_ACTIVE'
+    | 'SKIPPED_NOT_APPROVED'
+    | 'SKIPPED_MISSING_CONTEXT'
+    | 'SKIPPED_MISSING_PRICE'
+    | 'SKIPPED_NO_RECENT_DEMAND'
+    | 'SKIPPED_NON_POSITIVE_MARGIN';
+};
+
 type ListReviewWorkflowItemsOptions = {
   inboundEmailId?: string;
   staleFirst?: boolean;
@@ -230,8 +245,8 @@ export async function listReviewWorkflowEvents(workflowItemId: string): Promise<
 export async function updateReviewWorkflowItem(
   workflowItemId: string,
   body: Record<string, unknown>,
-): Promise<void> {
-  await requestJson<{ item: ReviewWorkflowDetail }>(`/review-queue/workflows/${encodeURIComponent(workflowItemId)}`, {
+): Promise<{ item: ReviewWorkflowDetail; actionOutcome?: ReviewWorkflowActionOutcome | null }> {
+  return requestJson<{ item: ReviewWorkflowDetail; actionOutcome?: ReviewWorkflowActionOutcome | null }>(`/review-queue/workflows/${encodeURIComponent(workflowItemId)}`, {
     method: 'PATCH',
     body: JSON.stringify(body),
   });

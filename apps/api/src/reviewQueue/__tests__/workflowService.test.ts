@@ -708,12 +708,15 @@ test('approved offer with recent profitable sales creates one review-first trade
     },
   );
 
-  await service.approveToBuy({
+  const approvalResult = await service.approveToBuyWithOutcome({
     workflowItemId: harness.workflowItems[0]!.id,
     actorType: 'USER',
     actorIdentifier: 'buyer-1',
   });
 
+  assert.equal(approvalResult.outcome.buyDecisionCreated, true);
+  assert.equal(approvalResult.outcome.tradeOpportunityOutcome, 'CREATED');
+  assert.equal(approvalResult.outcome.tradeOpportunityId, harness.tradeOpportunities[0]?.id);
   assert.equal(harness.tradeOpportunities.length, 1);
   assert.equal(harness.tradeOpportunities[0]?.sourceType, 'BUY_DECISION');
   assert.equal(harness.tradeOpportunities[0]?.status, 'OPEN');
@@ -739,12 +742,15 @@ test('approved offer with no recent sales creates no trade opportunity', async (
   const service = createOfferWorkflowService(harness.repository as never);
   harness.workflowItems.push(harness.makeWorkflowRecord());
 
-  await service.approveToBuy({
+  const approvalResult = await service.approveToBuyWithOutcome({
     workflowItemId: harness.workflowItems[0]!.id,
     actorType: 'USER',
     actorIdentifier: 'buyer-1',
   });
 
+  assert.equal(approvalResult.outcome.buyDecisionCreated, true);
+  assert.equal(approvalResult.outcome.tradeOpportunityOutcome, 'SKIPPED_NO_RECENT_DEMAND');
+  assert.equal(approvalResult.outcome.tradeOpportunityId, null);
   assert.equal(harness.tradeOpportunities.length, 0);
   assert.equal(harness.tradeOpportunityPolicies.length, 0);
 });
@@ -765,12 +771,14 @@ test('approved offer with non-profitable recent sales creates no trade opportuni
     saleDate: new Date('2026-04-18T10:00:00.000Z'),
   });
 
-  await service.approveToBuy({
+  const approvalResult = await service.approveToBuyWithOutcome({
     workflowItemId: harness.workflowItems[0]!.id,
     actorType: 'USER',
     actorIdentifier: 'buyer-1',
   });
 
+  assert.equal(approvalResult.outcome.tradeOpportunityOutcome, 'SKIPPED_NON_POSITIVE_MARGIN');
+  assert.equal(approvalResult.outcome.tradeOpportunityId, null);
   assert.equal(harness.tradeOpportunities.length, 0);
 });
 

@@ -374,6 +374,56 @@ enum SupplierQualificationActionType {
   NOTE_ADDED
 }
 
+enum RegulatoryEventType {
+  RECALL
+  MEDICINE_DEFECT
+  SAFETY_ALERT
+  LICENCE_CHANGE
+  PRODUCT_WITHDRAWAL
+  SUPPLY_DISRUPTION
+  OTHER_REGULATORY_UPDATE
+}
+
+enum RegulatorySeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RegulatoryAlertStatus {
+  NEW
+  REVIEWING
+  ACTIONED
+  IGNORED
+  FALSE_MATCH
+}
+
+enum RegulatoryReviewStatus {
+  NEW
+  REVIEWING
+  ACTIONED
+  IGNORED
+  FALSE_MATCH
+}
+
+enum RegulatoryMatchStatus {
+  CONFIDENT
+  UNCLEAR
+  REJECTED
+}
+
+enum RegulatoryActionType {
+  CREATED
+  MATCHED
+  QUEUED_FOR_REVIEW
+  STATUS_CHANGED
+  NOTE_ADDED
+  ACTIONED
+  IGNORED
+  FALSE_MATCH
+}
+
 model User {
   id                         String              @id @default(cuid())
   email                      String              @unique
@@ -411,6 +461,9 @@ model Product {
   buyExecutions             BuyExecution[]
   tradeOpportunities        TradeOpportunity[]
   correctedOfferCorrections OfferCorrection[]
+  regulatoryProductMatches  RegulatoryProductMatch[]
+  regulatoryAlerts          RegulatoryAlert[]
+  regulatoryReviewItems     RegulatoryReviewItem[]
   createdAt                 DateTime            @default(now())
   updatedAt                 DateTime            @updatedAt
 
@@ -1404,4 +1457,142 @@ model AppSetting {
   description String?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
+}
+
+model RegulatoryUpdate {
+  id          String                 @id @default(cuid())
+  sourceUrl   String                 @unique
+  title       String
+  publishedAt DateTime?
+  rawText     String
+  regulator   String                 @default("MHRA")
+  category    String?
+  evidence    Json?
+  contentHash String
+  signals     RegulatorySignal[]
+  actionLogs  RegulatoryActionLog[]
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@index([regulator, publishedAt])
+  @@index([contentHash])
+}
+
+model RegulatorySignal {
+  id                  String                   @id @default(cuid())
+  regulatoryUpdateId  String
+  eventType           RegulatoryEventType
+  severity            RegulatorySeverity       @default(MEDIUM)
+  summary             String
+  affectedProductText String?
+  activeSubstance     String?
+  manufacturer        String?
+  licenceNumber       String?
+  batchNumber         String?
+  parserVersion       String
+  confidence          Int                      @default(50)
+  evidence            Json?
+  regulatoryUpdate    RegulatoryUpdate         @relation(fields: [regulatoryUpdateId], references: [id], onDelete: Cascade)
+  productMatches      RegulatoryProductMatch[]
+  alerts              RegulatoryAlert[]
+  reviewItems         RegulatoryReviewItem[]
+  actionLogs          RegulatoryActionLog[]
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  @@index([regulatoryUpdateId, eventType])
+  @@index([eventType, severity, createdAt])
+}
+
+model RegulatoryProductMatch {
+  id                 String                @id @default(cuid())
+  regulatorySignalId String
+  productId          String?
+  status             RegulatoryMatchStatus @default(UNCLEAR)
+  confidence         Int                   @default(0)
+  reason             String
+  matchedFields      Json?
+  evidence           Json?
+  regulatorySignal   RegulatorySignal      @relation(fields: [regulatorySignalId], references: [id], onDelete: Cascade)
+  product            Product?              @relation(fields: [productId], references: [id], onDelete: SetNull)
+  alert              RegulatoryAlert?
+  reviewItems        RegulatoryReviewItem[]
+  actionLogs         RegulatoryActionLog[]
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  @@index([regulatorySignalId, status, confidence])
+  @@index([productId, status])
+}
+
+model RegulatoryAlert {
+  id                       String                 @id @default(cuid())
+  regulatorySignalId       String
+  regulatoryProductMatchId String?                @unique
+  productId                String?
+  status                   RegulatoryAlertStatus  @default(NEW)
+  title                    String
+  message                  String
+  suggestedAction          String
+  evidence                 Json?
+  regulatorySignal         RegulatorySignal       @relation(fields: [regulatorySignalId], references: [id], onDelete: Cascade)
+  regulatoryProductMatch   RegulatoryProductMatch? @relation(fields: [regulatoryProductMatchId], references: [id], onDelete: SetNull)
+  product                  Product?               @relation(fields: [productId], references: [id], onDelete: SetNull)
+  actionLogs               RegulatoryActionLog[]
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+
+  @@index([status, createdAt])
+  @@index([productId, status])
+  @@index([regulatorySignalId])
+}
+
+model RegulatoryReviewItem {
+  id                       String                 @id @default(cuid())
+  regulatorySignalId       String
+  regulatoryProductMatchId String?
+  productId                String?
+  status                   RegulatoryReviewStatus @default(NEW)
+  priority                 RegulatorySeverity     @default(MEDIUM)
+  reason                   String
+  latestNote               String?
+  assigneeLabel            String?
+  completedAt              DateTime?
+  regulatorySignal         RegulatorySignal       @relation(fields: [regulatorySignalId], references: [id], onDelete: Cascade)
+  regulatoryProductMatch   RegulatoryProductMatch? @relation(fields: [regulatoryProductMatchId], references: [id], onDelete: SetNull)
+  product                  Product?               @relation(fields: [productId], references: [id], onDelete: SetNull)
+  actionLogs               RegulatoryActionLog[]
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+
+  @@index([status, priority, createdAt])
+  @@index([regulatorySignalId, status])
+  @@index([productId, status])
+}
+
+model RegulatoryActionLog {
+  id                       String                @id @default(cuid())
+  regulatoryUpdateId       String?
+  regulatorySignalId       String?
+  regulatoryProductMatchId String?
+  regulatoryAlertId        String?
+  regulatoryReviewItemId   String?
+  actionType               RegulatoryActionType
+  previousStatus           String?
+  newStatus                String?
+  actorType                String                @default("SYSTEM")
+  actorIdentifier          String?
+  note                     String?
+  metadata                 Json?
+  regulatoryUpdate         RegulatoryUpdate?      @relation(fields: [regulatoryUpdateId], references: [id], onDelete: SetNull)
+  regulatorySignal         RegulatorySignal?      @relation(fields: [regulatorySignalId], references: [id], onDelete: SetNull)
+  regulatoryProductMatch   RegulatoryProductMatch? @relation(fields: [regulatoryProductMatchId], references: [id], onDelete: SetNull)
+  regulatoryAlert          RegulatoryAlert?       @relation(fields: [regulatoryAlertId], references: [id], onDelete: SetNull)
+  regulatoryReviewItem     RegulatoryReviewItem?  @relation(fields: [regulatoryReviewItemId], references: [id], onDelete: SetNull)
+  createdAt                DateTime              @default(now())
+
+  @@index([regulatoryUpdateId, createdAt])
+  @@index([regulatorySignalId, createdAt])
+  @@index([regulatoryAlertId, createdAt])
+  @@index([regulatoryReviewItemId, createdAt])
 }

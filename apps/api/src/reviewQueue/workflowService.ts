@@ -11,6 +11,7 @@ import {
 } from '../automation/service';
 import {
   createDemandMatchedTradeOpportunityFromApprovedBuyDecision,
+  type DemandMatchedTradeOpportunityOutcome,
   syncTradeOpportunityCommercialState,
 } from '../deals/service';
 import type { SupplierQualificationStatus } from '../suppliers/qualificationService';
@@ -78,6 +79,13 @@ export type WorkflowActor = {
   actorIdentifier?: string | null;
 };
 
+export type SupplierReviewDetails = {
+  supplierName?: string | null;
+  contactName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+};
+
 export type SyncWorkflowItemInput = {
   emailDerivedOfferId: string;
   inboundEmailId: string | null;
@@ -126,12 +134,25 @@ export type WorkflowActionInput = WorkflowActor & {
   orderedMinimumOrderQuantity?: number | null;
   confirmedAvailability?: boolean | null;
   expectedDeliveryDate?: Date | null;
+  supplierDetails?: SupplierReviewDetails | null;
   feedback?: Omit<OperatorValidationFeedbackCreateInput, 'offerWorkflowItemId' | 'emailDerivedOfferId'> | null;
 };
 
 export type AssignWorkflowItemInput = WorkflowActionInput & {
   assigneeUserId?: string | null;
   assigneeLabel?: string | null;
+};
+
+export type WorkflowApprovalOutcome = {
+  buyDecisionId: string;
+  buyDecisionCreated: boolean;
+  tradeOpportunityId: string | null;
+  tradeOpportunityOutcome: DemandMatchedTradeOpportunityOutcome;
+};
+
+export type WorkflowApprovalResult = {
+  item: WorkflowRecord;
+  outcome: WorkflowApprovalOutcome;
 };
 
 type WorkflowRecord = {
@@ -362,6 +383,52 @@ function normalizeActor(actor?: WorkflowActor): NormalizedActor {
     actorType: actor?.actorType?.trim() || 'SYSTEM',
     actorIdentifier: actor?.actorIdentifier?.trim() || null,
   };
+}
+
+function normalizeSupplierReviewDetails(
+  details: SupplierReviewDetails | null | undefined,
+): SupplierReviewDetails | null {
+  if (!details) {
+    return null;
+  }
+
+  const normalized = {
+    supplierName: details.supplierName?.trim() || null,
+    contactName: details.contactName?.trim() || null,
+    email: details.email?.trim() || null,
+    phone: details.phone?.trim() || null,
+  };
+
+  return Object.values(normalized).some(Boolean) ? normalized : null;
+}
+
+function buildSupplierReviewDetailsNote(details: SupplierReviewDetails | null): string | null {
+  if (!details) {
+    return null;
+  }
+
+  const parts = [
+    details.supplierName ? `Supplier: ${details.supplierName}` : null,
+    details.contactName ? `Contact: ${details.contactName}` : null,
+    details.email ? `Email: ${details.email}` : null,
+    details.phone ? `Phone: ${details.phone}` : null,
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.length > 0 ? `Supplier details entered: ${parts.join('; ')}` : null;
+}
+
+function buildWorkflowActionNote(
+  note: string | null | undefined,
+  supplierDetails: SupplierReviewDetails | null,
+): string | null {
+  const trimmedNote = note?.trim() || null;
+  const supplierDetailsNote = buildSupplierReviewDetailsNote(supplierDetails);
+
+  if (trimmedNote && supplierDetailsNote) {
+    return `${trimmedNote}\n\n${supplierDetailsNote}`;
+  }
+
+  return trimmedNote ?? supplierDetailsNote;
 }
 
 function isOpenWorkflowStatus(status: WorkflowStatus): boolean {
@@ -1255,6 +1322,195 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
     ...overrides,
   };
 
+  const approveToBuyWithOutcome = async (
+    input: WorkflowActionInput,
+  ): Promise<WorkflowApprovalResult> => {
+    return repository.transaction(async (txRepository) => {
+      const existing = await txRepository.findWorkflowItemById(input.workflowItemId);
+      if (!existing || !existing.emailDerivedOffer) {
+        throw new Error('Offer workflow item not found.');
+      }
+
+      const actor = normalizeActor(input);
+      const supplierDetails = normalizeSupplierReviewDetails(input.supplierDetails);
+      const actionNote = buildWorkflowActionNote(input.note, supplierDetails);
+      const selectedSupplierId = resolveSelectedEntityIds(
+        existing.emailDerivedOffer.resolutionCandidates,
+      ).supplierId;
+      const supplierQualification =
+        selectedSupplierId
+          ? await txRepository.findSupplierQualificationBySupplierId(selectedSupplierId)
+          : null;
+      const qualification = buildQualificationSnapshot(
+        supplierQualification?.qualificationStatus ?? existing.supplierQualificationStatus,
+        existing.hasUnresolvedSupplier,
+      );
+
+      if (qualification.hasBlockedSupplier) {
+        const blockedNote =
+          actionNote ||
+          qualification.qualificationRiskNote ||
+          'Blocked supplier cannot be approved to buy.';
+        await txRepository.updateWorkflowItem(existing.id, {
+          latestNote: blockedNote,
+          hasBlockedSupplier: true,
+          supplierQualificationStatus: qualification.supplierQualificationStatus,
+          qualificationRiskNote: qualification.qualificationRiskNote,
+        });
+        await logWorkflowEvent(
+          txRepository,
+          existing.id,
+          'NOTE_ADDED',
+          existing.status,
+          existing.status,
+          actor,
+          blockedNote,
+        );
+        throw new Error('Blocked supplier cannot be approved to buy.');
+      }
+
+      if (
+        (qualification.hasRestrictedSupplier || qualification.hasUnknownSupplierQualification) &&
+        input.allowQualificationRisk !== true
+      ) {
+        throw new Error(
+          'Supplier qualification risk requires explicit operator confirmation before approval.',
+        );
+      }
+
+      const updatedWorkflow = await txRepository.updateWorkflowItem(existing.id, {
+        status: 'APPROVED_TO_BUY',
+        latestNote: actionNote || existing.latestNote,
+        completedAt: null,
+        supplierQualificationStatus: qualification.supplierQualificationStatus,
+        hasUnknownSupplierQualification: qualification.hasUnknownSupplierQualification,
+        hasRestrictedSupplier: qualification.hasRestrictedSupplier,
+        hasBlockedSupplier: qualification.hasBlockedSupplier,
+        qualificationRiskNote: qualification.qualificationRiskNote,
+      });
+
+      await logWorkflowEvent(
+        txRepository,
+        existing.id,
+        'APPROVED_TO_BUY',
+        existing.status,
+        'APPROVED_TO_BUY',
+        actor,
+        actionNote,
+        {
+          allowQualificationRisk: input.allowQualificationRisk === true,
+          supplierDetails,
+        },
+      );
+
+      const snapshot = buildBuyDecisionSnapshot(updatedWorkflow, qualification);
+      const existingDecision = await txRepository.findBuyDecisionByOfferId(existing.emailDerivedOfferId);
+      let decisionForTradeSync: BuyDecisionRecord;
+      const buyDecisionCreated = !existingDecision;
+
+      if (!existingDecision) {
+        const createdDecision = await txRepository.createBuyDecision({
+          ...snapshot,
+          approvalStatus: 'APPROVED',
+          approvalNote: actionNote,
+          approvedByType: actor.actorType,
+          approvedByIdentifier: actor.actorIdentifier,
+          approvedAt: new Date(),
+          orderStatus: 'NOT_ORDERED',
+        });
+
+        await logBuyDecisionEvent(
+          txRepository,
+          createdDecision.id,
+          'CREATED',
+          null,
+          'APPROVED',
+          null,
+          'NOT_ORDERED',
+          actor,
+          actionNote,
+          {
+            qualificationRiskNote: qualification.qualificationRiskNote,
+            supplierDetails,
+          },
+        );
+
+        decisionForTradeSync = createdDecision;
+      } else {
+        const updatedDecision = await txRepository.updateBuyDecision(existingDecision.id, {
+          ...snapshot,
+          approvalStatus: 'APPROVED',
+          approvalNote: actionNote || existingDecision.approvalNote,
+          approvedByType: actor.actorType,
+          approvedByIdentifier: actor.actorIdentifier,
+          approvedAt: existingDecision.approvedAt ?? new Date(),
+        });
+
+        if (existingDecision.approvalStatus !== 'APPROVED') {
+          await logBuyDecisionEvent(
+            txRepository,
+            existingDecision.id,
+            'APPROVED',
+            existingDecision.approvalStatus,
+            updatedDecision.approvalStatus,
+            existingDecision.orderStatus,
+            updatedDecision.orderStatus,
+            actor,
+            actionNote,
+            {
+              qualificationRiskNote: qualification.qualificationRiskNote,
+              supplierDetails,
+            },
+          );
+        }
+
+        decisionForTradeSync = updatedDecision;
+      }
+
+      await syncTradeOpportunityCommercialState(
+        {
+          listActiveByOfferId: txRepository.listActiveTradeOpportunitiesByOfferId,
+          updateTradeOpportunity: txRepository.updateTradeOpportunity,
+          createTradeOpportunityEvent: txRepository.createTradeOpportunityEvent,
+        },
+        {
+          emailDerivedOfferId: existing.emailDerivedOfferId,
+          buyDecision: decisionForTradeSync,
+          buyExecution: decisionForTradeSync.execution ?? null,
+          actor,
+          note: actionNote,
+        },
+      );
+
+      const demandMatchedTradeOpportunityResult =
+        await createDemandMatchedTradeOpportunityFromApprovedBuyDecision(
+          {
+            listActiveByOfferId: txRepository.listActiveTradeOpportunitiesByOfferId,
+            create: txRepository.createTradeOpportunity,
+            createPolicy: txRepository.createTradeOpportunityPolicy,
+            createTradeOpportunityEvent: txRepository.createTradeOpportunityEvent,
+            listRecentSalesByProductId: txRepository.listRecentSalesByProductId,
+          },
+          {
+            buyDecision: decisionForTradeSync,
+            sourceSupplierNameSnapshot: existing.emailDerivedOffer?.supplierCandidate ?? null,
+            actor,
+          },
+        );
+      await recordWorkflowFeedbackIfPresent(txRepository, updatedWorkflow, input);
+
+      return {
+        item: updatedWorkflow,
+        outcome: {
+          buyDecisionId: decisionForTradeSync.id,
+          buyDecisionCreated,
+          tradeOpportunityId: demandMatchedTradeOpportunityResult.tradeOpportunity?.id ?? null,
+          tradeOpportunityOutcome: demandMatchedTradeOpportunityResult.outcome,
+        },
+      };
+    });
+  };
+
   return {
     async syncWorkflowItemForOfferReview(
       input: SyncWorkflowItemInput,
@@ -1499,176 +1755,13 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
       });
     },
 
+    async approveToBuyWithOutcome(input: WorkflowActionInput): Promise<WorkflowApprovalResult> {
+      return approveToBuyWithOutcome(input);
+    },
+
     async approveToBuy(input: WorkflowActionInput): Promise<WorkflowRecord> {
-      return repository.transaction(async (txRepository) => {
-        const existing = await txRepository.findWorkflowItemById(input.workflowItemId);
-        if (!existing || !existing.emailDerivedOffer) {
-          throw new Error('Offer workflow item not found.');
-        }
-
-        const actor = normalizeActor(input);
-        const selectedSupplierId = resolveSelectedEntityIds(
-          existing.emailDerivedOffer.resolutionCandidates,
-        ).supplierId;
-        const supplierQualification =
-          selectedSupplierId
-            ? await txRepository.findSupplierQualificationBySupplierId(selectedSupplierId)
-            : null;
-        const qualification = buildQualificationSnapshot(
-          supplierQualification?.qualificationStatus ?? existing.supplierQualificationStatus,
-          existing.hasUnresolvedSupplier,
-        );
-
-        if (qualification.hasBlockedSupplier) {
-          const blockedNote =
-            input.note?.trim() ||
-            qualification.qualificationRiskNote ||
-            'Blocked supplier cannot be approved to buy.';
-          const updated = await txRepository.updateWorkflowItem(existing.id, {
-            latestNote: blockedNote,
-            hasBlockedSupplier: true,
-            supplierQualificationStatus: qualification.supplierQualificationStatus,
-            qualificationRiskNote: qualification.qualificationRiskNote,
-          });
-          await logWorkflowEvent(
-            txRepository,
-            existing.id,
-            'NOTE_ADDED',
-            existing.status,
-            existing.status,
-            actor,
-            blockedNote,
-          );
-          throw new Error('Blocked supplier cannot be approved to buy.');
-        }
-
-        if (
-          (qualification.hasRestrictedSupplier || qualification.hasUnknownSupplierQualification) &&
-          input.allowQualificationRisk !== true
-        ) {
-          throw new Error(
-            'Supplier qualification risk requires explicit operator confirmation before approval.',
-          );
-        }
-
-        const updatedWorkflow = await txRepository.updateWorkflowItem(existing.id, {
-          status: 'APPROVED_TO_BUY',
-          latestNote: input.note?.trim() || existing.latestNote,
-          completedAt: null,
-          supplierQualificationStatus: qualification.supplierQualificationStatus,
-          hasUnknownSupplierQualification: qualification.hasUnknownSupplierQualification,
-          hasRestrictedSupplier: qualification.hasRestrictedSupplier,
-          hasBlockedSupplier: qualification.hasBlockedSupplier,
-          qualificationRiskNote: qualification.qualificationRiskNote,
-        });
-
-        await logWorkflowEvent(
-          txRepository,
-          existing.id,
-          'APPROVED_TO_BUY',
-          existing.status,
-          'APPROVED_TO_BUY',
-          actor,
-          input.note,
-          {
-            allowQualificationRisk: input.allowQualificationRisk === true,
-          },
-        );
-
-        const snapshot = buildBuyDecisionSnapshot(updatedWorkflow, qualification);
-        const existingDecision = await txRepository.findBuyDecisionByOfferId(existing.emailDerivedOfferId);
-        let decisionForTradeSync: BuyDecisionRecord;
-
-        if (!existingDecision) {
-          const createdDecision = await txRepository.createBuyDecision({
-            ...snapshot,
-            approvalStatus: 'APPROVED',
-            approvalNote: input.note?.trim() || null,
-            approvedByType: actor.actorType,
-            approvedByIdentifier: actor.actorIdentifier,
-            approvedAt: new Date(),
-            orderStatus: 'NOT_ORDERED',
-          });
-
-          await logBuyDecisionEvent(
-            txRepository,
-            createdDecision.id,
-            'CREATED',
-            null,
-            'APPROVED',
-            null,
-            'NOT_ORDERED',
-            actor,
-            input.note,
-            {
-              qualificationRiskNote: qualification.qualificationRiskNote,
-            },
-          );
-
-          decisionForTradeSync = createdDecision;
-        } else {
-          const updatedDecision = await txRepository.updateBuyDecision(existingDecision.id, {
-            ...snapshot,
-            approvalStatus: 'APPROVED',
-            approvalNote: input.note?.trim() || existingDecision.approvalNote,
-            approvedByType: actor.actorType,
-            approvedByIdentifier: actor.actorIdentifier,
-            approvedAt: existingDecision.approvedAt ?? new Date(),
-          });
-
-          if (existingDecision.approvalStatus !== 'APPROVED') {
-            await logBuyDecisionEvent(
-              txRepository,
-              existingDecision.id,
-              'APPROVED',
-              existingDecision.approvalStatus,
-              updatedDecision.approvalStatus,
-              existingDecision.orderStatus,
-              updatedDecision.orderStatus,
-              actor,
-              input.note,
-              {
-                qualificationRiskNote: qualification.qualificationRiskNote,
-              },
-            );
-          }
-
-          decisionForTradeSync = updatedDecision;
-        }
-
-        await syncTradeOpportunityCommercialState(
-          {
-            listActiveByOfferId: txRepository.listActiveTradeOpportunitiesByOfferId,
-            updateTradeOpportunity: txRepository.updateTradeOpportunity,
-            createTradeOpportunityEvent: txRepository.createTradeOpportunityEvent,
-          },
-          {
-            emailDerivedOfferId: existing.emailDerivedOfferId,
-            buyDecision: decisionForTradeSync,
-            buyExecution: decisionForTradeSync.execution ?? null,
-            actor,
-            note: input.note,
-          },
-        );
-
-        await createDemandMatchedTradeOpportunityFromApprovedBuyDecision(
-          {
-            listActiveByOfferId: txRepository.listActiveTradeOpportunitiesByOfferId,
-            create: txRepository.createTradeOpportunity,
-            createPolicy: txRepository.createTradeOpportunityPolicy,
-            createTradeOpportunityEvent: txRepository.createTradeOpportunityEvent,
-            listRecentSalesByProductId: txRepository.listRecentSalesByProductId,
-          },
-          {
-            buyDecision: decisionForTradeSync,
-            sourceSupplierNameSnapshot: existing.emailDerivedOffer?.supplierCandidate ?? null,
-            actor,
-          },
-        );
-        await recordWorkflowFeedbackIfPresent(txRepository, updatedWorkflow, input);
-
-        return updatedWorkflow;
-      });
+      const result = await approveToBuyWithOutcome(input);
+      return result.item;
     },
 
     async rejectWorkflowItem(input: WorkflowActionInput): Promise<WorkflowRecord> {

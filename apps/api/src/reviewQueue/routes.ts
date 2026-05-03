@@ -7,6 +7,7 @@ import { actorBodySchema, operatorFeedbackSchema } from '../http/routeSchemas';
 import {
   decimalInputSchema,
   idParamSchema,
+  nullableTrimmedStringSchema,
   optionalBooleanQuerySchema,
   optionalDateInputSchema,
   optionalTrimmedStringSchema,
@@ -62,6 +63,13 @@ const workflowFeedbackSchema = operatorFeedbackSchema
   })
   .optional();
 
+const supplierReviewDetailsSchema = z.object({
+  supplierName: nullableTrimmedStringSchema,
+  contactName: nullableTrimmedStringSchema,
+  email: nullableTrimmedStringSchema,
+  phone: nullableTrimmedStringSchema,
+}).optional();
+
 const assignWorkflowBodySchema = z.object({
   action: z.literal('ASSIGN'),
   assigneeUserId: z.union([z.string().trim().min(1), z.null()]).optional(),
@@ -83,6 +91,7 @@ const decisionWorkflowActionSchema = z.object({
   action: z.enum(['APPROVE_TO_BUY', 'REJECT']),
   note: optionalTrimmedStringSchema,
   allowQualificationRisk: z.boolean().optional(),
+  supplierDetails: supplierReviewDetailsSchema,
   feedback: workflowFeedbackSchema,
 }).merge(actorBodySchema);
 
@@ -162,7 +171,10 @@ reviewQueueRouter.patch('/workflows/:id', requireInternalOperatorAccess, asyncHa
 
   const actor = resolveInternalActor(request, body);
 
-  const item =
+  let item: unknown;
+  let actionOutcome: Record<string, unknown> | null = null;
+
+  item =
     body.action === 'ASSIGN'
       ? await offerWorkflowService.assignWorkflowItem({
           workflowItemId: params.id,
@@ -184,20 +196,34 @@ reviewQueueRouter.patch('/workflows/:id', requireInternalOperatorAccess, asyncHa
               ...actor,
             })
           : body.action === 'APPROVE_TO_BUY'
-            ? await offerWorkflowService.approveToBuy({
-                workflowItemId: params.id,
-                note: body.note ?? null,
-                allowQualificationRisk: body.allowQualificationRisk === true,
-                feedback: body.feedback,
-                ...actor,
-              })
-            : body.action === 'REJECT'
-              ? await offerWorkflowService.rejectWorkflowItem({
+            ? await (async () => {
+                const result = await offerWorkflowService.approveToBuyWithOutcome({
                   workflowItemId: params.id,
                   note: body.note ?? null,
+                  allowQualificationRisk: body.allowQualificationRisk === true,
+                  supplierDetails: body.supplierDetails,
                   feedback: body.feedback,
                   ...actor,
-                })
+                });
+                actionOutcome = {
+                  action: 'APPROVE_TO_BUY',
+                  ...result.outcome,
+                };
+                return result.item;
+              })()
+            : body.action === 'REJECT'
+              ? await (async () => {
+                  const result = await offerWorkflowService.rejectWorkflowItem({
+                    workflowItemId: params.id,
+                    note: body.note ?? null,
+                    feedback: body.feedback,
+                    ...actor,
+                  });
+                  actionOutcome = {
+                    action: 'REJECT',
+                  };
+                  return result;
+                })()
               : body.action === 'MARK_ORDERED'
                 ? await offerWorkflowService.markOrdered({
                     workflowItemId: params.id,
@@ -224,5 +250,5 @@ reviewQueueRouter.patch('/workflows/:id', requireInternalOperatorAccess, asyncHa
                       ...actor,
                     });
 
-  response.json({ item });
+  response.json({ item, actionOutcome });
 }));

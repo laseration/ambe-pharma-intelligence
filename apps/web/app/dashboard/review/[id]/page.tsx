@@ -18,6 +18,8 @@ type PageProps = {
   searchParams?: Promise<{
     error?: string;
     updated?: string;
+    message?: string;
+    dealId?: string;
   }>;
 };
 
@@ -48,6 +50,13 @@ type ApprovalGuidance = {
   title: string;
   copy: string;
   tone: 'info' | 'warning';
+};
+
+type SupplierDetailsDefaults = {
+  supplierName: string;
+  contactName: string;
+  email: string;
+  phone: string;
 };
 
 function renderValue(value: string | number | null | undefined) {
@@ -524,6 +533,49 @@ function buildApprovalGuidance(items: Array<{ detail: ReviewWorkflowDetail }>): 
   };
 }
 
+function buildSupplierDetailsDefaults(
+  detail: ReviewWorkflowDetail,
+  supplierContact: SupplierContact | null,
+): SupplierDetailsDefaults {
+  const supplierEvidence = getSupplierEvidence(detail);
+
+  return {
+    supplierName: supplierContact?.companyName ?? supplierEvidence.displayName ?? '',
+    contactName: supplierContact?.contactName ?? '',
+    email: supplierContact?.email ?? '',
+    phone: supplierContact?.phone ?? '',
+  };
+}
+
+function renderSupplierDetailsFields(defaults: SupplierDetailsDefaults) {
+  return (
+    <fieldset className="supplier-review-fields">
+      <legend>Supplier details</legend>
+      <div className="form-grid form-grid-two">
+        <label>
+          Supplier name
+          <input name="supplierName" type="text" defaultValue={defaults.supplierName} />
+        </label>
+        <label>
+          Contact name
+          <input name="supplierContactName" type="text" defaultValue={defaults.contactName} />
+        </label>
+        <label>
+          Email
+          <input name="supplierEmail" type="email" defaultValue={defaults.email} />
+        </label>
+        <label>
+          Phone
+          <input name="supplierPhone" type="tel" defaultValue={defaults.phone} />
+        </label>
+      </div>
+      <p className="form-helper">
+        Fill any missing supplier details before approving incomplete supplier checks.
+      </p>
+    </fieldset>
+  );
+}
+
 export default async function ReviewInboundEmailPage({ params, searchParams }: PageProps) {
   const { id: inboundEmailId } = await params;
   const query = searchParams ? await searchParams : undefined;
@@ -552,6 +604,7 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
     const inboundEmail = firstDetailForSummary.inboundEmail;
     const supplierContact = getSupplierContact(firstDetailForSummary);
     const approvalGuidance = buildApprovalGuidance(detailedVisibleItems);
+    const supplierDetailsDefaults = buildSupplierDetailsDefaults(firstDetailForSummary, supplierContact);
 
     return (
       <section className="review-layout">
@@ -569,7 +622,17 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
         </div>
 
         {query?.error ? <p className="alert alert-error">{query.error}</p> : null}
-        {query?.updated ? <p className="alert alert-success">Saved with {query.updated}.</p> : null}
+        {query?.message ? (
+          <p className="alert alert-success">
+            {query.message}
+            {query.dealId ? (
+              <>
+                {' '}
+                <Link href={`/dashboard/deals`}>Open deal</Link>
+              </>
+            ) : null}
+          </p>
+        ) : query?.updated ? <p className="alert alert-success">Saved with {query.updated}.</p> : null}
 
         <section className="panel review-section">
           <h3 className="section-title">Quick summary</h3>
@@ -681,6 +744,7 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
             <form action={submitInboundEmailReviewAction} className="action-form">
               <input name="inboundEmailId" type="hidden" value={inboundEmailId} />
               <input name="action" type="hidden" value="APPROVE_TO_BUY" />
+              {approvalGuidance ? renderSupplierDetailsFields(supplierDetailsDefaults) : null}
               <label>
                 Note
                 <textarea name="note" placeholder="Add a note if needed" rows={3} />
