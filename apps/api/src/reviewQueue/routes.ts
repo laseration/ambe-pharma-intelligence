@@ -171,10 +171,9 @@ reviewQueueRouter.patch('/workflows/:id', requireInternalOperatorAccess, asyncHa
 
   const actor = resolveInternalActor(request, body);
 
-  let item: unknown;
   let actionOutcome: Record<string, unknown> | null = null;
 
-  item =
+  const item =
     body.action === 'ASSIGN'
       ? await offerWorkflowService.assignWorkflowItem({
           workflowItemId: params.id,

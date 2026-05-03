@@ -602,9 +602,14 @@ function deriveSupplierContact(detail: WorkflowDetailRecord): SupplierContactDet
   if (supplierCandidates.some((candidate) => candidate.reason.startsWith('forwarded_'))) {
     sourceKinds.add('BODY_FORWARDED');
   }
+  if (supplierCandidates.some((candidate) => candidate.reason === 'attachment_filename_company_cue')) {
+    sourceKinds.add('ATTACHMENT_FILENAME');
+  }
   const source =
     sourceKinds.has('BODY_FORWARDED') || sourceKinds.has('SIGNATURE')
       ? 'Forwarded email'
+      : sourceKinds.has('ATTACHMENT_FILENAME')
+        ? 'Attachment filename'
       : sourceKinds.size > 0
         ? 'Email body'
         : null;
@@ -995,7 +1000,7 @@ function buildWorkflowFlags(input: SyncWorkflowItemInput): {
     (candidate) => candidate.entityType === 'SUPPLIER',
   );
   const primaryConflictSupplierCandidates = supplierCandidates.filter(
-    (candidate) => !['body_company_cue', 'attachment_text_company_cue'].includes(candidate.reason),
+    (candidate) => !['body_company_cue', 'attachment_text_company_cue', 'attachment_filename_company_cue'].includes(candidate.reason),
   );
   const manufacturerCandidates = input.resolutionCandidates.filter(
     (candidate) => candidate.entityType === 'MANUFACTURER',

@@ -25,11 +25,27 @@ function buildSupplierDetails(formData: FormData): Record<string, string | null>
   return Object.values(supplierDetails).some(Boolean) ? supplierDetails : undefined;
 }
 
+function sanitizeReturnTo(value: string | null | undefined): string {
+  const trimmed = value?.trim();
+
+  if (!trimmed || !trimmed.startsWith('/dashboard')) {
+    return '/dashboard/review';
+  }
+
+  if (trimmed.startsWith('//') || trimmed.includes('://')) {
+    return '/dashboard/review';
+  }
+
+  return trimmed;
+}
+
 function buildReviewRedirectTarget(
   inboundEmailId: string,
   params: Record<string, string>,
+  returnTo: string,
 ): string {
   const searchParams = new URLSearchParams(params);
+  searchParams.set('returnTo', returnTo);
   return `/dashboard/review/${encodeURIComponent(inboundEmailId)}?${searchParams.toString()}#decision`;
 }
 
@@ -103,14 +119,16 @@ function buildApprovalMessage(outcomes: ReviewWorkflowActionOutcome[]): {
 function buildReviewSuccessRedirectTarget(
   inboundEmailId: string,
   params: Record<string, string>,
+  returnTo: string,
 ): string {
-  return buildReviewRedirectTarget(inboundEmailId, params);
+  return buildReviewRedirectTarget(inboundEmailId, params, returnTo);
 }
 
 export async function submitInboundEmailReviewAction(formData: FormData) {
   const inboundEmailId = value(formData, 'inboundEmailId');
   const workflowItemId = value(formData, 'workflowItemId');
   const action = value(formData, 'action');
+  const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
 
   if ((!inboundEmailId && !workflowItemId) || !action) {
     redirect('/dashboard/review?error=Missing+review+action+input');
@@ -134,7 +152,7 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
       redirect(
         buildReviewRedirectTarget(inboundEmailId, {
           error: 'No open workflow items were found for this email.',
-        }),
+        }, returnTo),
       );
     }
 
@@ -172,11 +190,11 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
       redirect(
         buildReviewRedirectTarget(inboundEmailId, {
           error: message,
-        }),
+        }, returnTo),
       );
     }
 
-    redirect(`/dashboard/review/${workflowItemId}?error=${encodeURIComponent(message)}`);
+    redirect(`/dashboard/review/${workflowItemId}?error=${encodeURIComponent(message)}&returnTo=${encodeURIComponent(returnTo)}`);
   }
 
   revalidatePath('/dashboard/review');
@@ -200,7 +218,7 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
       if (successPayload.dealId) {
         searchParams.set('dealId', successPayload.dealId);
       }
-      redirect(`/dashboard/review?${searchParams.toString()}`);
+      redirect(`${returnTo}${returnTo.includes('?') ? '&' : '?'}${searchParams.toString()}`);
     }
     const nextParams: Record<string, string> = {
       updated: action,
@@ -209,7 +227,7 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
     if (successPayload.dealId) {
       nextParams.dealId = successPayload.dealId;
     }
-    redirect(buildReviewSuccessRedirectTarget(inboundEmailId, nextParams));
+    redirect(buildReviewSuccessRedirectTarget(inboundEmailId, nextParams, returnTo));
   }
 
   const searchParams = new URLSearchParams({
@@ -219,5 +237,5 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
   if (successPayload.dealId) {
     searchParams.set('dealId', successPayload.dealId);
   }
-  redirect(`/dashboard/review?${searchParams.toString()}`);
+  redirect(`${returnTo}${returnTo.includes('?') ? '&' : '?'}${searchParams.toString()}`);
 }

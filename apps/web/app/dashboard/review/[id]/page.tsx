@@ -20,6 +20,7 @@ type PageProps = {
     updated?: string;
     message?: string;
     dealId?: string;
+    returnTo?: string;
   }>;
 };
 
@@ -243,6 +244,8 @@ function formatOperatorReason(reason: string | null | undefined): string {
 
 function formatSupplierSourceLabel(reason: string | null | undefined): string | null {
   switch ((reason ?? '').trim().toLowerCase()) {
+    case 'attachment_filename_company_cue':
+      return 'Possible supplier found from attachment filename';
     case 'forwarded_sender_domain':
       return 'Found from supplier domain';
     case 'attachment_text_company_cue':
@@ -255,6 +258,20 @@ function formatSupplierSourceLabel(reason: string | null | undefined): string | 
     default:
       return null;
   }
+}
+
+function sanitizeReturnTo(value: string | null | undefined): string {
+  const trimmed = value?.trim();
+
+  if (!trimmed || !trimmed.startsWith('/dashboard')) {
+    return '/dashboard/review';
+  }
+
+  if (trimmed.startsWith('//') || trimmed.includes('://')) {
+    return '/dashboard/review';
+  }
+
+  return trimmed;
 }
 
 function getSupplierEvidence(item: ReviewWorkflowDetail): SupplierEvidence {
@@ -528,7 +545,7 @@ function buildApprovalGuidance(items: Array<{ detail: ReviewWorkflowDetail }>): 
 
   return {
     title: 'Approval needs confirmation',
-    copy: `${supplierText} Approve all is blocked until you tick the checkbox below. Approving a single row counts as explicit operator intent for that row only.`,
+    copy: `${supplierText} Confirm the supplier name, then approve only if the offer looks correct. Approving a single row counts as explicit operator intent for that row only.`,
     tone: 'info',
   };
 }
@@ -551,34 +568,50 @@ function renderSupplierDetailsFields(defaults: SupplierDetailsDefaults) {
   return (
     <fieldset className="supplier-review-fields">
       <legend>Supplier details</legend>
-      <div className="form-grid form-grid-two">
-        <label>
-          Supplier name
-          <input name="supplierName" type="text" defaultValue={defaults.supplierName} />
-        </label>
-        <label>
-          Contact name
-          <input name="supplierContactName" type="text" defaultValue={defaults.contactName} />
-        </label>
-        <label>
-          Email
-          <input name="supplierEmail" type="email" defaultValue={defaults.email} />
-        </label>
-        <label>
-          Phone
-          <input name="supplierPhone" type="tel" defaultValue={defaults.phone} />
-        </label>
-      </div>
+      <label>
+        Supplier name
+        <input name="supplierName" type="text" defaultValue={defaults.supplierName} />
+      </label>
+      <details className="supplier-review-more">
+        <summary>More supplier details</summary>
+        <div className="form-grid form-grid-two">
+          <label>
+            Contact name
+            <input name="supplierContactName" type="text" defaultValue={defaults.contactName} />
+          </label>
+          <label>
+            Email
+            <input name="supplierEmail" type="email" defaultValue={defaults.email} />
+          </label>
+          <label>
+            Phone
+            <input name="supplierPhone" type="tel" defaultValue={defaults.phone} />
+          </label>
+        </div>
+      </details>
       <p className="form-helper">
-        Fill any missing supplier details before approving incomplete supplier checks.
+        Enter or confirm the supplier name before approving incomplete supplier checks.
       </p>
     </fieldset>
   );
 }
 
+function renderReturnToInput(returnTo: string) {
+  return <input name="returnTo" type="hidden" value={returnTo} />;
+}
+
+function getApproveButtonLabel(approvalGuidance: ApprovalGuidance | null, supplierName: string): string {
+  if (!approvalGuidance) {
+    return 'Approve all';
+  }
+
+  return supplierName.trim() ? 'Save supplier name and approve' : 'Approve anyway';
+}
+
 export default async function ReviewInboundEmailPage({ params, searchParams }: PageProps) {
   const { id: inboundEmailId } = await params;
   const query = searchParams ? await searchParams : undefined;
+  const returnTo = sanitizeReturnTo(query?.returnTo);
 
   try {
     const items = await listReviewWorkflowItems({ inboundEmailId });
@@ -616,7 +649,7 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
               Check the offers found in this email and choose what to do next.
             </p>
           </div>
-          <Link className="button" href="/dashboard/review">
+          <Link className="button" href={returnTo}>
             Back
           </Link>
         </div>
@@ -744,6 +777,7 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
             <form action={submitInboundEmailReviewAction} className="action-form">
               <input name="inboundEmailId" type="hidden" value={inboundEmailId} />
               <input name="action" type="hidden" value="APPROVE_TO_BUY" />
+              {renderReturnToInput(returnTo)}
               {approvalGuidance ? renderSupplierDetailsFields(supplierDetailsDefaults) : null}
               <label>
                 Note
@@ -758,7 +792,7 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
               </p>
               <SubmitButton
                 className="button button-primary button-large"
-                idleLabel="Approve all"
+                idleLabel={getApproveButtonLabel(approvalGuidance, supplierDetailsDefaults.supplierName)}
                 pendingLabel="Approving..."
               />
             </form>
@@ -766,6 +800,7 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
             <form action={submitInboundEmailReviewAction} className="action-form">
               <input name="inboundEmailId" type="hidden" value={inboundEmailId} />
               <input name="action" type="hidden" value="REJECT" />
+              {renderReturnToInput(returnTo)}
               <label>
                 Reason
                 <textarea name="note" placeholder="Add a short reason" rows={3} />
@@ -939,6 +974,7 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
                     <input name="inboundEmailId" type="hidden" value={inboundEmailId} />
                     <input name="workflowItemId" type="hidden" value={item.id} />
                     <input name="action" type="hidden" value="APPROVE_TO_BUY" />
+                    {renderReturnToInput(returnTo)}
                     <SubmitButton
                       className="button button-primary"
                       idleLabel="Approve"
@@ -949,6 +985,7 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
                     <input name="inboundEmailId" type="hidden" value={inboundEmailId} />
                     <input name="workflowItemId" type="hidden" value={item.id} />
                     <input name="action" type="hidden" value="REJECT" />
+                    {renderReturnToInput(returnTo)}
                     <SubmitButton
                       className="button"
                       idleLabel="Reject"
@@ -1020,7 +1057,7 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
         <h2 className="title">Couldn&apos;t load this review</h2>
         <p className="copy">{error instanceof Error ? error.message : 'Failed to load review email.'}</p>
         <div className="actions">
-          <Link className="button" href="/dashboard/review">
+          <Link className="button" href={sanitizeReturnTo(query?.returnTo)}>
             Back
           </Link>
         </div>

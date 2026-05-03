@@ -92,6 +92,23 @@ const PRODUCT_WORD_SIGNAL_PATTERN =
   /\b(?:needle|needles|inj|injection|tab|tabs|tablet|tablets|capsule|capsules|caplet|caplets|vial|vials|amp|amps|syrup|cream|ointment|pack|pcs|pieces|mg|ml|g|mm|novofine)\b/i;
 const EXPLICIT_PRICE_SIGNAL_PATTERN = /(?:£|\$|€|\b(?:gbp|eur|usd|price|prices|offer)\b)/i;
 
+const ATTACHMENT_FILENAME_NOISE_PATTERN =
+  /\b(?:price\s*list|stock\s*list|supplier\s*price\s*list|prices?|quotes?|quotations?|offers?|stock|inventory|sales|reports?|catalog(?:ue)?|april|may|january|february|march|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|20\d{2}|\d{1,2}[-_. ]?\d{1,2}[-_. ]?\d{2,4})\b/gi;
+const GENERIC_ATTACHMENT_SUPPLIER_WORDS = new Set([
+  'price',
+  'prices',
+  'list',
+  'quote',
+  'quotation',
+  'offer',
+  'stock',
+  'inventory',
+  'sales',
+  'report',
+  'supplier',
+  'wholesale',
+]);
+
 function buildSupplierFamilyKey(value: string | null | undefined): string {
   let normalized = normalizeSupplierIdentityToken(value);
 
@@ -223,6 +240,73 @@ function shouldIgnoreSupplierCue(input: {
 
   const candidateDomain = extractSenderDomain(input.candidateName ?? '');
   return isInternalSupplierDomain(candidateDomain);
+}
+
+function titleCaseSupplierCue(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => (/^[A-Z]{2,}$/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()))
+    .join(' ');
+}
+
+export function extractSupplierCueFromAttachmentFileName(fileName: string | null | undefined): string | null {
+  const baseName = (fileName ?? '')
+    .replace(/\.[A-Za-z0-9]{1,8}$/g, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/[()[\]{}]+/g, ' ')
+    .replace(ATTACHMENT_FILENAME_NOISE_PATTERN, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const normalized = normalizeFingerprintText(baseName);
+
+  if (
+    normalized.length < 4 ||
+    /^\d+$/.test(normalized) ||
+    GENERIC_ATTACHMENT_SUPPLIER_WORDS.has(normalized) ||
+    normalized.split(/\s+/).every((part) => GENERIC_ATTACHMENT_SUPPLIER_WORDS.has(part))
+  ) {
+    return null;
+  }
+
+  const alphaCount = (normalized.match(/[a-z]/g) ?? []).length;
+  const digitCount = (normalized.match(/\d/g) ?? []).length;
+
+  if (alphaCount < 4 || digitCount > alphaCount) {
+    return null;
+  }
+
+  return titleCaseSupplierCue(baseName);
+}
+
+function extractAttachmentFilenameSupplierCue(input: {
+  message: EmailInboundMessage;
+  documents: Array<DocumentSegment & { id: string }>;
+}): string | null {
+  for (const attachment of input.message.attachments ?? []) {
+    const normalized = normalizeEmailAttachment(attachment);
+    if (!['CSV', 'XLSX'].includes(normalized.fileType)) {
+      continue;
+    }
+
+    const candidate = extractSupplierCueFromAttachmentFileName(normalized.fileName);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  for (const document of input.documents) {
+    if (!['ATTACHMENT_TABLE', 'ATTACHMENT_TEXT'].includes(document.kind)) {
+      continue;
+    }
+
+    const candidate = extractSupplierCueFromAttachmentFileName(document.label);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return null;
 }
 
 type DocumentSegment = {
@@ -1118,6 +1202,12 @@ async function resolveOfferCandidates(
         ),
         confidence: 54,
         reason: 'attachment_text_company_cue',
+        supportsConflict: false,
+      },
+      {
+        candidateName: extractAttachmentFilenameSupplierCue({ message, documents }),
+        confidence: 50,
+        reason: 'attachment_filename_company_cue',
         supportsConflict: false,
       },
     ].filter(

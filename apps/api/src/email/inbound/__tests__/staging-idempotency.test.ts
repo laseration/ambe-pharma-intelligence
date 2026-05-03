@@ -1283,6 +1283,157 @@ test('internal company cue alone is ignored as a supplier candidate', async (t) 
   );
 });
 
+test('attachment filename supplier cue is extracted from xlsx filename and kept review-required', async (t) => {
+  const state = installDbMocks(t);
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'graph-filename-delta',
+      messageId: 'internet-filename-delta',
+      from: 'pricing@unknown-sender.co',
+      subject: 'Offer',
+      bodyText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
+      attachments: [
+        {
+          fileName: 'Delta Pharma price list.xlsx',
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          content: Buffer.from('not-a-real-xlsx').toString('base64'),
+        },
+      ],
+    },
+    createInboundResult(),
+  );
+
+  assert.equal(state.offers[0]?.supplierCandidate, 'Delta Pharma');
+  assert.equal(state.offers[0]?.reviewReason, 'unresolved_supplier');
+  assert.equal(state.workflowItems[0]?.sourceReviewReason, 'unresolved_supplier');
+  assert.equal(
+    state.resolutionCandidates.some(
+      (candidate) =>
+        candidate.entityType === 'SUPPLIER' &&
+        candidate.candidateName === 'Delta Pharma' &&
+        candidate.reason === 'attachment_filename_company_cue' &&
+        candidate.selected === false,
+    ),
+    true,
+  );
+});
+
+test('attachment filename supplier cue does not override sender mapping', async (t) => {
+  const state = installDbMocks(t);
+  const originalMappings = env.emailInboundSupplierMappings;
+  env.emailInboundSupplierMappings = [{ pattern: 'pricing@supplier.co', supplierName: 'Supplier Co' }];
+
+  t.after(() => {
+    env.emailInboundSupplierMappings = originalMappings;
+  });
+
+  state.suppliers.push({
+    id: 'supplier-1',
+    name: 'Supplier Co',
+    normalizedName: 'supplier co',
+  });
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'graph-filename-mapping',
+      messageId: 'internet-filename-mapping',
+      from: 'pricing@supplier.co',
+      subject: 'Offer',
+      bodyText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
+      attachments: [
+        {
+          fileName: 'Delta Pharma price list.xlsx',
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          content: Buffer.from('not-a-real-xlsx').toString('base64'),
+        },
+      ],
+    },
+    createInboundResult(),
+  );
+
+  assert.equal(state.offers[0]?.supplierCandidate, 'Supplier Co');
+  assert.equal(
+    state.resolutionCandidates.some(
+      (candidate) =>
+        candidate.entityType === 'SUPPLIER' &&
+        candidate.candidateName === 'Supplier Co' &&
+        candidate.reason === 'sender_mapping' &&
+        candidate.selected === true,
+    ),
+    true,
+  );
+});
+
+test('generic attachment filenames do not create supplier candidates', async (t) => {
+  const state = installDbMocks(t);
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'graph-generic-filename',
+      messageId: 'internet-generic-filename',
+      from: 'pricing@unknown-sender.co',
+      subject: 'Offer',
+      bodyText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
+      attachments: [
+        {
+          fileName: 'price list april.xlsx',
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          content: Buffer.from('not-a-real-xlsx').toString('base64'),
+        },
+      ],
+    },
+    createInboundResult(),
+  );
+
+  assert.equal(state.offers[0]?.supplierCandidate, null);
+  assert.equal(
+    state.resolutionCandidates.some((candidate) => candidate.reason === 'attachment_filename_company_cue'),
+    false,
+  );
+});
+
+test('internal company attachment filename cues are ignored', async (t) => {
+  const state = installDbMocks(t);
+  const originalInternalCompanyNames = env.emailInboundInternalCompanyNames;
+  env.emailInboundInternalCompanyNames = ['Ambe Medical', 'Ambe Pharma'];
+
+  t.after(() => {
+    env.emailInboundInternalCompanyNames = originalInternalCompanyNames;
+  });
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'graph-internal-filename',
+      messageId: 'internet-internal-filename',
+      from: 'pricing@unknown-sender.co',
+      subject: 'Offer',
+      bodyText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
+      attachments: [
+        {
+          fileName: 'Ambe Medical price list.xlsx',
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          content: Buffer.from('not-a-real-xlsx').toString('base64'),
+        },
+      ],
+    },
+    createInboundResult(),
+  );
+
+  assert.equal(state.offers[0]?.supplierCandidate, null);
+  assert.equal(
+    state.resolutionCandidates.some(
+      (candidate) =>
+        candidate.entityType === 'SUPPLIER' && /ambe medical/i.test(String(candidate.candidateName ?? '')),
+    ),
+    false,
+  );
+});
+
 test('weak product match review reason stays consistent across storage and queue surfaces', async (t) => {
   const state = installDbMocks(t);
   const originalMappings = env.emailInboundSupplierMappings;

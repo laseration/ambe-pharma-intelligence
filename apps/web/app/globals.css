@@ -863,6 +863,18 @@ summary {
   font-weight: 700;
 }
 
+.supplier-review-more {
+  display: grid;
+  gap: 10px;
+}
+
+.supplier-review-more summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
 .form-grid {
   display: grid;
   gap: 12px;

@@ -36,6 +36,10 @@ function normalizeReviewQueueSortMode(value: string | undefined): ReviewQueueSor
   return value === 'stale' ? 'stale' : 'priority';
 }
 
+function buildReviewReturnTo(sortMode: ReviewQueueSortMode): string {
+  return sortMode === 'stale' ? '/dashboard/review?sort=stale' : '/dashboard/review';
+}
+
 function formatDateTime(value: string | null) {
   if (!value) {
     return null;
@@ -102,6 +106,7 @@ function groupWorkflowItemsByInboundEmail(
 export default async function ReviewQueuePage({ searchParams }: PageProps) {
   const query = searchParams ? await searchParams : undefined;
   const sortMode = normalizeReviewQueueSortMode(query?.sort);
+  const returnTo = buildReviewReturnTo(sortMode);
 
   try {
     const items = await listReviewWorkflowItems({
@@ -158,7 +163,11 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
         ) : (
           <div className="review-grid">
             {emailGroups.map((group) => (
-              <Link className="review-card" href={`/dashboard/review/${group.id}`} key={group.id}>
+              <Link
+                className="review-card"
+                href={`/dashboard/review/${group.id}?returnTo=${encodeURIComponent(returnTo)}`}
+                key={group.id}
+              >
                 <div className="review-card-top">
                   <span className={`pill pill-${group.highestPriority.toLowerCase()}`}>
                     {group.highestPriority}

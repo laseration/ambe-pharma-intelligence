@@ -31,6 +31,10 @@ function normalizeInboxFilter(value: string | undefined): InboundEmailInboxFilte
   }
 }
 
+function buildInboxReturnTo(activeFilter: InboundEmailInboxFilter | null): string {
+  return activeFilter ? `/dashboard/inbox?status=${encodeURIComponent(activeFilter)}` : '/dashboard/inbox';
+}
+
 function formatDateTime(value: string | null | undefined) {
   if (!value) {
     return null;
@@ -126,6 +130,7 @@ function buildConfidenceSummary(item: InboundEmailInboxListItem): string | null 
 export default async function BotInboxPage({ searchParams }: PageProps) {
   const query = searchParams ? await searchParams : undefined;
   const activeFilter = normalizeInboxFilter(query?.status);
+  const returnTo = buildInboxReturnTo(activeFilter);
 
   try {
     const emails = await listInboundEmails({
@@ -242,7 +247,10 @@ export default async function BotInboxPage({ searchParams }: PageProps) {
 
                     {email._count.offerWorkflowItems > 0 ? (
                       <div className="actions">
-                        <Link className="button" href={`/dashboard/review/${email.id}`}>
+                        <Link
+                          className="button"
+                          href={`/dashboard/review/${email.id}?returnTo=${encodeURIComponent(returnTo)}`}
+                        >
                           Open review
                         </Link>
                       </div>
