@@ -460,13 +460,18 @@ function evaluateBuyRule(
   const strongSellSideMargin =
     metrics.estimatedMarginPct !== null &&
     metrics.estimatedMarginPct >= config.pushMinMarginVsMarketPct;
+  const tradingSellSideMarginViable =
+    !isTradingMode ||
+    (metrics.estimatedMarginPct !== null &&
+      metrics.estimatedMarginPct >= config.lowMarginThresholdPct);
 
   const eligible =
     hasLatestSupplierPrice &&
     hasMeaningfulPricingEdge &&
     meetsDemand &&
     inventoryNotAlreadyHigh &&
-    inventorySnapshotFreshEnough;
+    inventorySnapshotFreshEnough &&
+    tradingSellSideMarginViable;
 
   const ruleChecks = [
     check('Latest supplier price available', hasLatestSupplierPrice, metrics.latestSupplierBuyPrice),
@@ -519,6 +524,12 @@ function evaluateBuyRule(
       supplierReliabilityNotWeak,
       supplierReliabilityScore,
       0.35,
+    ),
+    check(
+      'Trading-mode estimated sell-side margin is available and not weak for BUY',
+      tradingSellSideMarginViable,
+      isTradingMode ? metrics.estimatedMarginPct : config.businessMode,
+      isTradingMode ? config.lowMarginThresholdPct : 'not_required',
     ),
   ];
 
@@ -594,14 +605,18 @@ function evaluateBuyRule(
       marketPriceConfidence,
       supplierReliabilityScore,
       recentSalesUnits30d: salesUnits,
+      averageSalePrice: metrics.averageSalePrice,
+      estimatedMarginPct: metrics.estimatedMarginPct,
       currentStockQty: stockQty,
       daysSinceInventorySnapshot: inventoryAgeDays,
     },
     thresholds: {
+      businessMode: config.businessMode,
       buyPriceImprovementPct: config.buyPriceImprovementPct,
       buyVsMarketDiscountPct: config.buyVsMarketDiscountPct,
       marketConfidenceMinForBuy: config.marketConfidenceMinForBuy,
       healthyDemandUnits30d: config.healthyDemandUnits30d,
+      lowMarginThresholdPct: config.lowMarginThresholdPct,
       highStockThresholdUnits: config.highStockThresholdUnits,
       maxInventorySnapshotAgeDays: config.maxInventorySnapshotAgeDays,
       buyBaseScore: config.buyBaseScore,

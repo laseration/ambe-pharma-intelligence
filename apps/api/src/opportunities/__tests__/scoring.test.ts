@@ -47,6 +47,9 @@ const tradingConfig = {
   ...buildOpportunityConfig('TRADING'),
 };
 
+const tradingBuyMarginRule =
+  'Trading-mode estimated sell-side margin is available and not weak for BUY';
+
 test('mode-specific opportunity thresholds split trading demand and margin inputs', () => {
   assert.equal(stockholdingConfig.healthyDemandUnits30d, 40);
   assert.equal(tradingConfig.healthyDemandUnits30d, 30);
@@ -469,6 +472,123 @@ test('TRADING mode PUSH requires explicit margin visibility', () => {
   );
 
   assert.ok(!candidates.some((candidate) => candidate.type === 'PUSH'));
+});
+
+test('TRADING mode BUY is blocked when margin is missing', () => {
+  const context = createContext({
+    latestInventory: null,
+    latestSupplierPrice: {
+      supplierId: 'supplier-1',
+      unitPrice: 1.5,
+      createdAt: new Date('2026-04-19T00:00:00.000Z'),
+    },
+    previousSupplierPrice: {
+      supplierId: 'supplier-1',
+      unitPrice: 1.8,
+      createdAt: new Date('2026-04-08T00:00:00.000Z'),
+    },
+    recentSales: {
+      units30d: 90,
+      averageSalePrice: null,
+      lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
+    },
+  });
+  const candidates = scoreOpportunityCandidates(context, tradingConfig);
+  const audit = auditOpportunityScoring(context, tradingConfig);
+  const buyAudit = audit.opportunities.find((entry) => entry.type === 'BUY');
+
+  assert.ok(!candidates.some((candidate) => candidate.type === 'BUY'));
+  assert.equal(buyAudit?.eligible, false);
+  assert.ok(buyAudit?.blockingReasons.includes(tradingBuyMarginRule));
+});
+
+test('TRADING mode BUY is blocked when margin is below threshold', () => {
+  const context = createContext({
+    latestInventory: null,
+    latestSupplierPrice: {
+      supplierId: 'supplier-1',
+      unitPrice: 1.5,
+      createdAt: new Date('2026-04-19T00:00:00.000Z'),
+    },
+    previousSupplierPrice: {
+      supplierId: 'supplier-1',
+      unitPrice: 1.8,
+      createdAt: new Date('2026-04-08T00:00:00.000Z'),
+    },
+    recentSales: {
+      units30d: 90,
+      averageSalePrice: 1.75,
+      lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
+    },
+  });
+  const candidates = scoreOpportunityCandidates(context, tradingConfig);
+  const audit = auditOpportunityScoring(context, tradingConfig);
+  const buyAudit = audit.opportunities.find((entry) => entry.type === 'BUY');
+
+  assert.ok(!candidates.some((candidate) => candidate.type === 'BUY'));
+  assert.equal(buyAudit?.eligible, false);
+  assert.ok(buyAudit?.blockingReasons.includes(tradingBuyMarginRule));
+});
+
+test('TRADING mode BUY still appears when price edge demand and margin all pass', () => {
+  const context = createContext({
+    latestInventory: null,
+    latestSupplierPrice: {
+      supplierId: 'supplier-1',
+      unitPrice: 1.5,
+      createdAt: new Date('2026-04-19T00:00:00.000Z'),
+    },
+    previousSupplierPrice: {
+      supplierId: 'supplier-1',
+      unitPrice: 1.8,
+      createdAt: new Date('2026-04-08T00:00:00.000Z'),
+    },
+    recentSales: {
+      units30d: 90,
+      averageSalePrice: 2.5,
+      lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
+    },
+  });
+  const candidates = scoreOpportunityCandidates(context, tradingConfig);
+  const audit = auditOpportunityScoring(context, tradingConfig);
+  const buyAudit = audit.opportunities.find((entry) => entry.type === 'BUY');
+
+  assert.ok(candidates.some((candidate) => candidate.type === 'BUY'));
+  assert.equal(buyAudit?.eligible, true);
+  assert.deepEqual(buyAudit?.blockingReasons, []);
+});
+
+test('STOCKHOLDING mode BUY is not blocked by the trading margin rule', () => {
+  const context = createContext({
+    latestInventory: {
+      supplierId: 'supplier-1',
+      snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
+      quantityAvailable: 60,
+      quantityOnHand: 70,
+    },
+    latestSupplierPrice: {
+      supplierId: 'supplier-1',
+      unitPrice: 1.5,
+      createdAt: new Date('2026-04-19T00:00:00.000Z'),
+    },
+    previousSupplierPrice: {
+      supplierId: 'supplier-1',
+      unitPrice: 1.8,
+      createdAt: new Date('2026-04-08T00:00:00.000Z'),
+    },
+    recentSales: {
+      units30d: 90,
+      averageSalePrice: null,
+      lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
+    },
+  });
+  const candidates = scoreOpportunityCandidates(context, stockholdingConfig);
+  const audit = auditOpportunityScoring(context, stockholdingConfig);
+  const buyAudit = audit.opportunities.find((entry) => entry.type === 'BUY');
+
+  assert.ok(candidates.some((candidate) => candidate.type === 'BUY'));
+  assert.equal(buyAudit?.eligible, true);
+  assert.ok(!buyAudit?.blockingReasons.includes(tradingBuyMarginRule));
 });
 
 test('TRADING mode BUY uses a lower healthy-demand threshold than STOCKHOLDING mode', () => {
