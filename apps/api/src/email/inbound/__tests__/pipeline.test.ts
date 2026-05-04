@@ -97,6 +97,47 @@ test('decomposeEmail includes extracted attachment text for PDF and image attach
   assert.equal(attachmentTextSegments[1]?.label, 'offer.jpg');
 });
 
+test('decomposeEmail stores Ambe purchase order PDF metadata on attachment documents', async () => {
+  const segments = await decomposeEmail(
+    {
+      from: 'ops@ambemedical.com',
+      subject: 'Fw: DIXONS ORIGINAL PO',
+      bodyText: 'The PO shows Ambe Limited. Please review.',
+      attachments: [
+        {
+          fileName: 'DIXONS PO5981.pdf',
+          mimeType: 'application/pdf',
+          content: Buffer.from('fake-pdf').toString('base64'),
+        },
+      ],
+    },
+    {
+      extractAttachmentText: async () => ({
+        method: 'PDF_TEXT',
+        text: [
+          'Ambe Limited t/a Ambe Medical Group',
+          'PURCHASE ORDER',
+          'Supplier Name',
+          'DIXONS PHARMACEUTICALS UK LIMITED',
+          'Account No: DIXONS',
+          'Order No. 5981',
+          'Invoice / Tax date: 28/04/2026',
+          'Qty Stock Code Product Description Unit Price Net VAT Code',
+          '50 4006607 BRIVIACT TABS 100MG 56s 76.00 3800.00 T1',
+          'Order Total: 3800.00',
+        ].join('\n'),
+        warnings: [],
+      }),
+    },
+  );
+
+  const document = segments.find((segment) => segment.kind === 'ATTACHMENT_TEXT');
+  const metadata = document?.metadata as { purchaseOrderPdf?: { supplierName?: string; poNumber?: string } } | undefined;
+
+  assert.equal(metadata?.purchaseOrderPdf?.supplierName, 'DIXONS PHARMACEUTICALS UK LIMITED');
+  assert.equal(metadata?.purchaseOrderPdf?.poNumber, '5981');
+});
+
 test('decomposeEmail ignores inline image attachments when a spreadsheet attachment is present', async () => {
   const segments = await decomposeEmail(
     {

@@ -64,6 +64,7 @@ export type ReviewWorkflowDetail = ReviewWorkflowListItem & {
       subject?: string;
       sourceDocumentKind?: string;
       sourceDocumentLabel?: string;
+      purchaseOrderPdf?: unknown;
     } | null;
     resolutionCandidates: Array<{
       entityType: 'PRODUCT' | 'SUPPLIER' | 'MANUFACTURER';

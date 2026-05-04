@@ -310,6 +310,33 @@ function extractAttachmentFilenameSupplierCue(input: {
   return null;
 }
 
+function extractPurchaseOrderPdfSupplierCue(
+  documents: Array<DocumentSegment & { id: string }>,
+): string | null {
+  for (const document of documents) {
+    if (document.kind !== 'ATTACHMENT_TEXT') {
+      continue;
+    }
+
+    const metadata =
+      document.metadata && typeof document.metadata === 'object' && !Array.isArray(document.metadata)
+        ? (document.metadata as { purchaseOrderPdf?: unknown })
+        : null;
+    const purchaseOrderPdf =
+      metadata?.purchaseOrderPdf &&
+      typeof metadata.purchaseOrderPdf === 'object' &&
+      !Array.isArray(metadata.purchaseOrderPdf)
+        ? (metadata.purchaseOrderPdf as { detected?: unknown; supplierName?: unknown })
+        : null;
+
+    if (purchaseOrderPdf?.detected === true && typeof purchaseOrderPdf.supplierName === 'string') {
+      return purchaseOrderPdf.supplierName.trim() || null;
+    }
+  }
+
+  return null;
+}
+
 type DocumentSegment = {
   kind:
     | 'SUBJECT'
@@ -1138,6 +1165,8 @@ async function resolveOfferCandidates(
       }
     }
 
+    const purchaseOrderPdfSupplierCue = extractPurchaseOrderPdfSupplierCue(documents);
+    const shouldUseOnlyStrongSupplierCues = Boolean(purchaseOrderPdfSupplierCue);
     const supplierCues = [
       {
         candidateName: extractManualSupplierOverride({
@@ -1158,7 +1187,12 @@ async function resolveOfferCandidates(
         reason: learnedHints.supplierSuggestion?.reason ?? 'learned_source_supplier_hint',
       },
       {
-        candidateName: extractSupplierCue(
+        candidateName: purchaseOrderPdfSupplierCue,
+        confidence: 92,
+        reason: 'purchase_order_pdf_supplier',
+      },
+      {
+        candidateName: shouldUseOnlyStrongSupplierCues ? null : extractSupplierCue(
           documents
             .filter((document) => ['BODY_MAIN', 'BODY_FORWARDED'].includes(document.kind))
             .map((document) => document.textContent)
@@ -1169,19 +1203,19 @@ async function resolveOfferCandidates(
         supportsConflict: false,
       },
       {
-        candidateName: extractSupplierCue(documents.find((document) => document.kind === 'SIGNATURE')?.textContent ?? ''),
+        candidateName: shouldUseOnlyStrongSupplierCues ? null : extractSupplierCue(documents.find((document) => document.kind === 'SIGNATURE')?.textContent ?? ''),
         confidence: 66,
         reason: 'signature_company_cue',
       },
       {
-        candidateName: extractSupplierCue(
+        candidateName: shouldUseOnlyStrongSupplierCues ? null : extractSupplierCue(
           documents.find((document) => document.kind === 'BODY_FORWARDED')?.textContent ?? '',
         ),
         confidence: 62,
         reason: 'forwarded_company_cue',
       },
       {
-        candidateName: extractForwardedSenderHeaderCue(
+        candidateName: shouldUseOnlyStrongSupplierCues ? null : extractForwardedSenderHeaderCue(
           documents
             .filter((document) => ['BODY_MAIN', 'BODY_FORWARDED'].includes(document.kind))
             .map((document) => document.textContent)
@@ -1191,7 +1225,7 @@ async function resolveOfferCandidates(
         reason: 'forwarded_sender_header',
       },
       {
-        candidateName: inferSupplierNameFromDomain(
+        candidateName: shouldUseOnlyStrongSupplierCues ? null : inferSupplierNameFromDomain(
           extractSenderDomain(
             extractForwardedSenderEmail(
               documents
@@ -1205,7 +1239,7 @@ async function resolveOfferCandidates(
         reason: 'forwarded_sender_domain',
       },
       {
-        candidateName: extractSupplierCue(
+        candidateName: shouldUseOnlyStrongSupplierCues ? null : extractSupplierCue(
           documents
             .filter((document) => document.kind === 'ATTACHMENT_TEXT')
             .map((document) => document.textContent)
@@ -1216,7 +1250,7 @@ async function resolveOfferCandidates(
         supportsConflict: false,
       },
       {
-        candidateName: extractAttachmentFilenameSupplierCue({ message, documents }),
+        candidateName: shouldUseOnlyStrongSupplierCues ? null : extractAttachmentFilenameSupplierCue({ message, documents }),
         confidence: 50,
         reason: 'attachment_filename_company_cue',
         supportsConflict: false,

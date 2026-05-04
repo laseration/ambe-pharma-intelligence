@@ -47,6 +47,25 @@ type SupplierEvidence = {
 
 type SupplierContact = NonNullable<ReviewWorkflowDetail['supplierContact']>;
 
+type PurchaseOrderPdfLine = {
+  quantity: number | null;
+  stockCode: string | null;
+  productDescription: string;
+  unitPrice: number | null;
+  netAmount: number | null;
+  vatCode: string | null;
+};
+
+type PurchaseOrderPdfDetails = {
+  detected: true;
+  supplierName: string | null;
+  poNumber: string | null;
+  orderDate: string | null;
+  accountNo: string | null;
+  orderTotal: number | null;
+  lines: PurchaseOrderPdfLine[];
+};
+
 type ApprovalGuidance = {
   title: string;
   copy: string;
@@ -62,6 +81,12 @@ type SupplierDetailsDefaults = {
 
 function renderValue(value: string | number | null | undefined) {
   return value === null || value === undefined || value === '' ? 'Not found' : String(value);
+}
+
+function renderMoney(value: number | null | undefined) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? value.toLocaleString('en-GB', { style: 'currency', currency: 'GBP' })
+    : 'Not found';
 }
 
 function titleCase(value: string): string {
@@ -244,6 +269,8 @@ function formatOperatorReason(reason: string | null | undefined): string {
 
 function formatSupplierSourceLabel(reason: string | null | undefined): string | null {
   switch ((reason ?? '').trim().toLowerCase()) {
+    case 'purchase_order_pdf_supplier':
+      return 'Supplier found in PO PDF';
     case 'attachment_filename_company_cue':
       return 'Possible supplier found from attachment filename';
     case 'forwarded_sender_domain':
@@ -274,7 +301,80 @@ function sanitizeReturnTo(value: string | null | undefined): string {
   return trimmed;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function parsePurchaseOrderPdfDetails(value: unknown): PurchaseOrderPdfDetails | null {
+  const record = asRecord(value);
+
+  if (record?.detected !== true) {
+    return null;
+  }
+
+  const rawLines = Array.isArray(record.lines) ? record.lines : [];
+  const lines = rawLines
+    .map((line): PurchaseOrderPdfLine | null => {
+      const lineRecord = asRecord(line);
+      if (!lineRecord || typeof lineRecord.productDescription !== 'string') {
+        return null;
+      }
+
+      return {
+        quantity: typeof lineRecord.quantity === 'number' ? lineRecord.quantity : null,
+        stockCode: typeof lineRecord.stockCode === 'string' ? lineRecord.stockCode : null,
+        productDescription: lineRecord.productDescription,
+        unitPrice: typeof lineRecord.unitPrice === 'number' ? lineRecord.unitPrice : null,
+        netAmount: typeof lineRecord.netAmount === 'number' ? lineRecord.netAmount : null,
+        vatCode: typeof lineRecord.vatCode === 'string' ? lineRecord.vatCode : null,
+      };
+    })
+    .filter((line): line is PurchaseOrderPdfLine => Boolean(line));
+
+  return {
+    detected: true,
+    supplierName: typeof record.supplierName === 'string' ? record.supplierName : null,
+    poNumber: typeof record.poNumber === 'string' ? record.poNumber : null,
+    orderDate: typeof record.orderDate === 'string' ? record.orderDate : null,
+    accountNo: typeof record.accountNo === 'string' ? record.accountNo : null,
+    orderTotal: typeof record.orderTotal === 'number' ? record.orderTotal : null,
+    lines,
+  };
+}
+
+function getPurchaseOrderPdfDetails(item: ReviewWorkflowDetail): PurchaseOrderPdfDetails | null {
+  const sourceMetadata = asRecord(item.emailDerivedOffer?.sourceDocument?.metadata);
+  const sourcePurchaseOrder = parsePurchaseOrderPdfDetails(sourceMetadata?.purchaseOrderPdf);
+
+  if (sourcePurchaseOrder) {
+    return sourcePurchaseOrder;
+  }
+
+  for (const document of item.inboundEmail?.documents ?? []) {
+    const metadata = asRecord(document.metadata);
+    const purchaseOrderPdf = parsePurchaseOrderPdfDetails(metadata?.purchaseOrderPdf);
+    if (purchaseOrderPdf) {
+      return purchaseOrderPdf;
+    }
+  }
+
+  const offerMetadata = asRecord(item.emailDerivedOffer?.metadata);
+  return parsePurchaseOrderPdfDetails(offerMetadata?.purchaseOrderPdf);
+}
+
 function getSupplierEvidence(item: ReviewWorkflowDetail): SupplierEvidence {
+  const purchaseOrderPdf = getPurchaseOrderPdfDetails(item);
+  if (purchaseOrderPdf?.supplierName) {
+    return {
+      displayName: purchaseOrderPdf.supplierName,
+      needsSupplierCheck: true,
+      sourceLabel: 'Supplier found in PO PDF',
+      aliases: [],
+    };
+  }
+
   const supplierCandidates = (item.emailDerivedOffer?.resolutionCandidates ?? [])
     .filter((candidate) => candidate.entityType === 'SUPPLIER')
     .sort(
@@ -353,6 +453,18 @@ function getResolutionEvidenceGroups(
 }
 
 function buildRecognizedOfferText(item: ReviewWorkflowDetail): string {
+  const purchaseOrderPdf = getPurchaseOrderPdfDetails(item);
+  if (purchaseOrderPdf) {
+    return [
+      'Purchase order PDF found.',
+      purchaseOrderPdf.supplierName ? `Supplier: ${purchaseOrderPdf.supplierName}.` : null,
+      purchaseOrderPdf.poNumber ? `Order no. ${purchaseOrderPdf.poNumber}.` : null,
+      `${purchaseOrderPdf.lines.length} product line${purchaseOrderPdf.lines.length === 1 ? '' : 's'} found.`,
+    ]
+      .filter((part): part is string => Boolean(part))
+      .join(' ');
+  }
+
   const supplierEvidence = getSupplierEvidence(item);
   const rawProductText = item.emailDerivedOffer?.rawProductText?.trim() ?? '';
   const isLikelyNoisyRow =
@@ -393,6 +505,10 @@ function buildRecognizedOfferText(item: ReviewWorkflowDetail): string {
 }
 
 function buildSuggestedAction(item: ReviewWorkflowDetail): string {
+  if (getPurchaseOrderPdfDetails(item)) {
+    return 'Review the PO lines, supplier, prices, and totals before adding to purchase history.';
+  }
+
   const reason = (item.sourceReviewReason ?? item.emailDerivedOffer?.reviewReason ?? '').trim().toLowerCase();
 
   if (item.hasBlockedSupplier) {
@@ -428,6 +544,10 @@ function buildSuggestedAction(item: ReviewWorkflowDetail): string {
 
 function buildConfidenceLimits(item: ReviewWorkflowDetail): string[] {
   const limits: string[] = [];
+  if (getPurchaseOrderPdfDetails(item)) {
+    return ['PDF purchase order is review-first'];
+  }
+
   const detail = item.emailDerivedOffer;
   const reason = (item.sourceReviewReason ?? detail?.reviewReason ?? '').trim().toLowerCase();
   const supplierEvidence = getSupplierEvidence(item);
@@ -495,15 +615,76 @@ function buildTechnicalDetails(item: ReviewWorkflowDetail): Array<{ label: strin
 function buildOperatorSummary(item: ReviewWorkflowDetail): OperatorSummary {
   const reason = item.sourceReviewReason ?? item.qualificationRiskNote ?? item.latestNote ?? 'Needs review.';
   const confidenceLimits = buildConfidenceLimits(item);
+  const purchaseOrderPdf = getPurchaseOrderPdfDetails(item);
 
   return {
     recognized: buildRecognizedOfferText(item),
-    unclear: formatOperatorReason(reason),
+    unclear: purchaseOrderPdf
+      ? 'Purchase order needs review before importing into purchase history.'
+      : formatOperatorReason(reason),
     action: buildSuggestedAction(item),
     confidenceLimits:
       confidenceLimits.length > 0 ? confidenceLimits : ['The row still needs operator confirmation before any buy action.'],
     technicalDetails: buildTechnicalDetails(item),
   };
+}
+
+function renderPurchaseOrderPdfPanel(purchaseOrderPdf: PurchaseOrderPdfDetails | null) {
+  if (!purchaseOrderPdf) {
+    return null;
+  }
+
+  return (
+    <section className="panel review-section">
+      <h3 className="section-title">Purchase order PDF</h3>
+      <dl className="detail-list">
+        <div>
+          <dt>Supplier</dt>
+          <dd>{renderValue(purchaseOrderPdf.supplierName)}</dd>
+        </div>
+        <div>
+          <dt>PO number</dt>
+          <dd>{renderValue(purchaseOrderPdf.poNumber)}</dd>
+        </div>
+        <div>
+          <dt>Date</dt>
+          <dd>{renderValue(purchaseOrderPdf.orderDate)}</dd>
+        </div>
+        <div>
+          <dt>Account number</dt>
+          <dd>{renderValue(purchaseOrderPdf.accountNo)}</dd>
+        </div>
+        <div>
+          <dt>Product lines</dt>
+          <dd>{purchaseOrderPdf.lines.length}</dd>
+        </div>
+        <div>
+          <dt>Order total</dt>
+          <dd>{renderMoney(purchaseOrderPdf.orderTotal)}</dd>
+        </div>
+      </dl>
+      <details className="document-card">
+        <summary>Product lines</summary>
+        {purchaseOrderPdf.lines.length > 0 ? (
+          <div className="resolution-candidate-list">
+            {purchaseOrderPdf.lines.map((line, index) => (
+              <article className="resolution-candidate-card" key={`${line.stockCode ?? index}-${line.productDescription}`}>
+                <div className="resolution-candidate-top">
+                  <p className="resolution-candidate-title">{line.productDescription}</p>
+                  <span className="pill pill-neutral">Qty {renderValue(line.quantity)}</span>
+                </div>
+                <p className="resolution-candidate-copy">
+                  Stock code: {renderValue(line.stockCode)}. Unit price: {renderMoney(line.unitPrice)}. Net: {renderMoney(line.netAmount)}. VAT: {renderValue(line.vatCode)}.
+                </p>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="copy">No product lines were extracted safely.</p>
+        )}
+      </details>
+    </section>
+  );
 }
 
 function getSupplierContact(detail: ReviewWorkflowDetail): SupplierContact | null {
@@ -638,6 +819,7 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
     const supplierContact = getSupplierContact(firstDetailForSummary);
     const approvalGuidance = buildApprovalGuidance(detailedVisibleItems);
     const supplierDetailsDefaults = buildSupplierDetailsDefaults(firstDetailForSummary, supplierContact);
+    const purchaseOrderPdf = getPurchaseOrderPdfDetails(firstDetailForSummary);
 
     return (
       <section className="review-layout">
@@ -745,6 +927,8 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
             </dl>
           </section>
         ) : null}
+
+        {renderPurchaseOrderPdfPanel(purchaseOrderPdf)}
 
         <section className="panel review-section" id="decision">
           <h3 className="section-title">Decision</h3>

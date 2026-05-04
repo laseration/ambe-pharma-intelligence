@@ -576,6 +576,102 @@ test('workflow detail derives supplier contact from forwarded external email det
   assert.equal(detail?.supplierContact?.source, 'Forwarded email');
 });
 
+test('workflow detail prioritizes purchase order PDF supplier over forwarded/internal cues', async () => {
+  const harness = createRepositoryHarness();
+  harness.workflowItems.push(
+    harness.makeWorkflowRecord({
+      id: 'workflow-po-contact-1',
+      hasUnresolvedSupplier: true,
+      sourceReviewReason: 'unresolved_supplier',
+      inboundEmail: {
+        id: 'email-po-contact-1',
+        fromEmail: 'sandeep@ambemedical.com',
+        fromName: 'Sandeep Patel',
+        subject: 'Fw: DIXONS ORIGINAL PO',
+        receivedAt: new Date('2026-04-28T09:00:00.000Z'),
+        rawHtml: null,
+        rawText: 'The PO shows Ambe Limited. Forwarded below.',
+        triageStatus: 'AUTO_PROCESSED',
+        processingStatus: 'REVIEW_REQUIRED',
+        reviewReason: 'unresolved_supplier',
+        documents: [
+          {
+            id: 'doc-main-po',
+            kind: 'BODY_MAIN',
+            documentIndex: 1,
+            label: 'body-main',
+            textContent: 'The PO shows Ambe Limited / Ambe Medical Group.',
+            metadata: null,
+          },
+          {
+            id: 'doc-forwarded-po',
+            kind: 'BODY_FORWARDED',
+            documentIndex: 2,
+            label: 'body-forwarded',
+            textContent: 'From: buyer@example-supplier.test <buyer@example-supplier.test>',
+            metadata: null,
+          },
+          {
+            id: 'doc-po-pdf',
+            kind: 'ATTACHMENT_TEXT',
+            documentIndex: 3,
+            label: 'DIXONS PO5981.pdf',
+            textContent: 'PURCHASE ORDER\nSupplier Name\nDIXONS PHARMACEUTICALS UK LIMITED',
+            metadata: {
+              purchaseOrderPdf: {
+                detected: true,
+                supplierName: 'DIXONS PHARMACEUTICALS UK LIMITED',
+                poNumber: '5981',
+                orderDate: '2026-04-28',
+                accountNo: 'DIXONS',
+                orderTotal: 10956,
+                lines: [],
+              },
+            },
+          },
+        ],
+      },
+      emailDerivedOffer: {
+        id: 'offer-po-contact-1',
+        status: 'REVIEW_REQUIRED',
+        reviewReason: 'unresolved_supplier',
+        sourceKind: 'BLOCK_ATTACHMENT_TEXT',
+        sourceBlockText: 'BRIVIACT TABS 100MG 56s 76.00 3800.00 T1',
+        rawProductText: 'BRIVIACT TABS 100MG 56s',
+        normalizedProductNameCandidate: 'briviact',
+        manufacturerCandidate: null,
+        priceCandidate: { toString: () => '76' },
+        currencyCandidate: 'GBP',
+        minimumOrderQuantityCandidate: null,
+        availabilityCandidate: null,
+        metadata: {
+          sender: 'sandeep@ambemedical.com',
+          subject: 'Fw: DIXONS ORIGINAL PO',
+        },
+        resolutionCandidates: [
+          {
+            entityType: 'SUPPLIER',
+            candidateId: null,
+            candidateName: 'Ambe Limited',
+            confidence: 70,
+            reason: 'body_company_cue',
+            selected: false,
+          },
+        ],
+        buyDecision: null,
+        updatedAt: new Date(),
+      },
+    }),
+  );
+
+  const service = createOfferWorkflowService(harness.repository as never);
+  const detail = await service.getWorkflowItem('workflow-po-contact-1');
+
+  assert.equal(detail?.supplierContact?.companyName, 'DIXONS PHARMACEUTICALS UK LIMITED');
+  assert.equal(detail?.supplierContact?.source, 'Supplier found in PO PDF');
+  assert.notEqual(detail?.supplierContact?.companyName, 'Ambe Limited');
+});
+
 function createSyncInput(overrides?: Partial<SyncWorkflowItemInput>): SyncWorkflowItemInput {
   return {
     emailDerivedOfferId: 'offer-1',

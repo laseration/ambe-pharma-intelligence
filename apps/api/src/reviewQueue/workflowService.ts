@@ -247,6 +247,11 @@ type SupplierContactDetails = {
   source: string | null;
 };
 
+type PurchaseOrderPdfMetadata = {
+  detected?: unknown;
+  supplierName?: unknown;
+};
+
 type WorkflowDetailRecord = WorkflowRecord & {
   emailDerivedOffer?: (NonNullable<WorkflowRecord['emailDerivedOffer']> & {
     strengthCandidate: string | null;
@@ -574,10 +579,35 @@ function extractContactName(documents: WorkflowInboundEmailDocumentRecord[]): st
   return candidate;
 }
 
+function extractPurchaseOrderPdfSupplierName(documents: WorkflowInboundEmailDocumentRecord[]): string | null {
+  for (const document of documents) {
+    const metadata =
+      document.metadata && typeof document.metadata === 'object' && !Array.isArray(document.metadata)
+        ? (document.metadata as { purchaseOrderPdf?: unknown })
+        : null;
+    const purchaseOrderPdf =
+      metadata?.purchaseOrderPdf &&
+      typeof metadata.purchaseOrderPdf === 'object' &&
+      !Array.isArray(metadata.purchaseOrderPdf)
+        ? (metadata.purchaseOrderPdf as PurchaseOrderPdfMetadata)
+        : null;
+
+    if (purchaseOrderPdf?.detected === true && typeof purchaseOrderPdf.supplierName === 'string') {
+      const supplierName = purchaseOrderPdf.supplierName.trim();
+      if (supplierName && !isInternalSupplierCompanyName(supplierName)) {
+        return supplierName;
+      }
+    }
+  }
+
+  return null;
+}
+
 function deriveSupplierContact(detail: WorkflowDetailRecord): SupplierContactDetails | null {
   const documents = detail.inboundEmail?.documents ?? [];
   const externalEmails = collectExternalEmails(documents);
   const externalPhones = collectPhoneNumbers(documents);
+  const purchaseOrderPdfSupplierName = extractPurchaseOrderPdfSupplierName(documents);
   const supplierCandidates = (detail.emailDerivedOffer?.resolutionCandidates ?? [])
     .filter(
       (candidate) =>
@@ -615,12 +645,12 @@ function deriveSupplierContact(detail: WorkflowDetailRecord): SupplierContactDet
         : null;
 
   const supplierContact: SupplierContactDetails = {
-    companyName: companyNames.length > 0 ? companyNames.join(' / ') : null,
+    companyName: purchaseOrderPdfSupplierName ?? (companyNames.length > 0 ? companyNames.join(' / ') : null),
     contactName,
     email: email?.value ?? null,
     phone: phone?.value ?? null,
     domain: email ? extractEmailDomain(email.value) : null,
-    source,
+    source: purchaseOrderPdfSupplierName ? 'Supplier found in PO PDF' : source,
   };
 
   return Object.values(supplierContact).some((value) => Boolean(value)) ? supplierContact : null;
