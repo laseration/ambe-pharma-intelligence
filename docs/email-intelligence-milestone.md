@@ -10,6 +10,7 @@ This checkpoint covers the current internal email intelligence workflow.
 - `CommercialIntelItem` stores review-first commercial notes such as supplier reliability warnings, buyer demand, manual buy triggers, market notes, expiry rules, product notes, and contact notes.
 - `CustomerDemandSignal` stores review-first buyer/customer requests for sourcing, quote, availability, and demand emails.
 - Commercial intel has internal API routes and a dashboard at `/dashboard/commercial-intel`.
+- Customer requests have internal API routes and a dashboard at `/dashboard/customer-requests`.
 - Pipeline diagnostics are available at `/dashboard/diagnostics` through the read-only `/api/diagnostics/pipeline-summary` endpoint.
 - Approved, non-expired commercial intel can appear as read-only opportunity context without changing scores.
 - Acceptance/demo tests cover realistic clean, messy, commercial-intel, mixed, and non-actionable email scenarios with mocked parser output.
@@ -61,7 +62,6 @@ The acceptance scenarios and manual replay notes are documented in `docs/email-i
 
 ## Known Gaps
 
-- Customer-request parsing is backend-only; there is no customer-request dashboard yet.
 - Commercial intel does not change scoring values yet.
 - Customer demand does not affect opportunity/trade context or scoring yet.
 - Commercial intel review is intentionally simple and separate from the offer workflow queue.
@@ -70,7 +70,8 @@ The acceptance scenarios and manual replay notes are documented in `docs/email-i
 
 ## Recommended Next Features
 
-- Add a customer-request dashboard and review workflow surface.
+- Add reviewed customer-demand read-only context to opportunities/trade workflows.
+- Add guarded demand/supply matching once enough reviewed examples exist.
 - Add approved customer-demand read-only context to opportunities/trade workflows.
 - Add richer operator review flows for commercial intel once usage patterns are clear.
 - Add guarded scoring rules for approved commercial intel after enough examples are reviewed.

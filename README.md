@@ -211,6 +211,8 @@ Customer demand is stored as `CustomerDemandSignal`, not `EmailDerivedOffer` or 
 
 Internal API routes are available under `/api/customer-requests` for listing, detail lookup, approve/reject/expire actions, and parse preview.
 
+The internal dashboard for reviewing these demand signals is available at `/dashboard/customer-requests`.
+
 ### Buy Decisions And Supplier Qualification
 
 Approving a staged email-derived offer to buy now creates or reuses a durable `BuyDecision` snapshot. That record is the approved quote snapshot: the commercial facts that were approved internally, plus provenance back to the staged offer and workflow item.

@@ -38,6 +38,18 @@ export type DiagnosticsCommercialIntelItem = {
   createdAt: string;
 };
 
+export type DiagnosticsCustomerDemandSignal = {
+  id: string;
+  requestType: string;
+  status: string;
+  confidence: string;
+  productText: string | null;
+  customerName: string | null;
+  quantityRequested: number | null;
+  evidenceText: string;
+  createdAt: string;
+};
+
 export type DiagnosticsOpportunity = {
   id: string;
   type: string;
@@ -92,6 +104,7 @@ export type PipelineWindowDiagnostics = {
   };
   commercialIntel: {
     commercialIntelItemsCreated: number;
+    approvedCommercialIntelItems?: number;
     commercialIntelNew: number;
     commercialIntelApproved: number;
     commercialIntelRejected: number;
@@ -99,6 +112,16 @@ export type PipelineWindowDiagnostics = {
     commercialIntelByType: CountByName[];
     commercialIntelByConfidence: CountByName[];
     latestCommercialIntelItems: DiagnosticsCommercialIntelItem[];
+  };
+  customerDemand: {
+    customerRequestsCreated: number;
+    customerRequestsNew: number;
+    customerRequestsApproved: number;
+    customerRequestsRejected: number;
+    customerRequestsExpired: number;
+    customerRequestsByType: CountByName[];
+    customerRequestsByConfidence: CountByName[];
+    latestCustomerRequests: DiagnosticsCustomerDemandSignal[];
   };
   aiParserVisibility: {
     aiFallbackAttemptedBestEffort: number;
@@ -110,6 +133,7 @@ export type PipelineWindowDiagnostics = {
   opportunities: {
     openOpportunities: number;
     opportunitiesCreated: number;
+    opportunitiesWithCommercialIntelContext?: number;
     opportunitiesByType: CountByName[];
     latestOpportunities: DiagnosticsOpportunity[];
   };

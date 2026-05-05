@@ -3,6 +3,7 @@ import Link from 'next/link';
 import {
   getPipelineDiagnosticsSummary,
   type DiagnosticsCommercialIntelItem,
+  type DiagnosticsCustomerDemandSignal,
   type DiagnosticsInboundEmail,
   type DiagnosticsOpportunity,
   type DiagnosticsSupplierPriceItem,
@@ -161,6 +162,44 @@ function CommercialIntelList({ items }: { items: DiagnosticsCommercialIntelItem[
   );
 }
 
+function CustomerRequestList({ items }: { items: DiagnosticsCustomerDemandSignal[] }) {
+  if (items.length === 0) {
+    return <p className="copy">No customer requests found in this window.</p>;
+  }
+
+  return (
+    <div className="dashboard-opportunity-list">
+      {items.map((item) => (
+        <article className="dashboard-opportunity-card" key={item.id}>
+          <div className="dashboard-opportunity-top">
+            <div>
+              <p className="dashboard-opportunity-title">{humanizeValue(item.requestType)}</p>
+              <p className="dashboard-opportunity-meta">
+                {[item.productText, item.customerName].filter(Boolean).join(' | ') ||
+                  'No linked entity'}
+              </p>
+            </div>
+            <div className="dashboard-opportunity-badges">
+              <span className="pill pill-neutral">{humanizeValue(item.status)}</span>
+              <span className="pill pill-neutral">{humanizeValue(item.confidence)}</span>
+            </div>
+          </div>
+          <p className="dashboard-opportunity-copy">{truncateText(item.evidenceText)}</p>
+          <p className="dashboard-triage-meta">
+            {item.quantityRequested ? `${item.quantityRequested.toLocaleString('en-GB')} packs | ` : ''}
+            Created {formatDateTime(item.createdAt) ?? 'recently'}
+          </p>
+          <div className="actions">
+            <Link className="button" href={`/dashboard/customer-requests/${item.id}`}>
+              Open request
+            </Link>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function SupplierPriceList({ items }: { items: DiagnosticsSupplierPriceItem[] }) {
   if (items.length === 0) {
     return <p className="copy">No supplier price records were created in this window.</p>;
@@ -247,6 +286,11 @@ function WindowSummary({ window }: { window: PipelineWindowDiagnostics }) {
             label="Commercial notes found"
             note="Dad-style market knowledge extracted from email."
             value={window.commercialIntel.commercialIntelItemsCreated}
+          />
+          <MetricCard
+            label="Customer requests found"
+            note="Buyer demand and sourcing requests extracted from email."
+            value={window.customerDemand.customerRequestsCreated}
           />
           <MetricCard
             label="Waiting for review"
@@ -351,6 +395,42 @@ function WindowSummary({ window }: { window: PipelineWindowDiagnostics }) {
           </div>
         </div>
         <CommercialIntelList items={window.commercialIntel.latestCommercialIntelItems} />
+      </section>
+
+      <section className="panel dashboard-panel">
+        <div className="dashboard-section-header">
+          <div>
+            <h3 className="section-title">Customer requests</h3>
+            <p className="copy">Review-first buyer demand and sourcing requests.</p>
+          </div>
+          <Link className="button" href="/dashboard/customer-requests">
+            Open requests
+          </Link>
+        </div>
+        <div className="dashboard-summary-grid">
+          <MetricCard label="Found" note="Customer request signals extracted from email." value={window.customerDemand.customerRequestsCreated} />
+          <MetricCard label="Waiting for review" note="New requests awaiting a decision." value={window.customerDemand.customerRequestsNew} />
+          <MetricCard label="Approved" note="Accepted as customer demand context." value={window.customerDemand.customerRequestsApproved} />
+          <MetricCard label="Rejected" note="Marked not useful." value={window.customerDemand.customerRequestsRejected} />
+          <MetricCard label="Expired" note="No longer current." value={window.customerDemand.customerRequestsExpired} />
+        </div>
+        <div className="review-detail-grid technical-details-card">
+          <div>
+            <h4 className="subsection-title">By request type</h4>
+            {renderCountList(window.customerDemand.customerRequestsByType, 'No customer request types yet.')}
+          </div>
+          <div>
+            <h4 className="subsection-title">By confidence</h4>
+            {renderCountList(window.customerDemand.customerRequestsByConfidence, 'No confidence data yet.')}
+          </div>
+        </div>
+        <div className="dashboard-section-header technical-details-card">
+          <div>
+            <h4 className="subsection-title">Latest customer requests</h4>
+            <p className="copy">Newest extracted demand signals.</p>
+          </div>
+        </div>
+        <CustomerRequestList items={window.customerDemand.latestCustomerRequests} />
       </section>
 
       <section className="panel dashboard-panel">
