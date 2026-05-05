@@ -201,6 +201,16 @@ Internal API routes are available under `/api/commercial-intel` for listing, det
 
 Current first pass stores and reviews approved intel. Approved, non-expired intel can appear as read-only opportunity context, but it does not change opportunity scores.
 
+### Customer Requests From Email
+
+Inbound email also has a separate customer-demand extraction path for buyer/customer requests such as product sourcing, quote requests, availability checks, buyer interest, and repeat demand.
+
+Customer demand is stored as `CustomerDemandSignal`, not `EmailDerivedOffer` or `CommercialIntelItem`. Supplier offers remain supplier-side product+price quotes. Commercial intel remains business memory/context. Customer demand is review-first and does not automatically buy stock, send emails, create products, create customers, create supplier price records, or create trade opportunities in this pass.
+
+`OPENAI_PARSER_ENABLED` controls customer-demand extraction. A cheap deterministic request-language gate runs before AI, so obvious admin messages and supplier offers do not spend parser calls.
+
+Internal API routes are available under `/api/customer-requests` for listing, detail lookup, approve/reject/expire actions, and parse preview.
+
 ### Buy Decisions And Supplier Qualification
 
 Approving a staged email-derived offer to buy now creates or reuses a durable `BuyDecision` snapshot. That record is the approved quote snapshot: the commercial facts that were approved internally, plus provenance back to the staged offer and workflow item.
@@ -274,7 +284,7 @@ This is intentionally not a full procurement or compliance system yet. It does n
 AI remains a last resort:
 
 - deterministic extraction runs first
-- `OPENAI_PARSER_ENABLED` controls OpenAI fallback inside the supplier-offer parser and commercial-intel extraction
+- `OPENAI_PARSER_ENABLED` controls OpenAI fallback inside the supplier-offer parser, commercial-intel extraction, and customer-request extraction
 - AI is only used for unclear but commercially relevant body content
 - AI outputs are staged as candidate offers
 - AI does not write Product, Supplier, SupplierPriceItem, InventorySnapshot, or SalesRecord before human approval

@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 
 import type {
-  CommercialIntelConfidence,
-  CommercialIntelItemType,
-  CommercialIntelStatus,
+  CustomerDemandConfidence,
+  CustomerDemandRequestType,
+  CustomerDemandStatus,
   Prisma,
 } from '@prisma/client';
 
@@ -13,63 +13,78 @@ import { determineProductMatchDecision } from '../imports/productMatching';
 import { db } from '../lib/db';
 import { logger } from '../lib/logger';
 import {
-  createCommercialIntelParser,
-  type CommercialIntelParser,
-  type CommercialIntelParsingAttemptResult,
+  createCustomerDemandParser,
+  type CustomerDemandParser,
+  type CustomerDemandParsingAttemptResult,
 } from './aiParser';
-import type { AiCommercialIntelItem, EmailIntentClassification } from './schema';
+import type { AiCustomerDemandItem, CustomerRequestIntent } from './schema';
 
-type CommercialIntelDocument = {
+type CustomerDemandDocument = {
   id: string;
   kind: string;
   textContent: string;
 };
 
-type CommercialIntelActor = {
+type CustomerDemandActor = {
   actorType?: string | null;
   actorIdentifier?: string | null;
 };
 
-type CommercialIntelRepository = {
+type CustomerDemandRepository = {
   findProductByStoredCanonicalField: (storedCanonicalField: string) => Promise<any | null>;
   findProductAliasByRawName: (rawProductName: string) => Promise<any | null>;
   listProductAliasesForCanonicalComparison: () => Promise<any[]>;
-  findSupplierByNormalizedName: (normalizedName: string) => Promise<any | null>;
-  upsertIntelItem: (data: Prisma.CommercialIntelItemUncheckedCreateInput) => Promise<any>;
-  listIntelItems: (filters: CommercialIntelListFilters) => Promise<any[]>;
-  getIntelItem: (id: string) => Promise<any | null>;
-  updateIntelItem: (id: string, data: Prisma.CommercialIntelItemUncheckedUpdateInput) => Promise<any>;
+  findCustomerByNormalizedName: (normalizedName: string) => Promise<any | null>;
+  upsertDemandSignal: (data: Prisma.CustomerDemandSignalUncheckedCreateInput) => Promise<any>;
+  listDemandSignals: (filters: CustomerDemandListFilters) => Promise<any[]>;
+  getDemandSignal: (id: string) => Promise<any | null>;
+  updateDemandSignal: (id: string, data: Prisma.CustomerDemandSignalUncheckedUpdateInput) => Promise<any>;
 };
 
-export type CommercialIntelListFilters = {
-  status?: CommercialIntelStatus | null;
-  itemType?: CommercialIntelItemType | null;
+export type CustomerDemandListFilters = {
+  status?: CustomerDemandStatus | null;
+  requestType?: CustomerDemandRequestType | null;
   productId?: string | null;
-  supplierId?: string | null;
+  customerId?: string | null;
   take?: number | null;
 };
 
-export type CommercialIntelActionInput = CommercialIntelActor & {
+export type CustomerDemandActionInput = CustomerDemandActor & {
   action: 'APPROVE' | 'REJECT' | 'EXPIRE';
   note?: string | null;
 };
 
-export type CommercialIntelExtractionInput = {
+export type CustomerDemandExtractionInput = {
   inboundEmailId: string;
-  documents: CommercialIntelDocument[];
+  documents: CustomerDemandDocument[];
   senderEmail: string;
   subject: string | null;
 };
 
-export type CommercialIntelExtractionResult = {
+export type CustomerDemandExtractionResult = {
   attempted: boolean;
-  intent: EmailIntentClassification | null;
+  intent: CustomerRequestIntent | null;
   createdOrUpdatedCount: number;
-  parserStatus: CommercialIntelParsingAttemptResult['status'] | null;
+  parserStatus: CustomerDemandParsingAttemptResult['status'] | null;
   reason: string | null;
 };
 
-function createCommercialIntelRepository(client: typeof db = db): CommercialIntelRepository {
+const CUSTOMER_REQUEST_SIGNAL_PATTERN =
+  /\b(?:can you source|could you source|please source|source for us|do you have|have you got|need\s+(?:\d+\s*)?(?:packs?|boxes?|units?|stock)|looking for|any availability|please quote|request quote|customer\s+\w+\s+wants?|customer(?:s)?\s+wants?|buyer(?:s)?\s+wants?|quote us|source(?:d)?\s+for us|can you quote|please price|availability on)\b/i;
+
+const ADMIN_ONLY_PATTERN =
+  /^\s*(?:thanks|thank you|regards|kind regards|best regards|see attached invoice|invoice attached|meeting notes|minutes attached)[\s,!.]*$/i;
+
+export function hasCustomerDemandSignal(sourceText: string): boolean {
+  const normalized = sourceText.replace(/\s+/g, ' ').trim();
+  if (!normalized || ADMIN_ONLY_PATTERN.test(normalized)) {
+    return false;
+  }
+
+  return CUSTOMER_REQUEST_SIGNAL_PATTERN.test(normalized);
+}
+
+function createCustomerDemandRepository(client: typeof db = db): CustomerDemandRepository {
   return {
     findProductByStoredCanonicalField: (storedCanonicalField) =>
       client.product.findFirst({
@@ -84,12 +99,12 @@ function createCommercialIntelRepository(client: typeof db = db): CommercialInte
       client.productAlias.findMany({
         include: { product: true },
       }),
-    findSupplierByNormalizedName: (normalizedName) =>
-      client.supplier.findUnique({
+    findCustomerByNormalizedName: (normalizedName) =>
+      client.customer.findUnique({
         where: { normalizedName },
       }),
-    upsertIntelItem: (data) =>
-      client.commercialIntelItem.upsert({
+    upsertDemandSignal: (data) =>
+      client.customerDemandSignal.upsert({
         where: {
           inboundEmailId_itemFingerprint: {
             inboundEmailId: data.inboundEmailId!,
@@ -98,19 +113,18 @@ function createCommercialIntelRepository(client: typeof db = db): CommercialInte
         },
         update: {
           sourceDocumentId: data.sourceDocumentId,
-          itemType: data.itemType,
+          requestType: data.requestType,
+          customerName: data.customerName,
+          customerId: data.customerId,
+          contactName: data.contactName,
+          contactEmail: data.contactEmail,
           productText: data.productText,
           productId: data.productId,
-          supplierName: data.supplierName,
-          supplierId: data.supplierId,
-          customerName: data.customerName,
-          contactName: data.contactName,
-          priceThreshold: data.priceThreshold,
+          quantityRequested: data.quantityRequested,
+          targetPrice: data.targetPrice,
           currency: data.currency,
-          availabilitySignal: data.availabilitySignal,
-          riskLevel: data.riskLevel,
+          neededByDate: data.neededByDate,
           urgency: data.urgency,
-          signalEffect: data.signalEffect,
           evidenceText: data.evidenceText,
           confidence: data.confidence,
           reviewReason: data.reviewReason,
@@ -120,13 +134,13 @@ function createCommercialIntelRepository(client: typeof db = db): CommercialInte
         },
         create: data,
       }),
-    listIntelItems: (filters) =>
-      client.commercialIntelItem.findMany({
+    listDemandSignals: (filters) =>
+      client.customerDemandSignal.findMany({
         where: {
           ...(filters.status ? { status: filters.status } : {}),
-          ...(filters.itemType ? { itemType: filters.itemType } : {}),
+          ...(filters.requestType ? { requestType: filters.requestType } : {}),
           ...(filters.productId ? { productId: filters.productId } : {}),
-          ...(filters.supplierId ? { supplierId: filters.supplierId } : {}),
+          ...(filters.customerId ? { customerId: filters.customerId } : {}),
         },
         orderBy: { createdAt: 'desc' },
         take: filters.take ?? 100,
@@ -134,58 +148,59 @@ function createCommercialIntelRepository(client: typeof db = db): CommercialInte
           inboundEmail: true,
           sourceDocument: true,
           product: true,
-          supplier: true,
+          customer: true,
         },
       }),
-    getIntelItem: (id) =>
-      client.commercialIntelItem.findUnique({
+    getDemandSignal: (id) =>
+      client.customerDemandSignal.findUnique({
         where: { id },
         include: {
           inboundEmail: true,
           sourceDocument: true,
           product: true,
-          supplier: true,
+          customer: true,
         },
       }),
-    updateIntelItem: (id, data) =>
-      client.commercialIntelItem.update({
+    updateDemandSignal: (id, data) =>
+      client.customerDemandSignal.update({
         where: { id },
         data,
         include: {
           inboundEmail: true,
           sourceDocument: true,
           product: true,
-          supplier: true,
+          customer: true,
         },
       }),
   };
 }
 
-function normalizeActor(actor: CommercialIntelActor) {
+function normalizeActor(actor: CustomerDemandActor) {
   return {
     actorType: actor.actorType?.trim() || 'OPERATOR',
     actorIdentifier: actor.actorIdentifier?.trim() || null,
   };
 }
 
-function buildFingerprint(inboundEmailId: string, item: AiCommercialIntelItem): string {
+function buildFingerprint(inboundEmailId: string, item: AiCustomerDemandItem): string {
   return createHash('sha256')
     .update(
       [
         inboundEmailId,
-        item.itemType,
+        item.requestType,
         item.evidenceText.trim().toLowerCase(),
         item.productText?.trim().toLowerCase() ?? '',
-        item.supplierName?.trim().toLowerCase() ?? '',
         item.customerName?.trim().toLowerCase() ?? '',
-        item.priceThreshold?.toString() ?? '',
+        item.contactEmail?.trim().toLowerCase() ?? '',
+        item.quantityRequested?.toString() ?? '',
+        item.targetPrice?.toString() ?? '',
         item.currency ?? '',
       ].join('|'),
     )
     .digest('hex');
 }
 
-function parseValidUntil(value: string | null): Date | null {
+function parseDate(value: string | null): Date | null {
   if (!value) {
     return null;
   }
@@ -194,7 +209,7 @@ function parseValidUntil(value: string | null): Date | null {
   return Number.isNaN(timestamp) ? null : new Date(timestamp);
 }
 
-function findSourceDocumentId(documents: CommercialIntelDocument[], evidenceText: string): string | null {
+function findSourceDocumentId(documents: CustomerDemandDocument[], evidenceText: string): string | null {
   const normalizedEvidence = evidenceText.trim();
   if (!normalizedEvidence) {
     return null;
@@ -203,15 +218,8 @@ function findSourceDocumentId(documents: CommercialIntelDocument[], evidenceText
   return documents.find((document) => document.textContent.includes(normalizedEvidence))?.id ?? documents[0]?.id ?? null;
 }
 
-const COMMERCIAL_INTEL_SIGNAL_PATTERN =
-  /\b(?:do not trust|don't trust|never deliver|unreliable|avoid|customer(?:s)?\s+(?:might\s+)?wants?|customer\s+\w+\s+wants?|i know\s+(?:two\s+|some\s+|several\s+)?(?:buyers?|customers?)\s+(?:are\s+)?looking|buyer demand|customer demand|buy quickly|sell quickly|manual trigger|if anyone offers|stock is tight|tight stock|price (?:likely|will|expected)\s+(?:rise|rises|fall|falls|drop|drops)|short expiry|expiry risk|market intel|supplier risk|requires review)\b/i;
-
-function hasCommercialIntelSignal(sourceText: string): boolean {
-  return COMMERCIAL_INTEL_SIGNAL_PATTERN.test(sourceText);
-}
-
 async function resolveProductId(
-  repository: CommercialIntelRepository,
+  repository: CustomerDemandRepository,
   productText: string | null,
 ): Promise<string | null> {
   if (!productText) {
@@ -234,19 +242,19 @@ async function resolveProductId(
   return decision.matchedProductId;
 }
 
-async function resolveSupplierId(
-  repository: CommercialIntelRepository,
-  supplierName: string | null,
+async function resolveCustomerId(
+  repository: CustomerDemandRepository,
+  customerName: string | null,
 ): Promise<string | null> {
-  if (!supplierName) {
+  if (!customerName) {
     return null;
   }
 
-  const supplier = await repository.findSupplierByNormalizedName(normalizeText(supplierName));
-  return supplier?.id ?? null;
+  const customer = await repository.findCustomerByNormalizedName(normalizeText(customerName));
+  return customer?.id ?? null;
 }
 
-function buildReviewReason(item: AiCommercialIntelItem): string | null {
+function buildReviewReason(item: AiCustomerDemandItem): string | null {
   if (item.reviewReason) {
     return item.reviewReason;
   }
@@ -255,16 +263,16 @@ function buildReviewReason(item: AiCommercialIntelItem): string | null {
     return 'low_confidence_requires_review';
   }
 
-  if (!item.productText && !item.supplierName && !item.customerName && !item.contactName) {
-    return 'unresolved_entities';
+  if (!item.productText) {
+    return 'missing_product_text';
   }
 
   return null;
 }
 
 function assertStatusTransitionAllowed(
-  currentStatus: CommercialIntelStatus,
-  action: CommercialIntelActionInput['action'],
+  currentStatus: CustomerDemandStatus,
+  action: CustomerDemandActionInput['action'],
 ): void {
   if (action === 'APPROVE' && (currentStatus === 'NEW' || currentStatus === 'APPROVED')) {
     return;
@@ -278,15 +286,15 @@ function assertStatusTransitionAllowed(
     return;
   }
 
-  throw new ConflictError(`Commercial intel item cannot transition from ${currentStatus} with ${action}.`);
+  throw new ConflictError(`Customer demand signal cannot transition from ${currentStatus} with ${action}.`);
 }
 
-export function createCommercialIntelService(overrides?: {
-  repository?: CommercialIntelRepository;
-  parser?: CommercialIntelParser;
+export function createCustomerDemandService(overrides?: {
+  repository?: CustomerDemandRepository;
+  parser?: CustomerDemandParser;
 }) {
-  const repository = overrides?.repository ?? createCommercialIntelRepository();
-  const parser = overrides?.parser ?? createCommercialIntelParser();
+  const repository = overrides?.repository ?? createCustomerDemandRepository();
+  const parser = overrides?.parser ?? createCustomerDemandParser();
 
   return {
     async parsePreview(rawText: string) {
@@ -296,7 +304,7 @@ export function createCommercialIntelService(overrides?: {
       });
     },
 
-    async processInboundEmail(input: CommercialIntelExtractionInput): Promise<CommercialIntelExtractionResult> {
+    async processInboundEmail(input: CustomerDemandExtractionInput): Promise<CustomerDemandExtractionResult> {
       const sourceText = input.documents
         .filter((document) => ['BODY_MAIN', 'BODY_FORWARDED'].includes(document.kind))
         .map((document) => document.textContent)
@@ -309,17 +317,17 @@ export function createCommercialIntelService(overrides?: {
           intent: null,
           createdOrUpdatedCount: 0,
           parserStatus: null,
-          reason: 'No body text was available for commercial intel extraction.',
+          reason: 'No body text was available for customer demand extraction.',
         };
       }
 
-      if (!hasCommercialIntelSignal(sourceText)) {
+      if (!hasCustomerDemandSignal(sourceText)) {
         return {
           attempted: false,
           intent: null,
           createdOrUpdatedCount: 0,
           parserStatus: null,
-          reason: 'No commercial-intel language was detected before AI parsing.',
+          reason: 'No customer-request language was detected before AI parsing.',
         };
       }
 
@@ -338,48 +346,44 @@ export function createCommercialIntelService(overrides?: {
         };
       }
 
-      if (
-        attempt.result.intent !== 'COMMERCIAL_INTEL' &&
-        attempt.result.intent !== 'MIXED'
-      ) {
+      if (attempt.result.intent !== 'CUSTOMER_REQUEST' && attempt.result.intent !== 'MIXED') {
         return {
           attempted: true,
           intent: attempt.result.intent,
           createdOrUpdatedCount: 0,
           parserStatus: attempt.status,
-          reason: 'Commercial intel parser found no commercial-intel items to store.',
+          reason: 'Customer demand parser found no customer request items to store.',
         };
       }
 
       let createdOrUpdatedCount = 0;
       for (const item of attempt.result.items) {
         const productId = await resolveProductId(repository, item.productText);
-        const supplierId = await resolveSupplierId(repository, item.supplierName);
+        const customerId = await resolveCustomerId(repository, item.customerName);
         const itemFingerprint = buildFingerprint(input.inboundEmailId, item);
         const sourceDocumentId = findSourceDocumentId(input.documents, item.evidenceText);
 
-        await repository.upsertIntelItem({
+        await repository.upsertDemandSignal({
           inboundEmailId: input.inboundEmailId,
           sourceDocumentId,
-          itemType: item.itemType,
           status: 'NEW',
+          requestType: item.requestType,
+          customerName: item.customerName,
+          customerId,
+          contactName: item.contactName,
+          contactEmail: item.contactEmail,
           productText: item.productText,
           productId,
-          supplierName: item.supplierName,
-          supplierId,
-          customerName: item.customerName,
-          contactName: item.contactName,
-          priceThreshold: item.priceThreshold,
+          quantityRequested: item.quantityRequested,
+          targetPrice: item.targetPrice,
           currency: item.currency,
-          availabilitySignal: item.availabilitySignal,
-          riskLevel: item.riskLevel,
+          neededByDate: parseDate(item.neededByDate),
           urgency: item.urgency,
-          signalEffect: item.signalEffect,
           evidenceText: item.evidenceText,
           confidence: item.confidence,
           reviewReason: buildReviewReason(item),
           aiAssisted: true,
-          validUntil: parseValidUntil(item.validUntil),
+          validUntil: parseDate(item.validUntil),
           itemFingerprint,
           metadata: {
             intent: attempt.result.intent,
@@ -400,22 +404,22 @@ export function createCommercialIntelService(overrides?: {
         intent: attempt.result.intent,
         createdOrUpdatedCount,
         parserStatus: attempt.status,
-        reason: 'Commercial intel items were stored.',
+        reason: 'Customer demand signals were stored.',
       };
     },
 
-    listItems(filters: CommercialIntelListFilters) {
-      return repository.listIntelItems(filters);
+    listSignals(filters: CustomerDemandListFilters) {
+      return repository.listDemandSignals(filters);
     },
 
-    getItem(id: string) {
-      return repository.getIntelItem(id);
+    getSignal(id: string) {
+      return repository.getDemandSignal(id);
     },
 
-    async updateItemStatus(id: string, input: CommercialIntelActionInput) {
-      const existing = await repository.getIntelItem(id);
+    async updateSignalStatus(id: string, input: CustomerDemandActionInput) {
+      const existing = await repository.getDemandSignal(id);
       if (!existing) {
-        throw new Error('Commercial intel item not found.');
+        throw new Error('Customer demand signal not found.');
       }
 
       assertStatusTransitionAllowed(existing.status, input.action);
@@ -433,7 +437,7 @@ export function createCommercialIntelService(overrides?: {
       const note = input.note?.trim() || null;
 
       if (input.action === 'APPROVE') {
-        return repository.updateIntelItem(id, {
+        return repository.updateDemandSignal(id, {
           status: 'APPROVED',
           approvedByType: actor.actorType,
           approvedByIdentifier: actor.actorIdentifier,
@@ -446,7 +450,7 @@ export function createCommercialIntelService(overrides?: {
       }
 
       if (input.action === 'REJECT') {
-        return repository.updateIntelItem(id, {
+        return repository.updateDemandSignal(id, {
           status: 'REJECTED',
           rejectedByType: actor.actorType,
           rejectedByIdentifier: actor.actorIdentifier,
@@ -455,7 +459,7 @@ export function createCommercialIntelService(overrides?: {
         });
       }
 
-      return repository.updateIntelItem(id, {
+      return repository.updateDemandSignal(id, {
         status: 'EXPIRED',
         reviewReason: note ?? 'expired_by_operator',
       });
@@ -463,24 +467,24 @@ export function createCommercialIntelService(overrides?: {
   };
 }
 
-export async function processInboundEmailCommercialIntel(
-  input: CommercialIntelExtractionInput,
-): Promise<CommercialIntelExtractionResult> {
+export async function processInboundEmailCustomerDemand(
+  input: CustomerDemandExtractionInput,
+): Promise<CustomerDemandExtractionResult> {
   try {
-    return await createCommercialIntelService().processInboundEmail(input);
+    return await createCustomerDemandService().processInboundEmail(input);
   } catch (error) {
-    logger.warn('Commercial intel extraction failed', {
+    logger.warn('Customer demand extraction failed', {
       inboundEmailId: input.inboundEmailId,
-      error: error instanceof Error ? error.message : 'Unknown commercial intel extraction error.',
+      error: error instanceof Error ? error.message : 'Unknown customer demand extraction error.',
     });
     return {
       attempted: true,
       intent: null,
       createdOrUpdatedCount: 0,
       parserStatus: 'error',
-      reason: error instanceof Error ? error.message : 'Commercial intel extraction failed.',
+      reason: error instanceof Error ? error.message : 'Customer demand extraction failed.',
     };
   }
 }
 
-export const commercialIntelService = createCommercialIntelService();
+export const customerDemandService = createCustomerDemandService();

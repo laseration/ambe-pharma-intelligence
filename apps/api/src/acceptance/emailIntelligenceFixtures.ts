@@ -25,6 +25,16 @@ export const emailIntelligenceAcceptanceFixtures = {
     bodyText:
       'Zenith can do Ozempic 0.5mg at £87. Also Amit says stock is tight and price likely rises next week.',
   },
+  customerDemandRequest: {
+    from: 'buyer@example.test',
+    subject: 'Need Pregabalin',
+    bodyText: 'Can you source Pregabalin 150mg? Need 200 packs.',
+  },
+  customerQuoteRequest: {
+    from: 'buyer@example.test',
+    subject: 'Quote request',
+    bodyText: 'Please quote us on Metformin 500mg x 28.',
+  },
   nonActionableAdminEmail: {
     from: 'ops@ambe.test',
     subject: 'Meeting notes',

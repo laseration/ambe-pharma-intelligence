@@ -58,6 +58,18 @@ type LatestCommercialIntelItem = {
   createdAt: Date;
 };
 
+type LatestCustomerDemandSignal = {
+  id: string;
+  requestType: string;
+  status: string;
+  confidence: string;
+  productText: string | null;
+  customerName: string | null;
+  quantityRequested: number | null;
+  evidenceText: string;
+  createdAt: Date;
+};
+
 type LatestOpportunity = {
   id: string;
   type: string;
@@ -120,6 +132,16 @@ type PipelineWindowSummary = {
     commercialIntelByType: CountByName[];
     commercialIntelByConfidence: CountByName[];
     latestCommercialIntelItems: LatestCommercialIntelItem[];
+  };
+  customerDemand: {
+    customerRequestsCreated: number;
+    customerRequestsNew: number;
+    customerRequestsApproved: number;
+    customerRequestsRejected: number;
+    customerRequestsExpired: number;
+    customerRequestsByType: CountByName[];
+    customerRequestsByConfidence: CountByName[];
+    latestCustomerRequests: LatestCustomerDemandSignal[];
   };
   aiParserVisibility: {
     aiFallbackAttemptedBestEffort: number;
@@ -209,6 +231,16 @@ function emptyWindowSummary(label: string, since: Date): PipelineWindowSummary {
       commercialIntelByType: [],
       commercialIntelByConfidence: [],
       latestCommercialIntelItems: [],
+    },
+    customerDemand: {
+      customerRequestsCreated: 0,
+      customerRequestsNew: 0,
+      customerRequestsApproved: 0,
+      customerRequestsRejected: 0,
+      customerRequestsExpired: 0,
+      customerRequestsByType: [],
+      customerRequestsByConfidence: [],
+      latestCustomerRequests: [],
     },
     aiParserVisibility: {
       aiFallbackAttemptedBestEffort: 0,
@@ -355,6 +387,14 @@ function createDiagnosticsRepository(client: typeof db = db): DiagnosticsReposit
       commercialIntelByType,
       commercialIntelByConfidence,
       latestCommercialIntelItems,
+      customerRequestsCreated,
+      customerRequestsNew,
+      customerRequestsApproved,
+      customerRequestsRejected,
+      customerRequestsExpired,
+      customerRequestsByType,
+      customerRequestsByConfidence,
+      latestCustomerRequests,
       aiFallbackAttemptedBestEffort,
       aiAssistedOfferCount,
       aiAssistedCommercialIntelCount,
@@ -519,6 +559,55 @@ function createDiagnosticsRepository(client: typeof db = db): DiagnosticsReposit
             productText: true,
             supplierName: true,
             customerName: true,
+            evidenceText: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: LATEST_LIMIT,
+        }),
+      ),
+      safeRead('customerRequestsCreated', 0, () =>
+        client.customerDemandSignal.count({ where: { createdAt: { gte: since } } }),
+      ),
+      safeRead('customerRequestsNew', 0, () =>
+        client.customerDemandSignal.count({ where: { createdAt: { gte: since }, status: 'NEW' } }),
+      ),
+      safeRead('customerRequestsApproved', 0, () =>
+        client.customerDemandSignal.count({ where: { updatedAt: { gte: since }, status: 'APPROVED' } }),
+      ),
+      safeRead('customerRequestsRejected', 0, () =>
+        client.customerDemandSignal.count({ where: { updatedAt: { gte: since }, status: 'REJECTED' } }),
+      ),
+      safeRead('customerRequestsExpired', 0, () =>
+        client.customerDemandSignal.count({ where: { updatedAt: { gte: since }, status: 'EXPIRED' } }),
+      ),
+      safeRead('customerRequestsByType', [], () =>
+        client.customerDemandSignal.findMany({
+          where: { createdAt: { gte: since } },
+          select: { requestType: true },
+          orderBy: { createdAt: 'desc' },
+          take: AGGREGATE_SAMPLE_LIMIT,
+        }).then((items) => countGroupValues(items.map((item) => item.requestType))),
+      ),
+      safeRead('customerRequestsByConfidence', [], () =>
+        client.customerDemandSignal.findMany({
+          where: { createdAt: { gte: since } },
+          select: { confidence: true },
+          orderBy: { createdAt: 'desc' },
+          take: AGGREGATE_SAMPLE_LIMIT,
+        }).then((items) => countGroupValues(items.map((item) => item.confidence))),
+      ),
+      safeRead('latestCustomerRequests', [], () =>
+        client.customerDemandSignal.findMany({
+          where: { createdAt: { gte: since } },
+          select: {
+            id: true,
+            requestType: true,
+            status: true,
+            confidence: true,
+            productText: true,
+            customerName: true,
+            quantityRequested: true,
             evidenceText: true,
             createdAt: true,
           },
@@ -749,6 +838,16 @@ function createDiagnosticsRepository(client: typeof db = db): DiagnosticsReposit
       commercialIntelByType,
       commercialIntelByConfidence,
       latestCommercialIntelItems,
+    };
+    summary.customerDemand = {
+      customerRequestsCreated,
+      customerRequestsNew,
+      customerRequestsApproved,
+      customerRequestsRejected,
+      customerRequestsExpired,
+      customerRequestsByType,
+      customerRequestsByConfidence,
+      latestCustomerRequests,
     };
     summary.aiParserVisibility = {
       aiFallbackAttemptedBestEffort,

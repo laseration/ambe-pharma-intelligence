@@ -10,6 +10,7 @@ import { logger } from '../../lib/logger';
 import { offerWorkflowService } from '../../reviewQueue/workflowService';
 import { getLearnedResolutionHints } from '../../corrections/service';
 import { processInboundEmailCommercialIntel } from '../../commercialIntel/service';
+import { processInboundEmailCustomerDemand } from '../../customerRequests/service';
 import { extractAttachmentText } from '../attachmentTextExtraction';
 import {
   normalizeEmailTextForParsing,
@@ -2230,6 +2231,19 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
 
   if (shouldRunCommercialIntelExtraction(result, triageStatus, documents)) {
     await processInboundEmailCommercialIntel({
+      inboundEmailId: inboundEmail.id,
+      senderEmail: message.from,
+      subject: message.subject ?? null,
+      documents: documents.map((document) => ({
+        id: document.id,
+        kind: document.kind,
+        textContent: document.textContent,
+      })),
+    });
+  }
+
+  if (shouldRunCommercialIntelExtraction(result, triageStatus, documents)) {
+    await processInboundEmailCustomerDemand({
       inboundEmailId: inboundEmail.id,
       senderEmail: message.from,
       subject: message.subject ?? null,

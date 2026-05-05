@@ -46,6 +46,16 @@ function buildEmptyWindow(label: string, since: Date): PipelineDiagnosticsSummar
       commercialIntelByConfidence: [],
       latestCommercialIntelItems: [],
     },
+    customerDemand: {
+      customerRequestsCreated: 0,
+      customerRequestsNew: 0,
+      customerRequestsApproved: 0,
+      customerRequestsRejected: 0,
+      customerRequestsExpired: 0,
+      customerRequestsByType: [],
+      customerRequestsByConfidence: [],
+      latestCustomerRequests: [],
+    },
     aiParserVisibility: {
       aiFallbackAttemptedBestEffort: 0,
       aiFallbackUsedBestEffort: 0,
@@ -95,6 +105,7 @@ test('pipeline diagnostics summary returns bounded empty-shape windows from repo
   assert.equal(summary.windows.last24h.documentStaging.emailDerivedOffersCreated, 0);
   assert.equal(summary.windows.last24h.supplierPriceIntelligence.supplierPriceItemsCreated, 0);
   assert.equal(summary.windows.last24h.commercialIntel.commercialIntelItemsCreated, 0);
+  assert.equal(summary.windows.last24h.customerDemand.customerRequestsCreated, 0);
   assert.equal(summary.windows.last24h.aiParserVisibility.aiAssistedOfferCount, 0);
   assert.equal(summary.windows.last24h.opportunities.openOpportunities, 0);
   assert.deepEqual(summary.windows.last24h.problems.latestFailedEmails, []);

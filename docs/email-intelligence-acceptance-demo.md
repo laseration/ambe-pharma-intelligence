@@ -28,6 +28,10 @@ This demo suite proves the current internal email intelligence pipeline with rea
    - `Thanks, see attached invoice / meeting notes / regards`
    - Expected: no commercial-intel parser spend, no CommercialIntelItem, no EmailDerivedOffer unless a real offer exists.
 
+7. Customer demand email
+   - `Can you source Pregabalin 150mg? Need 200 packs.`
+   - Expected: CustomerDemandSignal is stored review-first; no Product, Customer, SupplierPriceItem, TradeOpportunity, or outbound message is created automatically.
+
 ## Where The Fixtures Live
 
 Shared fixture text lives in:
@@ -38,6 +42,7 @@ The tests consume those fixtures from the existing harnesses:
 
 - `apps/api/src/email/inbound/__tests__/staging-idempotency.test.ts`
 - `apps/api/src/commercialIntel/__tests__/service.test.ts`
+- `apps/api/src/customerRequests/__tests__/service.test.ts`
 - `apps/api/src/reviewQueue/__tests__/workflowService.test.ts`
 - `apps/api/src/opportunities/__tests__/scoring.test.ts`
 

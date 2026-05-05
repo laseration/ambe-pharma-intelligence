@@ -145,6 +145,29 @@ enum CommercialIntelConfidence {
   LOW
 }
 
+enum CustomerDemandStatus {
+  NEW
+  APPROVED
+  REJECTED
+  EXPIRED
+  MATCHED
+}
+
+enum CustomerDemandRequestType {
+  SOURCE_PRODUCT
+  CHECK_AVAILABILITY
+  REQUEST_QUOTE
+  BUYER_INTEREST
+  REPEAT_DEMAND
+  OTHER
+}
+
+enum CustomerDemandConfidence {
+  HIGH
+  MEDIUM
+  LOW
+}
+
 enum EmailExtractionRunStatus {
   COMPLETED
   COMPLETED_WITH_ERRORS
@@ -511,6 +534,7 @@ model Product {
   regulatoryReviewItems     RegulatoryReviewItem[]
   purchaseOrderLines        PurchaseOrderLine[]
   commercialIntelItems      CommercialIntelItem[]
+  customerDemandSignals     CustomerDemandSignal[]
   createdAt                 DateTime            @default(now())
   updatedAt                 DateTime            @updatedAt
 
@@ -628,6 +652,7 @@ model InboundEmail {
   promotionDecisions        PromotionDecision[]
   promotedPriceLists        SupplierPriceList[]
   commercialIntelItems      CommercialIntelItem[]
+  customerDemandSignals     CustomerDemandSignal[]
   createdAt                 DateTime                     @default(now())
   updatedAt                 DateTime                     @updatedAt
 
@@ -650,6 +675,7 @@ model InboundEmailDocument {
   derivedOffers  EmailDerivedOffer[]
   evidences      EmailDerivedOfferEvidence[]
   commercialIntelItems CommercialIntelItem[]
+  customerDemandSignals CustomerDemandSignal[]
   createdAt      DateTime                    @default(now())
   updatedAt      DateTime                    @updatedAt
 
@@ -764,6 +790,50 @@ model CommercialIntelItem {
   @@index([productId, status, createdAt])
   @@index([supplierId, status, createdAt])
   @@index([itemType, status, createdAt])
+}
+
+model CustomerDemandSignal {
+  id                   String                    @id @default(cuid())
+  inboundEmailId       String?
+  sourceDocumentId     String?
+  status               CustomerDemandStatus      @default(NEW)
+  requestType          CustomerDemandRequestType
+  customerName         String?
+  customerId           String?
+  contactName          String?
+  contactEmail         String?
+  productText          String?
+  productId            String?
+  quantityRequested    Int?
+  targetPrice          Decimal?                  @db.Decimal(12, 2)
+  currency             String?
+  neededByDate         DateTime?
+  urgency              String?
+  evidenceText         String
+  confidence           CustomerDemandConfidence
+  reviewReason         String?
+  aiAssisted           Boolean                   @default(true)
+  approvedByType       String?
+  approvedByIdentifier String?
+  approvedAt           DateTime?
+  rejectedByType       String?
+  rejectedByIdentifier String?
+  rejectedAt           DateTime?
+  validUntil           DateTime?
+  itemFingerprint      String
+  metadata             Json?
+  inboundEmail         InboundEmail?             @relation(fields: [inboundEmailId], references: [id], onDelete: SetNull)
+  sourceDocument       InboundEmailDocument?     @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+  customer             Customer?                 @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  product              Product?                  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  @@unique([inboundEmailId, itemFingerprint])
+  @@index([inboundEmailId, status, createdAt])
+  @@index([productId, status, createdAt])
+  @@index([customerId, status, createdAt])
+  @@index([requestType, status, createdAt])
 }
 
 model OfferWorkflowItem {
@@ -1420,6 +1490,7 @@ model Customer {
   isActive            Boolean       @default(true)
   opportunities       Opportunity[]
   salesRecords        SalesRecord[]
+  customerDemandSignals CustomerDemandSignal[]
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
 
