@@ -1,4 +1,5 @@
 import type { OpportunityStatus, OpportunityType, Prisma } from '@prisma/client';
+import type { CommercialIntelContext } from './commercialIntelContext';
 
 export type OpportunityMetrics = {
   currentStockQty: number | null;
@@ -57,6 +58,7 @@ export type OpportunityScoringAudit = {
   generatedOpportunityTypes: OpportunityType[];
   metrics: OpportunityMetrics;
   opportunities: OpportunityScoringAuditEntry[];
+  commercialIntelContext?: CommercialIntelContext;
 };
 
 export type ScoringContext = {
@@ -86,4 +88,5 @@ export type ScoringContext = {
     averageSalePrice: number | null;
     lastSaleDate: Date | null;
   };
+  commercialIntelContext?: CommercialIntelContext;
 };

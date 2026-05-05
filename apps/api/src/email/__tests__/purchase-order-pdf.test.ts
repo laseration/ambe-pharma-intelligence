@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { buildProductCandidates } from '../../imports/normalization';
+import { createEmailInboundService } from '../inbound/service';
 import { parseAmbePurchaseOrderPdfText } from '../purchaseOrderPdf';
 
 const DIXONS_PO_TEXT = [
@@ -24,6 +26,14 @@ const DIXONS_PO_TEXT = [
   'Total VAT: 1023.20',
   'Order Total: 6139.20',
 ].join('\n');
+
+function createLogger() {
+  return {
+    info: () => undefined,
+    warn: () => undefined,
+    error: () => undefined,
+  };
+}
 
 test('detects Ambe purchase order PDF and extracts header fields', () => {
   const result = parseAmbePurchaseOrderPdfText(DIXONS_PO_TEXT);
@@ -54,4 +64,82 @@ test('extracts product lines and ignores batch expiry note rows', () => {
   });
   assert.equal(result.lines.some((line) => line.stockCode === '000BDE'), false);
   assert.equal(result.evidence.some((line) => /BRIVIACT TABS/i.test(line)), true);
+});
+
+test('detected purchase order PDF is not auto-imported as a supplier price list', async () => {
+  let supplierImportCalls = 0;
+  const service = createEmailInboundService({
+    allowedSenders: ['supplier@example.com'],
+    supplierMappings: [
+      {
+        pattern: 'supplier@example.com',
+        supplierName: 'Dixons Pharmaceuticals UK Limited',
+      },
+    ],
+    logger: createLogger(),
+    importSupplierPriceList: async () => {
+      supplierImportCalls += 1;
+      throw new Error('supplier price list import should not run for purchase order PDFs');
+    },
+    importInventory: async () => {
+      throw new Error('inventory import should not run');
+    },
+    importSales: async () => {
+      throw new Error('sales import should not run');
+    },
+    extractAttachmentText: async () => ({
+      method: 'PDF_TEXT',
+      text: DIXONS_PO_TEXT,
+      warnings: [],
+    }),
+    parseTextMessage: async (rawText) => ({
+      totalLines: rawText.split('\n').length,
+      candidateLines: 1,
+      parsedRows: [
+        {
+          lineNumber: 11,
+          rawLine: '50 4006607 BRIVIACT TABS 100MG 56s 76.00 3800.00 T1',
+          rawProductName: 'BRIVIACT TABS 100MG 56s',
+          rawProductText: 'BRIVIACT TABS 100MG 56s',
+          strength: '100mg',
+          formulation: 'tabs',
+          packSize: '56s',
+          price: 76,
+          currencyCode: 'GBP',
+          productCandidates: buildProductCandidates('BRIVIACT TABS 100MG 56s'),
+          confidence: 'HIGH',
+          explanation: 'PO line has structured product and price-like fields.',
+        },
+      ],
+      skippedLines: [],
+      overallConfidence: 'HIGH',
+      reviewRecommended: true,
+      reviewRequired: true,
+      rawBodyText: rawText,
+      rawBody: rawText,
+      parsingSource: 'DETERMINISTIC',
+      aiFallbackUsed: false,
+    }),
+  });
+
+  const result = await service.ingestMessage({
+    from: 'supplier@example.com',
+    subject: 'Supplier price list April',
+    bodyText: 'Please import the attached supplier price list.',
+    attachments: [
+      {
+        fileName: 'supplier-price-list.pdf',
+        mimeType: 'application/pdf',
+        content: Buffer.from('pdf').toString('base64'),
+      },
+    ],
+  });
+
+  assert.equal(supplierImportCalls, 0);
+  assert.equal(result.items[0]?.processingStatus, 'NEEDS_REVIEW');
+  assert.equal(result.items[0]?.inferredImportType, null);
+  assert.equal(result.items[0]?.purchaseOrderPdf?.detected, true);
+  assert.equal(result.items[0]?.purchaseOrderPdf?.supplierName, 'DIXONS PHARMACEUTICALS UK LIMITED');
+  assert.match(result.items[0]?.reason ?? '', /Purchase order PDF found/);
+  assert.match(result.items[0]?.reason ?? '', /Review before importing into purchase history/);
 });

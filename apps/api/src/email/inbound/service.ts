@@ -313,6 +313,13 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
           preventedAiReason: triage.aiBlockedReason,
         });
 
+        const shouldParseBodyText =
+          bodyText.trim() !== '' &&
+          triage.status !== 'IGNORED_NON_ACTIONABLE' &&
+          triage.status !== 'REJECTED_LOW_VALUE';
+        const bodyTextParsing = shouldParseBodyText
+          ? await dependencies.parseTextMessage(bodyText)
+          : deterministicBodyParse;
         const bodyItemBase: EmailInboundItemResult = {
           processingStatus:
             triage.status === 'AI_REVIEW_ELIGIBLE' || triage.status === 'MANUAL_REVIEW_REQUIRED'
@@ -338,35 +345,21 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
             subject,
             bodyText,
           },
+          textParsing: bodyTextParsing,
         };
 
-        let finalBodyItem = buildTriageMetadata(bodyItemBase, triage);
-
-        if (
-          triage.status === 'AI_REVIEW_ELIGIBLE' &&
-          (dependencies.emailReviewEnabled ?? false) &&
-          triage.businessWorthinessScore >= (dependencies.emailReviewMinBusinessScore ?? 65)
-        ) {
-          const aiParsedResult = await parseStructuredPriceText(bodyText, {
-            source: 'EMAIL_BODY',
-          });
-          finalBodyItem = {
-            ...finalBodyItem,
-            aiEscalated: aiParsedResult.aiFallbackUsed ?? false,
-            aiBlockedReason:
-              aiParsedResult.aiFallbackUsed === true
-                ? null
-                : aiParsedResult.aiFallbackRejectedReason ?? triage.aiBlockedReason,
-            reason: aiParsedResult.parsingReason ?? finalBodyItem.reason,
-          };
-        } else if (triage.status === 'AI_REVIEW_ELIGIBLE' && !(dependencies.emailReviewEnabled ?? false)) {
-          finalBodyItem = {
-            ...finalBodyItem,
-            triageStatus: 'MANUAL_REVIEW_REQUIRED',
-            aiEligible: false,
-            aiBlockedReason: 'email_ai_review_disabled',
-          };
-        }
+        const finalBodyItem = {
+          ...buildTriageMetadata(bodyItemBase, triage),
+          parserConfidence: mapDeterministicParserConfidence({
+            parsedRowCount: bodyTextParsing.parsedRows.length,
+            overallConfidence: bodyTextParsing.overallConfidence,
+          }),
+          aiBlockedReason:
+            bodyTextParsing.aiFallbackUsed === true
+              ? null
+              : bodyTextParsing.aiFallbackRejectedReason ?? triage.aiBlockedReason,
+          reason: bodyTextParsing.parsingReason ?? bodyItemBase.reason,
+        };
 
         recordEmailReviewItems([finalBodyItem]);
 

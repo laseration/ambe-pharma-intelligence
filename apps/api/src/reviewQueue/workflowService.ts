@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { db } from '../lib/db';
 import { env } from '../config/env';
 import {
@@ -148,6 +150,7 @@ export type WorkflowApprovalOutcome = {
   buyDecisionCreated: boolean;
   tradeOpportunityId: string | null;
   tradeOpportunityOutcome: DemandMatchedTradeOpportunityOutcome;
+  supplierPriceIntelligence: SupplierPriceIntelligenceOutcome;
 };
 
 export type WorkflowApprovalResult = {
@@ -227,6 +230,33 @@ type WorkflowRecord = {
     productId?: string | null;
     execution?: BuyExecutionRecord | null;
   } | null;
+};
+
+type SupplierPriceIntelligenceOutcome = {
+  supplierPriceListId: string | null;
+  supplierPriceItemId: string | null;
+  created: boolean;
+  skippedReason: string | null;
+};
+
+type ApprovedOfferSupplierPriceInput = {
+  inboundEmailId: string;
+  emailDerivedOfferId: string;
+  workflowItemId: string;
+  supplierId: string;
+  productId: string;
+  rawProductText: string;
+  normalizedProductNameCandidate: string | null;
+  manufacturerCandidate: string | null;
+  priceCandidate: unknown;
+  currencyCandidate: string;
+  minimumOrderQuantityCandidate: number | null;
+  availabilityCandidate: string | null;
+  sourceKind: string;
+  sourceBlockText: string;
+  aiAssisted: boolean;
+  actorType: string;
+  actorIdentifier: string | null;
 };
 
 type WorkflowInboundEmailDocumentRecord = {
@@ -337,6 +367,9 @@ type WorkflowRepository = {
   createBuyDecision: (data: Record<string, unknown>) => Promise<BuyDecisionRecord>;
   updateBuyDecision: (buyDecisionId: string, data: Record<string, unknown>) => Promise<BuyDecisionRecord>;
   createBuyDecisionEvent: (data: Record<string, unknown>) => Promise<void>;
+  upsertSupplierPriceItemFromApprovedOffer: (
+    input: ApprovedOfferSupplierPriceInput,
+  ) => Promise<SupplierPriceIntelligenceOutcome>;
   findBuyExecutionByDecisionId: (buyDecisionId: string) => Promise<BuyExecutionRecord | null>;
   createBuyExecution: Parameters<typeof upsertExecutionForBuyDecision>[0]['create'];
   updateBuyExecution: Parameters<typeof upsertExecutionForBuyDecision>[0]['update'];
@@ -899,6 +932,72 @@ function createWorkflowRepository(client: typeof db = db, inTransaction = false)
         data: data as never,
       });
     },
+    upsertSupplierPriceItemFromApprovedOffer: async (input) => {
+      const supplierPriceList = await client.supplierPriceList.upsert({
+        where: {
+          supplierId_sourceInboundEmailId: {
+            supplierId: input.supplierId,
+            sourceInboundEmailId: input.inboundEmailId,
+          },
+        },
+        update: {
+          currencyCode: input.currencyCandidate,
+          notes: `Reviewed approved offer from inbound email ${input.inboundEmailId}; workflow ${input.workflowItemId}; offer ${input.emailDerivedOfferId}`,
+        },
+        create: {
+          supplierId: input.supplierId,
+          sourceInboundEmailId: input.inboundEmailId,
+          fileName: `reviewed-email-offer-${input.inboundEmailId}.txt`,
+          fileMimeType: 'message/rfc822',
+          notes: `Reviewed approved offer from inbound email ${input.inboundEmailId}; workflow ${input.workflowItemId}; offer ${input.emailDerivedOfferId}`,
+          currencyCode: input.currencyCandidate,
+        },
+      });
+      const promotionFingerprint = buildApprovedOfferPromotionFingerprint(input);
+      const existingItem = await client.supplierPriceItem.findUnique({
+        where: {
+          supplierPriceListId_promotionFingerprint: {
+            supplierPriceListId: supplierPriceList.id,
+            promotionFingerprint,
+          },
+        },
+      });
+      const rawRow = buildApprovedOfferRawRow(input);
+      const itemData = {
+        supplierId: input.supplierId,
+        productId: input.productId,
+        rawProductName: input.rawProductText,
+        normalizedProductName: input.normalizedProductNameCandidate ?? undefined,
+        unitPrice: input.priceCandidate,
+        currencyCode: input.currencyCandidate,
+        minimumOrderQuantity: input.minimumOrderQuantityCandidate,
+        isAvailable:
+          input.availabilityCandidate
+            ? /available|in stock|instock|ready/i.test(input.availabilityCandidate)
+            : true,
+        rawRow,
+      };
+      const supplierPriceItem =
+        existingItem
+          ? await client.supplierPriceItem.update({
+              where: { id: existingItem.id },
+              data: itemData as never,
+            })
+          : await client.supplierPriceItem.create({
+              data: {
+                supplierPriceListId: supplierPriceList.id,
+                promotionFingerprint,
+                ...itemData,
+              } as never,
+            });
+
+      return {
+        supplierPriceListId: supplierPriceList.id,
+        supplierPriceItemId: supplierPriceItem.id,
+        created: !existingItem,
+        skippedReason: null,
+      };
+    },
     findBuyExecutionByDecisionId: async (buyDecisionId) =>
       client.buyExecution.findUnique({
         where: { buyDecisionId },
@@ -1313,6 +1412,104 @@ function buildBuyDecisionSnapshot(workflow: WorkflowRecord, qualification: Retur
   };
 }
 
+function skippedSupplierPriceIntelligence(reason: string): SupplierPriceIntelligenceOutcome {
+  return {
+    supplierPriceListId: null,
+    supplierPriceItemId: null,
+    created: false,
+    skippedReason: reason,
+  };
+}
+
+function buildApprovedOfferSupplierPriceInput(
+  workflow: WorkflowRecord,
+  actor: NormalizedActor,
+): ApprovedOfferSupplierPriceInput | SupplierPriceIntelligenceOutcome {
+  const offer = workflow.emailDerivedOffer;
+  if (!offer) {
+    return skippedSupplierPriceIntelligence('missing_email_derived_offer');
+  }
+
+  const selectedIds = resolveSelectedEntityIds(offer.resolutionCandidates);
+
+  if (!workflow.inboundEmailId) {
+    return skippedSupplierPriceIntelligence('missing_inbound_email');
+  }
+
+  if (!selectedIds.productId) {
+    return skippedSupplierPriceIntelligence('missing_product');
+  }
+
+  if (!selectedIds.supplierId) {
+    return skippedSupplierPriceIntelligence('missing_supplier');
+  }
+
+  if (!offer.priceCandidate) {
+    return skippedSupplierPriceIntelligence('missing_price');
+  }
+
+  if (!offer.currencyCandidate) {
+    return skippedSupplierPriceIntelligence('missing_currency');
+  }
+
+  if (!offer.rawProductText) {
+    return skippedSupplierPriceIntelligence('missing_product_text');
+  }
+
+  return {
+    inboundEmailId: workflow.inboundEmailId,
+    emailDerivedOfferId: workflow.emailDerivedOfferId,
+    workflowItemId: workflow.id,
+    supplierId: selectedIds.supplierId,
+    productId: selectedIds.productId,
+    rawProductText: offer.rawProductText,
+    normalizedProductNameCandidate: offer.normalizedProductNameCandidate,
+    manufacturerCandidate: offer.manufacturerCandidate,
+    priceCandidate: offer.priceCandidate,
+    currencyCandidate: offer.currencyCandidate,
+    minimumOrderQuantityCandidate: offer.minimumOrderQuantityCandidate,
+    availabilityCandidate: offer.availabilityCandidate,
+    sourceKind: workflow.sourceKind ?? offer.sourceKind,
+    sourceBlockText: offer.sourceBlockText,
+    aiAssisted: workflow.aiAssisted,
+    actorType: actor.actorType,
+    actorIdentifier: actor.actorIdentifier,
+  };
+}
+
+function isSupplierPriceIntelligenceOutcome(
+  input: ApprovedOfferSupplierPriceInput | SupplierPriceIntelligenceOutcome,
+): input is SupplierPriceIntelligenceOutcome {
+  return 'skippedReason' in input;
+}
+
+function buildApprovedOfferPromotionFingerprint(input: ApprovedOfferSupplierPriceInput): string {
+  return createHash('sha256')
+    .update(
+      [
+        'reviewed-email-offer',
+        input.inboundEmailId,
+        input.emailDerivedOfferId,
+        input.workflowItemId,
+      ].join('|'),
+    )
+    .digest('hex');
+}
+
+function buildApprovedOfferRawRow(input: ApprovedOfferSupplierPriceInput) {
+  return {
+    source: 'reviewed_inbound_email_offer',
+    inboundEmailId: input.inboundEmailId,
+    emailDerivedOfferId: input.emailDerivedOfferId,
+    workflowItemId: input.workflowItemId,
+    sourceKind: input.sourceKind,
+    sourceBlockText: input.sourceBlockText,
+    aiAssisted: input.aiAssisted,
+    actorType: input.actorType,
+    actorIdentifier: input.actorIdentifier,
+  };
+}
+
 function buildExecutionUpdateFromWorkflow(input: WorkflowActionInput): BuyExecutionUpdateInput {
   return {
     actorType: input.actorType,
@@ -1502,6 +1699,12 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
         decisionForTradeSync = updatedDecision;
       }
 
+      const supplierPriceInput = buildApprovedOfferSupplierPriceInput(updatedWorkflow, actor);
+      const supplierPriceIntelligence =
+        isSupplierPriceIntelligenceOutcome(supplierPriceInput)
+          ? supplierPriceInput
+          : await txRepository.upsertSupplierPriceItemFromApprovedOffer(supplierPriceInput);
+
       await syncTradeOpportunityCommercialState(
         {
           listActiveByOfferId: txRepository.listActiveTradeOpportunitiesByOfferId,
@@ -1541,6 +1744,7 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
           buyDecisionCreated,
           tradeOpportunityId: demandMatchedTradeOpportunityResult.tradeOpportunity?.id ?? null,
           tradeOpportunityOutcome: demandMatchedTradeOpportunityResult.outcome,
+          supplierPriceIntelligence,
         },
       };
     });

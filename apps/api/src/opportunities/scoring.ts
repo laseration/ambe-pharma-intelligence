@@ -322,6 +322,65 @@ function buildCommercialContext(context: ScoringContext, metrics: ExtendedOpport
   };
 }
 
+function hasCommercialIntelContext(context: ScoringContext): boolean {
+  const intelContext = context.commercialIntelContext;
+  return Boolean(
+    intelContext &&
+      (intelContext.productLinked.length > 0 ||
+        intelContext.supplierLinked.length > 0 ||
+        intelContext.global.length > 0),
+  );
+}
+
+function commercialIntelItemsForDescription(context: ScoringContext) {
+  const intelContext = context.commercialIntelContext;
+  if (!intelContext) {
+    return [];
+  }
+
+  return [
+    ...intelContext.productLinked,
+    ...intelContext.supplierLinked,
+    ...intelContext.global,
+  ];
+}
+
+function buildCommercialIntelDescriptionSentences(
+  type: OpportunityCandidate['type'],
+  context: ScoringContext,
+): string[] {
+  const items = commercialIntelItemsForDescription(context);
+  const sentences: string[] = [];
+
+  if (
+    (type === 'BUY' || type === 'PRICE_ALERT') &&
+    items.some((item) => item.itemType === 'MANUAL_BUY_TRIGGER')
+  ) {
+    sentences.push('Approved commercial intel has a manual buy trigger for this product.');
+  }
+
+  if (
+    (type === 'BUY' || type === 'PUSH' || type === 'PRICE_ALERT' || type === 'RESTOCK') &&
+    items.some((item) => item.itemType === 'BUYER_DEMAND_SIGNAL')
+  ) {
+    sentences.push('Approved commercial intel notes buyer demand for this product.');
+  }
+
+  if (items.some((item) => item.itemType === 'SUPPLIER_RELIABILITY_NOTE')) {
+    sentences.push('Approved commercial intel includes a supplier reliability warning.');
+  }
+
+  if (items.some((item) => item.itemType === 'EXPIRY_RISK_RULE')) {
+    sentences.push('Approved commercial intel includes an expiry risk note.');
+  }
+
+  if (items.some((item) => item.itemType === 'MARKET_PRICE_INTEL')) {
+    sentences.push('Approved commercial intel includes market price context.');
+  }
+
+  return sentences.slice(0, 3);
+}
+
 function joinSentences(parts: Array<string | null>): string {
   return parts.filter((part): part is string => Boolean(part)).join(' ');
 }
@@ -337,12 +396,18 @@ function createCandidate(
 ): OpportunityCandidate {
   const supplierId =
     context.latestSupplierPrice?.supplierId ?? context.latestInventory?.supplierId ?? null;
+  const commercialIntelContext = hasCommercialIntelContext(context)
+    ? context.commercialIntelContext
+    : null;
 
   return {
     type,
     status: 'OPEN',
     title,
-    description,
+    description: joinSentences([
+      description,
+      ...buildCommercialIntelDescriptionSentences(type, context),
+    ]),
     score: breakdown.finalScore,
     productId: context.product.id,
     supplierId,
@@ -357,6 +422,7 @@ function createCandidate(
       scoreBreakdown: breakdown,
       generatedAt: context.now.toISOString(),
       ...(commercialContext ? { commercialContext } : {}),
+      ...(commercialIntelContext ? { commercialIntelContext } : {}),
     } satisfies Prisma.InputJsonObject,
   };
 }
@@ -1260,5 +1326,8 @@ export function auditOpportunityScoring(
       .flatMap((evaluation) => (evaluation.eligible && evaluation.candidate ? [evaluation.type] : [])),
     metrics,
     opportunities: evaluations.map(buildAuditEntry),
+    ...(hasCommercialIntelContext(context)
+      ? { commercialIntelContext: context.commercialIntelContext }
+      : {}),
   };
 }

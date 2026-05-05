@@ -5,11 +5,11 @@ import { Prisma } from '@prisma/client';
 import { env } from '../../config/env';
 import { parseUploadedFile } from '../../imports/parsers';
 import { buildProductCandidates } from '../../imports/normalization';
-import { findOrCreateProduct } from '../../imports/service';
 import { db } from '../../lib/db';
 import { logger } from '../../lib/logger';
 import { offerWorkflowService } from '../../reviewQueue/workflowService';
 import { getLearnedResolutionHints } from '../../corrections/service';
+import { processInboundEmailCommercialIntel } from '../../commercialIntel/service';
 import { extractAttachmentText } from '../attachmentTextExtraction';
 import {
   normalizeEmailTextForParsing,
@@ -109,6 +109,22 @@ const GENERIC_ATTACHMENT_SUPPLIER_WORDS = new Set([
   'supplier',
   'wholesale',
 ]);
+
+function shouldRunCommercialIntelExtraction(
+  result: EmailInboundResult,
+  triageStatus: string | null,
+  documents: Array<{ kind: string }>,
+): boolean {
+  if (result.ignored) {
+    return false;
+  }
+
+  if (triageStatus === 'IGNORED_NON_ACTIONABLE' || triageStatus === 'REJECTED_LOW_VALUE') {
+    return false;
+  }
+
+  return documents.some((document) => ['BODY_MAIN', 'BODY_FORWARDED'].includes(document.kind));
+}
 
 function buildSupplierFamilyKey(value: string | null | undefined): string {
   let normalized = normalizeSupplierIdentityToken(value);
@@ -382,6 +398,10 @@ type StagedOfferCandidate = {
   promotionConfidence: number;
   reviewReason: string | null;
   aiAssisted: boolean;
+  parsingSource?: string | null;
+  aiFallbackUsed?: boolean | null;
+  aiPromptVersion?: string | null;
+  parserConfidence?: string | null;
   evidences: OfferEvidence[];
   sourceDocumentIndex: number;
 };
@@ -431,7 +451,7 @@ function derivePromotionReviewReason(offer: ResolvedOfferCandidate): string {
     return 'unresolved_supplier';
   }
 
-  if (!offer.rawProductText || !selectedProduct) {
+  if (!offer.rawProductText || !selectedProduct?.candidateId) {
     return 'weak_product_match';
   }
 
@@ -484,6 +504,23 @@ function buildWorkflowSyncInput(
     manufacturerCandidate: offer.manufacturerCandidate,
     resolutionCandidates: offer.resolutionCandidates,
   } as const;
+}
+
+function buildOfferMetadata(
+  message: EmailInboundMessage,
+  sourceDocument: { kind: string; label: string | null } | null,
+  offer: ResolvedOfferCandidate,
+): Prisma.InputJsonObject {
+  return {
+    sender: message.from,
+    subject: message.subject ?? null,
+    sourceDocumentKind: sourceDocument?.kind ?? null,
+    sourceDocumentLabel: sourceDocument?.label ?? null,
+    parsingSource: offer.parsingSource ?? null,
+    aiFallbackUsed: offer.aiFallbackUsed ?? offer.aiAssisted,
+    aiPromptVersion: offer.aiPromptVersion ?? null,
+    parserConfidence: offer.parserConfidence ?? null,
+  };
 }
 
 function normalizeWhitespace(value: string): string {
@@ -896,6 +933,10 @@ function buildOfferCandidateFromParsedRow(
     promotionConfidence: 0,
     reviewReason: row.confidence === 'LOW' ? 'deterministic_row_low_confidence' : null,
     aiAssisted: false,
+    parsingSource: 'DETERMINISTIC',
+    aiFallbackUsed: false,
+    aiPromptVersion: null,
+    parserConfidence: row.confidence,
     evidences: [
       {
         fieldName: 'rawProductText',
@@ -1437,6 +1478,8 @@ export function buildAiOfferCandidates(
   },
   sourceTrustScore: number,
 ): StagedOfferCandidate[] {
+  const structureConfidence =
+    aiResult.overallConfidence === 'HIGH' ? 72 : aiResult.overallConfidence === 'MEDIUM' ? 62 : 50;
   return aiResult.parsedRows.map((row) => ({
     sourceKind: 'AI_PARAGRAPH_OFFER',
     sourceBlockText: row.rawLine,
@@ -1452,24 +1495,28 @@ export function buildAiOfferCandidates(
     minimumOrderQuantityCandidate: row.minimumOrderQuantity ?? null,
     availabilityCandidate: row.availability ?? null,
     sourceTrustScore,
-    structureConfidence: aiResult.overallConfidence === 'HIGH' ? 72 : 58,
-    fieldConfidence: row.confidence === 'HIGH' ? 68 : 55,
+    structureConfidence,
+    fieldConfidence: row.confidence === 'HIGH' ? 68 : row.confidence === 'MEDIUM' ? 60 : 45,
     entityResolutionConfidence: 0,
     promotionConfidence: 0,
     reviewReason: 'ai_candidate_review_only',
     aiAssisted: true,
+    parsingSource: aiResult.parsingSource ?? 'OPENAI_FALLBACK',
+    aiFallbackUsed: aiResult.aiFallbackUsed ?? true,
+    aiPromptVersion: aiResult.aiPromptVersion ?? null,
+    parserConfidence: row.confidence,
     evidences: [
       {
         fieldName: 'rawProductText',
         evidenceType: 'ai_candidate',
         rawText: row.evidenceText ?? row.rawProductText,
-        confidence: 60,
+        confidence: row.confidence === 'HIGH' ? 68 : row.confidence === 'MEDIUM' ? 60 : 45,
       },
       {
         fieldName: 'priceCandidate',
         evidenceType: 'ai_candidate',
         rawText: row.evidenceText ?? String(row.price),
-        confidence: 60,
+        confidence: row.confidence === 'HIGH' ? 68 : row.confidence === 'MEDIUM' ? 60 : 45,
       },
       ...(row.minimumOrderQuantity !== null && row.minimumOrderQuantity !== undefined
         ? [
@@ -1531,11 +1578,15 @@ export async function persistPromotion(
   const selectedSupplier = offer.resolutionCandidates.find(
     (candidate) => candidate.entityType === 'SUPPLIER' && candidate.selected,
   );
+  const selectedProduct = offer.resolutionCandidates.find(
+    (candidate) => candidate.entityType === 'PRODUCT' && candidate.selected,
+  );
 
   if (
     offer.aiAssisted ||
     !selectedSupplier?.candidateId ||
     !selectedSupplier.candidateName ||
+    !selectedProduct?.candidateId ||
     !offer.rawProductText ||
     !offer.priceCandidate ||
     !offer.currencyCandidate ||
@@ -1587,13 +1638,15 @@ export async function persistPromotion(
       throw new Error(`Resolved supplier ${selectedSupplier.candidateId} was not found during promotion.`);
     }
 
-    const product = await findOrCreateProduct(
-      rawProductText,
-      buildProductCandidates(rawProductText),
-      'email:body-auto-promotion',
-      offer.manufacturerCandidate,
-      tx,
-    );
+    const product = await tx.product.findUnique({
+      where: {
+        id: selectedProduct.candidateId!,
+      },
+    });
+
+    if (!product) {
+      throw new Error(`Resolved product ${selectedProduct.candidateId} was not found during promotion.`);
+    }
     const supplierPriceList = await tx.supplierPriceList.upsert({
       where: {
         supplierId_sourceInboundEmailId: {
@@ -1894,7 +1947,49 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
     sourceLearningContext,
   );
 
-  if (shouldAttemptAiFallback(resolvedOffers, result)) {
+  if (bodyItem?.textParsing?.aiFallbackUsed && bodyItem.textParsing.parsedRows.length > 0) {
+    const aiRun = await db.emailExtractionRun.create({
+      data: {
+        inboundEmailId: inboundEmail.id,
+        method: 'AI_FALLBACK',
+        status: 'COMPLETED',
+        extractorVersion: EXTRACTOR_VERSION,
+        aiPromptVersion: bodyItem.textParsing.aiPromptVersion ?? null,
+        notes: {
+          parsingReason: bodyItem.textParsing.parsingReason ?? null,
+          aiFallbackDecision: bodyItem.textParsing.aiFallbackDecision ?? null,
+        },
+      },
+    });
+
+    const aiOffers = await resolveOfferCandidates(
+      message,
+      documents.map((document) => ({
+        ...segments[document.documentIndex]!,
+        id: document.id,
+      })),
+      buildAiOfferCandidates(
+        bodyItem.textParsing,
+        {
+          bodyMain:
+            documents.find((document) => document.kind === 'BODY_MAIN')?.documentIndex ?? null,
+          bodyForwarded:
+            documents.find((document) => document.kind === 'BODY_FORWARDED')?.documentIndex ?? null,
+          signature:
+            documents.find((document) => document.kind === 'SIGNATURE')?.documentIndex ?? null,
+        },
+        sourceTrustScore,
+      ).map((offer) => ({
+        ...offer,
+        extractionRunId: aiRun.id,
+      })),
+      sourceLearningContext,
+    );
+
+    resolvedOffers = mergeResolvedOffers(resolvedOffers, aiOffers) as typeof resolvedOffers;
+  }
+
+  if (!bodyItem?.textParsing?.aiFallbackAttempted && shouldAttemptAiFallback(resolvedOffers, result)) {
     const aiSourceText = documents
       .filter((document) => ['BODY_MAIN', 'BODY_FORWARDED'].includes(document.kind))
       .map((document) => document.textContent)
@@ -1949,6 +2044,7 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
       }
     }
   }
+
   const finalOfferStatuses: PromotionResult['offerStatus'][] = [];
   const finalOfferReviewReasons: string[] = [];
 
@@ -1990,12 +2086,7 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
         promotionConfidence: offer.promotionConfidence,
         aiAssisted: offer.aiAssisted,
         reviewReason: offer.reviewReason,
-        metadata: {
-          sender: message.from,
-          subject: message.subject ?? null,
-          sourceDocumentKind: sourceDocument?.kind ?? null,
-          sourceDocumentLabel: sourceDocument?.label ?? null,
-        },
+        metadata: buildOfferMetadata(message, sourceDocument, offer),
       },
       create: {
         inboundEmailId: inboundEmail.id,
@@ -2023,12 +2114,7 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
         aiAssisted: offer.aiAssisted,
         reviewReason: offer.reviewReason,
         offerFingerprint,
-        metadata: {
-          sender: message.from,
-          subject: message.subject ?? null,
-          sourceDocumentKind: sourceDocument?.kind ?? null,
-          sourceDocumentLabel: sourceDocument?.label ?? null,
-        },
+        metadata: buildOfferMetadata(message, sourceDocument, offer),
       },
     });
 
@@ -2141,6 +2227,19 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
       processedAt: new Date(),
     },
   });
+
+  if (shouldRunCommercialIntelExtraction(result, triageStatus, documents)) {
+    await processInboundEmailCommercialIntel({
+      inboundEmailId: inboundEmail.id,
+      senderEmail: message.from,
+      subject: message.subject ?? null,
+      documents: documents.map((document) => ({
+        id: document.id,
+        kind: document.kind,
+        textContent: document.textContent,
+      })),
+    });
+  }
 }
 
 export async function stageInboundEmailSafely(

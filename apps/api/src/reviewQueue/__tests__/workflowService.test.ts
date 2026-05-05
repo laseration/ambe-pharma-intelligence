@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { emailIntelligenceAcceptanceFixtures } from '../../acceptance/emailIntelligenceFixtures';
 import {
   createOfferWorkflowService,
   determineWorkflowPriority,
@@ -19,6 +20,8 @@ function createRepositoryHarness() {
   const tradeOpportunityPolicies: Array<Record<string, any>> = [];
   const feedbacks: Array<Record<string, any>> = [];
   const supplierQualifications: Array<Record<string, any>> = [];
+  const supplierPriceLists: Array<Record<string, any>> = [];
+  const supplierPriceItems: Array<Record<string, any>> = [];
   const customers: Array<Record<string, any>> = [];
   const salesRecords: Array<Record<string, any>> = [];
   let idCounter = 0;
@@ -140,6 +143,8 @@ function createRepositoryHarness() {
     tradeOpportunityEvents: tradeOpportunityEvents.map((item) => ({ ...item })),
     tradeOpportunityPolicies: tradeOpportunityPolicies.map((item) => ({ ...item })),
     feedbacks: feedbacks.map((item) => ({ ...item })),
+    supplierPriceLists: supplierPriceLists.map((item) => ({ ...item })),
+    supplierPriceItems: supplierPriceItems.map((item) => ({ ...item })),
     customers: customers.map((item) => ({ ...item })),
     salesRecords: salesRecords.map((item) => ({ ...item })),
   });
@@ -155,6 +160,8 @@ function createRepositoryHarness() {
     tradeOpportunityEvents.splice(0, tradeOpportunityEvents.length, ...snapshot.tradeOpportunityEvents);
     tradeOpportunityPolicies.splice(0, tradeOpportunityPolicies.length, ...snapshot.tradeOpportunityPolicies);
     feedbacks.splice(0, feedbacks.length, ...snapshot.feedbacks);
+    supplierPriceLists.splice(0, supplierPriceLists.length, ...snapshot.supplierPriceLists);
+    supplierPriceItems.splice(0, supplierPriceItems.length, ...snapshot.supplierPriceItems);
     customers.splice(0, customers.length, ...snapshot.customers);
     salesRecords.splice(0, salesRecords.length, ...snapshot.salesRecords);
   };
@@ -171,6 +178,8 @@ function createRepositoryHarness() {
     tradeOpportunityPolicies,
     feedbacks,
     supplierQualifications,
+    supplierPriceLists,
+    supplierPriceItems,
     customers,
     salesRecords,
     makeWorkflowRecord,
@@ -329,6 +338,90 @@ function createRepositoryHarness() {
           id: nextId('buy-decision-event'),
           createdAt: new Date(),
         });
+      },
+      async upsertSupplierPriceItemFromApprovedOffer(input: Record<string, any>) {
+        let supplierPriceList = supplierPriceLists.find(
+          (item) =>
+            item.supplierId === input.supplierId &&
+            item.sourceInboundEmailId === input.inboundEmailId,
+        );
+        if (supplierPriceList) {
+          Object.assign(supplierPriceList, {
+            currencyCode: input.currencyCandidate,
+            notes: `Reviewed approved offer from inbound email ${input.inboundEmailId}; workflow ${input.workflowItemId}; offer ${input.emailDerivedOfferId}`,
+            updatedAt: new Date(),
+          });
+        } else {
+          supplierPriceList = {
+            id: nextId('supplier-price-list'),
+            supplierId: input.supplierId,
+            sourceInboundEmailId: input.inboundEmailId,
+            fileName: `reviewed-email-offer-${input.inboundEmailId}.txt`,
+            fileMimeType: 'message/rfc822',
+            notes: `Reviewed approved offer from inbound email ${input.inboundEmailId}; workflow ${input.workflowItemId}; offer ${input.emailDerivedOfferId}`,
+            currencyCode: input.currencyCandidate,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+          supplierPriceLists.push(supplierPriceList);
+        }
+
+        const promotionFingerprint = [
+          'reviewed-email-offer',
+          input.inboundEmailId,
+          input.emailDerivedOfferId,
+          input.workflowItemId,
+        ].join('|');
+        let supplierPriceItem = supplierPriceItems.find(
+          (item) =>
+            item.supplierPriceListId === supplierPriceList.id &&
+            item.promotionFingerprint === promotionFingerprint,
+        );
+        const data = {
+          supplierId: input.supplierId,
+          productId: input.productId,
+          rawProductName: input.rawProductText,
+          normalizedProductName: input.normalizedProductNameCandidate,
+          unitPrice: input.priceCandidate,
+          currencyCode: input.currencyCandidate,
+          minimumOrderQuantity: input.minimumOrderQuantityCandidate,
+          isAvailable:
+            input.availabilityCandidate
+              ? /available|in stock|instock|ready/i.test(input.availabilityCandidate)
+              : true,
+          rawRow: {
+            source: 'reviewed_inbound_email_offer',
+            inboundEmailId: input.inboundEmailId,
+            emailDerivedOfferId: input.emailDerivedOfferId,
+            workflowItemId: input.workflowItemId,
+            sourceKind: input.sourceKind,
+            sourceBlockText: input.sourceBlockText,
+            aiAssisted: input.aiAssisted,
+            actorType: input.actorType,
+            actorIdentifier: input.actorIdentifier,
+          },
+          updatedAt: new Date(),
+        };
+        const created = !supplierPriceItem;
+        if (supplierPriceItem) {
+          Object.assign(supplierPriceItem, data);
+        } else {
+          supplierPriceItem = {
+            id: nextId('supplier-price-item'),
+            supplierPriceListId: supplierPriceList.id,
+            promotionFingerprint,
+            createdAt: new Date(),
+            ...data,
+          };
+          supplierPriceItems.push(supplierPriceItem);
+        }
+
+        return {
+          supplierPriceListId: supplierPriceList.id,
+          supplierPriceItemId: supplierPriceItem.id,
+          created,
+          skippedReason: null,
+        };
       },
       async findBuyExecutionByDecisionId(buyDecisionId: string) {
         return (buyExecutions.find((item) => item.buyDecisionId === buyDecisionId) ?? null) as never;
@@ -771,6 +864,194 @@ test('approving a workflow item creates exactly one buy decision and reapproval 
     harness.buyDecisionEvents.filter((event) => event.actionType === 'CREATED').length,
     1,
   );
+});
+
+test('approving AI-assisted reviewed offer with resolved product and supplier creates supplier price intelligence', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  const workflow = harness.makeWorkflowRecord({
+    aiAssisted: true,
+    sourceReviewReason: 'ai_candidate_review_only',
+  });
+  workflow.emailDerivedOffer.metadata = {
+    sender: 'pricing@supplier.co',
+    subject: 'Offer',
+  };
+  harness.workflowItems.push(workflow);
+
+  const approvalResult = await service.approveToBuyWithOutcome({
+    workflowItemId: workflow.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+
+  assert.equal(harness.supplierPriceLists.length, 1);
+  assert.equal(harness.supplierPriceItems.length, 1);
+  assert.equal(harness.supplierPriceItems[0]?.supplierId, 'supplier-1');
+  assert.equal(harness.supplierPriceItems[0]?.productId, 'product-1');
+  assert.equal(harness.supplierPriceItems[0]?.rawProductName, 'Amlodipine 5mg tabs 28');
+  assert.equal(harness.supplierPriceItems[0]?.currencyCode, 'GBP');
+  assert.equal(harness.supplierPriceItems[0]?.rawRow?.inboundEmailId, 'email-1');
+  assert.equal(harness.supplierPriceItems[0]?.rawRow?.emailDerivedOfferId, 'offer-1');
+  assert.equal(harness.supplierPriceItems[0]?.rawRow?.workflowItemId, workflow.id);
+  assert.equal(harness.supplierPriceItems[0]?.rawRow?.sourceKind, 'STRICT_BODY_MAIN');
+  assert.equal(harness.supplierPriceItems[0]?.rawRow?.aiAssisted, true);
+  assert.equal(harness.supplierPriceItems[0]?.rawRow?.actorType, 'USER');
+  assert.equal(harness.supplierPriceItems[0]?.rawRow?.actorIdentifier, 'buyer-1');
+  assert.equal(approvalResult.outcome.supplierPriceIntelligence.created, true);
+  assert.equal(
+    approvalResult.outcome.supplierPriceIntelligence.supplierPriceItemId,
+    harness.supplierPriceItems[0]?.id,
+  );
+});
+
+test('acceptance/demo: approving messy AI-assisted supplier offer creates supplier price intelligence idempotently', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  const fixture = emailIntelligenceAcceptanceFixtures.messyAiSupplierOffer;
+  const workflow = harness.makeWorkflowRecord({
+    aiAssisted: true,
+    sourceKind: 'AI_PARAGRAPH_OFFER',
+    sourceReviewReason: 'ai_candidate_review_only',
+  });
+  const offer = workflow.emailDerivedOffer as Record<string, any>;
+  offer.aiAssisted = true;
+  offer.sourceKind = 'AI_PARAGRAPH_OFFER';
+  offer.sourceBlockText = fixture.bodyText;
+  offer.rawProductText = 'Amlodipine 5mg tabs 28';
+  offer.priceCandidate = { toString: () => '8.40' };
+  offer.currencyCandidate = 'GBP';
+  offer.minimumOrderQuantityCandidate = 20;
+  offer.availabilityCandidate = 'limited stock';
+  harness.workflowItems.push(workflow);
+
+  const firstApproval = await service.approveToBuyWithOutcome({
+    workflowItemId: workflow.id,
+    actorType: 'OPERATOR',
+    actorIdentifier: 'acceptance-demo',
+  });
+  const secondApproval = await service.approveToBuyWithOutcome({
+    workflowItemId: workflow.id,
+    actorType: 'OPERATOR',
+    actorIdentifier: 'acceptance-demo',
+  });
+
+  assert.equal(harness.supplierPriceItems.length, 1);
+  assert.equal(firstApproval.outcome.supplierPriceIntelligence.created, true);
+  assert.equal(secondApproval.outcome.supplierPriceIntelligence.created, false);
+  assert.equal(harness.supplierPriceItems[0]?.rawProductName, 'Amlodipine 5mg tabs 28');
+  assert.equal(harness.supplierPriceItems[0]?.minimumOrderQuantity, 20);
+  assert.equal(harness.supplierPriceItems[0]?.rawRow?.aiAssisted, true);
+  assert.equal(harness.supplierPriceItems[0]?.rawRow?.actorIdentifier, 'acceptance-demo');
+});
+
+test('re-approving the same workflow item does not duplicate supplier price intelligence', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  const workflow = harness.makeWorkflowRecord({
+    aiAssisted: true,
+    sourceReviewReason: 'ai_candidate_review_only',
+  });
+  harness.workflowItems.push(workflow);
+
+  await service.approveToBuy({
+    workflowItemId: workflow.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+  const secondApproval = await service.approveToBuyWithOutcome({
+    workflowItemId: workflow.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+
+  assert.equal(harness.supplierPriceLists.length, 1);
+  assert.equal(harness.supplierPriceItems.length, 1);
+  assert.equal(secondApproval.outcome.supplierPriceIntelligence.created, false);
+  assert.equal(
+    secondApproval.outcome.supplierPriceIntelligence.supplierPriceItemId,
+    harness.supplierPriceItems[0]?.id,
+  );
+});
+
+test('approved reviewed offer skips supplier price intelligence with clear reason when required fields are missing', async () => {
+  const scenarios = [
+    {
+      name: 'missing product',
+      mutate: (workflow: Record<string, any>) => {
+        workflow.emailDerivedOffer.resolutionCandidates =
+          workflow.emailDerivedOffer.resolutionCandidates.filter(
+            (candidate: Record<string, any>) => candidate.entityType !== 'PRODUCT',
+          );
+      },
+      expectedReason: 'missing_product',
+    },
+    {
+      name: 'missing supplier',
+      mutate: (workflow: Record<string, any>) => {
+        workflow.emailDerivedOffer.resolutionCandidates =
+          workflow.emailDerivedOffer.resolutionCandidates.filter(
+            (candidate: Record<string, any>) => candidate.entityType !== 'SUPPLIER',
+          );
+      },
+      expectedReason: 'missing_supplier',
+    },
+    {
+      name: 'missing price',
+      mutate: (workflow: Record<string, any>) => {
+        workflow.emailDerivedOffer.priceCandidate = null;
+      },
+      expectedReason: 'missing_price',
+    },
+    {
+      name: 'missing currency',
+      mutate: (workflow: Record<string, any>) => {
+        workflow.emailDerivedOffer.currencyCandidate = null;
+      },
+      expectedReason: 'missing_currency',
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const harness = createRepositoryHarness();
+    const service = createOfferWorkflowService(harness.repository as never);
+    const workflow = harness.makeWorkflowRecord();
+    scenario.mutate(workflow);
+    harness.workflowItems.push(workflow);
+
+    const approvalResult = await service.approveToBuyWithOutcome({
+      workflowItemId: workflow.id,
+      actorType: 'USER',
+      actorIdentifier: 'buyer-1',
+    });
+
+    assert.equal(
+      approvalResult.outcome.supplierPriceIntelligence.skippedReason,
+      scenario.expectedReason,
+      scenario.name,
+    );
+    assert.equal(harness.supplierPriceLists.length, 0, scenario.name);
+    assert.equal(harness.supplierPriceItems.length, 0, scenario.name);
+    assert.equal(harness.buyDecisions.length, 1, scenario.name);
+  }
+});
+
+test('approved reviewed offer creates supplier price intelligence visible to opportunity regeneration inputs', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  const workflow = harness.makeWorkflowRecord();
+  harness.workflowItems.push(workflow);
+
+  await service.approveToBuyWithOutcome({
+    workflowItemId: workflow.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+
+  assert.equal(harness.supplierPriceItems.length, 1);
+  assert.equal(harness.supplierPriceItems[0]?.productId, 'product-1');
+  assert.equal(harness.supplierPriceItems[0]?.supplierId, 'supplier-1');
+  assert.equal(harness.supplierPriceItems[0]?.unitPrice.toString(), '8.40');
 });
 
 test('approved offer with recent profitable sales creates one review-first trade opportunity', async () => {

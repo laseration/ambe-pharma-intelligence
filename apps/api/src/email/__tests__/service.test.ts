@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 
+import { openAiOfferParser } from '../../aiParsing/service';
 import { db } from '../../lib/db';
 import { listInboundEmailInboxItems } from '../inbound/service';
 import { previewEmailBodyParsing } from '../service';
@@ -16,7 +17,18 @@ function stubMethod<
   });
 }
 
-test('email body preview preserves canonical raw body text and compatibility alias', async () => {
+test('email body preview preserves canonical raw body text and compatibility alias', async (t) => {
+  stubMethod(
+    t,
+    openAiOfferParser,
+    'parseText',
+    (async () => ({
+      status: 'disabled',
+      reason: 'OpenAI fallback parser disabled for this unit test.',
+      decision: 'disabled',
+    })) as typeof openAiOfferParser.parseText,
+  );
+
   const bodyText = 'Metformin 500mg 28 GBP 3.10';
   const result = await previewEmailBodyParsing(bodyText);
 

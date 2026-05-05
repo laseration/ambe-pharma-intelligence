@@ -156,10 +156,11 @@ Email-derived offers are only auto-promoted when all of the following are strong
 - product text is explicit
 - price and currency are explicit
 - supplier resolution is strong
+- product resolution selected an existing canonical product
 - entity resolution confidence is high
 - AI was not required for the extracted offer
 
-Everything else remains staged or review-required. AI-generated candidates never write canonical business records directly.
+Everything else remains staged or review-required. AI-generated candidates never write canonical business records directly before review. After an operator explicitly approves a reviewed offer to buy, the approved quote can be persisted as canonical supplier price intelligence when product, supplier, price, and currency are resolved.
 
 ### Offer Review Workflow
 
@@ -186,7 +187,19 @@ Workflow actions are internal-ops only:
 - close
 - add note
 
-This workflow sits on top of staged offers. It does not auto-promote canonical supplier pricing, and it is not a generic BPM engine.
+This workflow sits on top of staged offers. AI-assisted offers remain review-first. Approval to buy creates or updates the approved quote snapshot and, when the required fields are resolved, creates or reuses the linked canonical supplier price intelligence. It is not a generic BPM engine.
+
+### Commercial Intel From Email
+
+Inbound email also has a separate commercial-intel extraction path for messy internal notes such as supplier reliability warnings, buyer demand, manual buy/sell triggers, market notes, expiry rules, product advice, and contact notes.
+
+Commercial intel is stored as `CommercialIntelItem`, not `EmailDerivedOffer`. It is review-first and does not automatically buy stock, send emails, create products, create suppliers, change supplier trust, or write supplier price intelligence.
+
+`OPENAI_PARSER_ENABLED` controls this commercial-intel extraction as well as supplier-offer parser fallback. Supplier-offer parsing remains separate: quote-like product+price rows still go through the existing offer parser and staging pipeline.
+
+Internal API routes are available under `/api/commercial-intel` for listing, detail lookup, approve/reject/expire actions, and parse preview.
+
+Current first pass stores and reviews approved intel. Approved, non-expired intel can appear as read-only opportunity context, but it does not change opportunity scores.
 
 ### Buy Decisions And Supplier Qualification
 
@@ -261,9 +274,10 @@ This is intentionally not a full procurement or compliance system yet. It does n
 AI remains a last resort:
 
 - deterministic extraction runs first
+- `OPENAI_PARSER_ENABLED` controls OpenAI fallback inside the supplier-offer parser and commercial-intel extraction
 - AI is only used for unclear but commercially relevant body content
 - AI outputs are staged as candidate offers
-- AI does not write Product, Supplier, SupplierPriceItem, InventorySnapshot, or SalesRecord directly
+- AI does not write Product, Supplier, SupplierPriceItem, InventorySnapshot, or SalesRecord before human approval
 - sparse/null-heavy extraction is preferred over guessing
 
 ### PDF/Image Handling
@@ -275,7 +289,7 @@ AI remains a last resort:
 
 ### Email Triage Controls
 
-Inbound email now applies a deterministic triage step before any AI body escalation. Useful env vars:
+Inbound email now applies a deterministic triage step before review-budget decisions. These legacy/review-triage env vars do not control parser fallback:
 
 - `OPENAI_EMAIL_REVIEW_ENABLED`
 - `OPENAI_EMAIL_REVIEW_DAILY_LIMIT`

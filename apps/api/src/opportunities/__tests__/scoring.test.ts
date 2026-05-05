@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { buildOpportunityConfig } from '../config';
 import { auditOpportunityScoring, scoreOpportunityCandidates } from '../scoring';
+import type { CommercialIntelContextItem } from '../commercialIntelContext';
 import type { ScoringContext } from '../types';
 
 const baseNow = new Date('2026-04-20T00:00:00.000Z');
@@ -49,6 +50,100 @@ const tradingConfig = {
 
 const tradingBuyMarginRule =
   'Trading-mode estimated sell-side margin is available and not weak for BUY';
+
+function createCommercialIntelItem(
+  overrides: Partial<CommercialIntelContextItem> = {},
+): CommercialIntelContextItem {
+  return {
+    id: 'intel-1',
+    itemType: 'MANUAL_BUY_TRIGGER',
+    productText: 'Amlodipine 5mg Tablets',
+    productId: 'product-1',
+    supplierName: null,
+    supplierId: null,
+    customerName: null,
+    priceThreshold: null,
+    currency: null,
+    availabilitySignal: null,
+    riskLevel: null,
+    urgency: null,
+    signalEffect: null,
+    evidenceText: 'If anyone offers Amlodipine 5mg below GBP 2.10, buy quickly.',
+    confidence: 'HIGH',
+    validUntil: null,
+    createdAt: '2026-04-19T00:00:00.000Z',
+    approvedAt: '2026-04-19T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+test('adds approved commercial intel context to candidate metadata without changing score', () => {
+  const baseContext = createContext({});
+  const [baseBuyCandidate] = scoreOpportunityCandidates(baseContext, stockholdingConfig)
+    .filter((candidate) => candidate.type === 'BUY');
+  const [intelBuyCandidate] = scoreOpportunityCandidates(
+    {
+      ...baseContext,
+      commercialIntelContext: {
+        productLinked: [createCommercialIntelItem()],
+        supplierLinked: [],
+        global: [],
+        generatedAt: '2026-04-20T00:00:00.000Z',
+      },
+    },
+    stockholdingConfig,
+  ).filter((candidate) => candidate.type === 'BUY');
+
+  assert.ok(baseBuyCandidate);
+  assert.ok(intelBuyCandidate);
+  assert.equal(intelBuyCandidate.score, baseBuyCandidate.score);
+  assert.match(
+    intelBuyCandidate.description,
+    /Approved commercial intel has a manual buy trigger for this product\./,
+  );
+  assert.deepEqual(
+    (intelBuyCandidate.metadata as { commercialIntelContext?: { productLinked?: unknown[] } })
+      .commercialIntelContext?.productLinked?.[0],
+    createCommercialIntelItem(),
+  );
+});
+
+test('adds supplier reliability commercial intel as supplier-linked context and audit metadata', () => {
+  const context = createContext({
+    commercialIntelContext: {
+      productLinked: [],
+      supplierLinked: [
+        createCommercialIntelItem({
+          id: 'intel-supplier-1',
+          itemType: 'SUPPLIER_RELIABILITY_NOTE',
+          productText: null,
+          productId: null,
+          supplierName: 'Medline',
+          supplierId: 'supplier-1',
+          evidenceText: 'Do not trust Medline on insulin, they quote but never deliver.',
+        }),
+      ],
+      global: [],
+      generatedAt: '2026-04-20T00:00:00.000Z',
+    },
+  });
+  const [buyCandidate] = scoreOpportunityCandidates(context, stockholdingConfig)
+    .filter((candidate) => candidate.type === 'BUY');
+  const audit = auditOpportunityScoring(context, stockholdingConfig);
+
+  assert.ok(buyCandidate);
+  assert.match(
+    buyCandidate.description,
+    /Approved commercial intel includes a supplier reliability warning\./,
+  );
+  assert.equal(
+    (buyCandidate.metadata as {
+      commercialIntelContext?: { supplierLinked?: Array<{ itemType?: string }> };
+    }).commercialIntelContext?.supplierLinked?.[0]?.itemType,
+    'SUPPLIER_RELIABILITY_NOTE',
+  );
+  assert.equal(audit.commercialIntelContext?.supplierLinked[0]?.itemType, 'SUPPLIER_RELIABILITY_NOTE');
+});
 
 test('mode-specific opportunity thresholds split trading demand and margin inputs', () => {
   assert.equal(stockholdingConfig.healthyDemandUnits30d, 40);

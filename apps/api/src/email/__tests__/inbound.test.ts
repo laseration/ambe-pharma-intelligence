@@ -1004,12 +1004,29 @@ test('body-only known supplier structured price list is triaged as auto-processe
   assert.equal(result.items[0]?.processingStatus, 'RECEIVED');
 });
 
-test('body-only known supplier messy commercial email is marked ai-review-eligible', async () => {
+test('body-only known supplier messy commercial email keeps parser fallback separate from email review', async () => {
   const service = createEmailInboundService({
     allowedSenders: ['supplier.co'],
     supplierMappings: [{ pattern: '@supplier.co', supplierName: 'Supplier Co' }],
     emailReviewEnabled: false,
     logger: createLogger(),
+    parseTextMessage: async (rawText) => ({
+      totalLines: 1,
+      candidateLines: 0,
+      parsedRows: [],
+      skippedLines: [],
+      overallConfidence: 'LOW',
+      reviewRecommended: true,
+      reviewRequired: true,
+      rawBodyText: rawText,
+      rawBody: rawText,
+      parsingSource: 'DETERMINISTIC',
+      aiFallbackAttempted: true,
+      aiFallbackUsed: false,
+      aiFallbackDecision: 'disabled',
+      aiFallbackRejectedReason: 'OpenAI fallback parsing is disabled.',
+      aiPromptVersion: null,
+    }),
   });
 
   const result = await service.ingestMessage({
@@ -1022,6 +1039,173 @@ test('body-only known supplier messy commercial email is marked ai-review-eligib
   });
 
   assert.equal(result.ignored, false);
-  assert.equal(result.items[0]?.triageStatus, 'MANUAL_REVIEW_REQUIRED');
-  assert.equal(result.items[0]?.aiBlockedReason, 'email_ai_review_disabled');
+  assert.equal(result.items[0]?.triageStatus, 'AI_REVIEW_ELIGIBLE');
+  assert.notEqual(result.items[0]?.aiBlockedReason, 'email_ai_review_disabled');
+  assert.equal(result.items[0]?.textParsing?.aiFallbackUsed, false);
+});
+
+test('body-only clean commercial email parses without OpenAI fallback', async () => {
+  let parserCalls = 0;
+  const bodyText = [
+    'Amlodipine 5mg tabs 28 - 8.40 GBP',
+    'Paracetamol 500mg caplets 16 - 1.25 GBP',
+    'Metformin 500mg tablets 28 - 3.10 GBP',
+  ].join('\n');
+  const service = createEmailInboundService({
+    allowedSenders: ['supplier.co'],
+    supplierMappings: [{ pattern: '@supplier.co', supplierName: 'Supplier Co' }],
+    logger: createLogger(),
+    parseTextMessage: async (rawText) => {
+      parserCalls += 1;
+      const rows = [
+        ['Amlodipine 5mg tabs 28', '5mg', 'tabs', '28', 8.4],
+        ['Paracetamol 500mg caplets 16', '500mg', 'caplets', '16', 1.25],
+        ['Metformin 500mg tablets 28', '500mg', 'tablets', '28', 3.1],
+      ] as const;
+      return {
+        totalLines: rows.length,
+        candidateLines: rows.length,
+        parsedRows: rows.map(([product, strength, formulation, packSize, price], index) => ({
+          lineNumber: index + 1,
+          rawLine: rawText.split('\n')[index] ?? product,
+          rawProductName: product,
+          rawProductText: product,
+          strength,
+          formulation,
+          packSize,
+          price,
+          currencyCode: 'GBP',
+          productCandidates: buildProductCandidates(product),
+          confidence: 'HIGH',
+          explanation: 'Line has strong product detail and explicit price/currency.',
+        })),
+        skippedLines: [],
+        overallConfidence: 'HIGH',
+        reviewRecommended: false,
+        reviewRequired: false,
+        rawBodyText: rawText,
+        rawBody: rawText,
+        parsingSource: 'DETERMINISTIC',
+        aiFallbackAttempted: false,
+        aiFallbackUsed: false,
+        aiPromptVersion: null,
+      };
+    },
+  });
+
+  const result = await service.ingestMessage({
+    from: 'pricing@supplier.co',
+    subject: 'Price list April',
+    bodyText,
+  });
+
+  assert.equal(parserCalls, 1);
+  assert.equal(result.items[0]?.triageStatus, 'AUTO_PROCESSED');
+  assert.equal(result.items[0]?.processingStatus, 'RECEIVED');
+  assert.equal(result.items[0]?.textParsing?.parsingSource, 'DETERMINISTIC');
+  assert.equal(result.items[0]?.textParsing?.aiFallbackUsed, false);
+  assert.equal(result.items[0]?.textParsing?.parsedRows.length, 3);
+});
+
+test('body-only messy commercial email uses parser fallback even when email review summaries are disabled', async () => {
+  let parserCalls = 0;
+  const bodyText = 'We can do Paracetamol 500mg caplets 16 at 1.25 GBP if useful, MOQ 20.';
+  const service = createEmailInboundService({
+    allowedSenders: ['supplier.co'],
+    supplierMappings: [{ pattern: '@supplier.co', supplierName: 'Supplier Co' }],
+    emailReviewEnabled: false,
+    logger: createLogger(),
+    parseTextMessage: async (rawText) => {
+      parserCalls += 1;
+      return {
+        totalLines: 1,
+        candidateLines: 1,
+        parsedRows: [
+          {
+            lineNumber: 1,
+            rawLine: rawText,
+            evidenceText: 'Paracetamol 500mg caplets 16 at 1.25 GBP if useful, MOQ 20.',
+            rawProductName: 'Paracetamol 500mg caplets 16',
+            rawProductText: 'Paracetamol 500mg caplets 16',
+            strength: '500mg',
+            formulation: 'caplets',
+            packSize: '16',
+            price: 1.25,
+            currencyCode: 'GBP',
+            availability: 'if useful',
+            minimumOrderQuantity: 20,
+            manufacturer: null,
+            sourceSegment: 'BODY_MAIN',
+            productCandidates: buildProductCandidates('Paracetamol 500mg caplets 16'),
+            confidence: 'MEDIUM',
+            explanation: 'AI extracted explicit commercial fields from prose.',
+          },
+        ],
+        skippedLines: [],
+        overallConfidence: 'MEDIUM',
+        reviewRecommended: true,
+        reviewRequired: true,
+        rawBodyText: rawText,
+        rawBody: rawText,
+        parsingSource: 'OPENAI_FALLBACK',
+        aiFallbackAttempted: true,
+        aiFallbackUsed: true,
+        aiFallbackDecision: 'accepted',
+        aiPromptVersion: 'supplier-offer-v3',
+        parsingReason: 'Used OpenAI fallback because deterministic parsing was weak or unclear.',
+      };
+    },
+  });
+
+  const result = await service.ingestMessage({
+    from: 'pricing@supplier.co',
+    subject: 'Offer this week',
+    bodyText,
+  });
+
+  assert.equal(parserCalls, 1);
+  assert.equal(result.items[0]?.processingStatus, 'NEEDS_REVIEW');
+  assert.notEqual(result.items[0]?.aiBlockedReason, 'email_ai_review_disabled');
+  assert.equal(result.items[0]?.aiEscalated, false);
+  assert.equal(result.items[0]?.textParsing?.parsingSource, 'OPENAI_FALLBACK');
+  assert.equal(result.items[0]?.textParsing?.aiFallbackUsed, true);
+  assert.equal(result.items[0]?.textParsing?.parsedRows[0]?.minimumOrderQuantity, 20);
+});
+
+test('body-only parser disabled result falls back safely without email review gating', async () => {
+  const service = createEmailInboundService({
+    allowedSenders: ['supplier.co'],
+    supplierMappings: [{ pattern: '@supplier.co', supplierName: 'Supplier Co' }],
+    emailReviewEnabled: false,
+    logger: createLogger(),
+    parseTextMessage: async (rawText) => ({
+      totalLines: 1,
+      candidateLines: 0,
+      parsedRows: [],
+      skippedLines: [],
+      overallConfidence: 'LOW',
+      reviewRecommended: true,
+      reviewRequired: true,
+      rawBodyText: rawText,
+      rawBody: rawText,
+      parsingSource: 'DETERMINISTIC',
+      aiFallbackAttempted: true,
+      aiFallbackUsed: false,
+      aiFallbackDecision: 'disabled',
+      aiFallbackRejectedReason: 'OpenAI fallback parsing is disabled.',
+      aiPromptVersion: null,
+      parsingReason: 'Kept deterministic parsing because OpenAI fallback is disabled.',
+    }),
+  });
+
+  const result = await service.ingestMessage({
+    from: 'pricing@supplier.co',
+    subject: 'Offer this week',
+    bodyText: 'We can do Paracetamol 500mg caplets 16 at 1.25 GBP if useful.',
+  });
+
+  assert.equal(result.ignored, false);
+  assert.equal(result.items[0]?.aiBlockedReason, 'OpenAI fallback parsing is disabled.');
+  assert.equal(result.items[0]?.textParsing?.aiFallbackUsed, false);
+  assert.equal(result.items[0]?.textParsing?.parsedRows.length, 0);
 });

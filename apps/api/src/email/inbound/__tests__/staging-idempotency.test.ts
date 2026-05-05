@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 
+import { emailIntelligenceAcceptanceFixtures } from '../../../acceptance/emailIntelligenceFixtures';
 import { db } from '../../../lib/db';
 import { env } from '../../../config/env';
+import { buildProductCandidates } from '../../../imports/normalization';
 import { createReviewQueueService } from '../../../reviewQueue/service';
+import { createEmailInboundService } from '../../inbound/service';
 import { mergeResolvedOffers, persistPromotion, stageInboundEmail } from '../pipeline';
 import type { EmailInboundResult } from '../types';
 
@@ -42,6 +45,14 @@ function createInboundResult(overrides?: Partial<EmailInboundResult['items'][num
         ...overrides,
       },
     ],
+  };
+}
+
+function createLogger() {
+  return {
+    info: () => undefined,
+    warn: () => undefined,
+    error: () => undefined,
   };
 }
 
@@ -597,6 +608,28 @@ function installDbMocks(t: TestContext) {
     return created;
   });
 
+  stubMethod(db.supplierPriceItem, 'findUnique', async ({ where }: any) => {
+    return (
+      state.priceItems.find(
+        (item) =>
+          item.supplierPriceListId === where.supplierPriceListId_promotionFingerprint.supplierPriceListId &&
+          item.promotionFingerprint === where.supplierPriceListId_promotionFingerprint.promotionFingerprint,
+      ) ?? null
+    );
+  });
+
+  stubMethod(db.supplierPriceItem, 'update', async ({ where, data }: any) => {
+    const existing = state.priceItems.find((item) => item.id === where.id);
+    Object.assign(existing ?? {}, data);
+    return existing;
+  });
+
+  stubMethod(db.supplierPriceItem, 'create', async ({ data }: any) => {
+    const created = { id: nextId('price-item'), ...data };
+    state.priceItems.push(created);
+    return created;
+  });
+
   return state;
 }
 
@@ -634,12 +667,268 @@ test('same inbound email processed twice does not duplicate staged offers', asyn
   assert.equal(state.workflowEvents.filter((event) => event.actionType === 'CREATED').length, 2);
 });
 
+test('AI parser rows from body-only inbound email are staged as offer candidates', async (t) => {
+  const state = installDbMocks(t);
+  const originalMappings = env.emailInboundSupplierMappings;
+  const originalAllowedSenders = env.emailInboundAllowedSenders;
+
+  env.emailInboundSupplierMappings = [{ pattern: 'pricing@supplier.co', supplierName: 'Supplier Co' }];
+  env.emailInboundAllowedSenders = ['pricing@supplier.co'];
+
+  t.after(() => {
+    env.emailInboundSupplierMappings = originalMappings;
+    env.emailInboundAllowedSenders = originalAllowedSenders;
+  });
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'graph-ai-1',
+      messageId: 'internet-ai-1',
+      from: 'pricing@supplier.co',
+      subject: 'Offer',
+      bodyText: 'Please review the below offer.',
+    },
+    createInboundResult({
+      processingStatus: 'NEEDS_REVIEW',
+      triageStatus: 'AI_REVIEW_ELIGIBLE',
+      parserConfidence: 'MEDIUM',
+      aiEligible: true,
+      textParsing: {
+        totalLines: 1,
+        candidateLines: 1,
+        parsedRows: [
+          {
+            lineNumber: 1,
+            rawLine: 'Paracetamol 500mg caplets 16 at 1.25 GBP, MOQ 20.',
+            evidenceText: 'Paracetamol 500mg caplets 16 at 1.25 GBP, MOQ 20.',
+            rawProductName: 'Paracetamol 500mg caplets 16',
+            rawProductText: 'Paracetamol 500mg caplets 16',
+            strength: '500mg',
+            formulation: 'caplets',
+            packSize: '16',
+            price: 1.25,
+            currencyCode: 'GBP',
+            availability: null,
+            minimumOrderQuantity: 20,
+            manufacturer: null,
+            sourceSegment: 'BODY_MAIN',
+            productCandidates: buildProductCandidates('Paracetamol 500mg caplets 16'),
+            confidence: 'MEDIUM',
+            explanation: 'AI extracted explicit commercial fields from prose.',
+          },
+        ],
+        skippedLines: [],
+        overallConfidence: 'MEDIUM',
+        reviewRecommended: true,
+        reviewRequired: true,
+        rawBodyText: 'Please review the below offer.',
+        rawBody: 'Please review the below offer.',
+        parsingSource: 'OPENAI_FALLBACK',
+        aiFallbackAttempted: true,
+        aiFallbackUsed: true,
+        aiFallbackDecision: 'accepted',
+        aiPromptVersion: 'supplier-offer-v3',
+        parsingReason: 'Used OpenAI fallback because deterministic parsing was weak or unclear.',
+      },
+    }),
+  );
+
+  assert.equal(state.offers.length, 1);
+  assert.equal(state.offers[0]?.aiAssisted, true);
+  assert.equal(state.offers[0]?.rawProductText, 'Paracetamol 500mg caplets 16');
+  assert.equal(state.offers[0]?.priceCandidate.toString(), '1.25');
+  assert.equal(state.offers[0]?.currencyCandidate, 'GBP');
+  assert.equal(state.offers[0]?.minimumOrderQuantityCandidate, 20);
+  assert.equal(state.offers[0]?.status, 'REVIEW_REQUIRED');
+  assert.equal(state.offers[0]?.reviewReason, 'ai_candidate_review_only');
+  assert.equal(state.offers[0]?.metadata.parsingSource, 'OPENAI_FALLBACK');
+  assert.equal(state.offers[0]?.metadata.aiFallbackUsed, true);
+  assert.equal(state.offers[0]?.metadata.aiPromptVersion, 'supplier-offer-v3');
+  assert.equal(state.priceItems.length, 0);
+  assert.equal(state.runs.some((run) => run.method === 'AI_FALLBACK'), true);
+  assert.equal(
+    state.evidences.some(
+      (evidence) =>
+        evidence.evidenceType === 'ai_candidate' &&
+        evidence.rawText === 'Paracetamol 500mg caplets 16 at 1.25 GBP, MOQ 20.',
+    ),
+    true,
+  );
+});
+
+test('low-confidence AI parser result goes to review with extracted fields filled', async (t) => {
+  const state = installDbMocks(t);
+  const originalMappings = env.emailInboundSupplierMappings;
+  const originalAllowedSenders = env.emailInboundAllowedSenders;
+
+  env.emailInboundSupplierMappings = [{ pattern: 'pricing@supplier.co', supplierName: 'Supplier Co' }];
+  env.emailInboundAllowedSenders = ['pricing@supplier.co'];
+
+  t.after(() => {
+    env.emailInboundSupplierMappings = originalMappings;
+    env.emailInboundAllowedSenders = originalAllowedSenders;
+  });
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'graph-ai-low',
+      messageId: 'internet-ai-low',
+      from: 'pricing@supplier.co',
+      subject: 'Offer',
+      bodyText: 'Please review the below note.',
+    },
+    createInboundResult({
+      processingStatus: 'NEEDS_REVIEW',
+      triageStatus: 'AI_REVIEW_ELIGIBLE',
+      parserConfidence: 'LOW',
+      aiEligible: true,
+      textParsing: {
+        totalLines: 1,
+        candidateLines: 1,
+        parsedRows: [
+          {
+            lineNumber: 1,
+            rawLine: 'Metformin around 3.10 GBP.',
+            evidenceText: 'Metformin around 3.10 GBP',
+            rawProductName: 'Metformin',
+            rawProductText: 'Metformin',
+            strength: null,
+            formulation: null,
+            packSize: null,
+            price: 3.1,
+            currencyCode: 'GBP',
+            availability: null,
+            minimumOrderQuantity: null,
+            manufacturer: null,
+            sourceSegment: 'UNKNOWN',
+            productCandidates: buildProductCandidates('Metformin'),
+            confidence: 'LOW',
+            explanation: 'AI extracted a weak but explicit product and price.',
+          },
+        ],
+        skippedLines: [],
+        overallConfidence: 'LOW',
+        reviewRecommended: true,
+        reviewRequired: true,
+        rawBodyText: 'Please review the below note.',
+        rawBody: 'Please review the below note.',
+        parsingSource: 'OPENAI_FALLBACK',
+        aiFallbackAttempted: true,
+        aiFallbackUsed: true,
+        aiFallbackDecision: 'accepted',
+        aiPromptVersion: 'supplier-offer-v3',
+      },
+    }),
+  );
+
+  assert.equal(state.offers.length, 1);
+  assert.equal(state.offers[0]?.status, 'REVIEW_REQUIRED');
+  assert.equal(state.offers[0]?.reviewReason, 'ai_candidate_review_only');
+  assert.equal(state.offers[0]?.aiAssisted, true);
+  assert.equal(state.offers[0]?.rawProductText, 'Metformin');
+  assert.equal(state.offers[0]?.priceCandidate.toString(), '3.1');
+  assert.equal(state.offers[0]?.currencyCandidate, 'GBP');
+  assert.equal(state.offers[0]?.metadata.parserConfidence, 'LOW');
+  assert.equal(state.workflowItems.length, 1);
+  assert.equal(state.priceItems.length, 0);
+});
+
+test('deterministic clean email with selected existing product can auto-promote to SupplierPriceItem', async (t) => {
+  const state = installDbMocks(t);
+  state.suppliers.push({
+    id: 'supplier-1',
+    name: 'Supplier Co',
+    normalizedName: 'supplier co',
+  });
+  state.products.push({
+    id: 'product-1',
+    name: 'Amlodipine 5mg tabs 28',
+    normalizedName: 'amlodipine 5mg tabs 28',
+    baseName: 'amlodipine',
+    manufacturer: null,
+  });
+  seedStagedOffer(state, 'offer-clean', 'email-clean');
+
+  const result = await persistPromotion('email-clean', 'offer-clean', createResolvedOffer());
+
+  assert.deepEqual(result, {
+    offerStatus: 'AUTO_PROMOTED',
+    decisionStatus: 'AUTO_PROMOTED',
+    reviewReason: null,
+  });
+  assert.equal(state.offers.length, 1);
+  assert.equal(state.offers[0]?.status, 'AUTO_PROMOTED', state.offers[0]?.reviewReason);
+  assert.equal(state.promotionDecisions[0]?.status, 'AUTO_PROMOTED');
+  assert.equal(state.priceLists.length, 1);
+  assert.equal(state.priceItems.length, 1);
+  assert.equal(state.priceItems[0]?.supplierId, 'supplier-1');
+  assert.equal(state.priceItems[0]?.productId, 'product-1');
+  assert.equal(state.workflowItems.length, 0);
+});
+
+test('auto-promotion is blocked when no selected productId exists', async (t) => {
+  const state = installDbMocks(t);
+  state.suppliers.push({
+    id: 'supplier-1',
+    name: 'Supplier Co',
+    normalizedName: 'supplier co',
+  });
+  seedStagedOffer(state, 'offer-no-product', 'email-no-product', {
+    resolutionCandidates: [
+      {
+        entityType: 'SUPPLIER' as const,
+        candidateId: 'supplier-1',
+        candidateName: 'Supplier Co',
+        confidence: 88,
+        reason: 'sender_mapping',
+        selected: true,
+      },
+    ],
+  });
+
+  const result = await persistPromotion(
+    'email-no-product',
+    'offer-no-product',
+    createResolvedOffer({
+      resolutionCandidates: [
+        {
+          entityType: 'SUPPLIER' as const,
+          candidateId: 'supplier-1',
+          candidateName: 'Supplier Co',
+          confidence: 88,
+          reason: 'sender_mapping',
+          selected: true,
+        },
+      ],
+    }),
+  );
+
+  assert.deepEqual(result, {
+    offerStatus: 'REVIEW_REQUIRED',
+    decisionStatus: 'REVIEW_REQUIRED',
+    reviewReason: 'weak_product_match',
+  });
+  assert.equal(state.offers[0]?.status, 'REVIEW_REQUIRED');
+  assert.equal(state.offers[0]?.reviewReason, 'weak_product_match');
+  assert.equal(state.priceLists.length, 0);
+  assert.equal(state.priceItems.length, 0);
+});
+
 test('persistPromotion is idempotent and reuses one supplier price list per inbound email batch', async (t) => {
   const state = installDbMocks(t);
   state.suppliers.push({
     id: 'supplier-1',
     name: 'Supplier Co',
     normalizedName: 'supplier co',
+  });
+  state.products.push({
+    id: 'product-1',
+    name: 'Amlodipine 5mg tabs 28',
+    normalizedName: 'amlodipine 5mg tabs 28',
+    baseName: 'amlodipine',
+    manufacturer: null,
   });
 
   const baseOffer = createResolvedOffer();
@@ -1572,4 +1861,276 @@ test('mergeResolvedOffers preserves deterministic and ai extraction run provenan
 
   assert.equal(merged[0]?.extractionRunId, 'det-run');
   assert.equal(merged[1]?.extractionRunId, 'ai-run');
+});
+
+test('acceptance/demo: clean deterministic supplier offer stores email, derived offer, and supplier price item', async (t) => {
+  const state = installDbMocks(t);
+  const originalMappings = env.emailInboundSupplierMappings;
+  const originalAllowedSenders = env.emailInboundAllowedSenders;
+  const fixture = emailIntelligenceAcceptanceFixtures.cleanDeterministicSupplierOffer;
+
+  env.emailInboundSupplierMappings = [{ pattern: fixture.from, supplierName: 'Supplier Co' }];
+  env.emailInboundAllowedSenders = [fixture.from];
+  state.suppliers.push({
+    id: 'supplier-1',
+    name: 'Supplier Co',
+    normalizedName: 'supplier co',
+  });
+  state.products.push({
+    id: 'product-1',
+    name: 'Paracetamol 500mg caplets 16',
+    normalizedName: buildProductCandidates('Paracetamol 500mg caplets 16').normalizedKey,
+    baseName: 'paracetamol',
+    manufacturer: null,
+  });
+
+  t.after(() => {
+    env.emailInboundSupplierMappings = originalMappings;
+    env.emailInboundAllowedSenders = originalAllowedSenders;
+  });
+
+  const service = createEmailInboundService({
+    allowedSenders: [fixture.from],
+    supplierMappings: [{ pattern: fixture.from, supplierName: 'Supplier Co' }],
+    logger: createLogger(),
+  });
+  const result = await service.ingestMessage({
+    sourceSystem: 'MICROSOFT_GRAPH',
+    externalMessageId: 'acceptance-clean-offer',
+    messageId: 'internet-acceptance-clean-offer',
+    from: fixture.from,
+    subject: fixture.subject,
+    bodyText: fixture.bodyText,
+  });
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'acceptance-clean-offer',
+      messageId: 'internet-acceptance-clean-offer',
+      from: fixture.from,
+      subject: fixture.subject,
+      bodyText: fixture.bodyText,
+    },
+    result,
+  );
+
+  assert.equal(state.inboundEmails.length, 1);
+  assert.equal(state.offers.length, 1);
+  assert.equal(state.offers[0]?.aiAssisted, false);
+  assert.equal(state.offers[0]?.status, 'AUTO_PROMOTED');
+  assert.equal(state.runs.some((run) => run.method === 'DETERMINISTIC'), true);
+  assert.equal(state.priceItems.length, 1);
+  assert.equal(state.priceItems[0]?.rawProductName, 'Paracetamol 500mg caplets 16');
+  assert.equal(state.promotionDecisions[0]?.status, 'AUTO_PROMOTED');
+});
+
+test('acceptance/demo: messy AI-assisted supplier offer is staged for review without supplier price item', async (t) => {
+  const state = installDbMocks(t);
+  const originalMappings = env.emailInboundSupplierMappings;
+  const originalAllowedSenders = env.emailInboundAllowedSenders;
+  const fixture = emailIntelligenceAcceptanceFixtures.messyAiSupplierOffer;
+
+  env.emailInboundSupplierMappings = [{ pattern: fixture.from, supplierName: 'Supplier Co' }];
+  env.emailInboundAllowedSenders = [fixture.from];
+  state.suppliers.push({
+    id: 'supplier-1',
+    name: 'Supplier Co',
+    normalizedName: 'supplier co',
+  });
+  state.products.push({
+    id: 'product-1',
+    name: 'Amlodipine 5mg tablets 28',
+    normalizedName: buildProductCandidates('Amlodipine 5mg tabs 28').normalizedKey,
+    baseName: 'amlodipine',
+    manufacturer: null,
+  });
+
+  t.after(() => {
+    env.emailInboundSupplierMappings = originalMappings;
+    env.emailInboundAllowedSenders = originalAllowedSenders;
+  });
+
+  const result = createInboundResult({
+    processingStatus: 'NEEDS_REVIEW',
+    triageStatus: 'AI_REVIEW_ELIGIBLE',
+    reason: 'AI fallback extracted a review-first supplier offer.',
+    textParsing: {
+      totalLines: 1,
+      candidateLines: 1,
+      parsedRows: [
+        {
+          lineNumber: 1,
+          rawLine: fixture.bodyText,
+          evidenceText: 'Amlodipine 5mg tabs 28 at £8.40, MOQ 20, limited stock.',
+          rawProductName: 'Amlodipine 5mg tabs 28',
+          rawProductText: 'Amlodipine 5mg tabs 28',
+          strength: '5mg',
+          formulation: 'tabs',
+          packSize: '28',
+          price: 8.4,
+          currencyCode: 'GBP',
+          minimumOrderQuantity: 20,
+          availability: 'limited stock',
+          manufacturer: null,
+          sourceSegment: 'BODY_MAIN',
+          productCandidates: buildProductCandidates('Amlodipine 5mg tabs 28'),
+          confidence: 'MEDIUM',
+          explanation: 'Mocked OpenAI parser extracted explicit commercial fields from prose.',
+        },
+      ],
+      skippedLines: [],
+      overallConfidence: 'MEDIUM',
+      reviewRecommended: true,
+      reviewRequired: true,
+      rawBodyText: fixture.bodyText,
+      rawBody: fixture.bodyText,
+      parsingSource: 'OPENAI_FALLBACK',
+      aiFallbackAttempted: true,
+      aiFallbackUsed: true,
+      aiFallbackDecision: 'accepted',
+      aiPromptVersion: 'acceptance-supplier-offer-v1',
+      parsingReason: 'Mocked acceptance parser output.',
+    },
+  });
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'acceptance-ai-offer',
+      messageId: 'internet-acceptance-ai-offer',
+      from: fixture.from,
+      subject: fixture.subject,
+      bodyText: fixture.bodyText,
+    },
+    result,
+  );
+
+  assert.equal(state.inboundEmails.length, 1);
+  assert.equal(state.runs.some((run) => run.method === 'AI_FALLBACK'), true);
+  assert.equal(state.offers.some((offer) => offer.aiAssisted === true), true);
+  assert.equal(state.offers.some((offer) => offer.reviewReason === 'ai_candidate_review_only'), true);
+  assert.equal(state.workflowItems.length > 0, true);
+  assert.equal(state.priceItems.length, 0);
+});
+
+test('acceptance/demo: mixed supplier offer email stages offer candidate without being blocked by intel prose', async (t) => {
+  const state = installDbMocks(t);
+  const originalMappings = env.emailInboundSupplierMappings;
+  const originalAllowedSenders = env.emailInboundAllowedSenders;
+  const originalOpenAiParserEnabled = env.openAiParserEnabled;
+  const fixture = emailIntelligenceAcceptanceFixtures.mixedSupplierOfferAndIntel;
+
+  env.emailInboundSupplierMappings = [{ pattern: fixture.from, supplierName: 'Zenith' }];
+  env.emailInboundAllowedSenders = [fixture.from];
+  env.openAiParserEnabled = false;
+  state.suppliers.push({
+    id: 'supplier-1',
+    name: 'Zenith',
+    normalizedName: 'zenith',
+  });
+  state.products.push({
+    id: 'product-1',
+    name: 'Ozempic 0.5mg',
+    normalizedName: buildProductCandidates('Ozempic 0.5mg').normalizedKey,
+    baseName: 'ozempic',
+    manufacturer: null,
+  });
+
+  t.after(() => {
+    env.emailInboundSupplierMappings = originalMappings;
+    env.emailInboundAllowedSenders = originalAllowedSenders;
+    env.openAiParserEnabled = originalOpenAiParserEnabled;
+  });
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'acceptance-mixed-offer',
+      messageId: 'internet-acceptance-mixed-offer',
+      from: fixture.from,
+      subject: fixture.subject,
+      bodyText: fixture.bodyText,
+    },
+    createInboundResult({
+      processingStatus: 'NEEDS_REVIEW',
+      triageStatus: 'AI_REVIEW_ELIGIBLE',
+      email: {
+        messageId: 'internet-acceptance-mixed-offer',
+        from: fixture.from,
+        subject: fixture.subject,
+        bodyText: fixture.bodyText,
+      },
+      textParsing: {
+        totalLines: 1,
+        candidateLines: 1,
+        parsedRows: [
+          {
+            lineNumber: 1,
+            rawLine: 'Zenith can do Ozempic 0.5mg at £87.',
+            evidenceText: 'Zenith can do Ozempic 0.5mg at £87.',
+            rawProductName: 'Ozempic 0.5mg',
+            rawProductText: 'Ozempic 0.5mg',
+            strength: '0.5mg',
+            formulation: null,
+            packSize: null,
+            price: 87,
+            currencyCode: 'GBP',
+            minimumOrderQuantity: null,
+            availability: null,
+            manufacturer: null,
+            sourceSegment: 'BODY_MAIN',
+            productCandidates: buildProductCandidates('Ozempic 0.5mg'),
+            confidence: 'MEDIUM',
+            explanation: 'Mocked mixed-email supplier offer extraction.',
+          },
+        ],
+        skippedLines: [],
+        overallConfidence: 'MEDIUM',
+        reviewRecommended: true,
+        reviewRequired: true,
+        rawBodyText: fixture.bodyText,
+        rawBody: fixture.bodyText,
+        parsingSource: 'OPENAI_FALLBACK',
+        aiFallbackAttempted: true,
+        aiFallbackUsed: true,
+        aiFallbackDecision: 'accepted',
+        aiPromptVersion: 'acceptance-mixed-offer-v1',
+        parsingReason: 'Mocked acceptance parser output for mixed supplier offer.',
+      },
+    }),
+  );
+
+  assert.equal(state.inboundEmails.length, 1);
+  assert.equal(state.offers.length >= 1, true);
+  assert.equal(
+    state.offers.some((offer) => /Ozempic/i.test(String(offer.rawProductText ?? ''))),
+    true,
+  );
+});
+
+test('acceptance/demo: non-actionable admin email creates no derived offers', async (t) => {
+  const state = installDbMocks(t);
+  const fixture = emailIntelligenceAcceptanceFixtures.nonActionableAdminEmail;
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'acceptance-admin',
+      messageId: 'internet-acceptance-admin',
+      from: fixture.from,
+      subject: fixture.subject,
+      bodyText: fixture.bodyText,
+    },
+    {
+      ignored: true,
+      reason: 'Non-actionable admin email.',
+      items: [],
+    },
+  );
+
+  assert.equal(state.inboundEmails.length, 1);
+  assert.equal(state.offers.length, 0);
+  assert.equal(state.priceItems.length, 0);
+  assert.equal(state.promotionDecisions[0]?.status, 'REJECTED');
 });

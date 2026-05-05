@@ -112,6 +112,39 @@ enum EmailExtractionMethod {
   AI_FALLBACK
 }
 
+enum EmailIntentClassification {
+  SUPPLIER_OFFER
+  CUSTOMER_REQUEST
+  COMMERCIAL_INTEL
+  MIXED
+  UNKNOWN
+}
+
+enum CommercialIntelItemType {
+  SUPPLIER_RELIABILITY_NOTE
+  BUYER_DEMAND_SIGNAL
+  MANUAL_BUY_TRIGGER
+  MANUAL_SELL_TRIGGER
+  MARKET_PRICE_INTEL
+  EXPIRY_RISK_RULE
+  PRODUCT_NOTE
+  CONTACT_NOTE
+  OTHER
+}
+
+enum CommercialIntelStatus {
+  NEW
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum CommercialIntelConfidence {
+  HIGH
+  MEDIUM
+  LOW
+}
+
 enum EmailExtractionRunStatus {
   COMPLETED
   COMPLETED_WITH_ERRORS
@@ -477,6 +510,7 @@ model Product {
   regulatoryAlerts          RegulatoryAlert[]
   regulatoryReviewItems     RegulatoryReviewItem[]
   purchaseOrderLines        PurchaseOrderLine[]
+  commercialIntelItems      CommercialIntelItem[]
   createdAt                 DateTime            @default(now())
   updatedAt                 DateTime            @updatedAt
 
@@ -553,6 +587,7 @@ model Supplier {
   correctedOfferCorrections OfferCorrection[]
   sourceReliabilityProfiles SourceReliabilityProfile[]
   purchaseOrderLines        PurchaseOrderLine[]
+  commercialIntelItems      CommercialIntelItem[]
   createdAt                 DateTime                   @default(now())
   updatedAt                 DateTime                   @updatedAt
 
@@ -592,6 +627,7 @@ model InboundEmail {
   offerCorrections          OfferCorrection[]
   promotionDecisions        PromotionDecision[]
   promotedPriceLists        SupplierPriceList[]
+  commercialIntelItems      CommercialIntelItem[]
   createdAt                 DateTime                     @default(now())
   updatedAt                 DateTime                     @updatedAt
 
@@ -613,6 +649,7 @@ model InboundEmailDocument {
   inboundEmail   InboundEmail                @relation(fields: [inboundEmailId], references: [id], onDelete: Cascade)
   derivedOffers  EmailDerivedOffer[]
   evidences      EmailDerivedOfferEvidence[]
+  commercialIntelItems CommercialIntelItem[]
   createdAt      DateTime                    @default(now())
   updatedAt      DateTime                    @updatedAt
 
@@ -682,6 +719,51 @@ model EmailDerivedOffer {
   @@unique([inboundEmailId, offerFingerprint])
   @@index([inboundEmailId, status, createdAt])
   @@index([sourceDocumentId])
+}
+
+model CommercialIntelItem {
+  id                   String                      @id @default(cuid())
+  inboundEmailId       String?
+  sourceDocumentId     String?
+  itemType             CommercialIntelItemType
+  status               CommercialIntelStatus       @default(NEW)
+  productText          String?
+  productId            String?
+  supplierName         String?
+  supplierId           String?
+  customerName         String?
+  contactName          String?
+  priceThreshold       Decimal?                    @db.Decimal(12, 2)
+  currency             String?
+  availabilitySignal   String?
+  riskLevel            String?
+  urgency              String?
+  signalEffect         String?
+  evidenceText         String
+  confidence           CommercialIntelConfidence
+  reviewReason         String?
+  aiAssisted           Boolean                     @default(true)
+  approvedByType       String?
+  approvedByIdentifier String?
+  approvedAt           DateTime?
+  rejectedByType       String?
+  rejectedByIdentifier String?
+  rejectedAt           DateTime?
+  validUntil           DateTime?
+  itemFingerprint      String
+  metadata             Json?
+  inboundEmail         InboundEmail?               @relation(fields: [inboundEmailId], references: [id], onDelete: SetNull)
+  sourceDocument       InboundEmailDocument?       @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+  product              Product?                    @relation(fields: [productId], references: [id], onDelete: SetNull)
+  supplier             Supplier?                   @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+
+  @@unique([inboundEmailId, itemFingerprint])
+  @@index([inboundEmailId, status, createdAt])
+  @@index([productId, status, createdAt])
+  @@index([supplierId, status, createdAt])
+  @@index([itemType, status, createdAt])
 }
 
 model OfferWorkflowItem {

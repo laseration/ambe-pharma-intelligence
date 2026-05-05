@@ -2,6 +2,10 @@ import type { Opportunity, OpportunityStatus, OpportunityType, Prisma } from '@p
 
 import { db } from '../lib/db';
 import { logger } from '../lib/logger';
+import {
+  commercialIntelContextKey,
+  loadApprovedCommercialIntelContextMap,
+} from './commercialIntelContext';
 import { opportunityConfig } from './config';
 import { auditOpportunityScoring, scoreOpportunityCandidates } from './scoring';
 import type { OpportunityCandidate, OpportunityScoringAudit, ScoringContext } from './types';
@@ -149,7 +153,7 @@ async function buildScoringContexts(now: Date, productId?: string): Promise<Scor
     salesByProduct.set(salesRecord.productId, existing);
   }
 
-  return products.map((product) => {
+  const baseContexts = products.map((product) => {
     const latestInventory = latestInventoryByProduct.get(product.id) ?? null;
     const supplierPriceHistory = supplierPricesByProduct.get(product.id) ?? [];
     const recentSales = salesByProduct.get(product.id) ?? [];
@@ -194,6 +198,28 @@ async function buildScoringContexts(now: Date, productId?: string): Promise<Scor
         supplierReliabilityScore: priceItem.supplier.reliabilityScore,
       })),
     } as ScoringContext;
+  });
+
+  const commercialIntelContexts = await loadApprovedCommercialIntelContextMap(
+    baseContexts.map((context) => ({
+      productId: context.product.id,
+      supplierId: context.latestSupplierPrice?.supplierId ?? context.latestInventory?.supplierId ?? null,
+    })),
+    now,
+  );
+
+  return baseContexts.map((context) => {
+    const supplierId = context.latestSupplierPrice?.supplierId ?? context.latestInventory?.supplierId ?? null;
+    const commercialIntelContext = commercialIntelContexts.get(
+      commercialIntelContextKey(context.product.id, supplierId),
+    );
+
+    return commercialIntelContext
+      ? {
+          ...context,
+          commercialIntelContext,
+        }
+      : context;
   });
 }
 
