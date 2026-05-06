@@ -13,6 +13,8 @@ This checkpoint covers the current internal email intelligence workflow.
 - Customer requests have internal API routes and a dashboard at `/dashboard/customer-requests`.
 - Pipeline diagnostics are available at `/dashboard/diagnostics` through the read-only `/api/diagnostics/pipeline-summary` endpoint.
 - Approved, non-expired commercial intel can appear as read-only opportunity context without changing scores.
+- Approved, non-expired customer demand can appear as read-only opportunity context without changing scores.
+- `DemandSupplyMatch` stores review-first pre-trade candidates that connect approved customer demand with existing supplier price intelligence.
 - Acceptance/demo tests cover realistic clean, messy, commercial-intel, mixed, and non-actionable email scenarios with mocked parser output.
 
 ## Migrations
@@ -22,6 +24,7 @@ Migration included:
 ```text
 20260505180000_add_commercial_intel_items
 20260505213000_add_customer_demand_signals
+20260506100000_add_demand_supply_matches
 ```
 
 Local development:
@@ -58,21 +61,22 @@ The acceptance scenarios and manual replay notes are documented in `docs/email-i
 - Commercial intel never creates products, suppliers, supplier price records, buy decisions, trade opportunities, or outbound messages.
 - Commercial intel affects opportunities only as read-only context.
 - Customer demand never creates products, customers, suppliers, supplier price records, trade opportunities, buy decisions, or outbound messages in this pass.
+- Demand/supply matching creates only review-first `DemandSupplyMatch` candidates and never creates trade opportunities, buy decisions, supplier price records, products, customers, suppliers, or outbound messages.
+- Demand/supply matching does not expose a promote-to-trade action yet.
 - Diagnostics are read-only and make no external API or OpenAI calls.
 
 ## Known Gaps
 
 - Commercial intel does not change scoring values yet.
-- Customer demand does not affect opportunity/trade context or scoring yet.
+- Customer demand does not change scoring values yet.
 - Commercial intel review is intentionally simple and separate from the offer workflow queue.
+- Demand/supply matches are not automatically promoted to trade opportunities yet.
 - Real Microsoft Graph and OpenAI behavior should be validated manually in a controlled environment; automated tests use mocks/stubs.
 - MHRA scraping is still not implemented.
 
 ## Recommended Next Features
 
-- Add reviewed customer-demand read-only context to opportunities/trade workflows.
-- Add guarded demand/supply matching once enough reviewed examples exist.
-- Add approved customer-demand read-only context to opportunities/trade workflows.
+- Add a guarded operator-approved path from reviewed demand/supply matches to `TradeOpportunity`.
 - Add richer operator review flows for commercial intel once usage patterns are clear.
 - Add guarded scoring rules for approved commercial intel after enough examples are reviewed.
 - Add production runbooks for Graph mailbox monitoring and failed-email replay.

@@ -4,6 +4,7 @@ import test from 'node:test';
 import { buildOpportunityConfig } from '../config';
 import { auditOpportunityScoring, scoreOpportunityCandidates } from '../scoring';
 import type { CommercialIntelContextItem } from '../commercialIntelContext';
+import type { CustomerDemandContextItem } from '../customerDemandContext';
 import type { ScoringContext } from '../types';
 
 const baseNow = new Date('2026-04-20T00:00:00.000Z');
@@ -69,6 +70,30 @@ function createCommercialIntelItem(
     urgency: null,
     signalEffect: null,
     evidenceText: 'If anyone offers Amlodipine 5mg below GBP 2.10, buy quickly.',
+    confidence: 'HIGH',
+    validUntil: null,
+    createdAt: '2026-04-19T00:00:00.000Z',
+    approvedAt: '2026-04-19T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function createCustomerDemandItem(
+  overrides: Partial<CustomerDemandContextItem> = {},
+): CustomerDemandContextItem {
+  return {
+    id: 'demand-1',
+    requestType: 'SOURCE_PRODUCT',
+    customerName: 'Customer A',
+    customerId: 'customer-1',
+    productText: 'Amlodipine 5mg Tablets',
+    productId: 'product-1',
+    quantityRequested: 200,
+    targetPrice: 2.15,
+    currency: 'GBP',
+    neededByDate: '2026-04-24T00:00:00.000Z',
+    urgency: 'HIGH',
+    evidenceText: 'Can you source Amlodipine 5mg? Need 200 packs.',
     confidence: 'HIGH',
     validUntil: null,
     createdAt: '2026-04-19T00:00:00.000Z',
@@ -143,6 +168,46 @@ test('adds supplier reliability commercial intel as supplier-linked context and 
     'SUPPLIER_RELIABILITY_NOTE',
   );
   assert.equal(audit.commercialIntelContext?.supplierLinked[0]?.itemType, 'SUPPLIER_RELIABILITY_NOTE');
+});
+
+test('adds approved customer demand context to candidate metadata and audit without changing score', () => {
+  const baseContext = createContext({});
+  const [baseBuyCandidate] = scoreOpportunityCandidates(baseContext, stockholdingConfig)
+    .filter((candidate) => candidate.type === 'BUY');
+  const contextWithDemand = {
+    ...baseContext,
+    customerDemandContext: {
+      productLinked: [createCustomerDemandItem()],
+      generatedAt: '2026-04-20T00:00:00.000Z',
+    },
+  };
+  const [demandBuyCandidate] = scoreOpportunityCandidates(
+    contextWithDemand,
+    stockholdingConfig,
+  ).filter((candidate) => candidate.type === 'BUY');
+  const audit = auditOpportunityScoring(contextWithDemand, stockholdingConfig);
+
+  assert.ok(baseBuyCandidate);
+  assert.ok(demandBuyCandidate);
+  assert.equal(demandBuyCandidate.score, baseBuyCandidate.score);
+  assert.match(
+    demandBuyCandidate.description,
+    /Approved customer demand exists for this product\./,
+  );
+  assert.match(
+    demandBuyCandidate.description,
+    /Approved customer demand includes requested quantity\./,
+  );
+  assert.match(
+    demandBuyCandidate.description,
+    /Approved customer demand includes target price\./,
+  );
+  assert.deepEqual(
+    (demandBuyCandidate.metadata as { customerDemandContext?: { productLinked?: unknown[] } })
+      .customerDemandContext?.productLinked?.[0],
+    createCustomerDemandItem(),
+  );
+  assert.equal(audit.customerDemandContext?.productLinked[0]?.id, 'demand-1');
 });
 
 test('mode-specific opportunity thresholds split trading demand and margin inputs', () => {

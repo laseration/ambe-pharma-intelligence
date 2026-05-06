@@ -332,6 +332,10 @@ function hasCommercialIntelContext(context: ScoringContext): boolean {
   );
 }
 
+function hasCustomerDemandContext(context: ScoringContext): boolean {
+  return Boolean(context.customerDemandContext?.productLinked.length);
+}
+
 function commercialIntelItemsForDescription(context: ScoringContext) {
   const intelContext = context.commercialIntelContext;
   if (!intelContext) {
@@ -381,6 +385,31 @@ function buildCommercialIntelDescriptionSentences(
   return sentences.slice(0, 3);
 }
 
+function buildCustomerDemandDescriptionSentences(
+  type: OpportunityCandidate['type'],
+  context: ScoringContext,
+): string[] {
+  const productLinked = context.customerDemandContext?.productLinked ?? [];
+  if (
+    productLinked.length === 0 ||
+    !['BUY', 'PRICE_ALERT', 'PUSH', 'RESTOCK'].includes(type)
+  ) {
+    return [];
+  }
+
+  const sentences = ['Approved customer demand exists for this product.'];
+
+  if (productLinked.some((item) => item.quantityRequested !== null)) {
+    sentences.push('Approved customer demand includes requested quantity.');
+  }
+
+  if (productLinked.some((item) => item.targetPrice !== null)) {
+    sentences.push('Approved customer demand includes target price.');
+  }
+
+  return sentences.slice(0, 3);
+}
+
 function joinSentences(parts: Array<string | null>): string {
   return parts.filter((part): part is string => Boolean(part)).join(' ');
 }
@@ -399,6 +428,9 @@ function createCandidate(
   const commercialIntelContext = hasCommercialIntelContext(context)
     ? context.commercialIntelContext
     : null;
+  const customerDemandContext = hasCustomerDemandContext(context)
+    ? context.customerDemandContext
+    : null;
 
   return {
     type,
@@ -407,6 +439,7 @@ function createCandidate(
     description: joinSentences([
       description,
       ...buildCommercialIntelDescriptionSentences(type, context),
+      ...buildCustomerDemandDescriptionSentences(type, context),
     ]),
     score: breakdown.finalScore,
     productId: context.product.id,
@@ -423,6 +456,7 @@ function createCandidate(
       generatedAt: context.now.toISOString(),
       ...(commercialContext ? { commercialContext } : {}),
       ...(commercialIntelContext ? { commercialIntelContext } : {}),
+      ...(customerDemandContext ? { customerDemandContext } : {}),
     } satisfies Prisma.InputJsonObject,
   };
 }
@@ -1328,6 +1362,9 @@ export function auditOpportunityScoring(
     opportunities: evaluations.map(buildAuditEntry),
     ...(hasCommercialIntelContext(context)
       ? { commercialIntelContext: context.commercialIntelContext }
+      : {}),
+    ...(hasCustomerDemandContext(context)
+      ? { customerDemandContext: context.customerDemandContext }
       : {}),
   };
 }

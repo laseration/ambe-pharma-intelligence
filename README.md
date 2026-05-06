@@ -213,6 +213,16 @@ Internal API routes are available under `/api/customer-requests` for listing, de
 
 The internal dashboard for reviewing these demand signals is available at `/dashboard/customer-requests`.
 
+### Demand/Supply Matches
+
+Approved customer demand can be compared against existing supplier price intelligence to create review-first `DemandSupplyMatch` candidates.
+
+This is a pre-trade layer, not a `TradeOpportunity`. It uses approved, non-expired `CustomerDemandSignal` rows with an existing `productId` and recent available `SupplierPriceItem` rows for the same product. Approved `CommercialIntelItem` records may appear as context or risk flags only.
+
+Demand/supply matching does not automatically buy stock, sell stock, contact customers, contact suppliers, send outbound messages, create products, create customers, create suppliers, create supplier price items, create buy decisions, or create trade opportunities.
+
+Internal API routes are available under `/api/demand-supply-matches` for listing candidates, previewing generation, generating idempotent candidates, and review/reject/expire actions. No promote-to-trade action is exposed in this pass.
+
 ### Buy Decisions And Supplier Qualification
 
 Approving a staged email-derived offer to buy now creates or reuses a durable `BuyDecision` snapshot. That record is the approved quote snapshot: the commercial facts that were approved internally, plus provenance back to the staged offer and workflow item.

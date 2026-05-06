@@ -7,6 +7,10 @@ import {
   loadApprovedCommercialIntelContextMap,
 } from './commercialIntelContext';
 import { opportunityConfig } from './config';
+import {
+  customerDemandContextKey,
+  loadApprovedCustomerDemandContextMap,
+} from './customerDemandContext';
 import { auditOpportunityScoring, scoreOpportunityCandidates } from './scoring';
 import type { OpportunityCandidate, OpportunityScoringAudit, ScoringContext } from './types';
 
@@ -200,24 +204,29 @@ async function buildScoringContexts(now: Date, productId?: string): Promise<Scor
     } as ScoringContext;
   });
 
-  const commercialIntelContexts = await loadApprovedCommercialIntelContextMap(
-    baseContexts.map((context) => ({
-      productId: context.product.id,
-      supplierId: context.latestSupplierPrice?.supplierId ?? context.latestInventory?.supplierId ?? null,
-    })),
-    now,
-  );
+  const contextKeys = baseContexts.map((context) => ({
+    productId: context.product.id,
+    supplierId: context.latestSupplierPrice?.supplierId ?? context.latestInventory?.supplierId ?? null,
+  }));
+  const [commercialIntelContexts, customerDemandContexts] = await Promise.all([
+    loadApprovedCommercialIntelContextMap(contextKeys, now),
+    loadApprovedCustomerDemandContextMap(contextKeys.map((key) => ({ productId: key.productId })), now),
+  ]);
 
   return baseContexts.map((context) => {
     const supplierId = context.latestSupplierPrice?.supplierId ?? context.latestInventory?.supplierId ?? null;
     const commercialIntelContext = commercialIntelContexts.get(
       commercialIntelContextKey(context.product.id, supplierId),
     );
+    const customerDemandContext = customerDemandContexts.get(
+      customerDemandContextKey(context.product.id),
+    );
 
-    return commercialIntelContext
+    return commercialIntelContext || customerDemandContext
       ? {
           ...context,
-          commercialIntelContext,
+          ...(commercialIntelContext ? { commercialIntelContext } : {}),
+          ...(customerDemandContext ? { customerDemandContext } : {}),
         }
       : context;
   });

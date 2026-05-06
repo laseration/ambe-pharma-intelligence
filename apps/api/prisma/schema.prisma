@@ -168,6 +168,29 @@ enum CustomerDemandConfidence {
   LOW
 }
 
+enum DemandSupplyMatchStatus {
+  NEW
+  REVIEWED
+  REJECTED
+  PROMOTED
+  EXPIRED
+}
+
+enum DemandSupplyMatchReason {
+  EXACT_PRODUCT_MATCH
+  TARGET_PRICE_MET
+  CUSTOMER_DEMAND_WITH_SUPPLIER_PRICE
+  CUSTOMER_DEMAND_WITH_COMMERCIAL_INTEL
+  PRICE_ALERT_WITH_CUSTOMER_DEMAND
+  OTHER
+}
+
+enum DemandSupplyMatchConfidence {
+  HIGH
+  MEDIUM
+  LOW
+}
+
 enum EmailExtractionRunStatus {
   COMPLETED
   COMPLETED_WITH_ERRORS
@@ -535,6 +558,7 @@ model Product {
   purchaseOrderLines        PurchaseOrderLine[]
   commercialIntelItems      CommercialIntelItem[]
   customerDemandSignals     CustomerDemandSignal[]
+  demandSupplyMatches       DemandSupplyMatch[]
   createdAt                 DateTime            @default(now())
   updatedAt                 DateTime            @updatedAt
 
@@ -612,6 +636,7 @@ model Supplier {
   sourceReliabilityProfiles SourceReliabilityProfile[]
   purchaseOrderLines        PurchaseOrderLine[]
   commercialIntelItems      CommercialIntelItem[]
+  demandSupplyMatches       DemandSupplyMatch[]
   createdAt                 DateTime                   @default(now())
   updatedAt                 DateTime                   @updatedAt
 
@@ -826,6 +851,7 @@ model CustomerDemandSignal {
   sourceDocument       InboundEmailDocument?     @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
   customer             Customer?                 @relation(fields: [customerId], references: [id], onDelete: SetNull)
   product              Product?                  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  demandSupplyMatches  DemandSupplyMatch[]
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
 
@@ -834,6 +860,64 @@ model CustomerDemandSignal {
   @@index([productId, status, createdAt])
   @@index([customerId, status, createdAt])
   @@index([requestType, status, createdAt])
+}
+
+model DemandSupplyMatch {
+  id                     String                      @id @default(cuid())
+  customerDemandSignalId String
+  supplierPriceItemId    String
+  productId              String
+  customerId             String?
+  supplierId             String?
+  status                 DemandSupplyMatchStatus     @default(NEW)
+  reason                 DemandSupplyMatchReason
+  confidence             DemandSupplyMatchConfidence
+  matchScore             Int?
+  rawCustomerProductText String?
+  rawSupplierProductText String?
+  quantityRequested      Int?
+  requestedTargetPrice   Decimal?                    @db.Decimal(12, 2)
+  requestedCurrency      String?
+  supplierUnitPrice      Decimal?                    @db.Decimal(12, 2)
+  supplierCurrency       String?
+  estimatedMarginAmount  Decimal?                    @db.Decimal(12, 2)
+  estimatedMarginPct     Decimal?                    @db.Decimal(8, 4)
+  marginExplanation      String?
+  urgency                String?
+  riskFlags              Json?
+  rationale              String
+  evidence               Json?
+  commercialIntelContext Json?
+  customerDemandContext  Json?
+  supplierOfferContext   Json?
+  matchFingerprint       String
+  reviewedByType         String?
+  reviewedByIdentifier   String?
+  reviewedAt             DateTime?
+  rejectedByType         String?
+  rejectedByIdentifier   String?
+  rejectedAt             DateTime?
+  promotedByType         String?
+  promotedByIdentifier   String?
+  promotedAt             DateTime?
+  expiresAt              DateTime?
+  metadata               Json?
+  customerDemandSignal   CustomerDemandSignal        @relation(fields: [customerDemandSignalId], references: [id], onDelete: Cascade)
+  supplierPriceItem      SupplierPriceItem           @relation(fields: [supplierPriceItemId], references: [id], onDelete: Cascade)
+  product                Product                     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customer               Customer?                   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  supplier               Supplier?                   @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+
+  @@unique([customerDemandSignalId, supplierPriceItemId], map: "DemandSupplyMatch_demand_price_key")
+  @@index([status, createdAt])
+  @@index([productId, status, createdAt])
+  @@index([customerDemandSignalId, status])
+  @@index([supplierPriceItemId, status])
+  @@index([customerId, status, createdAt])
+  @@index([supplierId, status, createdAt])
+  @@index([matchFingerprint])
 }
 
 model OfferWorkflowItem {
@@ -1441,6 +1525,7 @@ model SupplierPriceItem {
   product                 Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
   supplier                Supplier          @relation(fields: [supplierId], references: [id], onDelete: Cascade)
   supplierPriceList       SupplierPriceList @relation(fields: [supplierPriceListId], references: [id], onDelete: Cascade)
+  demandSupplyMatches     DemandSupplyMatch[]
   createdAt               DateTime          @default(now())
   updatedAt               DateTime          @updatedAt
 
@@ -1491,6 +1576,7 @@ model Customer {
   opportunities       Opportunity[]
   salesRecords        SalesRecord[]
   customerDemandSignals CustomerDemandSignal[]
+  demandSupplyMatches DemandSupplyMatch[]
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
 

@@ -48,6 +48,7 @@ function buildEmptyWindow(label: string, since: Date): PipelineDiagnosticsSummar
     },
     customerDemand: {
       customerRequestsCreated: 0,
+      approvedCustomerDemandSignals: 0,
       customerRequestsNew: 0,
       customerRequestsApproved: 0,
       customerRequestsRejected: 0,
@@ -55,6 +56,15 @@ function buildEmptyWindow(label: string, since: Date): PipelineDiagnosticsSummar
       customerRequestsByType: [],
       customerRequestsByConfidence: [],
       latestCustomerRequests: [],
+    },
+    demandSupplyMatches: {
+      demandSupplyMatchesCreated: 0,
+      demandSupplyMatchesNew: 0,
+      demandSupplyMatchesReviewed: 0,
+      demandSupplyMatchesRejected: 0,
+      demandSupplyMatchesExpired: 0,
+      demandSupplyMatchesByConfidence: [],
+      latestDemandSupplyMatches: [],
     },
     aiParserVisibility: {
       aiFallbackAttemptedBestEffort: 0,
@@ -67,6 +77,7 @@ function buildEmptyWindow(label: string, since: Date): PipelineDiagnosticsSummar
       openOpportunities: 0,
       opportunitiesCreated: 0,
       opportunitiesWithCommercialIntelContext: 0,
+      opportunitiesWithCustomerDemandContext: 0,
       opportunitiesByType: [],
       latestOpportunities: [],
     },
@@ -106,6 +117,8 @@ test('pipeline diagnostics summary returns bounded empty-shape windows from repo
   assert.equal(summary.windows.last24h.supplierPriceIntelligence.supplierPriceItemsCreated, 0);
   assert.equal(summary.windows.last24h.commercialIntel.commercialIntelItemsCreated, 0);
   assert.equal(summary.windows.last24h.customerDemand.customerRequestsCreated, 0);
+  assert.equal(summary.windows.last24h.customerDemand.approvedCustomerDemandSignals, 0);
+  assert.equal(summary.windows.last24h.demandSupplyMatches.demandSupplyMatchesCreated, 0);
   assert.equal(summary.windows.last24h.aiParserVisibility.aiAssistedOfferCount, 0);
   assert.equal(summary.windows.last24h.opportunities.openOpportunities, 0);
   assert.deepEqual(summary.windows.last24h.problems.latestFailedEmails, []);

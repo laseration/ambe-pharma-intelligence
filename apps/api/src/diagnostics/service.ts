@@ -70,6 +70,25 @@ type LatestCustomerDemandSignal = {
   createdAt: Date;
 };
 
+type LatestDemandSupplyMatch = {
+  id: string;
+  status: string;
+  confidence: string;
+  reason: string;
+  matchScore: number | null;
+  quantityRequested: number | null;
+  requestedTargetPrice: unknown;
+  requestedCurrency: string | null;
+  supplierUnitPrice: unknown;
+  supplierCurrency: string | null;
+  estimatedMarginAmount: unknown;
+  rationale: string;
+  createdAt: Date;
+  product: { id: string; name: string } | null;
+  customer: { id: string; name: string } | null;
+  supplier: { id: string; name: string } | null;
+};
+
 type LatestOpportunity = {
   id: string;
   type: string;
@@ -135,6 +154,7 @@ type PipelineWindowSummary = {
   };
   customerDemand: {
     customerRequestsCreated: number;
+    approvedCustomerDemandSignals: number;
     customerRequestsNew: number;
     customerRequestsApproved: number;
     customerRequestsRejected: number;
@@ -142,6 +162,15 @@ type PipelineWindowSummary = {
     customerRequestsByType: CountByName[];
     customerRequestsByConfidence: CountByName[];
     latestCustomerRequests: LatestCustomerDemandSignal[];
+  };
+  demandSupplyMatches: {
+    demandSupplyMatchesCreated: number;
+    demandSupplyMatchesNew: number;
+    demandSupplyMatchesReviewed: number;
+    demandSupplyMatchesRejected: number;
+    demandSupplyMatchesExpired: number;
+    demandSupplyMatchesByConfidence: CountByName[];
+    latestDemandSupplyMatches: LatestDemandSupplyMatch[];
   };
   aiParserVisibility: {
     aiFallbackAttemptedBestEffort: number;
@@ -154,6 +183,7 @@ type PipelineWindowSummary = {
     openOpportunities: number;
     opportunitiesCreated: number;
     opportunitiesWithCommercialIntelContext: number;
+    opportunitiesWithCustomerDemandContext: number;
     opportunitiesByType: CountByName[];
     latestOpportunities: LatestOpportunity[];
   };
@@ -234,6 +264,7 @@ function emptyWindowSummary(label: string, since: Date): PipelineWindowSummary {
     },
     customerDemand: {
       customerRequestsCreated: 0,
+      approvedCustomerDemandSignals: 0,
       customerRequestsNew: 0,
       customerRequestsApproved: 0,
       customerRequestsRejected: 0,
@@ -241,6 +272,15 @@ function emptyWindowSummary(label: string, since: Date): PipelineWindowSummary {
       customerRequestsByType: [],
       customerRequestsByConfidence: [],
       latestCustomerRequests: [],
+    },
+    demandSupplyMatches: {
+      demandSupplyMatchesCreated: 0,
+      demandSupplyMatchesNew: 0,
+      demandSupplyMatchesReviewed: 0,
+      demandSupplyMatchesRejected: 0,
+      demandSupplyMatchesExpired: 0,
+      demandSupplyMatchesByConfidence: [],
+      latestDemandSupplyMatches: [],
     },
     aiParserVisibility: {
       aiFallbackAttemptedBestEffort: 0,
@@ -253,6 +293,7 @@ function emptyWindowSummary(label: string, since: Date): PipelineWindowSummary {
       openOpportunities: 0,
       opportunitiesCreated: 0,
       opportunitiesWithCommercialIntelContext: 0,
+      opportunitiesWithCustomerDemandContext: 0,
       opportunitiesByType: [],
       latestOpportunities: [],
     },
@@ -388,6 +429,7 @@ function createDiagnosticsRepository(client: typeof db = db): DiagnosticsReposit
       commercialIntelByConfidence,
       latestCommercialIntelItems,
       customerRequestsCreated,
+      approvedCustomerDemandSignals,
       customerRequestsNew,
       customerRequestsApproved,
       customerRequestsRejected,
@@ -395,6 +437,13 @@ function createDiagnosticsRepository(client: typeof db = db): DiagnosticsReposit
       customerRequestsByType,
       customerRequestsByConfidence,
       latestCustomerRequests,
+      demandSupplyMatchesCreated,
+      demandSupplyMatchesNew,
+      demandSupplyMatchesReviewed,
+      demandSupplyMatchesRejected,
+      demandSupplyMatchesExpired,
+      demandSupplyMatchesByConfidence,
+      latestDemandSupplyMatches,
       aiFallbackAttemptedBestEffort,
       aiAssistedOfferCount,
       aiAssistedCommercialIntelCount,
@@ -403,6 +452,7 @@ function createDiagnosticsRepository(client: typeof db = db): DiagnosticsReposit
       openOpportunities,
       opportunitiesCreated,
       opportunitiesWithCommercialIntelContext,
+      opportunitiesWithCustomerDemandContext,
       opportunitiesByType,
       latestOpportunities,
       latestFailedEmails,
@@ -569,6 +619,15 @@ function createDiagnosticsRepository(client: typeof db = db): DiagnosticsReposit
       safeRead('customerRequestsCreated', 0, () =>
         client.customerDemandSignal.count({ where: { createdAt: { gte: since } } }),
       ),
+      safeRead('approvedCustomerDemandSignals', 0, () =>
+        client.customerDemandSignal.count({
+          where: {
+            status: 'APPROVED',
+            updatedAt: { gte: since },
+            OR: [{ validUntil: null }, { validUntil: { gte: new Date() } }],
+          },
+        }),
+      ),
       safeRead('customerRequestsNew', 0, () =>
         client.customerDemandSignal.count({ where: { createdAt: { gte: since }, status: 'NEW' } }),
       ),
@@ -610,6 +669,54 @@ function createDiagnosticsRepository(client: typeof db = db): DiagnosticsReposit
             quantityRequested: true,
             evidenceText: true,
             createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: LATEST_LIMIT,
+        }),
+      ),
+      safeRead('demandSupplyMatchesCreated', 0, () =>
+        client.demandSupplyMatch.count({ where: { createdAt: { gte: since } } }),
+      ),
+      safeRead('demandSupplyMatchesNew', 0, () =>
+        client.demandSupplyMatch.count({ where: { createdAt: { gte: since }, status: 'NEW' } }),
+      ),
+      safeRead('demandSupplyMatchesReviewed', 0, () =>
+        client.demandSupplyMatch.count({ where: { updatedAt: { gte: since }, status: 'REVIEWED' } }),
+      ),
+      safeRead('demandSupplyMatchesRejected', 0, () =>
+        client.demandSupplyMatch.count({ where: { updatedAt: { gte: since }, status: 'REJECTED' } }),
+      ),
+      safeRead('demandSupplyMatchesExpired', 0, () =>
+        client.demandSupplyMatch.count({ where: { updatedAt: { gte: since }, status: 'EXPIRED' } }),
+      ),
+      safeRead('demandSupplyMatchesByConfidence', [], () =>
+        client.demandSupplyMatch.findMany({
+          where: { createdAt: { gte: since } },
+          select: { confidence: true },
+          orderBy: { createdAt: 'desc' },
+          take: AGGREGATE_SAMPLE_LIMIT,
+        }).then((items) => countGroupValues(items.map((item) => item.confidence))),
+      ),
+      safeRead('latestDemandSupplyMatches', [], () =>
+        client.demandSupplyMatch.findMany({
+          where: { createdAt: { gte: since } },
+          select: {
+            id: true,
+            status: true,
+            confidence: true,
+            reason: true,
+            matchScore: true,
+            quantityRequested: true,
+            requestedTargetPrice: true,
+            requestedCurrency: true,
+            supplierUnitPrice: true,
+            supplierCurrency: true,
+            estimatedMarginAmount: true,
+            rationale: true,
+            createdAt: true,
+            product: { select: { id: true, name: true } },
+            customer: { select: { id: true, name: true } },
+            supplier: { select: { id: true, name: true } },
           },
           orderBy: { createdAt: 'desc' },
           take: LATEST_LIMIT,
@@ -681,6 +788,24 @@ function createDiagnosticsRepository(client: typeof db = db): DiagnosticsReposit
                 typeof metadata === 'object' &&
                 !Array.isArray(metadata) &&
                 'commercialIntelContext' in metadata,
+            );
+          }).length,
+        ),
+      ),
+      safeRead('opportunitiesWithCustomerDemandContext', 0, () =>
+        client.opportunity.findMany({
+          where: { createdAt: { gte: since } },
+          select: { metadata: true },
+          orderBy: { createdAt: 'desc' },
+          take: AGGREGATE_SAMPLE_LIMIT,
+        }).then((items) =>
+          items.filter((item) => {
+            const metadata = item.metadata;
+            return Boolean(
+              metadata &&
+                typeof metadata === 'object' &&
+                !Array.isArray(metadata) &&
+                'customerDemandContext' in metadata,
             );
           }).length,
         ),
@@ -841,6 +966,7 @@ function createDiagnosticsRepository(client: typeof db = db): DiagnosticsReposit
     };
     summary.customerDemand = {
       customerRequestsCreated,
+      approvedCustomerDemandSignals,
       customerRequestsNew,
       customerRequestsApproved,
       customerRequestsRejected,
@@ -848,6 +974,15 @@ function createDiagnosticsRepository(client: typeof db = db): DiagnosticsReposit
       customerRequestsByType,
       customerRequestsByConfidence,
       latestCustomerRequests,
+    };
+    summary.demandSupplyMatches = {
+      demandSupplyMatchesCreated,
+      demandSupplyMatchesNew,
+      demandSupplyMatchesReviewed,
+      demandSupplyMatchesRejected,
+      demandSupplyMatchesExpired,
+      demandSupplyMatchesByConfidence,
+      latestDemandSupplyMatches,
     };
     summary.aiParserVisibility = {
       aiFallbackAttemptedBestEffort,
@@ -860,6 +995,7 @@ function createDiagnosticsRepository(client: typeof db = db): DiagnosticsReposit
       openOpportunities,
       opportunitiesCreated,
       opportunitiesWithCommercialIntelContext,
+      opportunitiesWithCustomerDemandContext,
       opportunitiesByType,
       latestOpportunities,
     };
