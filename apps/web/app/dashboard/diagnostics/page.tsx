@@ -4,6 +4,7 @@ import {
   getPipelineDiagnosticsSummary,
   type DiagnosticsCommercialIntelItem,
   type DiagnosticsCustomerDemandSignal,
+  type DiagnosticsDemandSupplyMatch,
   type DiagnosticsInboundEmail,
   type DiagnosticsOpportunity,
   type DiagnosticsSupplierPriceItem,
@@ -200,6 +201,49 @@ function CustomerRequestList({ items }: { items: DiagnosticsCustomerDemandSignal
   );
 }
 
+function DemandSupplyMatchList({ items }: { items: DiagnosticsDemandSupplyMatch[] }) {
+  if (items.length === 0) {
+    return <p className="copy">No demand matches were created in this window.</p>;
+  }
+
+  return (
+    <div className="dashboard-opportunity-list">
+      {items.map((item) => (
+        <article className="dashboard-opportunity-card" key={item.id}>
+          <div className="dashboard-opportunity-top">
+            <div>
+              <p className="dashboard-opportunity-title">
+                {item.product?.name ?? 'Product not linked'}
+              </p>
+              <p className="dashboard-opportunity-meta">
+                {[item.customer?.name, item.supplier?.name].filter(Boolean).join(' | ') ||
+                  'Customer or supplier not linked'}
+              </p>
+            </div>
+            <div className="dashboard-opportunity-badges">
+              <span className="pill pill-neutral">{humanizeValue(item.status)}</span>
+              <span className="pill pill-neutral">{humanizeValue(item.confidence)}</span>
+            </div>
+          </div>
+          <p className="dashboard-opportunity-copy">{truncateText(item.rationale)}</p>
+          <p className="dashboard-triage-meta">
+            Target {formatMoney(item.requestedTargetPrice, item.requestedCurrency)} | Supplier{' '}
+            {formatMoney(item.supplierUnitPrice, item.supplierCurrency)}
+            {item.estimatedMarginAmount !== null
+              ? ` | Margin ${formatMoney(item.estimatedMarginAmount, item.requestedCurrency)}`
+              : ''}
+          </p>
+          <div className="actions">
+            <Link className="button" href={`/dashboard/demand-supply-matches/${item.id}`}>
+              Open match
+            </Link>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function SupplierPriceList({ items }: { items: DiagnosticsSupplierPriceItem[] }) {
   if (items.length === 0) {
     return <p className="copy">No supplier price records were created in this window.</p>;
@@ -291,6 +335,11 @@ function WindowSummary({ window }: { window: PipelineWindowDiagnostics }) {
             label="Customer requests found"
             note="Buyer demand and sourcing requests extracted from email."
             value={window.customerDemand.customerRequestsCreated}
+          />
+          <MetricCard
+            label="Demand matches"
+            note="Review candidates linking demand to supplier price intelligence."
+            value={window.demandSupplyMatches.demandSupplyMatchesCreated}
           />
           <MetricCard
             label="Waiting for review"
@@ -431,6 +480,39 @@ function WindowSummary({ window }: { window: PipelineWindowDiagnostics }) {
           </div>
         </div>
         <CustomerRequestList items={window.customerDemand.latestCustomerRequests} />
+      </section>
+
+      <section className="panel dashboard-panel">
+        <div className="dashboard-section-header">
+          <div>
+            <h3 className="section-title">Demand matches</h3>
+            <p className="copy">Review-first candidates connecting approved demand to supplier prices.</p>
+          </div>
+          <Link className="button" href="/dashboard/demand-supply-matches">
+            Open matches
+          </Link>
+        </div>
+        <p className="alert alert-success">
+          Demand matches do not create trades, contact anyone, buy stock, sell stock, or send messages.
+        </p>
+        <div className="dashboard-summary-grid">
+          <MetricCard label="Created" note="Candidates generated or refreshed." value={window.demandSupplyMatches.demandSupplyMatchesCreated} />
+          <MetricCard label="New" note="Waiting for operator review." value={window.demandSupplyMatches.demandSupplyMatchesNew} />
+          <MetricCard label="Reviewed" note="Checked by an operator." value={window.demandSupplyMatches.demandSupplyMatchesReviewed} />
+          <MetricCard label="Rejected" note="Marked not useful." value={window.demandSupplyMatches.demandSupplyMatchesRejected} />
+          <MetricCard label="Expired" note="No longer current." value={window.demandSupplyMatches.demandSupplyMatchesExpired} />
+        </div>
+        <div className="technical-details-card">
+          <h4 className="subsection-title">By confidence</h4>
+          {renderCountList(window.demandSupplyMatches.demandSupplyMatchesByConfidence, 'No confidence data yet.')}
+        </div>
+        <div className="dashboard-section-header technical-details-card">
+          <div>
+            <h4 className="subsection-title">Latest demand matches</h4>
+            <p className="copy">Newest generated match candidates.</p>
+          </div>
+        </div>
+        <DemandSupplyMatchList items={window.demandSupplyMatches.latestDemandSupplyMatches} />
       </section>
 
       <section className="panel dashboard-panel">

@@ -50,6 +50,25 @@ export type DiagnosticsCustomerDemandSignal = {
   createdAt: string;
 };
 
+export type DiagnosticsDemandSupplyMatch = {
+  id: string;
+  status: string;
+  confidence: string;
+  reason: string;
+  matchScore: number | null;
+  quantityRequested: number | null;
+  requestedTargetPrice: number | string | null;
+  requestedCurrency: string | null;
+  supplierUnitPrice: number | string | null;
+  supplierCurrency: string | null;
+  estimatedMarginAmount: number | string | null;
+  rationale: string;
+  createdAt: string;
+  product: { id: string; name: string } | null;
+  customer: { id: string; name: string } | null;
+  supplier: { id: string; name: string } | null;
+};
+
 export type DiagnosticsOpportunity = {
   id: string;
   type: string;
@@ -115,6 +134,7 @@ export type PipelineWindowDiagnostics = {
   };
   customerDemand: {
     customerRequestsCreated: number;
+    approvedCustomerDemandSignals?: number;
     customerRequestsNew: number;
     customerRequestsApproved: number;
     customerRequestsRejected: number;
@@ -122,6 +142,15 @@ export type PipelineWindowDiagnostics = {
     customerRequestsByType: CountByName[];
     customerRequestsByConfidence: CountByName[];
     latestCustomerRequests: DiagnosticsCustomerDemandSignal[];
+  };
+  demandSupplyMatches: {
+    demandSupplyMatchesCreated: number;
+    demandSupplyMatchesNew: number;
+    demandSupplyMatchesReviewed: number;
+    demandSupplyMatchesRejected: number;
+    demandSupplyMatchesExpired: number;
+    demandSupplyMatchesByConfidence: CountByName[];
+    latestDemandSupplyMatches: DiagnosticsDemandSupplyMatch[];
   };
   aiParserVisibility: {
     aiFallbackAttemptedBestEffort: number;
@@ -134,6 +163,7 @@ export type PipelineWindowDiagnostics = {
     openOpportunities: number;
     opportunitiesCreated: number;
     opportunitiesWithCommercialIntelContext?: number;
+    opportunitiesWithCustomerDemandContext?: number;
     opportunitiesByType: CountByName[];
     latestOpportunities: DiagnosticsOpportunity[];
   };
