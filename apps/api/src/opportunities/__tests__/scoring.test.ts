@@ -124,6 +124,69 @@ test('TRADING mode PUSH works on healthy demand without warehouse assumptions', 
   assert.ok(candidates.some((candidate) => candidate.type === 'PUSH'));
 });
 
+test('TRADING mode does not emit RESTOCK even when stockholding restock conditions match', () => {
+  const candidates = scoreOpportunityCandidates(createContext({}), tradingConfig);
+
+  assert.ok(!candidates.some((candidate) => candidate.type === 'RESTOCK'));
+});
+
+test('TRADING mode does not emit DEAD_STOCK even when stockholding dead-stock conditions match', () => {
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      product: {
+        id: 'product-2-trading',
+        name: 'Paracetamol 500mg Tablets',
+      },
+      latestInventory: {
+        supplierId: 'supplier-1',
+        snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
+        quantityAvailable: 400,
+        quantityOnHand: 420,
+      },
+      latestSupplierPrice: null,
+      previousSupplierPrice: null,
+      recentSales: {
+        units30d: 0,
+        averageSalePrice: null,
+        lastSaleDate: null,
+      },
+    }),
+    tradingConfig,
+  );
+
+  assert.ok(!candidates.some((candidate) => candidate.type === 'DEAD_STOCK'));
+});
+
+test('STOCKHOLDING mode can still emit RESTOCK and DEAD_STOCK while BUY behaviour remains available', () => {
+  const restockCandidates = scoreOpportunityCandidates(createContext({}), stockholdingConfig);
+  const deadStockCandidates = scoreOpportunityCandidates(
+    createContext({
+      product: {
+        id: 'product-stockholding-dead-stock',
+        name: 'Paracetamol 500mg Tablets',
+      },
+      latestInventory: {
+        supplierId: 'supplier-1',
+        snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
+        quantityAvailable: 400,
+        quantityOnHand: 420,
+      },
+      latestSupplierPrice: null,
+      previousSupplierPrice: null,
+      recentSales: {
+        units30d: 0,
+        averageSalePrice: null,
+        lastSaleDate: null,
+      },
+    }),
+    stockholdingConfig,
+  );
+
+  assert.ok(restockCandidates.some((candidate) => candidate.type === 'RESTOCK'));
+  assert.ok(restockCandidates.some((candidate) => candidate.type === 'BUY'));
+  assert.ok(deadStockCandidates.some((candidate) => candidate.type === 'DEAD_STOCK'));
+});
+
 test('suppresses redundant PRICE_ALERT when BUY already captures the commercial action', () => {
   const candidates = scoreOpportunityCandidates(createContext({
     product: {
