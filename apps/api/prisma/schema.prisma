@@ -216,6 +216,17 @@ enum PromotionDecisionStatus {
   REJECTED
 }
 
+enum PolicyCheckScope {
+  STAGED_OFFER
+  OUTBOUND_DRAFT
+}
+
+enum PolicyCheckStatus {
+  PASSED
+  FINDINGS
+  BLOCKED
+}
+
 enum OfferWorkflowStatus {
   NEW
   IN_REVIEW
@@ -675,6 +686,7 @@ model InboundEmail {
   tradeOpportunities        TradeOpportunity[]
   offerCorrections          OfferCorrection[]
   promotionDecisions        PromotionDecision[]
+  policyCheckResults        PolicyCheckResult[]
   promotedPriceLists        SupplierPriceList[]
   commercialIntelItems      CommercialIntelItem[]
   customerDemandSignals     CustomerDemandSignal[]
@@ -719,6 +731,7 @@ model EmailExtractionRun {
   notes            Json?
   inboundEmail     InboundEmail             @relation(fields: [inboundEmailId], references: [id], onDelete: Cascade)
   derivedOffers    EmailDerivedOffer[]
+  evidences         EmailDerivedOfferEvidence[]
   createdAt        DateTime                 @default(now())
   updatedAt        DateTime                 @updatedAt
 
@@ -749,6 +762,10 @@ model EmailDerivedOffer {
   fieldConfidence                Int?
   entityResolutionConfidence     Int?
   promotionConfidence            Int?
+  confidenceBreakdown            Json?
+  confidenceExplanation          String?
+  promotionBlockers              Json?
+  policyCheckSummary             Json?
   aiAssisted                     Boolean                      @default(false)
   reviewReason                   String?
   offerFingerprint               String?
@@ -759,6 +776,7 @@ model EmailDerivedOffer {
   evidences                      EmailDerivedOfferEvidence[]
   resolutionCandidates           EntityResolutionCandidate[]
   promotionDecisions             PromotionDecision[]
+  policyCheckResults             PolicyCheckResult[]
   workflowItem                   OfferWorkflowItem?
   buyDecision                    BuyDecision?
   tradeOpportunities             TradeOpportunity[]
@@ -1225,6 +1243,7 @@ model TradeMessageDraft {
   sentAt                         DateTime?
   metadata                       Json?
   tradeOpportunity               TradeOpportunity             @relation(fields: [tradeOpportunityId], references: [id], onDelete: Cascade)
+  policyCheckResults             PolicyCheckResult[]
   operatorFeedbacks              OperatorValidationFeedback[]
   createdAt                      DateTime                     @default(now())
   updatedAt                      DateTime                     @updatedAt
@@ -1429,20 +1448,32 @@ model EmailDerivedOfferEvidence {
   id                  String                @id @default(cuid())
   emailDerivedOfferId String
   sourceDocumentId    String?
+  extractionRunId     String?
   fieldName           String
+  fieldValue          String?
+  normalizedValue     String?
   evidenceType        String
   rawText             String
   startOffset         Int?
   endOffset           Int?
   confidence          Int?
+  extractionMethod    String?
+  extractorVersion    String?
+  evidenceFingerprint String?
+  reviewedAt          DateTime?
+  reviewedByType      String?
+  reviewedByIdentifier String?
   metadata            Json?
   emailDerivedOffer   EmailDerivedOffer     @relation(fields: [emailDerivedOfferId], references: [id], onDelete: Cascade)
   sourceDocument      InboundEmailDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+  extractionRun       EmailExtractionRun?   @relation(fields: [extractionRunId], references: [id], onDelete: SetNull)
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
 
   @@index([emailDerivedOfferId, fieldName])
   @@index([sourceDocumentId])
+  @@index([extractionRunId])
+  @@index([emailDerivedOfferId, evidenceFingerprint])
 }
 
 model EntityResolutionCandidate {
@@ -1477,6 +1508,32 @@ model PromotionDecision {
 
   @@index([inboundEmailId, status, createdAt])
   @@index([emailDerivedOfferId, status, createdAt])
+}
+
+model PolicyCheckResult {
+  id                  String            @id @default(cuid())
+  scope               PolicyCheckScope
+  status              PolicyCheckStatus
+  inboundEmailId      String?
+  emailDerivedOfferId String?
+  tradeMessageDraftId String?
+  checkType           String
+  findings            Json?
+  blockingFindingCount Int             @default(0)
+  summary             String
+  checkedByType       String            @default("SYSTEM")
+  checkedByIdentifier String?
+  metadata            Json?
+  inboundEmail        InboundEmail?     @relation(fields: [inboundEmailId], references: [id], onDelete: SetNull)
+  emailDerivedOffer   EmailDerivedOffer? @relation(fields: [emailDerivedOfferId], references: [id], onDelete: Cascade)
+  tradeMessageDraft   TradeMessageDraft? @relation(fields: [tradeMessageDraftId], references: [id], onDelete: Cascade)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@index([scope, status, createdAt])
+  @@index([inboundEmailId, createdAt])
+  @@index([emailDerivedOfferId, createdAt])
+  @@index([tradeMessageDraftId, createdAt])
 }
 
 model SupplierPriceList {

@@ -205,6 +205,131 @@ test('workflow detail route returns 404 when workflow is missing', async (t) => 
   assert.equal(response.status, 404);
 });
 
+test('workflow policy check routes expose stored and on-demand findings', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
+  stubMethod(
+    t,
+    offerWorkflowService,
+    'listWorkflowPolicyCheckResults',
+    (async () => [
+      {
+        id: 'policy-1',
+        scope: 'STAGED_OFFER',
+        status: 'FINDINGS',
+        checkType: 'BLIND_BROKER_STAGED_OFFER',
+        findings: [],
+        blockingFindingCount: 0,
+        summary: '1 finding detected.',
+        checkedByType: 'SYSTEM',
+        checkedByIdentifier: null,
+        metadata: null,
+        createdAt: new Date('2026-05-06T10:00:00.000Z'),
+      },
+    ]) as typeof offerWorkflowService.listWorkflowPolicyCheckResults,
+  );
+  stubMethod(
+    t,
+    offerWorkflowService,
+    'runWorkflowPolicyCheck',
+    (async () => ({
+      id: 'policy-2',
+      scope: 'STAGED_OFFER',
+      status: 'BLOCKED',
+      checkType: 'BLIND_BROKER_STAGED_OFFER',
+      findings: [{ code: 'bank_payment_details_detected', blocking: true }],
+      blockingFindingCount: 1,
+      summary: '1 blocking finding detected.',
+      checkedByType: 'OPERATOR',
+      checkedByIdentifier: 'route-test',
+      metadata: null,
+      createdAt: new Date('2026-05-06T10:01:00.000Z'),
+    }) as any) as typeof offerWorkflowService.runWorkflowPolicyCheck,
+  );
+
+  const baseUrl = await startServer(t);
+  const listResponse = await fetch(`${baseUrl}/api/review-queue/workflows/workflow-1/policy-checks`, {
+    headers: {
+      'x-internal-api-key': 'test-secret',
+    },
+  });
+  const runResponse = await fetch(`${baseUrl}/api/review-queue/workflows/workflow-1/policy-checks/run`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-internal-api-key': 'test-secret',
+    },
+    body: JSON.stringify({
+      actorType: 'OPERATOR',
+      actorIdentifier: 'route-test',
+    }),
+  });
+
+  assert.equal(listResponse.status, 200);
+  assert.equal((await listResponse.json()).items[0].id, 'policy-1');
+  assert.equal(runResponse.status, 200);
+  assert.equal((await runResponse.json()).item.status, 'BLOCKED');
+});
+
+test('workflow promotion-check route returns structured blocker reasons', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
+  stubMethod(
+    t,
+    offerWorkflowService,
+    'evaluatePromotionReadiness',
+    (async () => ({
+      workflowItemId: 'workflow-1',
+      emailDerivedOfferId: 'offer-1',
+      canApproveToBuy: false,
+      canPersistSupplierPriceIntelligence: false,
+      blockers: [
+        {
+          code: 'canonical_product_unresolved',
+          severity: 'BLOCKING',
+          message: 'No product.',
+        },
+      ],
+      warnings: [],
+      confidenceBreakdown: null,
+      confidenceExplanation: null,
+      reviewerExplanation: '1 hard blocker must be resolved before approval.',
+      policyCheck: {
+        status: 'PASSED',
+        summary: 'No findings.',
+        findings: [],
+        blockingFindingCount: 0,
+        fingerprint: 'test',
+        flags: {},
+      },
+    }) as any) as typeof offerWorkflowService.evaluatePromotionReadiness,
+  );
+
+  const baseUrl = await startServer(t);
+  const response = await fetch(`${baseUrl}/api/review-queue/workflows/workflow-1/promotion-check`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-internal-api-key': 'test-secret',
+    },
+    body: JSON.stringify({
+      actorType: 'OPERATOR',
+      actorIdentifier: 'route-test',
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.item.canApproveToBuy, false);
+  assert.equal(payload.item.blockers[0].code, 'canonical_product_unresolved');
+});
+
 test('workflow list route accepts inboundEmailId filter', async (t) => {
   overrideEnv(t, {
     nodeEnv: 'test',

@@ -18,6 +18,7 @@ function createRepositoryHarness() {
   const tradeOpportunities: Array<Record<string, any>> = [];
   const tradeOpportunityEvents: Array<Record<string, any>> = [];
   const tradeOpportunityPolicies: Array<Record<string, any>> = [];
+  const policyCheckResults: Array<Record<string, any>> = [];
   const feedbacks: Array<Record<string, any>> = [];
   const supplierQualifications: Array<Record<string, any>> = [];
   const supplierPriceLists: Array<Record<string, any>> = [];
@@ -69,11 +70,28 @@ function createRepositoryHarness() {
       sourceBlockText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
       rawProductText: 'Amlodipine 5mg tabs 28',
       normalizedProductNameCandidate: 'amlodipine 5mg tabs 28',
+      strengthCandidate: '5mg',
+      dosageFormCandidate: 'tabs',
+      packSizeCandidate: '28',
       manufacturerCandidate: null,
       priceCandidate: { toString: () => '8.40' },
       currencyCandidate: 'GBP',
       minimumOrderQuantityCandidate: null,
       availabilityCandidate: 'available',
+      sourceTrustScore: 72,
+      structureConfidence: 82,
+      fieldConfidence: 78,
+      entityResolutionConfidence: 85,
+      promotionConfidence: 74,
+      confidenceBreakdown: {
+        overallConfidence: 78,
+        factors: [],
+      },
+      confidenceExplanation: 'Test confidence breakdown.',
+      promotionBlockers: [],
+      policyCheckSummary: null,
+      evidences: [] as Array<Record<string, any>>,
+      policyCheckResults: [] as Array<Record<string, any>>,
       metadata: {
         sender: 'pricing@supplier.co',
         subject: 'Offer',
@@ -142,6 +160,7 @@ function createRepositoryHarness() {
     tradeOpportunities: tradeOpportunities.map((item) => ({ ...item })),
     tradeOpportunityEvents: tradeOpportunityEvents.map((item) => ({ ...item })),
     tradeOpportunityPolicies: tradeOpportunityPolicies.map((item) => ({ ...item })),
+    policyCheckResults: policyCheckResults.map((item) => ({ ...item })),
     feedbacks: feedbacks.map((item) => ({ ...item })),
     supplierPriceLists: supplierPriceLists.map((item) => ({ ...item })),
     supplierPriceItems: supplierPriceItems.map((item) => ({ ...item })),
@@ -159,6 +178,7 @@ function createRepositoryHarness() {
     tradeOpportunities.splice(0, tradeOpportunities.length, ...snapshot.tradeOpportunities);
     tradeOpportunityEvents.splice(0, tradeOpportunityEvents.length, ...snapshot.tradeOpportunityEvents);
     tradeOpportunityPolicies.splice(0, tradeOpportunityPolicies.length, ...snapshot.tradeOpportunityPolicies);
+    policyCheckResults.splice(0, policyCheckResults.length, ...snapshot.policyCheckResults);
     feedbacks.splice(0, feedbacks.length, ...snapshot.feedbacks);
     supplierPriceLists.splice(0, supplierPriceLists.length, ...snapshot.supplierPriceLists);
     supplierPriceItems.splice(0, supplierPriceItems.length, ...snapshot.supplierPriceItems);
@@ -176,6 +196,7 @@ function createRepositoryHarness() {
     tradeOpportunities,
     tradeOpportunityEvents,
     tradeOpportunityPolicies,
+    policyCheckResults,
     feedbacks,
     supplierQualifications,
     supplierPriceLists,
@@ -201,6 +222,52 @@ function createRepositoryHarness() {
       },
       async findWorkflowDetailById(workflowItemId: string) {
         return (workflowItems.find((item) => item.id === workflowItemId) ?? null) as never;
+      },
+      async findProductIdentityById(productId: string) {
+        for (const workflow of workflowItems) {
+          const offer = workflow.emailDerivedOffer;
+          const selected = offer?.resolutionCandidates.find(
+            (candidate: Record<string, any>) =>
+              candidate.entityType === 'PRODUCT' &&
+              candidate.selected &&
+              candidate.candidateId === productId,
+          );
+          if (selected) {
+            return {
+              id: productId,
+              strength: offer.strengthCandidate ?? null,
+              packSize: offer.packSizeCandidate ?? null,
+            } as never;
+          }
+        }
+
+        return null as never;
+      },
+      async listRecentSupplierPricesByProduct(input: Record<string, any>) {
+        return supplierPriceItems
+          .filter((item) => item.productId === input.productId && item.currencyCode === input.currencyCode)
+          .slice(0, input.take ?? 25)
+          .map((item) => ({ unitPrice: item.unitPrice })) as never;
+      },
+      async listPolicyCheckResultsByOfferId(emailDerivedOfferId: string) {
+        return policyCheckResults.filter((item) => item.emailDerivedOfferId === emailDerivedOfferId) as never;
+      },
+      async createPolicyCheckResult(data: Record<string, any>) {
+        const created = {
+          id: nextId('policy-check'),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...data,
+        };
+        policyCheckResults.push(created);
+        const workflow = workflowItems.find((item) => item.emailDerivedOfferId === data.emailDerivedOfferId);
+        if (workflow?.emailDerivedOffer) {
+          workflow.emailDerivedOffer.policyCheckResults = [
+            created,
+            ...(workflow.emailDerivedOffer.policyCheckResults ?? []),
+          ];
+        }
+        return created as never;
       },
       async createWorkflowItem(data: Record<string, any>) {
         const created = makeWorkflowRecord({
@@ -974,7 +1041,7 @@ test('re-approving the same workflow item does not duplicate supplier price inte
   );
 });
 
-test('approved reviewed offer skips supplier price intelligence with clear reason when required fields are missing', async () => {
+test('approval is blocked with clear reasons when required promotion fields are missing', async () => {
   const scenarios = [
     {
       name: 'missing product',
@@ -984,7 +1051,7 @@ test('approved reviewed offer skips supplier price intelligence with clear reaso
             (candidate: Record<string, any>) => candidate.entityType !== 'PRODUCT',
           );
       },
-      expectedReason: 'missing_product',
+      expectedCode: 'canonical_product_unresolved',
     },
     {
       name: 'missing supplier',
@@ -994,21 +1061,21 @@ test('approved reviewed offer skips supplier price intelligence with clear reaso
             (candidate: Record<string, any>) => candidate.entityType !== 'SUPPLIER',
           );
       },
-      expectedReason: 'missing_supplier',
+      expectedCode: 'canonical_supplier_unresolved',
     },
     {
       name: 'missing price',
       mutate: (workflow: Record<string, any>) => {
         workflow.emailDerivedOffer.priceCandidate = null;
       },
-      expectedReason: 'missing_price',
+      expectedCode: 'missing_price',
     },
     {
       name: 'missing currency',
       mutate: (workflow: Record<string, any>) => {
         workflow.emailDerivedOffer.currencyCandidate = null;
       },
-      expectedReason: 'missing_currency',
+      expectedCode: 'missing_currency',
     },
   ];
 
@@ -1019,21 +1086,87 @@ test('approved reviewed offer skips supplier price intelligence with clear reaso
     scenario.mutate(workflow);
     harness.workflowItems.push(workflow);
 
-    const approvalResult = await service.approveToBuyWithOutcome({
-      workflowItemId: workflow.id,
-      actorType: 'USER',
-      actorIdentifier: 'buyer-1',
-    });
-
-    assert.equal(
-      approvalResult.outcome.supplierPriceIntelligence.skippedReason,
-      scenario.expectedReason,
+    await assert.rejects(
+      () =>
+        service.approveToBuyWithOutcome({
+          workflowItemId: workflow.id,
+          actorType: 'USER',
+          actorIdentifier: 'buyer-1',
+        }),
+      (error: unknown) => {
+        assert.equal(error instanceof Error ? error.name : null, 'WorkflowPromotionBlockedError');
+        assert.match(JSON.stringify((error as { details?: unknown }).details), new RegExp(scenario.expectedCode));
+        return true;
+      },
       scenario.name,
     );
     assert.equal(harness.supplierPriceLists.length, 0, scenario.name);
     assert.equal(harness.supplierPriceItems.length, 0, scenario.name);
-    assert.equal(harness.buyDecisions.length, 1, scenario.name);
+    assert.equal(harness.buyDecisions.length, 0, scenario.name);
   }
+});
+
+test('workflow detail includes promotion readiness, confidence breakdown, and provenance policy context', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  const workflow = harness.makeWorkflowRecord();
+  workflow.emailDerivedOffer.evidences = [
+    {
+      id: 'evidence-1',
+      fieldName: 'priceCandidate',
+      fieldValue: '8.40',
+      normalizedValue: null,
+      evidenceType: 'deterministic_row',
+      rawText: 'GBP 8.40',
+      startOffset: null,
+      endOffset: null,
+      confidence: 90,
+      extractionMethod: 'DETERMINISTIC',
+      extractorVersion: 'email-staging-v1',
+      evidenceFingerprint: 'fingerprint-1',
+      metadata: null,
+      createdAt: new Date(),
+    },
+  ];
+  harness.workflowItems.push(workflow);
+
+  const detail = await service.getWorkflowItem(workflow.id);
+
+  assert.equal(detail?.promotionReadiness?.canApproveToBuy, true);
+  assert.equal(detail?.promotionReadiness?.confidenceExplanation, 'Test confidence breakdown.');
+  assert.equal(detail?.emailDerivedOffer?.evidences?.[0]?.evidenceFingerprint, 'fingerprint-1');
+});
+
+test('blind-broker policy findings are persisted and block unsafe approval readiness', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  const workflow = harness.makeWorkflowRecord();
+  workflow.emailDerivedOffer.sourceBlockText =
+    'Amlodipine 5mg tabs 28 - GBP 8.40. Bank details and sort code are included below.';
+  harness.workflowItems.push(workflow);
+
+  const policyCheck = await service.runWorkflowPolicyCheck(workflow.id, {
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+
+  assert.equal(policyCheck.status, 'BLOCKED');
+  assert.equal(harness.policyCheckResults.length, 1);
+  assert.match(JSON.stringify(policyCheck.findings), /bank_payment_details_detected/);
+
+  await assert.rejects(
+    () =>
+      service.approveToBuyWithOutcome({
+        workflowItemId: workflow.id,
+        actorType: 'USER',
+        actorIdentifier: 'buyer-1',
+      }),
+    (error: unknown) => {
+      assert.equal(error instanceof Error ? error.name : null, 'WorkflowPromotionBlockedError');
+      assert.match(JSON.stringify((error as { details?: unknown }).details), /policy_bank_payment_details_detected/);
+      return true;
+    },
+  );
 });
 
 test('approved reviewed offer creates supplier price intelligence visible to opportunity regeneration inputs', async () => {
@@ -1392,7 +1525,7 @@ test('unknown qualification requires explicit operator confirmation to approve',
       actorType: 'USER',
       actorIdentifier: 'buyer-1',
     }),
-    /qualification risk requires explicit operator confirmation/i,
+    /qualification is unknown|qualification risk requires explicit operator confirmation/i,
   );
 
   await service.approveToBuy({

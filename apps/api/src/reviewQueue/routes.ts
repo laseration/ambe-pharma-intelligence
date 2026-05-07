@@ -108,6 +108,10 @@ const markOrderedWorkflowBodySchema = z.object({
   expectedDeliveryDate: optionalDateInputSchema,
 }).merge(actorBodySchema);
 
+const promotionCheckBodySchema = z.object({
+  allowQualificationRisk: z.boolean().optional(),
+}).merge(actorBodySchema);
+
 const workflowActionBodySchema = z.union([
   assignWorkflowBodySchema,
   noteWorkflowBodySchema,
@@ -143,6 +147,54 @@ reviewQueueRouter.get('/workflows/:id/events', asyncHandler(async (request, resp
 
   response.json({
     items: await offerWorkflowService.listWorkflowEvents(params.id),
+  });
+}));
+
+reviewQueueRouter.get('/workflows/:id/policy-checks', asyncHandler(async (request, response) => {
+  const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {
+    params: idParamSchema,
+  });
+
+  response.json({
+    items: await offerWorkflowService.listWorkflowPolicyCheckResults(params.id),
+  });
+}));
+
+reviewQueueRouter.post('/workflows/:id/policy-checks/run', requireInternalOperatorAccess, asyncHandler(async (request, response) => {
+  const { params, body } = parseRequest<
+    z.infer<typeof idParamSchema>,
+    unknown,
+    z.infer<typeof actorBodySchema>
+  >(request, {
+    params: idParamSchema,
+    body: actorBodySchema,
+  });
+
+  response.json({
+    item: await offerWorkflowService.runWorkflowPolicyCheck(
+      params.id,
+      resolveInternalActor(request, body),
+    ),
+  });
+}));
+
+reviewQueueRouter.post('/workflows/:id/promotion-check', requireInternalOperatorAccess, asyncHandler(async (request, response) => {
+  const { params, body } = parseRequest<
+    z.infer<typeof idParamSchema>,
+    unknown,
+    z.infer<typeof promotionCheckBodySchema>
+  >(request, {
+    params: idParamSchema,
+    body: promotionCheckBodySchema,
+  });
+
+  response.json({
+    item: requireFound(
+      await offerWorkflowService.evaluatePromotionReadiness(params.id, {
+        allowQualificationRisk: body.allowQualificationRisk === true,
+      }),
+      'Offer workflow item not found.',
+    ),
   });
 }));
 

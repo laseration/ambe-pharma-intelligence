@@ -17,6 +17,7 @@ type StartupHealthClient = Pick<
   | 'buyExecution'
   | 'tradeOpportunity'
   | 'tradeMessageDraft'
+  | 'policyCheckResult'
   | 'automationReadinessPolicy'
   | 'operatorValidationFeedback'
   | 'offerCorrection'
@@ -130,6 +131,11 @@ export async function verifyDatabaseReadiness(
   await verifyTable(
     'TradeMessageDraft',
     () => client.tradeMessageDraft.findFirst({ select: { id: true } }),
+    { logger: healthLogger },
+  );
+  await verifyTable(
+    'PolicyCheckResult',
+    () => client.policyCheckResult.findFirst({ select: { id: true } }),
     { logger: healthLogger },
   );
   await verifyTable(

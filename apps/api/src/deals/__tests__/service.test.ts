@@ -607,6 +607,32 @@ test('forwarded raw header content is flagged in outward drafts', async () => {
   assert.equal(draft.status, 'DRAFT');
 });
 
+test('bank and address leakage keep outward drafts out of approval readiness', async () => {
+  const harness = createRepositoryHarness();
+  const service = createService(harness);
+  seedOffer(harness);
+
+  const tradeOpportunity = await service.createTradeOpportunity({
+    emailDerivedOfferId: 'offer-1',
+    targetSellUnitPrice: 10.25,
+    targetSellCurrencyCode: 'GBP',
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+
+  const draft = await service.generateTradeMessageDraft(tradeOpportunity.id, {
+    direction: 'TO_BUYER',
+    messagePurpose: 'INITIAL_BUYER_OFFER',
+    body: 'Collection from 20 High Street. Bank details and sort code available if needed.',
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+
+  assert.equal(draft.status, 'DRAFT');
+  assert.match(JSON.stringify(draft.policyViolations), /address_or_location_detected/);
+  assert.match(JSON.stringify(draft.policyViolations), /bank_payment_details_detected/);
+});
+
 test('rejecting a draft records draft feedback for readiness evaluation', async () => {
   const harness = createRepositoryHarness();
   const service = createService(harness);

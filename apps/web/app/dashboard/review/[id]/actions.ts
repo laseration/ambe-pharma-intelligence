@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 
 import {
   listReviewWorkflowItems,
+  runReviewWorkflowPolicyCheck,
   type ReviewWorkflowActionOutcome,
   updateReviewWorkflowItem,
 } from '../../../../lib/reviewApi';
@@ -59,6 +60,10 @@ function formatReviewActionErrorMessage(message: string, action: string): string
 
   if (action === 'APPROVE_TO_BUY' && /blocked supplier cannot be approved to buy/i.test(message)) {
     return 'Approval is blocked. The supplier is currently blocked and must be reviewed before you can continue.';
+  }
+
+  if (action === 'APPROVE_TO_BUY' && /promotion blocked by staged-offer safety checks/i.test(message)) {
+    return 'Approval is blocked. Check the promotion safety section for the fields or policy findings that need resolving.';
   }
 
   return message || 'Workflow action failed.';
@@ -161,7 +166,7 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
         const result = await updateReviewWorkflowItem(item.id, {
           action,
           note,
-          allowQualificationRisk: workflowItemId ? true : allowQualificationRisk,
+          allowQualificationRisk,
           supplierDetails,
           ...actorPayload,
         });
@@ -238,4 +243,42 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
     searchParams.set('dealId', successPayload.dealId);
   }
   redirect(`${returnTo}${returnTo.includes('?') ? '&' : '?'}${searchParams.toString()}`);
+}
+
+export async function runStagedOfferPolicyCheckAction(formData: FormData) {
+  const inboundEmailId = value(formData, 'inboundEmailId');
+  const workflowItemId = value(formData, 'workflowItemId');
+  const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
+
+  if (!workflowItemId) {
+    redirect('/dashboard/review?error=Missing+policy+check+input');
+  }
+
+  try {
+    await runReviewWorkflowPolicyCheck(workflowItemId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Policy check failed.';
+    redirect(
+      inboundEmailId
+        ? buildReviewRedirectTarget(inboundEmailId, { error: message }, returnTo)
+        : `/dashboard/review/${workflowItemId}?error=${encodeURIComponent(message)}&returnTo=${encodeURIComponent(returnTo)}`,
+    );
+  }
+
+  revalidatePath('/dashboard/review');
+  if (inboundEmailId) {
+    revalidatePath(`/dashboard/review/${inboundEmailId}`);
+    redirect(
+      buildReviewSuccessRedirectTarget(
+        inboundEmailId,
+        {
+          updated: 'POLICY_CHECK',
+          message: 'Policy check updated.',
+        },
+        returnTo,
+      ),
+    );
+  }
+
+  redirect(`${returnTo}${returnTo.includes('?') ? '&' : '?'}updated=POLICY_CHECK&message=Policy+check+updated.`);
 }

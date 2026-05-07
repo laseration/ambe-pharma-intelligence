@@ -10,6 +10,7 @@ import {
 } from '../automation/service';
 import { offerCorrectionService } from '../corrections/service';
 import { db } from '../lib/db';
+import { runBlindBrokerPolicyCheck, type PolicyCheckFinding } from '../policyChecks/service';
 
 export type TradeOpportunityStatus = 'OPEN' | 'ON_HOLD' | 'DROPPED' | 'WON' | 'LOST';
 
@@ -1274,18 +1275,21 @@ export function validateTradeMessageDraft(
     body: string;
   },
 ) {
-  const text = `${input.subject}\n${input.body}`;
-  const lowerText = text.toLowerCase();
   const { supplierTerms, buyerTerms } = extractPolicyTerms(tradeOpportunity);
-  const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
-  const phonePattern = /(?:\+?\d[\d\s().-]{6,}\d)/g;
-  const headerPattern = /(^|\n)\s*(from|sent|to|subject):/i;
-  const urlPattern = /https?:\/\/|www\./i;
-  const containsSupplierIdentity = supplierTerms.some((term) => lowerText.includes(term.toLowerCase()));
-  const containsBuyerIdentity = buyerTerms.some((term) => lowerText.includes(term.toLowerCase()));
-  const containsExternalContactDetails =
-    emailPattern.test(text) || phonePattern.test(text) || urlPattern.test(text);
-  const containsForwardedContent = headerPattern.test(text);
+  const blindBrokerCheck = runBlindBrokerPolicyCheck({
+    scope: 'OUTBOUND_DRAFT',
+    direction: input.direction,
+    textParts: [
+      { label: 'subject', text: input.subject },
+      { label: 'body', text: input.body },
+    ],
+    supplierTerms,
+    buyerTerms,
+  });
+  const containsSupplierIdentity = blindBrokerCheck.flags.containsSupplierIdentity;
+  const containsBuyerIdentity = blindBrokerCheck.flags.containsBuyerIdentity;
+  const containsExternalContactDetails = blindBrokerCheck.flags.containsExternalContactDetails;
+  const containsForwardedContent = blindBrokerCheck.flags.containsForwardedContent;
   const allowedMessageTypes =
     Array.isArray(policy.allowedMessageTypes) ? (policy.allowedMessageTypes as unknown[]) : null;
   const violations = dedupeRiskFlags([
@@ -1303,6 +1307,9 @@ export function validateTradeMessageDraft(
     input.direction === 'TO_SUPPLIER' && policy.blockBuyerIdentityLeak && containsBuyerIdentity
       ? 'buyer_identity_leak_detected'
       : null,
+    ...blindBrokerCheck.findings
+      .filter((finding) => finding.blocking)
+      .map((finding) => mapPolicyFindingToDraftViolation(finding, input.direction)),
   ]);
 
   return {
@@ -1323,6 +1330,29 @@ export function validateTradeMessageDraft(
     containsForwardedContent,
     status: (violations.length > 0 ? 'DRAFT' : 'READY_FOR_REVIEW') as TradeMessageDraftStatus,
   };
+}
+
+function mapPolicyFindingToDraftViolation(
+  finding: PolicyCheckFinding,
+  direction: TradeMessageDraftDirection,
+): string {
+  if (finding.category === 'SUPPLIER_IDENTITY' && direction === 'TO_BUYER') {
+    return 'supplier_identity_leak_detected';
+  }
+
+  if (finding.category === 'BUYER_IDENTITY' && direction === 'TO_SUPPLIER') {
+    return 'buyer_identity_leak_detected';
+  }
+
+  if (finding.category === 'CONTACT_DETAIL') {
+    return 'external_contact_details_detected';
+  }
+
+  if (finding.category === 'FORWARDED_CONTENT') {
+    return 'forwarded_header_content_detected';
+  }
+
+  return finding.code;
 }
 
 function renderTradeMessageDraft(

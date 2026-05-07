@@ -59,6 +59,23 @@ export type ReviewWorkflowDetail = ReviewWorkflowListItem & {
     fieldConfidence: number | null;
     entityResolutionConfidence: number | null;
     promotionConfidence: number | null;
+    confidenceBreakdown?: {
+      textExtractionConfidence?: number;
+      parserConfidence?: number;
+      entityResolutionConfidence?: number;
+      businessRuleConfidence?: number;
+      overallConfidence?: number;
+      explanation?: string;
+      factors?: Array<{
+        code: string;
+        label: string;
+        score: number;
+        explanation: string;
+      }>;
+    } | null;
+    confidenceExplanation?: string | null;
+    promotionBlockers?: unknown;
+    policyCheckSummary?: unknown;
     metadata: {
       sender?: string;
       subject?: string;
@@ -83,6 +100,31 @@ export type ReviewWorkflowDetail = ReviewWorkflowListItem & {
       textContent: string;
       metadata: unknown;
     } | null;
+    evidences?: Array<{
+      id: string;
+      fieldName: string;
+      fieldValue: string | null;
+      normalizedValue: string | null;
+      evidenceType: string;
+      rawText: string;
+      startOffset: number | null;
+      endOffset: number | null;
+      confidence: number | null;
+      extractionMethod: string | null;
+      extractorVersion: string | null;
+      evidenceFingerprint: string | null;
+      metadata: unknown;
+      sourceDocument?: {
+        id: string;
+        kind: string;
+        documentIndex: number;
+        label: string | null;
+        textContent: string;
+        metadata: unknown;
+      } | null;
+      createdAt: string;
+    }>;
+    policyCheckResults?: PolicyCheckResult[];
   } | null;
   inboundEmail?: {
     id: string;
@@ -112,6 +154,7 @@ export type ReviewWorkflowDetail = ReviewWorkflowListItem & {
     domain: string | null;
     source: string | null;
   } | null;
+  promotionReadiness?: PromotionReadiness | null;
   buyDecision?: {
     id: string;
     approvalStatus: string;
@@ -119,6 +162,59 @@ export type ReviewWorkflowDetail = ReviewWorkflowListItem & {
     externalOrderReference?: string | null;
     orderedAt?: string | null;
   } | null;
+};
+
+export type PolicyCheckFinding = {
+  code: string;
+  category: string;
+  severity: 'INFO' | 'WARNING' | 'BLOCKING';
+  blocking: boolean;
+  label: string;
+  evidence: string;
+  sourceLabel: string;
+};
+
+export type PolicyCheckResult = {
+  id: string;
+  scope: 'STAGED_OFFER' | 'OUTBOUND_DRAFT';
+  status: 'PASSED' | 'FINDINGS' | 'BLOCKED';
+  checkType: string;
+  findings: PolicyCheckFinding[] | unknown;
+  blockingFindingCount: number;
+  summary: string;
+  checkedByType: string;
+  checkedByIdentifier: string | null;
+  metadata: unknown;
+  createdAt: string;
+};
+
+export type PromotionReadiness = {
+  workflowItemId: string;
+  emailDerivedOfferId: string | null;
+  canApproveToBuy: boolean;
+  canPersistSupplierPriceIntelligence: boolean;
+  blockers: Array<{
+    code: string;
+    severity: 'BLOCKING' | 'WARNING';
+    message: string;
+    field?: string | null;
+  }>;
+  warnings: Array<{
+    code: string;
+    severity: 'BLOCKING' | 'WARNING';
+    message: string;
+    field?: string | null;
+  }>;
+  confidenceBreakdown: unknown;
+  confidenceExplanation: string | null;
+  reviewerExplanation: string;
+  policyCheck: {
+    status: 'PASSED' | 'FINDINGS' | 'BLOCKED';
+    summary: string;
+    findings: PolicyCheckFinding[];
+    blockingFindingCount: number;
+    flags?: Record<string, boolean>;
+  };
 };
 
 export type ReviewWorkflowEvent = {
@@ -241,6 +337,45 @@ export async function listReviewWorkflowEvents(workflowItemId: string): Promise<
     `/review-queue/workflows/${encodeURIComponent(workflowItemId)}/events`,
   );
   return payload.items;
+}
+
+export async function listReviewWorkflowPolicyChecks(workflowItemId: string): Promise<PolicyCheckResult[]> {
+  const payload = await requestJson<{ items: PolicyCheckResult[] }>(
+    `/review-queue/workflows/${encodeURIComponent(workflowItemId)}/policy-checks`,
+  );
+  return payload.items;
+}
+
+export async function runReviewWorkflowPolicyCheck(workflowItemId: string): Promise<PolicyCheckResult> {
+  const payload = await requestJson<{ item: PolicyCheckResult }>(
+    `/review-queue/workflows/${encodeURIComponent(workflowItemId)}/policy-checks/run`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actorType: 'OPERATOR',
+        actorIdentifier: 'web-review-console',
+      }),
+    },
+  );
+  return payload.item;
+}
+
+export async function checkReviewWorkflowPromotionReadiness(
+  workflowItemId: string,
+  allowQualificationRisk = false,
+): Promise<PromotionReadiness> {
+  const payload = await requestJson<{ item: PromotionReadiness }>(
+    `/review-queue/workflows/${encodeURIComponent(workflowItemId)}/promotion-check`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        allowQualificationRisk,
+        actorType: 'OPERATOR',
+        actorIdentifier: 'web-review-console',
+      }),
+    },
+  );
+  return payload.item;
 }
 
 export async function updateReviewWorkflowItem(

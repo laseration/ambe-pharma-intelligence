@@ -16,6 +16,7 @@ import {
   type DemandMatchedTradeOpportunityOutcome,
   syncTradeOpportunityCommercialState,
 } from '../deals/service';
+import { runBlindBrokerPolicyCheck, type PolicyCheckSummary } from '../policyChecks/service';
 import type { SupplierQualificationStatus } from '../suppliers/qualificationService';
 
 type WorkflowStatus =
@@ -75,6 +76,48 @@ type ResolutionCandidate = {
   selected: boolean;
   metadata?: unknown;
 };
+
+export type PromotionReadinessBlocker = {
+  code: string;
+  severity: 'BLOCKING' | 'WARNING';
+  message: string;
+  field?: string | null;
+};
+
+export type WorkflowPromotionReadiness = {
+  workflowItemId: string;
+  emailDerivedOfferId: string | null;
+  canApproveToBuy: boolean;
+  canPersistSupplierPriceIntelligence: boolean;
+  blockers: PromotionReadinessBlocker[];
+  warnings: PromotionReadinessBlocker[];
+  confidenceBreakdown: unknown;
+  confidenceExplanation: string | null;
+  reviewerExplanation: string;
+  policyCheck: PolicyCheckSummary;
+};
+
+export class WorkflowPromotionBlockedError extends Error {
+  readonly details: unknown;
+
+  constructor(readiness: WorkflowPromotionReadiness) {
+    const blockerSummary = readiness.blockers
+      .map((blocker) => blocker.message)
+      .filter((message) => message.trim().length > 0)
+      .join(' ');
+    super(
+      blockerSummary
+        ? `Promotion blocked by staged-offer safety checks: ${blockerSummary}`
+        : 'Promotion blocked by staged-offer safety checks.',
+    );
+    this.name = 'WorkflowPromotionBlockedError';
+    this.details = {
+      blockers: readiness.blockers,
+      warnings: readiness.warnings,
+      readiness,
+    };
+  }
+}
 
 export type WorkflowActor = {
   actorType?: string | null;
@@ -192,13 +235,27 @@ type WorkflowRecord = {
     sourceBlockText: string;
     rawProductText: string | null;
     normalizedProductNameCandidate: string | null;
+    strengthCandidate: string | null;
+    dosageFormCandidate: string | null;
+    packSizeCandidate: string | null;
     manufacturerCandidate: string | null;
     supplierCandidate: string | null;
     priceCandidate: unknown;
     currencyCandidate: string | null;
     minimumOrderQuantityCandidate: number | null;
     availabilityCandidate: string | null;
+    sourceTrustScore?: number | null;
+    structureConfidence?: number | null;
+    fieldConfidence?: number | null;
+    entityResolutionConfidence?: number | null;
+    promotionConfidence?: number | null;
+    confidenceBreakdown?: unknown;
+    confidenceExplanation?: string | null;
+    promotionBlockers?: unknown;
+    policyCheckSummary?: unknown;
     metadata: unknown;
+    evidences?: WorkflowOfferEvidenceRecord[];
+    policyCheckResults?: PolicyCheckResultRecord[];
     resolutionCandidates: ResolutionCandidate[];
     buyDecision?: {
       id: string;
@@ -268,6 +325,44 @@ type WorkflowInboundEmailDocumentRecord = {
   metadata: unknown;
 };
 
+type WorkflowOfferEvidenceRecord = {
+  id: string;
+  fieldName: string;
+  fieldValue: string | null;
+  normalizedValue: string | null;
+  evidenceType: string;
+  rawText: string;
+  startOffset: number | null;
+  endOffset: number | null;
+  confidence: number | null;
+  extractionMethod: string | null;
+  extractorVersion: string | null;
+  evidenceFingerprint: string | null;
+  metadata: unknown;
+  sourceDocument?: WorkflowInboundEmailDocumentRecord | null;
+  createdAt: Date;
+};
+
+type PolicyCheckResultRecord = {
+  id: string;
+  scope: 'STAGED_OFFER' | 'OUTBOUND_DRAFT';
+  status: 'PASSED' | 'FINDINGS' | 'BLOCKED';
+  checkType: string;
+  findings: unknown;
+  blockingFindingCount: number;
+  summary: string;
+  checkedByType: string;
+  checkedByIdentifier: string | null;
+  metadata: unknown;
+  createdAt: Date;
+};
+
+type ProductIdentityRecord = {
+  id: string;
+  strength: string | null;
+  packSize: string | null;
+};
+
 type SupplierContactDetails = {
   companyName: string | null;
   contactName: string | null;
@@ -304,6 +399,7 @@ type WorkflowDetailRecord = WorkflowRecord & {
     documents: WorkflowInboundEmailDocumentRecord[];
   }) | null;
   supplierContact?: SupplierContactDetails | null;
+  promotionReadiness?: WorkflowPromotionReadiness | null;
 };
 
 type WorkflowEventRecord = {
@@ -357,6 +453,15 @@ type WorkflowRepository = {
   findWorkflowItemByOfferId: (emailDerivedOfferId: string) => Promise<WorkflowRecord | null>;
   findWorkflowItemById: (workflowItemId: string) => Promise<WorkflowRecord | null>;
   findWorkflowDetailById: (workflowItemId: string) => Promise<WorkflowDetailRecord | null>;
+  findProductIdentityById: (productId: string) => Promise<ProductIdentityRecord | null>;
+  listRecentSupplierPricesByProduct: (input: {
+    productId: string;
+    currencyCode: string;
+    createdAfter: Date;
+    take: number;
+  }) => Promise<Array<{ unitPrice: unknown }>>;
+  listPolicyCheckResultsByOfferId: (emailDerivedOfferId: string) => Promise<PolicyCheckResultRecord[]>;
+  createPolicyCheckResult: (data: Record<string, unknown>) => Promise<PolicyCheckResultRecord>;
   createWorkflowItem: (data: Partial<WorkflowRecord> & Pick<WorkflowRecord, 'emailDerivedOfferId' | 'status' | 'priority' | 'createdByType' | 'supplierQualificationStatus' | 'hasUnknownSupplierQualification' | 'hasRestrictedSupplier' | 'hasBlockedSupplier'>) => Promise<WorkflowRecord>;
   updateWorkflowItem: (workflowItemId: string, data: Partial<WorkflowRecord>) => Promise<WorkflowRecord>;
   createWorkflowEvent: (data: Omit<WorkflowEventRecord, 'id' | 'createdAt'>) => Promise<WorkflowEventRecord>;
@@ -761,6 +866,16 @@ function createWorkflowRepository(client: typeof db = db, inTransaction = false)
           emailDerivedOffer: {
             include: {
               sourceDocument: true,
+              evidences: {
+                include: {
+                  sourceDocument: true,
+                },
+                orderBy: [{ fieldName: 'asc' }, { createdAt: 'asc' }],
+              },
+              policyCheckResults: {
+                orderBy: { createdAt: 'desc' },
+                take: 10,
+              },
               resolutionCandidates: true,
               buyDecision: {
                 include: {
@@ -771,6 +886,43 @@ function createWorkflowRepository(client: typeof db = db, inTransaction = false)
           },
         },
       }) as Promise<WorkflowDetailRecord | null>,
+    findProductIdentityById: async (productId) =>
+      client.product.findUnique({
+        where: { id: productId },
+        select: {
+          id: true,
+          strength: true,
+          packSize: true,
+        },
+      }) as Promise<ProductIdentityRecord | null>,
+    listRecentSupplierPricesByProduct: async (input) =>
+      client.supplierPriceItem.findMany({
+        where: {
+          productId: input.productId,
+          currencyCode: input.currencyCode,
+          isAvailable: true,
+          createdAt: {
+            gte: input.createdAfter,
+          },
+        },
+        select: {
+          unitPrice: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        take: input.take,
+      }) as Promise<Array<{ unitPrice: unknown }>>,
+    listPolicyCheckResultsByOfferId: async (emailDerivedOfferId) =>
+      client.policyCheckResult.findMany({
+        where: { emailDerivedOfferId },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      }) as Promise<PolicyCheckResultRecord[]>,
+    createPolicyCheckResult: async (data) =>
+      client.policyCheckResult.create({
+        data: data as never,
+      }) as Promise<PolicyCheckResultRecord>,
     createWorkflowItem: async (data) =>
       client.offerWorkflowItem.create({
         data: data as never,
@@ -1224,6 +1376,352 @@ function resolveSelectedEntityIds(resolutionCandidates: ResolutionCandidate[]): 
   };
 }
 
+function normalizeIdentityPart(value: string | null | undefined): string {
+  return value?.trim().toLowerCase().replace(/\s+/g, ' ') ?? '';
+}
+
+function decimalToNumber(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  if (typeof (value as { toNumber?: unknown }).toNumber === 'function') {
+    const parsed = (value as { toNumber: () => number }).toNumber();
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  if (typeof (value as { toString?: unknown }).toString === 'function') {
+    const parsed = Number((value as { toString: () => string }).toString());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function addReadinessBlocker(
+  blockers: PromotionReadinessBlocker[],
+  blocker: PromotionReadinessBlocker | null,
+) {
+  if (!blocker) {
+    return;
+  }
+
+  if (blockers.some((existing) => existing.code === blocker.code && existing.field === blocker.field)) {
+    return;
+  }
+
+  blockers.push(blocker);
+}
+
+function buildProductIdentityReadinessBlockers(
+  offer: NonNullable<WorkflowRecord['emailDerivedOffer']>,
+  product: ProductIdentityRecord | null,
+): PromotionReadinessBlocker[] {
+  const blockers: PromotionReadinessBlocker[] = [];
+  const offerStrength = normalizeIdentityPart(offer.strengthCandidate);
+  const productStrength = normalizeIdentityPart(product?.strength);
+  const offerPackSize = normalizeIdentityPart(offer.packSizeCandidate);
+  const productPackSize = normalizeIdentityPart(product?.packSize);
+
+  if (!offerStrength && !productStrength) {
+    addReadinessBlocker(blockers, {
+      code: 'strength_unit_ambiguous',
+      severity: 'BLOCKING',
+      field: 'strengthCandidate',
+      message: 'Strength or unit is missing or ambiguous for this staged offer.',
+    });
+  }
+
+  if (offerStrength && productStrength && offerStrength !== productStrength) {
+    addReadinessBlocker(blockers, {
+      code: 'strength_unit_conflict',
+      severity: 'BLOCKING',
+      field: 'strengthCandidate',
+      message: 'Extracted strength conflicts with the selected product record.',
+    });
+  }
+
+  if (!offerPackSize && !productPackSize) {
+    addReadinessBlocker(blockers, {
+      code: 'pack_size_missing',
+      severity: 'BLOCKING',
+      field: 'packSizeCandidate',
+      message: 'Pack size is missing and must be checked before promotion.',
+    });
+  }
+
+  if (offerPackSize && productPackSize && offerPackSize !== productPackSize) {
+    addReadinessBlocker(blockers, {
+      code: 'pack_size_conflict',
+      severity: 'BLOCKING',
+      field: 'packSizeCandidate',
+      message: 'Extracted pack size conflicts with the selected product record.',
+    });
+  }
+
+  return blockers;
+}
+
+function buildQualificationReadinessBlockers(
+  workflow: WorkflowRecord,
+  allowQualificationRisk: boolean,
+): PromotionReadinessBlocker[] {
+  if (workflow.supplierQualificationStatus === 'APPROVED') {
+    return [];
+  }
+
+  if (workflow.supplierQualificationStatus === 'BLOCKED' || workflow.supplierQualificationStatus === 'RESTRICTED') {
+    const defaultMessage =
+      workflow.supplierQualificationStatus === 'BLOCKED'
+        ? 'Blocked supplier cannot be approved to buy.'
+        : 'Restricted supplier requires explicit operator confirmation before approval.';
+    return [
+      {
+        code: 'supplier_authorisation_failed',
+        severity: 'BLOCKING',
+        field: 'supplierQualificationStatus',
+        message: workflow.qualificationRiskNote ?? defaultMessage,
+      },
+    ];
+  }
+
+  return [
+    {
+      code: 'supplier_authorisation_missing',
+      severity: allowQualificationRisk ? 'WARNING' : 'BLOCKING',
+      field: 'supplierQualificationStatus',
+      message:
+        workflow.qualificationRiskNote ??
+        'Supplier qualification risk requires explicit operator confirmation before approval.',
+    },
+  ];
+}
+
+function buildSuspiciousPricingReadinessWarnings(
+  offer: NonNullable<WorkflowRecord['emailDerivedOffer']>,
+  recentPrices: Array<{ unitPrice: unknown }>,
+): PromotionReadinessBlocker[] {
+  const currentPrice = decimalToNumber(offer.priceCandidate);
+  const prices = recentPrices
+    .map((item) => decimalToNumber(item.unitPrice))
+    .filter((value): value is number => value !== null && value > 0)
+    .sort((left, right) => left - right);
+
+  if (currentPrice === null || currentPrice <= 0 || prices.length < 3) {
+    return [];
+  }
+
+  const median = prices[Math.floor(prices.length / 2)]!;
+  const ratio = currentPrice / median;
+
+  if (ratio >= 3 || ratio <= 0.2) {
+    return [
+      {
+        code: 'suspicious_pricing_outlier',
+        severity: 'WARNING',
+        field: 'priceCandidate',
+        message: `This price is an abnormal outlier against recent price intelligence. Confirm it against the source before approving.`,
+      },
+    ];
+  }
+
+  return [];
+}
+
+function attachmentFileNamesFromWorkflow(workflow: WorkflowDetailRecord): string[] {
+  const metadataValues = [
+    workflow.inboundEmail?.documents?.map((document) => document.metadata),
+    workflow.emailDerivedOffer?.sourceDocument?.metadata,
+  ].flat();
+
+  return metadataValues
+    .flatMap((metadata) => {
+      if (!metadata || typeof metadata !== 'object') {
+        return [];
+      }
+
+      const record = metadata as Record<string, unknown>;
+      return [record.fileName, record.label]
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+    });
+}
+
+function buildPolicyCheckForWorkflow(workflow: WorkflowDetailRecord): PolicyCheckSummary {
+  const offer = workflow.emailDerivedOffer;
+  const selectedSupplier = offer?.resolutionCandidates.find(
+    (candidate) => candidate.entityType === 'SUPPLIER' && candidate.selected,
+  );
+
+  return runBlindBrokerPolicyCheck({
+    scope: 'STAGED_OFFER',
+    direction: 'UNKNOWN',
+    textParts: [
+      { label: 'offer source block', text: offer?.sourceBlockText },
+      { label: 'raw email text', text: workflow.inboundEmail?.rawText },
+      ...(workflow.inboundEmail?.documents ?? []).map((document) => ({
+        label: `${document.kind}${document.label ? ` ${document.label}` : ''}`,
+        text: document.textContent,
+      })),
+    ],
+    supplierTerms: [
+      offer?.supplierCandidate,
+      selectedSupplier?.candidateName,
+      workflow.supplierContact?.companyName,
+      workflow.inboundEmail?.fromEmail?.split('@')[1] ?? null,
+    ],
+    attachmentFileNames: attachmentFileNamesFromWorkflow(workflow),
+    metadata: {
+      inboundEmailId: workflow.inboundEmailId,
+      emailDerivedOfferId: workflow.emailDerivedOfferId,
+      sourceKind: workflow.sourceKind,
+      offerMetadata: offer?.metadata,
+      documentMetadata: workflow.inboundEmail?.documents?.map((document) => document.metadata) ?? [],
+    },
+  });
+}
+
+async function buildWorkflowPromotionReadiness(
+  repository: WorkflowRepository,
+  workflow: WorkflowDetailRecord,
+  options?: {
+    allowQualificationRisk?: boolean;
+  },
+): Promise<WorkflowPromotionReadiness> {
+  const offer = workflow.emailDerivedOffer;
+  const blockers: PromotionReadinessBlocker[] = [];
+  const warnings: PromotionReadinessBlocker[] = [];
+  const policyCheck = buildPolicyCheckForWorkflow(workflow);
+
+  if (!offer) {
+    addReadinessBlocker(blockers, {
+      code: 'missing_email_derived_offer',
+      severity: 'BLOCKING',
+      message: 'The workflow item is missing its staged offer.',
+    });
+  } else {
+    const selectedIds = resolveSelectedEntityIds(offer.resolutionCandidates);
+
+    if (!selectedIds.productId) {
+      addReadinessBlocker(blockers, {
+        code: 'canonical_product_unresolved',
+        severity: 'BLOCKING',
+        field: 'productId',
+        message: 'No selected existing canonical product is linked to this offer.',
+      });
+    }
+
+    if (!selectedIds.supplierId) {
+      addReadinessBlocker(blockers, {
+        code: 'canonical_supplier_unresolved',
+        severity: 'BLOCKING',
+        field: 'supplierId',
+        message: 'No selected existing canonical supplier is linked to this offer.',
+      });
+    }
+
+    if (!offer.rawProductText) {
+      addReadinessBlocker(blockers, {
+        code: 'missing_product_text',
+        severity: 'BLOCKING',
+        field: 'rawProductText',
+        message: 'Raw product text is missing.',
+      });
+    }
+
+    if (!offer.priceCandidate) {
+      addReadinessBlocker(blockers, {
+        code: 'missing_price',
+        severity: 'BLOCKING',
+        field: 'priceCandidate',
+        message: 'A unit price is required before approval.',
+      });
+    }
+
+    if (!offer.currencyCandidate) {
+      addReadinessBlocker(blockers, {
+        code: 'missing_currency',
+        severity: 'BLOCKING',
+        field: 'currencyCandidate',
+        message: 'A currency is required before approval.',
+      });
+    }
+
+    const product = selectedIds.productId
+      ? await repository.findProductIdentityById(selectedIds.productId)
+      : null;
+    for (const blocker of buildProductIdentityReadinessBlockers(offer, product)) {
+      addReadinessBlocker(blockers, blocker);
+    }
+
+    for (const blocker of buildQualificationReadinessBlockers(
+      workflow,
+      options?.allowQualificationRisk === true,
+    )) {
+      (blocker.severity === 'BLOCKING' ? blockers : warnings).push(blocker);
+    }
+
+    if (selectedIds.productId && offer.currencyCandidate) {
+      const recentPrices = await repository.listRecentSupplierPricesByProduct({
+        productId: selectedIds.productId,
+        currencyCode: offer.currencyCandidate,
+        createdAfter: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+        take: 25,
+      });
+      warnings.push(...buildSuspiciousPricingReadinessWarnings(offer, recentPrices));
+    }
+  }
+
+  for (const finding of policyCheck.findings) {
+    if (!finding.blocking) {
+      continue;
+    }
+
+    addReadinessBlocker(blockers, {
+      code: `policy_${finding.code}`,
+      severity: 'BLOCKING',
+      message: finding.label,
+    });
+  }
+
+  const canApproveToBuy = blockers.length === 0;
+  const reviewerExplanation =
+    canApproveToBuy
+      ? warnings.length > 0
+        ? 'This offer can be approved, but the warning items should be checked first.'
+        : 'No hard blockers were found for this staged offer.'
+      : `${blockers.length} hard blocker${blockers.length === 1 ? '' : 's'} must be resolved before approval.`;
+
+  return {
+    workflowItemId: workflow.id,
+    emailDerivedOfferId: offer?.id ?? null,
+    canApproveToBuy,
+    canPersistSupplierPriceIntelligence:
+      canApproveToBuy &&
+      Boolean(
+        offer?.rawProductText &&
+          offer.priceCandidate &&
+          offer.currencyCandidate &&
+          resolveSelectedEntityIds(offer.resolutionCandidates).supplierId &&
+          resolveSelectedEntityIds(offer.resolutionCandidates).productId,
+      ),
+    blockers,
+    warnings,
+    confidenceBreakdown: offer?.confidenceBreakdown ?? null,
+    confidenceExplanation: offer?.confidenceExplanation ?? null,
+    reviewerExplanation,
+    policyCheck,
+  };
+}
+
 export function determineWorkflowPriority(input: SyncWorkflowItemInput): {
   priority: WorkflowPriority;
   priorityReason: string;
@@ -1566,6 +2064,24 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
       const actor = normalizeActor(input);
       const supplierDetails = normalizeSupplierReviewDetails(input.supplierDetails);
       const actionNote = buildWorkflowActionNote(input.note, supplierDetails);
+      const detail = await txRepository.findWorkflowDetailById(input.workflowItemId);
+      if (!detail) {
+        throw new Error('Offer workflow item not found.');
+      }
+      const promotionReadiness = await buildWorkflowPromotionReadiness(
+        txRepository,
+        {
+          ...detail,
+          supplierContact: deriveSupplierContact(detail),
+        },
+        {
+          allowQualificationRisk: input.allowQualificationRisk === true,
+        },
+      );
+      if (!promotionReadiness.canApproveToBuy) {
+        throw new WorkflowPromotionBlockedError(promotionReadiness);
+      }
+
       const selectedSupplierId = resolveSelectedEntityIds(
         existing.emailDerivedOffer.resolutionCandidates,
       ).supplierId;
@@ -1876,10 +2392,78 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
         return null;
       }
 
-      return {
+      const enriched = {
         ...detail,
         supplierContact: deriveSupplierContact(detail),
       };
+      const promotionReadiness = await buildWorkflowPromotionReadiness(repository, enriched);
+
+      return {
+        ...enriched,
+        promotionReadiness,
+      };
+    },
+
+    async listWorkflowPolicyCheckResults(workflowItemId: string): Promise<PolicyCheckResultRecord[]> {
+      const detail = await repository.findWorkflowDetailById(workflowItemId);
+      if (!detail?.emailDerivedOffer) {
+        return [];
+      }
+
+      return repository.listPolicyCheckResultsByOfferId(detail.emailDerivedOffer.id);
+    },
+
+    async runWorkflowPolicyCheck(
+      workflowItemId: string,
+      actorInput?: WorkflowActor,
+    ): Promise<PolicyCheckResultRecord> {
+      const detail = await repository.findWorkflowDetailById(workflowItemId);
+      if (!detail?.emailDerivedOffer) {
+        throw new Error('Offer workflow item not found.');
+      }
+
+      const enriched = {
+        ...detail,
+        supplierContact: deriveSupplierContact(detail),
+      };
+      const actor = normalizeActor(actorInput);
+      const policyCheck = buildPolicyCheckForWorkflow(enriched);
+
+      return repository.createPolicyCheckResult({
+        scope: 'STAGED_OFFER',
+        status: policyCheck.status,
+        inboundEmailId: detail.inboundEmailId,
+        emailDerivedOfferId: detail.emailDerivedOffer.id,
+        checkType: 'BLIND_BROKER_STAGED_OFFER',
+        findings: policyCheck.findings,
+        blockingFindingCount: policyCheck.blockingFindingCount,
+        summary: policyCheck.summary,
+        checkedByType: actor.actorType,
+        checkedByIdentifier: actor.actorIdentifier,
+        metadata: {
+          flags: policyCheck.flags,
+          fingerprint: policyCheck.fingerprint,
+        },
+      });
+    },
+
+    async evaluatePromotionReadiness(
+      workflowItemId: string,
+      options?: {
+        allowQualificationRisk?: boolean;
+      },
+    ): Promise<WorkflowPromotionReadiness | null> {
+      const detail = await repository.findWorkflowDetailById(workflowItemId);
+      if (!detail) {
+        return null;
+      }
+
+      const enriched = {
+        ...detail,
+        supplierContact: deriveSupplierContact(detail),
+      };
+
+      return buildWorkflowPromotionReadiness(repository, enriched, options);
     },
 
     async assignWorkflowItem(input: AssignWorkflowItemInput): Promise<WorkflowRecord> {

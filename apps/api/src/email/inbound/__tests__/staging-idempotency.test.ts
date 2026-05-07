@@ -618,6 +618,16 @@ function installDbMocks(t: TestContext) {
     );
   });
 
+  stubMethod(db.supplierPriceItem, 'findMany', async ({ where, take }: any) => {
+    const items = state.priceItems.filter(
+      (item) =>
+        (!where?.productId || item.productId === where.productId) &&
+        (!where?.currencyCode || item.currencyCode === where.currencyCode) &&
+        (where?.isAvailable === undefined || item.isAvailable === where.isAvailable),
+    );
+    return items.slice(0, take ?? items.length).map((item) => ({ unitPrice: item.unitPrice }));
+  });
+
   stubMethod(db.supplierPriceItem, 'update', async ({ where, data }: any) => {
     const existing = state.priceItems.find((item) => item.id === where.id);
     Object.assign(existing ?? {}, data);
@@ -842,6 +852,10 @@ test('deterministic clean email with selected existing product can auto-promote 
     name: 'Supplier Co',
     normalizedName: 'supplier co',
   });
+  state.supplierQualifications.push({
+    supplierId: 'supplier-1',
+    qualificationStatus: 'APPROVED',
+  });
   state.products.push({
     id: 'product-1',
     name: 'Amlodipine 5mg tabs 28',
@@ -857,6 +871,7 @@ test('deterministic clean email with selected existing product can auto-promote 
     offerStatus: 'AUTO_PROMOTED',
     decisionStatus: 'AUTO_PROMOTED',
     reviewReason: null,
+    blockers: [],
   });
   assert.equal(state.offers.length, 1);
   assert.equal(state.offers[0]?.status, 'AUTO_PROMOTED', state.offers[0]?.reviewReason);
@@ -905,15 +920,38 @@ test('auto-promotion is blocked when no selected productId exists', async (t) =>
     }),
   );
 
-  assert.deepEqual(result, {
-    offerStatus: 'REVIEW_REQUIRED',
-    decisionStatus: 'REVIEW_REQUIRED',
-    reviewReason: 'weak_product_match',
-  });
+  assert.equal(result.offerStatus, 'REVIEW_REQUIRED');
+  assert.equal(result.decisionStatus, 'REVIEW_REQUIRED');
+  assert.equal(result.reviewReason, 'weak_product_match');
+  assert.equal(result.blockers.some((blocker) => blocker.code === 'canonical_product_unresolved'), true);
   assert.equal(state.offers[0]?.status, 'REVIEW_REQUIRED');
   assert.equal(state.offers[0]?.reviewReason, 'weak_product_match');
   assert.equal(state.priceLists.length, 0);
   assert.equal(state.priceItems.length, 0);
+});
+
+test('auto-promotion is blocked when supplier qualification is missing', async (t) => {
+  const state = installDbMocks(t);
+  state.suppliers.push({
+    id: 'supplier-1',
+    name: 'Supplier Co',
+    normalizedName: 'supplier co',
+  });
+  state.products.push({
+    id: 'product-1',
+    name: 'Amlodipine 5mg tabs 28',
+    normalizedName: 'amlodipine 5mg tabs 28',
+    baseName: 'amlodipine',
+    manufacturer: null,
+  });
+  seedStagedOffer(state, 'offer-qualification', 'email-qualification');
+
+  const result = await persistPromotion('email-qualification', 'offer-qualification', createResolvedOffer());
+
+  assert.equal(result.offerStatus, 'REVIEW_REQUIRED');
+  assert.equal(result.blockers.some((blocker) => blocker.code === 'supplier_authorisation_missing'), true);
+  assert.equal(state.priceItems.length, 0);
+  assert.equal(state.promotionDecisions[0]?.metadata?.blockers?.[0]?.code, 'supplier_authorisation_missing');
 });
 
 test('persistPromotion is idempotent and reuses one supplier price list per inbound email batch', async (t) => {
@@ -922,6 +960,10 @@ test('persistPromotion is idempotent and reuses one supplier price list per inbo
     id: 'supplier-1',
     name: 'Supplier Co',
     normalizedName: 'supplier co',
+  });
+  state.supplierQualifications.push({
+    supplierId: 'supplier-1',
+    qualificationStatus: 'APPROVED',
   });
   state.products.push({
     id: 'product-1',
@@ -974,6 +1016,7 @@ test('persistPromotion derives explicit review reasons for review-only offers', 
         ],
       },
       expectedReason: 'unresolved_supplier',
+      expectedBlocker: 'canonical_supplier_unresolved',
     },
     {
       name: 'weak product match',
@@ -991,6 +1034,7 @@ test('persistPromotion derives explicit review reasons for review-only offers', 
         ],
       },
       expectedReason: 'weak_product_match',
+      expectedBlocker: 'weak_product_match',
     },
     {
       name: 'missing price',
@@ -998,6 +1042,7 @@ test('persistPromotion derives explicit review reasons for review-only offers', 
         priceCandidate: null,
       },
       expectedReason: 'missing_price',
+      expectedBlocker: 'missing_price',
     },
     {
       name: 'missing currency',
@@ -1005,6 +1050,7 @@ test('persistPromotion derives explicit review reasons for review-only offers', 
         currencyCandidate: null,
       },
       expectedReason: 'missing_currency',
+      expectedBlocker: 'missing_currency',
     },
     {
       name: 'ocr text too weak',
@@ -1013,6 +1059,7 @@ test('persistPromotion derives explicit review reasons for review-only offers', 
         structureConfidence: 84,
       },
       expectedReason: 'ocr_text_too_weak',
+      expectedBlocker: 'ocr_text_too_weak',
     },
     {
       name: 'source trust too low',
@@ -1020,6 +1067,7 @@ test('persistPromotion derives explicit review reasons for review-only offers', 
         sourceTrustScore: 54,
       },
       expectedReason: 'source_trust_too_low',
+      expectedBlocker: 'source_trust_too_low',
     },
     {
       name: 'ai candidate review only',
@@ -1027,6 +1075,7 @@ test('persistPromotion derives explicit review reasons for review-only offers', 
         aiAssisted: true,
       },
       expectedReason: 'ai_candidate_review_only',
+      expectedBlocker: 'ai_candidate_review_only',
     },
     {
       name: 'promotion threshold missing or weak fields',
@@ -1034,6 +1083,7 @@ test('persistPromotion derives explicit review reasons for review-only offers', 
         fieldConfidence: 74,
       },
       expectedReason: 'promotion_threshold_missing_or_weak_fields',
+      expectedBlocker: 'promotion_threshold_missing_or_weak_fields',
     },
   ];
 
@@ -1052,11 +1102,13 @@ test('persistPromotion derives explicit review reasons for review-only offers', 
         createResolvedOffer(scenario.overrides),
       );
 
-      assert.deepEqual(result, {
-        offerStatus: 'REVIEW_REQUIRED',
-        decisionStatus: 'REVIEW_REQUIRED',
-        reviewReason: scenario.expectedReason,
-      });
+      assert.equal(result.offerStatus, 'REVIEW_REQUIRED');
+      assert.equal(result.decisionStatus, 'REVIEW_REQUIRED');
+      assert.equal(result.reviewReason, scenario.expectedReason);
+      assert.equal(
+        result.blockers.some((blocker) => blocker.code === scenario.expectedBlocker),
+        true,
+      );
       assert.equal(state.offers[0]?.status, 'REVIEW_REQUIRED');
       assert.equal(state.offers[0]?.reviewReason, scenario.expectedReason);
       assert.equal(state.promotionDecisions[0]?.status, 'REVIEW_REQUIRED');
@@ -1876,6 +1928,10 @@ test('acceptance/demo: clean deterministic supplier offer stores email, derived 
     name: 'Supplier Co',
     normalizedName: 'supplier co',
   });
+  state.supplierQualifications.push({
+    supplierId: 'supplier-1',
+    qualificationStatus: 'APPROVED',
+  });
   state.products.push({
     id: 'product-1',
     name: 'Paracetamol 500mg caplets 16',
@@ -1919,7 +1975,14 @@ test('acceptance/demo: clean deterministic supplier offer stores email, derived 
   assert.equal(state.offers.length, 1);
   assert.equal(state.offers[0]?.aiAssisted, false);
   assert.equal(state.offers[0]?.status, 'AUTO_PROMOTED');
+  assert.equal(typeof state.offers[0]?.confidenceBreakdown?.overallConfidence, 'number');
+  assert.match(state.offers[0]?.confidenceExplanation ?? '', /overall confidence/i);
   assert.equal(state.runs.some((run) => run.method === 'DETERMINISTIC'), true);
+  assert.ok(state.evidences.length >= 2);
+  assert.ok(state.evidences.every((evidence) => evidence.extractionRunId));
+  assert.ok(state.evidences.every((evidence) => evidence.extractorVersion === 'email-staging-v1'));
+  assert.ok(state.evidences.every((evidence) => evidence.evidenceFingerprint));
+  assert.ok(state.evidences.some((evidence) => evidence.fieldName === 'priceCandidate' && evidence.fieldValue));
   assert.equal(state.priceItems.length, 1);
   assert.equal(state.priceItems[0]?.rawProductName, 'Paracetamol 500mg caplets 16');
   assert.equal(state.promotionDecisions[0]?.status, 'AUTO_PROMOTED');

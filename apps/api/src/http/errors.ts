@@ -88,6 +88,10 @@ function normalizeError(error: unknown): AppError {
   }
 
   if (error instanceof Error) {
+    if (error.name === 'WorkflowPromotionBlockedError') {
+      return new ConflictError(error.message, (error as Error & { details?: unknown }).details);
+    }
+
     if (/not found/i.test(error.message)) {
       return new NotFoundError(error.message);
     }

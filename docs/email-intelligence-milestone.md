@@ -7,6 +7,7 @@ This checkpoint covers the current internal email intelligence workflow.
 - Supplier-offer staging now keeps deterministic parsing first and sends AI-assisted supplier-offer rows to review before canonical promotion.
 - Auto-promotion into supplier price intelligence requires a selected existing product resolution.
 - Approved reviewed supplier offers can create or reuse `SupplierPriceList` / `SupplierPriceItem` with provenance back to the inbound email, derived offer, and workflow item.
+- Staged-offer review now shows field-level evidence, extraction-run provenance, confidence breakdowns, promotion blockers, and blind-broker policy findings before approval.
 - `CommercialIntelItem` stores review-first commercial notes such as supplier reliability warnings, buyer demand, manual buy triggers, market notes, expiry rules, product notes, and contact notes.
 - `CustomerDemandSignal` stores review-first buyer/customer requests for sourcing, quote, availability, and demand emails.
 - Commercial intel has internal API routes and a dashboard at `/dashboard/commercial-intel`.
@@ -25,6 +26,7 @@ Migration included:
 20260505180000_add_commercial_intel_items
 20260505213000_add_customer_demand_signals
 20260506100000_add_demand_supply_matches
+20260506190000_add_staged_offer_review_safety
 ```
 
 Local development:
@@ -58,6 +60,8 @@ The acceptance scenarios and manual replay notes are documented in `docs/email-i
 
 - AI-assisted supplier offers do not auto-promote before review.
 - AI-assisted supplier offers may create canonical supplier price intelligence only after explicit approval and required product, supplier, price, and currency fields are resolved.
+- Promotion attempts expose explicit hard blockers for unresolved canonical identity, missing or conflicting product details, supplier qualification risk, suspicious price outliers, and severe policy findings.
+- Blind-broker policy checks are deterministic and internal. They detect identity leakage, contact details, addresses, bank/payment details, attachment filename leakage, and metadata leakage before outbound readiness.
 - Commercial intel never creates products, suppliers, supplier price records, buy decisions, trade opportunities, or outbound messages.
 - Commercial intel affects opportunities only as read-only context.
 - Customer demand never creates products, customers, suppliers, supplier price records, trade opportunities, buy decisions, or outbound messages in this pass.

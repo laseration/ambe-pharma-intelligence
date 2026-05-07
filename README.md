@@ -189,6 +189,15 @@ Workflow actions are internal-ops only:
 
 This workflow sits on top of staged offers. AI-assisted offers remain review-first. Approval to buy creates or updates the approved quote snapshot and, when the required fields are resolved, creates or reuses the linked canonical supplier price intelligence. It is not a generic BPM engine.
 
+Staged-offer review now exposes evidence-backed safety details before approval:
+
+- extracted fields link back to source document fragments, extraction run, extraction method, extractor version, and immutable evidence fingerprints
+- staged offers store a structured confidence breakdown for text extraction, parser quality, entity resolution, business rules, and overall confidence
+- promotion attempts return explicit hard blockers such as unresolved canonical product/supplier, missing strength or pack size, failed supplier qualification, suspicious price outliers, and blocking policy findings
+- blind-broker policy checks scan staged-offer evidence and outbound drafts for identity leakage, contact details, addresses, bank/payment details, attachment filename leakage, and metadata leakage
+
+The review UI shows the raw evidence, candidate values, confidence explanation, promotion blockers, and policy findings. These checks do not send messages or bypass manual approval.
+
 ### Commercial Intel From Email
 
 Inbound email also has a separate commercial-intel extraction path for messy internal notes such as supplier reliability warnings, buyer demand, manual buy/sell triggers, market notes, expiry rules, product advice, and contact notes.

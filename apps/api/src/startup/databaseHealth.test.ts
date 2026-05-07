@@ -17,6 +17,7 @@ function createHealthyClient() {
     buyExecution: { findFirst },
     tradeOpportunity: { findFirst },
     tradeMessageDraft: { findFirst },
+    policyCheckResult: { findFirst },
     automationReadinessPolicy: { findFirst },
     operatorValidationFeedback: { findFirst },
     offerCorrection: { findFirst },

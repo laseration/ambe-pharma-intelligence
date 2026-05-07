@@ -6,7 +6,7 @@ import {
   type ReviewWorkflowDetail,
   type ReviewWorkflowListItem,
 } from '../../../../lib/reviewApi';
-import { submitInboundEmailReviewAction } from './actions';
+import { runStagedOfferPolicyCheckAction, submitInboundEmailReviewAction } from './actions';
 import { SubmitButton } from './submit-button';
 
 export const dynamic = 'force-dynamic';
@@ -602,6 +602,13 @@ function buildTechnicalDetails(item: ReviewWorkflowDetail): Array<{ label: strin
       label: 'Promotion confidence',
       value: formatPctFromScore(detail?.promotionConfidence),
     },
+    {
+      label: 'Overall confidence',
+      value:
+        typeof detail?.confidenceBreakdown?.overallConfidence === 'number'
+          ? formatPctFromScore(detail.confidenceBreakdown.overallConfidence)
+          : null,
+    },
   ];
 
   return metrics
@@ -610,6 +617,195 @@ function buildTechnicalDetails(item: ReviewWorkflowDetail): Array<{ label: strin
       label: metric.label,
       value: metric.value,
     }));
+}
+
+function getPromotionBlockers(item: ReviewWorkflowDetail) {
+  return item.promotionReadiness?.blockers ?? [];
+}
+
+function getPromotionWarnings(item: ReviewWorkflowDetail) {
+  return item.promotionReadiness?.warnings ?? [];
+}
+
+function getPolicyFindings(item: ReviewWorkflowDetail) {
+  return item.promotionReadiness?.policyCheck.findings ?? [];
+}
+
+function confidenceFactors(item: ReviewWorkflowDetail) {
+  return item.emailDerivedOffer?.confidenceBreakdown?.factors ?? [];
+}
+
+function renderConfidenceBreakdown(item: ReviewWorkflowDetail) {
+  const factors = confidenceFactors(item);
+  const explanation = item.emailDerivedOffer?.confidenceExplanation ?? item.promotionReadiness?.confidenceExplanation;
+
+  if (factors.length === 0 && !explanation) {
+    return null;
+  }
+
+  return (
+    <details className="document-card technical-details-card">
+      <summary>Confidence breakdown</summary>
+      <div className="resolution-candidate-list technical-details-grid">
+        {explanation ? <p className="copy">{explanation}</p> : null}
+        {factors.map((factor) => (
+          <article className="resolution-candidate-card" key={`${item.id}-${factor.code}`}>
+            <div className="resolution-candidate-top">
+              <p className="resolution-candidate-title">{factor.label}</p>
+              <span className="pill pill-neutral">{formatPctFromScore(factor.score) ?? 'Unknown'}</span>
+            </div>
+            <p className="resolution-candidate-copy">{factor.explanation}</p>
+          </article>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function renderPromotionSafety(item: ReviewWorkflowDetail) {
+  const blockers = getPromotionBlockers(item);
+  const warnings = getPromotionWarnings(item);
+  const readiness = item.promotionReadiness;
+
+  if (!readiness && blockers.length === 0 && warnings.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="resolution-evidence">
+      <div className="resolution-evidence-header">
+        <div>
+          <h4 className="subsection-title">Promotion safety</h4>
+          <p className="copy resolution-evidence-copy">
+            {readiness?.reviewerExplanation ?? 'Promotion readiness was not available.'}
+          </p>
+        </div>
+        <span className={`pill ${readiness?.canApproveToBuy ? 'pill-high' : 'pill-low'}`}>
+          {readiness?.canApproveToBuy ? 'Ready after review' : 'Blocked'}
+        </span>
+      </div>
+      {blockers.length > 0 ? (
+        <div className="resolution-candidate-list">
+          {blockers.map((blocker) => (
+            <article className="resolution-candidate-card" key={`${item.id}-blocker-${blocker.code}-${blocker.field ?? ''}`}>
+              <div className="resolution-candidate-top">
+                <p className="resolution-candidate-title">{formatReasonLabel(blocker.code)}</p>
+                <span className="pill pill-low">Blocking</span>
+              </div>
+              <p className="resolution-candidate-copy">{blocker.message}</p>
+            </article>
+          ))}
+        </div>
+      ) : null}
+      {warnings.length > 0 ? (
+        <div className="resolution-candidate-list">
+          {warnings.map((warning) => (
+            <article className="resolution-candidate-card" key={`${item.id}-warning-${warning.code}-${warning.field ?? ''}`}>
+              <div className="resolution-candidate-top">
+                <p className="resolution-candidate-title">{formatReasonLabel(warning.code)}</p>
+                <span className="pill pill-neutral">Warning</span>
+              </div>
+              <p className="resolution-candidate-copy">{warning.message}</p>
+            </article>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function renderFieldEvidence(item: ReviewWorkflowDetail) {
+  const evidences = item.emailDerivedOffer?.evidences ?? [];
+
+  return (
+    <section className="resolution-evidence">
+      <div className="resolution-evidence-header">
+        <div>
+          <h4 className="subsection-title">Source evidence</h4>
+          <p className="copy resolution-evidence-copy">
+            Extracted values stay linked to the email text, document, extraction method, and confidence used.
+          </p>
+        </div>
+      </div>
+      {evidences.length > 0 ? (
+        <div className="resolution-candidate-list">
+          {evidences.map((evidence) => (
+            <article className="resolution-candidate-card" key={evidence.id}>
+              <div className="resolution-candidate-top">
+                <p className="resolution-candidate-title">{formatReasonLabel(evidence.fieldName)}</p>
+                <div className="resolution-candidate-pills">
+                  <span className="pill pill-neutral">{evidence.evidenceType.replaceAll('_', ' ')}</span>
+                  {typeof evidence.confidence === 'number' ? (
+                    <span className="pill pill-neutral">{formatPctFromScore(evidence.confidence)}</span>
+                  ) : null}
+                </div>
+              </div>
+              <p className="resolution-candidate-copy">
+                Value: {renderValue(evidence.fieldValue)}. Source: {evidence.sourceDocument?.label ?? evidence.sourceDocument?.kind ?? 'Stored source'}.
+              </p>
+              <p className="resolution-candidate-copy resolution-candidate-copy-secondary">
+                Evidence: {evidence.rawText}
+              </p>
+              <p className="resolution-candidate-copy resolution-candidate-copy-secondary">
+                Method: {renderValue(evidence.extractionMethod)}. Extractor: {renderValue(evidence.extractorVersion)}.
+              </p>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="copy resolution-evidence-copy">
+          No field-level evidence was stored for this row.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function renderPolicyFindings(item: ReviewWorkflowDetail, returnTo: string) {
+  const findings = getPolicyFindings(item);
+
+  return (
+    <section className="resolution-evidence">
+      <div className="resolution-evidence-header">
+        <div>
+          <h4 className="subsection-title">Blind-broker policy check</h4>
+          <p className="copy resolution-evidence-copy">
+            {item.promotionReadiness?.policyCheck.summary ??
+              'Run a policy check before using source text in outbound draft work.'}
+          </p>
+        </div>
+        <form action={runStagedOfferPolicyCheckAction}>
+          <input name="inboundEmailId" type="hidden" value={item.inboundEmailId ?? ''} />
+          <input name="workflowItemId" type="hidden" value={item.id} />
+          {renderReturnToInput(returnTo)}
+          <SubmitButton
+            className="button"
+            idleLabel="Run policy check"
+            pendingLabel="Checking..."
+          />
+        </form>
+      </div>
+      {findings.length > 0 ? (
+        <div className="resolution-candidate-list">
+          {findings.map((finding) => (
+            <article className="resolution-candidate-card" key={`${item.id}-${finding.code}-${finding.sourceLabel}-${finding.evidence}`}>
+              <div className="resolution-candidate-top">
+                <p className="resolution-candidate-title">{finding.label}</p>
+                <span className={`pill ${finding.blocking ? 'pill-low' : 'pill-neutral'}`}>
+                  {finding.severity.toLowerCase()}
+                </span>
+              </div>
+              <p className="resolution-candidate-copy">
+                {finding.sourceLabel}: {finding.evidence}
+              </p>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="copy resolution-evidence-copy">No policy findings were detected.</p>
+      )}
+    </section>
+  );
 }
 
 function buildOperatorSummary(item: ReviewWorkflowDetail): OperatorSummary {
@@ -1097,6 +1293,10 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
                     </dl>
                   </details>
                 ) : null}
+                {renderConfidenceBreakdown(detail)}
+                {renderPromotionSafety(detail)}
+                {renderFieldEvidence(detail)}
+                {renderPolicyFindings(detail, returnTo)}
                 <section className="resolution-evidence">
                   <div className="resolution-evidence-header">
                     <div>

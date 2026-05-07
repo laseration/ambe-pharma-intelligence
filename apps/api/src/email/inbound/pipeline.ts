@@ -7,6 +7,7 @@ import { parseUploadedFile } from '../../imports/parsers';
 import { buildProductCandidates } from '../../imports/normalization';
 import { db } from '../../lib/db';
 import { logger } from '../../lib/logger';
+import { runBlindBrokerPolicyCheck, type PolicyCheckSummary } from '../../policyChecks/service';
 import { offerWorkflowService } from '../../reviewQueue/workflowService';
 import { getLearnedResolutionHints } from '../../corrections/service';
 import { processInboundEmailCommercialIntel } from '../../commercialIntel/service';
@@ -370,11 +371,14 @@ type DocumentSegment = {
 
 type OfferEvidence = {
   fieldName: string;
+  fieldValue?: string | null;
+  normalizedValue?: string | null;
   evidenceType: string;
   rawText: string;
   startOffset?: number;
   endOffset?: number;
   confidence?: number;
+  metadata?: Prisma.InputJsonValue;
 };
 
 type StagedOfferCandidate = {
@@ -423,6 +427,29 @@ type PromotionResult = {
   offerStatus: 'AUTO_PROMOTED' | 'REVIEW_REQUIRED' | 'REJECTED';
   decisionStatus: 'AUTO_PROMOTED' | 'REVIEW_REQUIRED' | 'REJECTED';
   reviewReason: string | null;
+  blockers: PromotionBlocker[];
+};
+
+export type ConfidenceBreakdown = {
+  textExtractionConfidence: number;
+  parserConfidence: number;
+  entityResolutionConfidence: number;
+  businessRuleConfidence: number;
+  overallConfidence: number;
+  explanation: string;
+  factors: Array<{
+    code: string;
+    label: string;
+    score: number;
+    explanation: string;
+  }>;
+};
+
+export type PromotionBlocker = {
+  code: string;
+  severity: 'BLOCKING' | 'WARNING';
+  message: string;
+  field?: string;
 };
 
 function findSelectedResolutionCandidate(
@@ -522,6 +549,456 @@ function buildOfferMetadata(
     aiPromptVersion: offer.aiPromptVersion ?? null,
     parserConfidence: offer.parserConfidence ?? null,
   };
+}
+
+function clampScore(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function scoreLabel(score: number): string {
+  return `${clampScore(score)}%`;
+}
+
+export function buildOfferConfidenceBreakdown(offer: ResolvedOfferCandidate): ConfidenceBreakdown {
+  const textExtractionConfidence = clampScore(
+    offer.sourceKind.includes('ATTACHMENT_TEXT') ? Math.min(offer.structureConfidence, 70) : offer.structureConfidence,
+  );
+  const parserConfidence = clampScore(offer.fieldConfidence);
+  const entityResolutionConfidence = clampScore(offer.entityResolutionConfidence);
+  const businessRuleConfidence = clampScore(
+    [
+      offer.priceCandidate ? 90 : 20,
+      offer.currencyCandidate ? 90 : 30,
+      offer.minimumOrderQuantityCandidate ? 75 : 65,
+      offer.aiAssisted ? 45 : 85,
+      offer.reviewReason ? 55 : 85,
+    ].reduce((sum, score) => sum + score, 0) / 5,
+  );
+  const overallConfidence = clampScore(
+    textExtractionConfidence * 0.25 +
+      parserConfidence * 0.3 +
+      entityResolutionConfidence * 0.25 +
+      businessRuleConfidence * 0.2,
+  );
+  const factors = [
+    {
+      code: 'text_extraction',
+      label: 'Text extraction',
+      score: textExtractionConfidence,
+      explanation: offer.sourceKind.includes('ATTACHMENT_TEXT')
+        ? 'Text came from attachment extraction or OCR and needs closer checking.'
+        : 'Text came from the email body or structured row parser.',
+    },
+    {
+      code: 'parser',
+      label: 'Parsed fields',
+      score: parserConfidence,
+      explanation: offer.aiAssisted
+        ? 'AI assisted the extraction, so fields remain review-first.'
+        : 'Deterministic parsing produced the candidate fields.',
+    },
+    {
+      code: 'entity_resolution',
+      label: 'Product and supplier match',
+      score: entityResolutionConfidence,
+      explanation:
+        entityResolutionConfidence >= 80
+          ? 'Selected candidates are linked to existing records.'
+          : 'Product or supplier identity still needs operator review.',
+    },
+    {
+      code: 'business_rules',
+      label: 'Business-rule readiness',
+      score: businessRuleConfidence,
+      explanation:
+        offer.reviewReason || offer.aiAssisted
+          ? 'One or more review-first safety rules apply.'
+          : 'Required commercial fields are present.',
+    },
+  ];
+
+  return {
+    textExtractionConfidence,
+    parserConfidence,
+    entityResolutionConfidence,
+    businessRuleConfidence,
+    overallConfidence,
+    explanation: `Overall confidence ${scoreLabel(overallConfidence)} from text ${scoreLabel(textExtractionConfidence)}, parser ${scoreLabel(parserConfidence)}, entity match ${scoreLabel(entityResolutionConfidence)}, and business rules ${scoreLabel(businessRuleConfidence)}.`,
+    factors,
+  };
+}
+
+function decimalToNumber(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  if (typeof (value as { toNumber?: unknown }).toNumber === 'function') {
+    const parsed = (value as { toNumber: () => number }).toNumber();
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  if (typeof (value as { toString?: unknown }).toString === 'function') {
+    const parsed = Number((value as { toString: () => string }).toString());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function addPromotionBlocker(
+  blockers: PromotionBlocker[],
+  blocker: PromotionBlocker | null,
+) {
+  if (!blocker) {
+    return;
+  }
+
+  if (blockers.some((existing) => existing.code === blocker.code && existing.field === blocker.field)) {
+    return;
+  }
+
+  blockers.push(blocker);
+}
+
+function buildBasePromotionBlockers(
+  offer: ResolvedOfferCandidate,
+  selectedSupplier: ReturnType<typeof findSelectedResolutionCandidate>,
+  selectedProduct: ReturnType<typeof findSelectedResolutionCandidate>,
+): PromotionBlocker[] {
+  const blockers: PromotionBlocker[] = [];
+
+  if (offer.aiAssisted) {
+    addPromotionBlocker(blockers, {
+      code: 'ai_candidate_review_only',
+      severity: 'BLOCKING',
+      field: 'aiAssisted',
+      message: 'AI-assisted extraction must be reviewed before any canonical price intelligence is created.',
+    });
+  }
+
+  if (!selectedProduct?.candidateId) {
+    addPromotionBlocker(blockers, {
+      code: 'canonical_product_unresolved',
+      severity: 'BLOCKING',
+      field: 'productId',
+      message: 'No selected existing canonical product is linked to this staged offer.',
+    });
+  }
+
+  if (!selectedSupplier?.candidateId) {
+    addPromotionBlocker(blockers, {
+      code: 'canonical_supplier_unresolved',
+      severity: 'BLOCKING',
+      field: 'supplierId',
+      message: 'No selected existing canonical supplier is linked to this staged offer.',
+    });
+  }
+
+  if (!offer.priceCandidate) {
+    addPromotionBlocker(blockers, {
+      code: 'missing_price',
+      severity: 'BLOCKING',
+      field: 'priceCandidate',
+      message: 'A unit price is required before promotion.',
+    });
+  } else if ((decimalToNumber(offer.priceCandidate) ?? 0) <= 0) {
+    addPromotionBlocker(blockers, {
+      code: 'invalid_price',
+      severity: 'BLOCKING',
+      field: 'priceCandidate',
+      message: 'The extracted unit price is not a positive number.',
+    });
+  }
+
+  if (!offer.currencyCandidate) {
+    addPromotionBlocker(blockers, {
+      code: 'missing_currency',
+      severity: 'BLOCKING',
+      field: 'currencyCandidate',
+      message: 'A currency is required before promotion.',
+    });
+  }
+
+  if (!offer.rawProductText) {
+    addPromotionBlocker(blockers, {
+      code: 'missing_product_text',
+      severity: 'BLOCKING',
+      field: 'rawProductText',
+      message: 'Raw product text must be preserved before promotion.',
+    });
+  }
+
+  return blockers;
+}
+
+function buildThresholdPromotionBlockers(offer: ResolvedOfferCandidate): PromotionBlocker[] {
+  const blockers: PromotionBlocker[] = [];
+
+  if (offer.sourceTrustScore < 55) {
+    addPromotionBlocker(blockers, {
+      code: 'source_trust_too_low',
+      severity: 'BLOCKING',
+      field: 'sourceTrustScore',
+      message: 'Source trust is below the automatic promotion threshold.',
+    });
+  }
+
+  if (offer.structureConfidence < 85) {
+    addPromotionBlocker(blockers, {
+      code: offer.sourceKind.includes('ATTACHMENT_TEXT') ? 'ocr_text_too_weak' : 'weak_structured_content',
+      severity: 'BLOCKING',
+      field: 'structureConfidence',
+      message: 'The source text is not structured enough for automatic promotion.',
+    });
+  }
+
+  if (offer.fieldConfidence < 75) {
+    addPromotionBlocker(blockers, {
+      code: 'promotion_threshold_missing_or_weak_fields',
+      severity: 'BLOCKING',
+      field: 'fieldConfidence',
+      message: 'Extracted commercial fields are missing or too weak for automatic promotion.',
+    });
+  }
+
+  if (offer.entityResolutionConfidence < 80) {
+    addPromotionBlocker(blockers, {
+      code: 'weak_product_match',
+      severity: 'BLOCKING',
+      field: 'entityResolutionConfidence',
+      message: 'Entity resolution confidence is below the automatic promotion threshold.',
+    });
+  }
+
+  if (offer.promotionConfidence < 80) {
+    addPromotionBlocker(blockers, {
+      code: 'promotion_threshold_not_met',
+      severity: 'BLOCKING',
+      field: 'promotionConfidence',
+      message: 'Overall promotion confidence is below the automatic promotion threshold.',
+    });
+  }
+
+  return blockers;
+}
+
+function buildProductIdentityBlockers(
+  offer: ResolvedOfferCandidate,
+  product: { strength?: string | null; packSize?: string | null } | null,
+): PromotionBlocker[] {
+  const blockers: PromotionBlocker[] = [];
+  const offerStrength = normalizeFingerprintText(offer.strengthCandidate);
+  const productStrength = normalizeFingerprintText(product?.strength ?? null);
+  const offerPackSize = normalizeFingerprintText(offer.packSizeCandidate);
+  const productPackSize = normalizeFingerprintText(product?.packSize ?? null);
+
+  if (!offerStrength && !productStrength) {
+    addPromotionBlocker(blockers, {
+      code: 'strength_unit_ambiguous',
+      severity: 'BLOCKING',
+      field: 'strengthCandidate',
+      message: 'Strength or unit is missing or ambiguous for this medicine line.',
+    });
+  }
+
+  if (offerStrength && productStrength && offerStrength !== productStrength) {
+    addPromotionBlocker(blockers, {
+      code: 'strength_unit_conflict',
+      severity: 'BLOCKING',
+      field: 'strengthCandidate',
+      message: 'Extracted strength conflicts with the selected canonical product.',
+    });
+  }
+
+  if (!offerPackSize && !productPackSize) {
+    addPromotionBlocker(blockers, {
+      code: 'pack_size_missing',
+      severity: 'BLOCKING',
+      field: 'packSizeCandidate',
+      message: 'Pack size is required before promotion.',
+    });
+  }
+
+  if (offerPackSize && productPackSize && offerPackSize !== productPackSize) {
+    addPromotionBlocker(blockers, {
+      code: 'pack_size_conflict',
+      severity: 'BLOCKING',
+      field: 'packSizeCandidate',
+      message: 'Extracted pack size conflicts with the selected canonical product.',
+    });
+  }
+
+  return blockers;
+}
+
+function buildSupplierQualificationBlockers(
+  qualificationStatus: string | null | undefined,
+): PromotionBlocker[] {
+  if (qualificationStatus === 'APPROVED') {
+    return [];
+  }
+
+  if (qualificationStatus === 'BLOCKED' || qualificationStatus === 'RESTRICTED') {
+    return [
+      {
+        code: 'supplier_authorisation_failed',
+        severity: 'BLOCKING',
+        field: 'supplierQualificationStatus',
+        message: `Supplier qualification is ${qualificationStatus}; promotion is blocked.`,
+      },
+    ];
+  }
+
+  return [
+    {
+      code: 'supplier_authorisation_missing',
+      severity: 'BLOCKING',
+      field: 'supplierQualificationStatus',
+      message: 'Supplier qualification is missing or not approved.',
+    },
+  ];
+}
+
+function buildSuspiciousPriceBlockers(
+  offer: ResolvedOfferCandidate,
+  recentPrices: unknown[],
+): PromotionBlocker[] {
+  const currentPrice = decimalToNumber(offer.priceCandidate);
+  const peerPrices = recentPrices
+    .map((value) => decimalToNumber(value))
+    .filter((value): value is number => value !== null && value > 0)
+    .sort((left, right) => left - right);
+
+  if (currentPrice === null || currentPrice <= 0 || peerPrices.length < 3) {
+    return [];
+  }
+
+  const median = peerPrices[Math.floor(peerPrices.length / 2)]!;
+  if (median <= 0) {
+    return [];
+  }
+
+  const ratio = currentPrice / median;
+  if (ratio >= 3 || ratio <= 0.2) {
+    return [
+      {
+        code: 'suspicious_pricing_outlier',
+        severity: 'BLOCKING',
+        field: 'priceCandidate',
+        message: `Unit price ${currentPrice.toFixed(2)} is an abnormal outlier against recent median ${median.toFixed(2)} and needs reviewer confirmation.`,
+      },
+    ];
+  }
+
+  return [];
+}
+
+function buildStagedOfferPolicyCheck(
+  offer: ResolvedOfferCandidate,
+  supplierName: string | null,
+): PolicyCheckSummary {
+  return runBlindBrokerPolicyCheck({
+    scope: 'STAGED_OFFER',
+    direction: 'UNKNOWN',
+    textParts: [
+      {
+        label: 'source block',
+        text: offer.sourceBlockText,
+      },
+    ],
+    supplierTerms: [supplierName, offer.supplierCandidate],
+    metadata: {
+      sourceKind: offer.sourceKind,
+      aiAssisted: offer.aiAssisted,
+    },
+  });
+}
+
+function policyCheckPromotionBlockers(policyCheck: PolicyCheckSummary): PromotionBlocker[] {
+  return policyCheck.findings
+    .filter((finding) => finding.blocking)
+    .map((finding) => ({
+      code: `policy_${finding.code}`,
+      severity: 'BLOCKING' as const,
+      message: finding.label,
+    }));
+}
+
+function serializePromotionBlockers(blockers: PromotionBlocker[]): Prisma.InputJsonValue {
+  return blockers.map((blocker) => ({
+    code: blocker.code,
+    severity: blocker.severity,
+    field: blocker.field ?? null,
+    message: blocker.message,
+  }));
+}
+
+function serializePolicyCheckSummary(policyCheck: PolicyCheckSummary): Prisma.InputJsonValue {
+  return {
+    status: policyCheck.status,
+    summary: policyCheck.summary,
+    blockingFindingCount: policyCheck.blockingFindingCount,
+    findings: policyCheck.findings,
+    flags: policyCheck.flags,
+    fingerprint: policyCheck.fingerprint,
+  };
+}
+
+function fieldValueFromOffer(offer: ResolvedOfferCandidate, fieldName: string): string | null {
+  switch (fieldName) {
+    case 'rawProductText':
+      return offer.rawProductText;
+    case 'normalizedProductNameCandidate':
+      return offer.normalizedProductNameCandidate;
+    case 'strengthCandidate':
+      return offer.strengthCandidate;
+    case 'dosageFormCandidate':
+      return offer.dosageFormCandidate;
+    case 'packSizeCandidate':
+      return offer.packSizeCandidate;
+    case 'manufacturerCandidate':
+      return offer.manufacturerCandidate;
+    case 'supplierCandidate':
+      return offer.supplierCandidate;
+    case 'priceCandidate':
+      return offer.priceCandidate?.toString() ?? null;
+    case 'currencyCandidate':
+      return offer.currencyCandidate;
+    case 'minimumOrderQuantityCandidate':
+      return offer.minimumOrderQuantityCandidate?.toString() ?? null;
+    case 'availabilityCandidate':
+      return offer.availabilityCandidate;
+    default:
+      return null;
+  }
+}
+
+function buildEvidenceFingerprint(
+  offerId: string,
+  sourceDocumentId: string | null,
+  evidence: OfferEvidence,
+): string {
+  return toHash(
+    [
+      offerId,
+      sourceDocumentId ?? '',
+      evidence.fieldName,
+      evidence.evidenceType,
+      evidence.rawText,
+      evidence.startOffset ?? '',
+      evidence.endOffset ?? '',
+    ].join('|'),
+  );
 }
 
 function normalizeWhitespace(value: string): string {
@@ -1583,20 +2060,22 @@ export async function persistPromotion(
     (candidate) => candidate.entityType === 'PRODUCT' && candidate.selected,
   );
 
-  if (
-    offer.aiAssisted ||
-    !selectedSupplier?.candidateId ||
-    !selectedSupplier.candidateName ||
-    !selectedProduct?.candidateId ||
-    !offer.rawProductText ||
-    !offer.priceCandidate ||
-    !offer.currencyCandidate ||
-    offer.sourceTrustScore < 55 ||
-    offer.structureConfidence < 85 ||
-    offer.fieldConfidence < 75 ||
-    offer.entityResolutionConfidence < 80 ||
-    offer.promotionConfidence < 80
-  ) {
+  const baseBlockers = [
+    ...buildBasePromotionBlockers(offer, selectedSupplier ?? null, selectedProduct ?? null),
+    ...buildThresholdPromotionBlockers(offer),
+  ];
+  const thresholdBlocked = baseBlockers.some((blocker) =>
+    [
+      'source_trust_too_low',
+      'ocr_text_too_weak',
+      'weak_structured_content',
+      'promotion_threshold_missing_or_weak_fields',
+      'weak_product_match',
+      'promotion_threshold_not_met',
+    ].includes(blocker.code),
+  );
+
+  if (baseBlockers.length > 0 || thresholdBlocked) {
     const reviewReason = derivePromotionReviewReason(offer);
     await db.$transaction(async (tx) => {
       await tx.emailDerivedOffer.update({
@@ -1604,6 +2083,7 @@ export async function persistPromotion(
         data: {
           status: 'REVIEW_REQUIRED',
           reviewReason,
+          promotionBlockers: serializePromotionBlockers(baseBlockers),
         },
       });
 
@@ -1613,6 +2093,11 @@ export async function persistPromotion(
           emailDerivedOfferId: offerId,
           status: 'REVIEW_REQUIRED',
           reason: reviewReason,
+          metadata: {
+            blockers: baseBlockers,
+            thresholdBlocked,
+            confidenceBreakdown: buildOfferConfidenceBreakdown(offer),
+          },
         },
       });
     });
@@ -1621,33 +2106,118 @@ export async function persistPromotion(
       offerStatus: 'REVIEW_REQUIRED',
       decisionStatus: 'REVIEW_REQUIRED',
       reviewReason,
+      blockers: baseBlockers,
     };
   }
 
-  const rawProductText = offer.rawProductText;
-  const currencyCode = offer.currencyCandidate;
-  const unitPrice = offer.priceCandidate;
+  const rawProductText = offer.rawProductText!;
+  const currencyCode = offer.currencyCandidate!;
+  const unitPrice = offer.priceCandidate!;
+  const now = new Date();
+  const recentPriceCutoff = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+  let transactionReviewResult: PromotionResult | null = null;
 
   await db.$transaction(async (tx) => {
     const supplier = await tx.supplier.findUnique({
       where: {
-        id: selectedSupplier.candidateId!,
+        id: selectedSupplier!.candidateId!,
       },
     });
 
     if (!supplier) {
-      throw new Error(`Resolved supplier ${selectedSupplier.candidateId} was not found during promotion.`);
+      throw new Error(`Resolved supplier ${selectedSupplier!.candidateId} was not found during promotion.`);
     }
 
     const product = await tx.product.findUnique({
       where: {
-        id: selectedProduct.candidateId!,
+        id: selectedProduct!.candidateId!,
       },
     });
 
     if (!product) {
-      throw new Error(`Resolved product ${selectedProduct.candidateId} was not found during promotion.`);
+      throw new Error(`Resolved product ${selectedProduct!.candidateId} was not found during promotion.`);
     }
+
+    const supplierQualification = await tx.supplierQualification.findUnique({
+      where: {
+        supplierId: supplier.id,
+      },
+    });
+    const recentPrices = await tx.supplierPriceItem.findMany({
+      where: {
+        productId: product.id,
+        currencyCode,
+        isAvailable: true,
+        createdAt: {
+          gte: recentPriceCutoff,
+        },
+      },
+      select: {
+        unitPrice: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 25,
+    });
+    const policyCheck = buildStagedOfferPolicyCheck(offer, supplier.name);
+    const blockers = [
+      ...buildProductIdentityBlockers(offer, product),
+      ...buildSupplierQualificationBlockers(supplierQualification?.qualificationStatus ?? null),
+      ...buildSuspiciousPriceBlockers(
+        offer,
+        recentPrices.map((price) => price.unitPrice),
+      ),
+      ...policyCheckPromotionBlockers(policyCheck),
+    ];
+
+    if (blockers.length > 0) {
+      const reviewReason =
+        blockers[0]?.code === 'supplier_authorisation_missing' ||
+        blockers[0]?.code === 'supplier_authorisation_failed'
+          ? 'source_trust_too_low'
+          : blockers[0]?.code === 'pack_size_missing' ||
+              blockers[0]?.code === 'pack_size_conflict' ||
+              blockers[0]?.code === 'strength_unit_ambiguous' ||
+              blockers[0]?.code === 'strength_unit_conflict'
+            ? 'weak_product_match'
+            : blockers[0]?.code === 'suspicious_pricing_outlier'
+              ? 'suspicious_pricing_outlier'
+              : derivePromotionReviewReason(offer);
+
+      await tx.emailDerivedOffer.update({
+        where: { id: offerId },
+        data: {
+          status: 'REVIEW_REQUIRED',
+          reviewReason,
+          promotionBlockers: serializePromotionBlockers(blockers),
+          policyCheckSummary: serializePolicyCheckSummary(policyCheck),
+        },
+      });
+
+      await tx.promotionDecision.create({
+        data: {
+          inboundEmailId,
+          emailDerivedOfferId: offerId,
+          status: 'REVIEW_REQUIRED',
+          reason: reviewReason,
+          metadata: {
+            blockers,
+            policyCheck: serializePolicyCheckSummary(policyCheck),
+            confidenceBreakdown: buildOfferConfidenceBreakdown(offer),
+          },
+        },
+      });
+
+      transactionReviewResult = {
+        offerStatus: 'REVIEW_REQUIRED',
+        decisionStatus: 'REVIEW_REQUIRED',
+        reviewReason,
+        blockers,
+      };
+      return;
+    }
+
     const supplierPriceList = await tx.supplierPriceList.upsert({
       where: {
         supplierId_sourceInboundEmailId: {
@@ -1670,7 +2240,7 @@ export async function persistPromotion(
     });
     const promotionFingerprint = buildPromotionFingerprint(
       offer,
-      selectedSupplier.candidateName,
+      selectedSupplier!.candidateName,
       product.id,
     );
 
@@ -1734,6 +2304,8 @@ export async function persistPromotion(
       data: {
         status: 'AUTO_PROMOTED',
         reviewReason: null,
+        promotionBlockers: [],
+        policyCheckSummary: serializePolicyCheckSummary(policyCheck),
       },
     });
 
@@ -1743,14 +2315,24 @@ export async function persistPromotion(
         emailDerivedOfferId: offerId,
         status: 'AUTO_PROMOTED',
         reason: 'strict_deterministic_offer_met_promotion_threshold',
+        metadata: {
+          blockers: [],
+          policyCheck: serializePolicyCheckSummary(policyCheck),
+          confidenceBreakdown: buildOfferConfidenceBreakdown(offer),
+        },
       },
     });
   });
+
+  if (transactionReviewResult) {
+    return transactionReviewResult;
+  }
 
   return {
     offerStatus: 'AUTO_PROMOTED',
     decisionStatus: 'AUTO_PROMOTED',
     reviewReason: null,
+    blockers: [],
   };
 }
 
@@ -2052,6 +2634,7 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
   for (const offer of resolvedOffers) {
     const sourceDocument = documents.find((document) => document.documentIndex === offer.sourceDocumentIndex) ?? null;
     const offerFingerprint = buildOfferFingerprint(inboundEmail.id, offer);
+    const confidenceBreakdown = buildOfferConfidenceBreakdown(offer);
     const extractionRunId =
       'extractionRunId' in offer && typeof offer.extractionRunId === 'string'
         ? offer.extractionRunId
@@ -2085,6 +2668,8 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
         fieldConfidence: offer.fieldConfidence,
         entityResolutionConfidence: offer.entityResolutionConfidence,
         promotionConfidence: offer.promotionConfidence,
+        confidenceBreakdown,
+        confidenceExplanation: confidenceBreakdown.explanation,
         aiAssisted: offer.aiAssisted,
         reviewReason: offer.reviewReason,
         metadata: buildOfferMetadata(message, sourceDocument, offer),
@@ -2112,6 +2697,8 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
         fieldConfidence: offer.fieldConfidence,
         entityResolutionConfidence: offer.entityResolutionConfidence,
         promotionConfidence: offer.promotionConfidence,
+        confidenceBreakdown,
+        confidenceExplanation: confidenceBreakdown.explanation,
         aiAssisted: offer.aiAssisted,
         reviewReason: offer.reviewReason,
         offerFingerprint,
@@ -2124,12 +2711,23 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
         data: offer.evidences.map((evidence) => ({
           emailDerivedOfferId: createdOffer.id,
           sourceDocumentId: sourceDocument?.id ?? null,
+          extractionRunId,
           fieldName: evidence.fieldName,
+          fieldValue: evidence.fieldValue ?? fieldValueFromOffer(offer, evidence.fieldName),
+          normalizedValue: evidence.normalizedValue ?? null,
           evidenceType: evidence.evidenceType,
           rawText: evidence.rawText,
           startOffset: evidence.startOffset ?? null,
           endOffset: evidence.endOffset ?? null,
           confidence: evidence.confidence ?? null,
+          extractionMethod: offer.parsingSource ?? (offer.aiAssisted ? 'AI_FALLBACK' : 'DETERMINISTIC'),
+          extractorVersion: EXTRACTOR_VERSION,
+          evidenceFingerprint: buildEvidenceFingerprint(
+            createdOffer.id,
+            sourceDocument?.id ?? null,
+            evidence,
+          ),
+          metadata: evidence.metadata ?? Prisma.JsonNull,
         })),
       });
     }
