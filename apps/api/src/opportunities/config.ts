@@ -22,6 +22,7 @@ export type OpportunityConfig = {
   healthyDemandUnits30d: number;
   weakDemandMaxUnits30d: number;
   maxInventorySnapshotAgeDays: number;
+  maxSupplierPriceAgeDaysForTradingSignals: number;
   deadStockNoSalesWindowDays: number;
   restockMaxCoverageDays: number;
   restockBaseScore: number;
@@ -49,6 +50,7 @@ const sharedOpportunityThresholds = {
   highStockThresholdUnits: 250,
   weakDemandMaxUnits30d: 20,
   maxInventorySnapshotAgeDays: 45,
+  maxSupplierPriceAgeDaysForTradingSignals: 14,
   deadStockNoSalesWindowDays: 30,
   restockMaxCoverageDays: 21,
   restockBaseScore: 70,

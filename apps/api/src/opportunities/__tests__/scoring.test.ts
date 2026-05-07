@@ -1411,3 +1411,118 @@ test('STOCKHOLDING mode preserves RESTOCK and DEAD_STOCK behavior', () => {
   assert.ok(restockCandidates.some((candidate) => candidate.type === 'RESTOCK'));
   assert.ok(deadStockCandidates.some((candidate) => candidate.type === 'DEAD_STOCK'));
 });
+
+test('TRADING BUY is suppressed when latest supplier price is stale', () => {
+  const candidates = scoreOpportunityCandidates(createContext({
+    latestSupplierPrice: {
+      supplierId: 'supplier-1',
+      unitPrice: 2,
+      createdAt: new Date('2026-03-20T00:00:00.000Z'),
+    },
+  }), tradingConfig);
+
+  assert.ok(!candidates.some((candidate) => candidate.type === 'BUY'));
+});
+
+test('TRADING PUSH is suppressed when latest supplier price is stale', () => {
+  const candidates = scoreOpportunityCandidates(createContext({
+    latestInventory: null,
+    latestSupplierPrice: {
+      supplierId: 'supplier-1',
+      unitPrice: 2,
+      createdAt: new Date('2026-03-20T00:00:00.000Z'),
+    },
+  }), tradingConfig);
+
+  assert.ok(!candidates.some((candidate) => candidate.type === 'PUSH'));
+});
+
+test('TRADING PRICE_ALERT is suppressed when latest supplier price is stale', () => {
+  const candidates = scoreOpportunityCandidates(createContext({
+    latestSupplierPrice: {
+      supplierId: 'supplier-1',
+      unitPrice: 2.2,
+      createdAt: new Date('2026-03-20T00:00:00.000Z'),
+    },
+    previousSupplierPrice: {
+      supplierId: 'supplier-1',
+      unitPrice: 1.8,
+      createdAt: new Date('2026-03-18T00:00:00.000Z'),
+    },
+  }), tradingConfig);
+
+  assert.ok(!candidates.some((candidate) => candidate.type === 'PRICE_ALERT'));
+});
+
+test('TRADING LOW_MARGIN is suppressed when latest supplier price is stale', () => {
+  const candidates = scoreOpportunityCandidates(createContext({
+    latestSupplierPrice: {
+      supplierId: 'supplier-1',
+      unitPrice: 2.9,
+      createdAt: new Date('2026-03-20T00:00:00.000Z'),
+    },
+  }), tradingConfig);
+
+  assert.ok(!candidates.some((candidate) => candidate.type === 'LOW_MARGIN'));
+});
+
+test('TRADING BUY still emits when supplier price is fresh and inventory snapshot is stale', () => {
+  const candidates = scoreOpportunityCandidates(createContext({
+    latestInventory: {
+      supplierId: 'supplier-1',
+      snapshotDate: new Date('2025-12-20T00:00:00.000Z'),
+      quantityAvailable: 500,
+      quantityOnHand: 520,
+    },
+    latestSupplierPrice: {
+      supplierId: 'supplier-1',
+      unitPrice: 2,
+      createdAt: new Date('2026-04-19T00:00:00.000Z'),
+    },
+  }), tradingConfig);
+
+  assert.ok(candidates.some((candidate) => candidate.type === 'BUY'));
+});
+
+test('audit includes freshness blocking reason when stale supplier price blocks TRADING BUY', () => {
+  const audit = auditOpportunityScoring(createContext({
+    latestSupplierPrice: {
+      supplierId: 'supplier-1',
+      unitPrice: 2,
+      createdAt: new Date('2026-03-20T00:00:00.000Z'),
+    },
+  }), tradingConfig);
+  const buyAudit = audit.opportunities.find((entry) => entry.type === 'BUY');
+
+  assert.ok(buyAudit);
+  assert.equal(buyAudit.eligible, false);
+  assert.ok(
+    buyAudit.blockingReasons.includes('Latest supplier price is fresh enough for TRADING signal'),
+  );
+});
+
+test('audit includes freshness blocking reason when stale supplier price blocks TRADING PUSH/PRICE_ALERT/LOW_MARGIN', () => {
+  const audit = auditOpportunityScoring(createContext({
+    latestInventory: null,
+    latestSupplierPrice: {
+      supplierId: 'supplier-1',
+      unitPrice: 2.9,
+      createdAt: new Date('2026-03-20T00:00:00.000Z'),
+    },
+    previousSupplierPrice: {
+      supplierId: 'supplier-1',
+      unitPrice: 2.4,
+      createdAt: new Date('2026-03-10T00:00:00.000Z'),
+    },
+  }), tradingConfig);
+
+  const blockedTypes = ['PUSH', 'PRICE_ALERT', 'LOW_MARGIN'] as const;
+  for (const type of blockedTypes) {
+    const entry = audit.opportunities.find((item) => item.type === type);
+    assert.ok(entry);
+    assert.equal(entry.eligible, false);
+    assert.ok(
+      entry.blockingReasons.includes('Latest supplier price is fresh enough for TRADING signal'),
+    );
+  }
+});
