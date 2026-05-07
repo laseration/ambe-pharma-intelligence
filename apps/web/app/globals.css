@@ -272,6 +272,17 @@ summary {
   gap: 12px;
 }
 
+.refresh-opportunities-form {
+  display: grid;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.refresh-opportunities-helper {
+  margin-top: 0;
+  max-width: 400px;
+}
+
 .button {
   display: inline-flex;
   align-items: center;
@@ -542,6 +553,7 @@ summary {
 
 .dashboard-opportunity-card {
   gap: 14px;
+  min-width: 0;
 }
 
 .dashboard-opportunity-top,
@@ -572,6 +584,7 @@ summary {
 .resolution-evidence-group-copy,
 .resolution-candidate-copy {
   line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 .dashboard-opportunity-meta,
@@ -591,6 +604,7 @@ summary {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
 }
 
 .dashboard-inline-message,
@@ -975,6 +989,10 @@ summary {
   cursor: wait;
 }
 
+.button[disabled]:hover {
+  transform: none;
+}
+
 .review-context {
   padding: 0 18px 18px;
 }
@@ -1111,5 +1129,24 @@ summary {
 
   .dashboard-opportunity-actions {
     display: grid;
+  }
+
+  .dashboard-opportunity-top > *,
+  .dashboard-section-header > *,
+  .dashboard-filter-row > *,
+  .duplicate-product-details > * {
+    min-width: 0;
+  }
+
+  .dashboard-opportunity-title,
+  .dashboard-opportunity-meta,
+  .dashboard-opportunity-copy,
+  .dashboard-triage-meta,
+  .duplicate-product-details dd {
+    word-break: break-word;
+  }
+
+  .duplicate-product-details {
+    gap: 10px;
   }
 }

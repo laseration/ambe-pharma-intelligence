@@ -977,9 +977,17 @@ function renderReturnToInput(returnTo: string) {
   return <input name="returnTo" type="hidden" value={returnTo} />;
 }
 
-function getApproveButtonLabel(approvalGuidance: ApprovalGuidance | null, supplierName: string): string {
+function getApproveButtonLabel(
+  approvalGuidance: ApprovalGuidance | null,
+  supplierName: string,
+  visibleItemCount: number,
+): string {
+  if (visibleItemCount === 0) {
+    return 'No visible offers to approve';
+  }
+
   if (!approvalGuidance) {
-    return 'Approve all';
+    return 'Approve visible offers';
   }
 
   return supplierName.trim() ? 'Save supplier name and approve' : 'Approve anyway';
@@ -1151,6 +1159,11 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
               phone numbers, or signature text rather than real offers.
             </p>
           ) : null}
+          {visibleItems.length === 0 ? (
+            <p className="alert alert-error review-inline-alert">
+              No visible offer rows are available to approve on this page. Use reject or review the original email details.
+            </p>
+          ) : null}
           {query?.error ? <p className="alert alert-error review-inline-alert">{query.error}</p> : null}
 
           <div className="action-row action-row-stacked-mobile">
@@ -1170,11 +1183,25 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
               <p className="form-helper">
                 Use this only if you intentionally want to continue even though the supplier still needs checking.
               </p>
-              <SubmitButton
-                className="button button-primary button-large"
-                idleLabel={getApproveButtonLabel(approvalGuidance, supplierDetailsDefaults.supplierName)}
-                pendingLabel="Approving..."
-              />
+              {visibleItems.length === 0 ? (
+                <button className="button button-primary button-large" disabled type="button">
+                  {getApproveButtonLabel(
+                    approvalGuidance,
+                    supplierDetailsDefaults.supplierName,
+                    visibleItems.length,
+                  )}
+                </button>
+              ) : (
+                <SubmitButton
+                  className="button button-primary button-large"
+                  idleLabel={getApproveButtonLabel(
+                    approvalGuidance,
+                    supplierDetailsDefaults.supplierName,
+                    visibleItems.length,
+                  )}
+                  pendingLabel="Approving..."
+                />
+              )}
             </form>
 
             <form action={submitInboundEmailReviewAction} className="action-form">

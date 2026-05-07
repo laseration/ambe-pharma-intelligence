@@ -149,7 +149,7 @@ export default async function BotInboxPage({ searchParams }: PageProps) {
               </p>
             </div>
             <Link className="button" href="/dashboard/review">
-              Open review
+              Open review queue
             </Link>
           </div>
 
@@ -251,7 +251,7 @@ export default async function BotInboxPage({ searchParams }: PageProps) {
                           className="button"
                           href={`/dashboard/review/${email.id}?returnTo=${encodeURIComponent(returnTo)}`}
                         >
-                          Open review
+                          Review this email
                         </Link>
                       </div>
                     ) : null}

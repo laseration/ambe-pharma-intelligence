@@ -56,7 +56,7 @@ const OPEN_OPPORTUNITY_FILTER_OPTIONS: Array<{
   { label: 'All', value: null },
   { label: 'BUY', value: 'BUY' },
   { label: 'PUSH', value: 'PUSH' },
-  { label: 'PRICE_ALERT', value: 'PRICE_ALERT' },
+  { label: 'Price alert', value: 'PRICE_ALERT' },
 ];
 
 function formatPrice(value: number | null | undefined, currencyCode?: string | null) {
@@ -73,6 +73,18 @@ function formatPct(value: number | null | undefined) {
   }
 
   return `${Math.round(value * 100)}%`;
+}
+
+function formatOpportunityType(value: string): string {
+  if (value === 'PRICE_ALERT') {
+    return 'Price alert';
+  }
+
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }
 
 function countPendingReviewEmails(reviewItems: Awaited<ReturnType<typeof listReviewWorkflowItems>>) {
@@ -107,15 +119,15 @@ function buildPilotSnapshotMetrics(input: {
     },
     {
       label: 'Review-to-buy conversion',
-      value: formatPct(input.reviewToBuyConversionPct) ?? 'n/a',
+      value: formatPct(input.reviewToBuyConversionPct) ?? 'Not enough data',
       note:
         input.signalAcceptancePct !== null
-          ? `Operator signal usefulness ${formatPct(input.signalAcceptancePct) ?? 'n/a'}.`
+          ? `Operator signal usefulness ${formatPct(input.signalAcceptancePct) ?? 'Not enough data'}.`
           : 'More operator feedback is needed before usefulness can be measured.',
     },
     {
-      label: 'Supplier resolution precision',
-      value: formatPct(input.supplierResolutionPrecisionPct) ?? 'n/a',
+      label: 'Supplier match accuracy',
+      value: formatPct(input.supplierResolutionPrecisionPct) ?? 'Not enough data',
       note: 'How often supplier resolution feedback says the match was correct.',
     },
   ];
@@ -140,31 +152,31 @@ function buildOperationalSnapshotMetrics(input: {
       value: String(input.openSignalCount),
       note: 'Current open BUY, PUSH, and secondary signals on the dashboard.',
       actionHref: '#open-opportunities',
-      actionLabel: 'Open',
+      actionLabel: 'Open buying opportunities',
     },
     {
       label: 'Review queue',
       value: String(input.reviewQueueCount),
       note: `${input.pendingReviewEmailCount} supplier emails still need operator review.`,
       actionHref: '/dashboard/review',
-      actionLabel: 'Open',
+      actionLabel: 'Open review queue',
     },
     {
       label: 'Recent triage activity',
       value: String(recentTriagedCount),
       note: `${input.recentReviewedCount} reviewed, ${input.recentActionedCount} actioned, ${input.recentDismissedCount} dismissed in the recent activity sample.`,
       actionHref: input.hasRecentTriagedSection ? '#recently-triaged' : undefined,
-      actionLabel: input.hasRecentTriagedSection ? 'View' : undefined,
+      actionLabel: input.hasRecentTriagedSection ? 'View recent triage' : undefined,
     },
     {
       label: 'Duplicate product groups',
-      value: input.duplicateGroupCount === null ? 'n/a' : String(input.duplicateGroupCount),
+      value: input.duplicateGroupCount === null ? 'Not available' : String(input.duplicateGroupCount),
       note:
         input.duplicateGroupCount === null
           ? 'Duplicate catalog cleanup count is temporarily unavailable.'
           : 'Likely duplicate internal product groups that may weaken matching and signal quality.',
       actionHref: '/dashboard/products',
-      actionLabel: 'Open',
+      actionLabel: 'Open product records',
     },
   ];
 }
@@ -189,7 +201,7 @@ function summarizeReadiness(input: {
 
   const firstBlockedReason = input.blockedReasons[0] ?? 'More operator evidence is needed.';
   return {
-    title: 'Trust boundaries still need operator evidence.',
+    title: 'Checks still need operator evidence.',
     detail: `${firstBlockedReason} ${unresolvedSupplierText}`,
   };
 }
@@ -454,15 +466,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           ) : null}
           <div className="actions">
             <Link className="button button-primary" href="/dashboard/review">
-              Open reviews
+              Open review queue
             </Link>
             <Link className="button" href="/dashboard/opportunities">
-              View opportunities
+              Open buying opportunities
             </Link>
-            <form action={submitOpportunityRefreshAction}>
+            <form action={submitOpportunityRefreshAction} className="refresh-opportunities-form">
               <button className="button" type="submit">
                 Refresh opportunities
               </button>
+              <p className="form-helper refresh-opportunities-helper">
+                Rechecks current data and updates opportunity signals. It does not send emails or contact suppliers.
+              </p>
             </form>
           </div>
           <div className="dashboard-feature-grid">
@@ -516,7 +531,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
           {selectedOpenOpportunityType ? (
             <p className="dashboard-summary-note">
-              Showing only {selectedOpenOpportunityFilterLabel.replace('_', ' ')} opportunities.
+              Showing only {selectedOpenOpportunityFilterLabel} opportunities.
             </p>
           ) : null}
           <div className="dashboard-summary-grid">
@@ -545,7 +560,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               </p>
             </div>
             <Link className="button" href="/dashboard/products">
-              View records
+              Open product records
             </Link>
           </div>
 
@@ -568,7 +583,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <section className="panel dashboard-panel">
           <div className="dashboard-section-header">
             <div>
-              <p className="eyebrow">Pilot Readiness</p>
+              <p className="eyebrow">Readiness Check</p>
               <h3 className="section-title">Value and trust at a glance</h3>
               <p className="copy">
                 A compact readout of signal volume, operator workload, and trust signals from the last 30 days.
@@ -617,7 +632,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <section className="panel dashboard-panel" id="open-opportunities">
             <h3 className="section-title">No matching opportunities</h3>
             <p className="copy">
-              There are no open {selectedOpenOpportunityFilterLabel.replace('_', ' ')} opportunities right now.
+              There are no open {selectedOpenOpportunityFilterLabel} opportunities right now.
               {' '}
               <Link href="/dashboard#open-opportunities">Show all opportunities</Link>.
             </p>
@@ -651,7 +666,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                           </p>
                         </div>
                         <div className="dashboard-opportunity-badges">
-                          <span className="pill pill-neutral">{item.type.replace('_', ' ')}</span>
+                          <span className="pill pill-neutral">{formatOpportunityType(item.type)}</span>
                           <span className="pill pill-neutral">{item.status}</span>
                           <span className="pill pill-high">Score {item.score}</span>
                         </div>
@@ -712,7 +727,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                       </p>
                     </div>
                     <div className="dashboard-opportunity-badges">
-                      <span className="pill pill-neutral">{item.type.replace('_', ' ')}</span>
+                      <span className="pill pill-neutral">{formatOpportunityType(item.type)}</span>
                       <span className="pill pill-neutral">{item.status}</span>
                     </div>
                   </div>
@@ -739,7 +754,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </p>
         <div className="actions">
           <Link className="button" href="/dashboard/review">
-            Open reviews
+            Open review queue
           </Link>
         </div>
       </section>
