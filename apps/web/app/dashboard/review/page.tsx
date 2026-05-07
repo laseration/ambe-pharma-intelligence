@@ -24,6 +24,12 @@ type ReviewEmailGroup = {
   items: ReviewWorkflowListItem[];
 };
 
+type ReviewQueueSummary = {
+  received: string;
+  reason: string;
+  nextStep: string;
+};
+
 type ReviewQueueSortMode = 'priority' | 'stale';
 
 const PRIORITY_ORDER: Record<string, number> = {
@@ -56,6 +62,73 @@ function formatDateTime(value: string | null) {
   }).format(parsed);
 }
 
+function renderValue(value: string | null | undefined, fallback = 'Not available') {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : fallback;
+}
+
+function formatPriorityLabel(value: string): string {
+  switch (value.trim().toUpperCase()) {
+    case 'HIGH':
+      return 'Ready to review';
+    case 'MEDIUM':
+      return 'Needs checking';
+    case 'LOW':
+      return 'Lower priority';
+    default:
+      return 'Needs review';
+  }
+}
+
+function formatOperatorReason(reason: string | null | undefined): string {
+  switch ((reason ?? '').trim().toLowerCase()) {
+    case 'deterministic_row_low_confidence':
+    case 'low_confidence':
+      return 'Low confidence';
+    case 'failed_parse':
+      return 'Could not read automatically';
+    case 'pending_review':
+      return 'Needs review';
+    case 'unresolved_supplier':
+      return 'Missing supplier match';
+    case 'weak_product_match':
+      return 'Product match needs checking';
+    case 'missing_price':
+      return 'Price not found';
+    case 'missing_currency':
+      return 'Currency not found';
+    case 'conflicting_supplier_cues':
+      return 'Supplier details conflict';
+    case 'source_trust_too_low':
+      return 'Source needs checking';
+    case 'ocr_text_too_weak':
+      return 'Could not read attachment clearly';
+    case 'weak_structured_content':
+      return 'Email layout was hard to read';
+    case 'promotion_threshold_missing_or_weak_fields':
+      return 'Check prices before approving';
+    case '':
+      return 'Needs review';
+    default:
+      return reason ?? 'Needs review';
+  }
+}
+
+function buildReviewQueueSummary(group: ReviewEmailGroup): ReviewQueueSummary {
+  const reason = formatOperatorReason(group.primaryReason);
+  const subject = renderValue(group.subject, 'Supplier email');
+  const sender = renderValue(group.fromEmail, 'Unknown supplier');
+  const receivedAt = formatDateTime(group.receivedAt);
+  const received = `${subject} from ${sender}${receivedAt ? `, received ${receivedAt}` : ''}.`;
+  const rowText = `${group.rowCount} ${group.rowCount === 1 ? 'offer needs' : 'offers need'} checking.`;
+
+  return {
+    received,
+    reason,
+    nextStep: `${rowText} Open the email, check prices and supplier details, then approve or reject.`,
+  };
+}
+
 function groupWorkflowItemsByInboundEmail(
   items: ReviewWorkflowListItem[],
   sortMode: ReviewQueueSortMode,
@@ -71,7 +144,7 @@ function groupWorkflowItemsByInboundEmail(
     if (!existing) {
       groups.set(inboundEmailId, {
         id: inboundEmailId,
-        fromEmail: item.inboundEmail?.fromEmail ?? 'Unknown sender',
+        fromEmail: item.inboundEmail?.fromEmail ?? 'Unknown supplier',
         subject: item.inboundEmail?.subject ?? item.emailDerivedOffer?.rawProductText ?? item.id,
         receivedAt: item.inboundEmail?.receivedAt ?? null,
         rowCount: 1,
@@ -158,11 +231,17 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
         {emailGroups.length === 0 ? (
           <section className="panel">
             <p className="eyebrow">All clear</p>
-            <p className="copy">There are no supplier emails waiting for review.</p>
+            <h3 className="section-title">Nothing needs review right now.</h3>
+            <p className="copy">
+              New supplier emails will appear here when prices, products, or supplier details need an operator check.
+            </p>
           </section>
         ) : (
           <div className="review-grid">
-            {emailGroups.map((group) => (
+            {emailGroups.map((group) => {
+              const summary = buildReviewQueueSummary(group);
+
+              return (
               <Link
                 className="review-card"
                 href={`/dashboard/review/${group.id}?returnTo=${encodeURIComponent(returnTo)}`}
@@ -170,20 +249,34 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
               >
                 <div className="review-card-top">
                   <span className={`pill pill-${group.highestPriority.toLowerCase()}`}>
-                    {group.highestPriority}
+                    {formatPriorityLabel(group.highestPriority)}
                   </span>
                   <span className="pill pill-neutral">
                     {group.rowCount} {group.rowCount === 1 ? 'offer' : 'offers'}
                   </span>
                 </div>
-                <h3 className="review-card-title">{group.subject}</h3>
+                <h3 className="review-card-title">{renderValue(group.subject, 'Supplier email')}</h3>
                 <p className="review-card-meta">
-                  {group.fromEmail}
+                  {renderValue(group.fromEmail, 'Unknown supplier')}
                   {group.receivedAt ? ` • ${formatDateTime(group.receivedAt)}` : ''}
                 </p>
-                <p className="review-card-copy">Needs checking because {group.primaryReason}</p>
+                <div className="review-card-summary">
+                  <div>
+                    <p className="review-card-label">What was received</p>
+                    <p className="review-card-copy">{summary.received}</p>
+                  </div>
+                  <div>
+                    <p className="review-card-label">Needs checking</p>
+                    <p className="review-card-copy">{summary.reason}</p>
+                  </div>
+                  <div>
+                    <p className="review-card-label">What to do next</p>
+                    <p className="review-card-copy">{summary.nextStep}</p>
+                  </div>
+                </div>
               </Link>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

@@ -695,6 +695,20 @@ summary {
   gap: 12px;
 }
 
+.review-card-summary {
+  display: grid;
+  gap: 12px;
+}
+
+.review-card-label {
+  margin: 0 0 4px;
+  color: var(--soft-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
 .review-card-top {
   display: flex;
   gap: 8px;

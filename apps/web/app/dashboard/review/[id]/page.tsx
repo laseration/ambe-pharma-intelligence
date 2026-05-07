@@ -80,13 +80,13 @@ type SupplierDetailsDefaults = {
 };
 
 function renderValue(value: string | number | null | undefined) {
-  return value === null || value === undefined || value === '' ? 'Not found' : String(value);
+  return value === null || value === undefined || value === '' ? 'Not available' : String(value);
 }
 
 function renderMoney(value: number | null | undefined) {
   return typeof value === 'number' && Number.isFinite(value)
     ? value.toLocaleString('en-GB', { style: 'currency', currency: 'GBP' })
-    : 'Not found';
+    : 'Not available';
 }
 
 function titleCase(value: string): string {
@@ -170,7 +170,7 @@ function extractDisplayProductName(item: ReviewWorkflowListItem): string {
     return titleCase(normalizedName.replace(/^description:\s*/i, '').replace(/productname:\s*/i, ''));
   }
 
-  return 'Unknown product';
+  return 'Product not available';
 }
 
 function isLikelyDisplayableOffer(item: ReviewWorkflowListItem): boolean {
@@ -181,7 +181,7 @@ function isLikelyDisplayableOffer(item: ReviewWorkflowListItem): boolean {
     item.emailDerivedOffer?.currencyCandidate,
   );
 
-  if (title === 'Unknown product') {
+  if (title === 'Product not available') {
     return false;
   }
 
@@ -238,7 +238,19 @@ function formatReasonLabel(reason: string): string {
 function formatOperatorReason(reason: string | null | undefined): string {
   switch ((reason ?? '').trim().toLowerCase()) {
     case 'deterministic_row_low_confidence':
+    case 'low_confidence':
       return 'Some details could not be read clearly';
+    case 'failed_parse':
+      return 'Could not read automatically';
+    case 'pending_review':
+    case 'review_required':
+      return 'Needs review';
+    case 'auto_promoted':
+      return 'Added automatically';
+    case 'rejected':
+      return 'Rejected';
+    case 'failed':
+      return 'Could not process';
     case 'unresolved_supplier':
       return 'Supplier needs checking';
     case 'weak_product_match':
@@ -483,7 +495,7 @@ function buildRecognizedOfferText(item: ReviewWorkflowDetail): string {
     item.emailDerivedOffer?.packSizeCandidate
       ? `pack ${item.emailDerivedOffer.packSizeCandidate}`
       : null,
-  ].filter((part): part is string => Boolean(part) && part !== 'Unknown product');
+  ].filter((part): part is string => Boolean(part) && part !== 'Product not available');
   const priceText = item.emailDerivedOffer?.priceCandidate
     ? `${item.emailDerivedOffer.priceCandidate}${item.emailDerivedOffer.currencyCandidate ? ` ${item.emailDerivedOffer.currencyCandidate}` : ''}`
     : null;
@@ -652,7 +664,7 @@ function renderConfidenceBreakdown(item: ReviewWorkflowDetail) {
           <article className="resolution-candidate-card" key={`${item.id}-${factor.code}`}>
             <div className="resolution-candidate-top">
               <p className="resolution-candidate-title">{factor.label}</p>
-              <span className="pill pill-neutral">{formatPctFromScore(factor.score) ?? 'Unknown'}</span>
+              <span className="pill pill-neutral">{formatPctFromScore(factor.score) ?? 'Confidence not available'}</span>
             </div>
             <p className="resolution-candidate-copy">{factor.explanation}</p>
           </article>
@@ -876,7 +888,9 @@ function renderPurchaseOrderPdfPanel(purchaseOrderPdf: PurchaseOrderPdfDetails |
             ))}
           </div>
         ) : (
-          <p className="copy">No product lines were extracted safely.</p>
+          <p className="copy">
+            No readable product lines were found in this attachment. Check the original email or attachment before rejecting.
+          </p>
         )}
       </details>
     </section>
@@ -1137,9 +1151,12 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
         <section className="panel review-section" id="decision">
           <h3 className="section-title">Decision</h3>
           <p className="copy review-summary-copy">
-            {visibleItems.length} {visibleItems.length === 1 ? 'offer' : 'offers'} from {inboundEmail?.fromEmail ?? 'Not found'}.
+            {visibleItems.length} {visibleItems.length === 1 ? 'offer' : 'offers'} from {inboundEmail?.fromEmail ?? 'Unknown supplier'}.
             {' '}
             Why this needs checking: {summarizeReason(items)}
+          </p>
+          <p className="copy review-summary-copy">
+            Approving imports the visible offers into the system. Rejecting keeps the system unchanged for this item.
           </p>
           {approvalGuidance ? (
             <div
@@ -1161,7 +1178,7 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
           ) : null}
           {visibleItems.length === 0 ? (
             <p className="alert alert-error review-inline-alert">
-              No visible offer rows are available to approve on this page. Use reject or review the original email details.
+              No readable offers were found in this email. Check the original email or attachment before rejecting.
             </p>
           ) : null}
           {query?.error ? <p className="alert alert-error review-inline-alert">{query.error}</p> : null}
@@ -1356,7 +1373,7 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
                                   <div className="resolution-candidate-pills">
                                     {candidate.selected ? <span className="pill pill-high">Selected</span> : null}
                                     <span className="pill pill-neutral">
-                                      {formatPctFromScore(candidate.confidence) ?? 'Unknown confidence'}
+                                      {formatPctFromScore(candidate.confidence) ?? 'Confidence not available'}
                                     </span>
                                   </div>
                                 </div>
@@ -1415,19 +1432,19 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
           <dl className="detail-list">
             <div>
               <dt>From</dt>
-              <dd>{inboundEmail?.fromEmail ?? 'Not found'}</dd>
+              <dd>{inboundEmail?.fromEmail ?? 'Unknown supplier'}</dd>
             </div>
             <div>
               <dt>Subject</dt>
-              <dd>{inboundEmail?.subject ?? 'Not found'}</dd>
+              <dd>{inboundEmail?.subject ?? 'Not available'}</dd>
             </div>
             <div>
               <dt>Email status</dt>
-              <dd>{inboundEmail?.processingStatus ?? 'Not found'}</dd>
+              <dd>{formatOperatorReason(inboundEmail?.processingStatus ?? null)}</dd>
             </div>
             <div>
               <dt>Why this needs checking</dt>
-              <dd>{inboundEmail?.reviewReason ?? summarizeReason(items)}</dd>
+              <dd>{formatOperatorReason(inboundEmail?.reviewReason ?? summarizeReason(items))}</dd>
             </div>
           </dl>
 
@@ -1453,7 +1470,9 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
                     ))}
                   </div>
                 ) : (
-                  <p className="copy">No parsed documents were stored for this email.</p>
+                  <p className="copy">
+                    No readable attachments were stored for this email. Check the original email before rejecting.
+                  </p>
                 )}
               </div>
             </div>

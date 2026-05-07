@@ -29,3 +29,19 @@ test('inbox has no horizontal overflow on mobile', async ({ page }) => {
   expect(hasHorizontalOverflow).toBe(false);
   await expect(page.getByRole('link', { name: 'Review this email' }).first()).toBeVisible();
 });
+
+test('review queue uses operator-facing labels', async ({ page }) => {
+  await page.goto('/dashboard/review');
+
+  await expect(page.getByRole('heading', { name: 'Supplier emails to check' })).toBeVisible();
+
+  const hasReviewCard = await page.getByText('What was received').first().isVisible().catch(() => false);
+  const hasEmptyState = await page.getByText('Nothing needs review right now.').isVisible().catch(() => false);
+
+  expect(hasReviewCard || hasEmptyState).toBe(true);
+
+  if (hasReviewCard) {
+    await expect(page.getByText('Needs checking').first()).toBeVisible();
+    await expect(page.getByText('What to do next').first()).toBeVisible();
+  }
+});
