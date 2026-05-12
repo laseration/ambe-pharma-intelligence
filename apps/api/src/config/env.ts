@@ -134,9 +134,18 @@ export const env = {
   telegramAllowedUserIds: readIdList(process.env.TELEGRAM_ALLOWED_USER_IDS),
   telegramAllowedChatIds: readIdList(process.env.TELEGRAM_ALLOWED_CHAT_IDS),
   emailAlertsEnabled: readBoolean(process.env.EMAIL_ALERTS_ENABLED, false),
-  microsoftGraphTenantId: process.env.MICROSOFT_GRAPH_TENANT_ID?.trim() || '',
-  microsoftGraphClientId: process.env.MICROSOFT_GRAPH_CLIENT_ID?.trim() || '',
-  microsoftGraphClientSecret: process.env.MICROSOFT_GRAPH_CLIENT_SECRET?.trim() || '',
+  microsoftGraphTenantId:
+    process.env.MICROSOFT_GRAPH_TENANT_ID?.trim() ||
+    process.env.MICROSOFT_TENANT_ID?.trim() ||
+    '',
+  microsoftGraphClientId:
+    process.env.MICROSOFT_GRAPH_CLIENT_ID?.trim() ||
+    process.env.MICROSOFT_CLIENT_ID?.trim() ||
+    '',
+  microsoftGraphClientSecret:
+    process.env.MICROSOFT_GRAPH_CLIENT_SECRET?.trim() ||
+    process.env.MICROSOFT_CLIENT_SECRET?.trim() ||
+    '',
   microsoftGraphRefreshToken: process.env.MICROSOFT_GRAPH_REFRESH_TOKEN?.trim() || '',
   microsoftGraphSenderMailbox: process.env.MICROSOFT_GRAPH_SENDER_MAILBOX?.trim() || '',
   internalAlertEmailRecipients: readIdList(process.env.INTERNAL_ALERT_EMAIL_RECIPIENTS),

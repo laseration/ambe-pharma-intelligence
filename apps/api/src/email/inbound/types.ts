@@ -1,7 +1,7 @@
 import type { ParsedEmailBodyResult } from '../parsing';
 import type { PurchaseOrderPdfExtraction } from '../purchaseOrderPdf';
 import type { ImportResponse, UploadFile } from '../../imports/types';
-import type { AccountOpeningCase } from '../../accountOpening/service';
+import type { AccountOpeningCase, AccountOpeningCasePersistenceInput } from '../../accountOpening/service';
 import type { EmailTriageResult, EmailTriageStatus } from './triage';
 
 export type EmailInboundFileType = 'CSV' | 'XLSX' | 'PDF' | 'IMAGE' | 'UNKNOWN';
@@ -141,6 +141,7 @@ export type EmailInboundDependencies = {
     text: string;
     warnings: string[];
   } | null>;
+  persistAccountOpeningCase?: (input: AccountOpeningCasePersistenceInput) => Promise<unknown>;
   allowedSenders: string[];
   supplierMappings: EmailInboundSupplierMapping[];
   emailReviewEnabled?: boolean;

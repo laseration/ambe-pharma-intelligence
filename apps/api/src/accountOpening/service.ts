@@ -1,3 +1,14 @@
+import { createHash } from 'node:crypto';
+
+import { Prisma } from '@prisma/client';
+
+import { db } from '../lib/db';
+import {
+  uploadAccountOpeningArchivePack,
+  type AccountOpeningSharePointArchiveConfig,
+  type AccountOpeningSharePointArchiveUploader,
+} from './sharePointArchive';
+
 export type AccountOpeningStructuredFields = {
   companyName: string;
   tradingName: string;
@@ -40,14 +51,67 @@ export type AccountOpeningSigningNotes = {
   summary: string;
 };
 
+export type AccountOpeningMissingInfoResponses = {
+  website?: string | null;
+  numberOfEmployees?: string | null;
+  businessHours?: string | null;
+  estimatedMonthlyPurchases?: string | null;
+  webOrdering?: string | null;
+  directDebitRequested?: string | null;
+  cdLicenceApplies?: string | null;
+  gphcPremisesNumber?: string | null;
+  cqcRegistration?: string | null;
+  reviewerNotes?: string | null;
+};
+
+export type AccountOpeningStatusAction =
+  | 'MARKED_NEEDS_INFO'
+  | 'APPROVED_FOR_COMPLETION'
+  | 'REJECTED';
+
+export type AccountOpeningCaseDetail = {
+  id: string;
+  sourceFingerprint: string;
+  messageId: string | null;
+  senderEmail: string | null;
+  senderDomain: string | null;
+  subject: string | null;
+  receivedAt: string | null;
+  companyName: string | null;
+  detectedFormType: string | null;
+  status: string;
+  recommendedSigner: string;
+  signingStatement: string;
+  signingExplanation: string | null;
+  detectedNames: string[];
+  detectedRoles: string[];
+  escalationNotes: string[];
+  riskFlags: string[];
+  missingFields: string[];
+  reviewerChecks: string[];
+  signingNotes: AccountOpeningSigningNotes;
+  missingInfoResponses: AccountOpeningMissingInfoResponses;
+  extractedTextSummary: string | null;
+  sharePointStatus: string | null;
+  sharePointNote: string | null;
+  sharePointSkippedReason: string | null;
+  sharePointLastAttemptAt: string | null;
+  sharePointFolderUrl: string | null;
+  sourceAttachmentNames: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AccountOpeningSharePointResult = {
   enabled: boolean;
   folderUrl: string | null;
+  status: string;
   note: string;
   skippedReason: string | null;
 };
 
 export type AccountOpeningCase = {
+  sourceFingerprint: string;
   status: 'pending_review' | 'approved' | 'rejected' | 'sent';
   senderEmail: string;
   senderDomain: string | null;
@@ -59,10 +123,52 @@ export type AccountOpeningCase = {
   riskFlags: string[];
   missingFields: string[];
   sharePointFolderUrl: string | null;
+  sharePointStatus: string;
   sharePointNote: string;
+  sharePointSkippedReason: string | null;
   structuredFields: AccountOpeningStructuredFields;
   signingSummary: AccountOpeningSigningSummary;
   signingNotes: AccountOpeningSigningNotes;
+};
+
+export type AccountOpeningCasePersistenceInput = {
+  accountCase: AccountOpeningCase;
+  messageId?: string | null;
+  inboundEmailId?: string | null;
+  detectedFormType?: string | null;
+};
+
+export type PersistedAccountOpeningReviewCase = {
+  id: string;
+  sourceFingerprint: string;
+  messageId: string | null;
+  senderEmail: string | null;
+  senderDomain: string | null;
+  subject: string | null;
+  receivedAt: Date | null;
+  companyName: string | null;
+  detectedFormType: string | null;
+  status: string;
+  recommendedSigner: string;
+  signingStatement: string;
+  signingExplanation: string | null;
+  detectedNames: unknown;
+  detectedRoles: unknown;
+  escalationNotes: unknown;
+  riskFlags: unknown;
+  missingFields: unknown;
+  reviewerChecks: unknown;
+  signingNotes: unknown;
+  missingInfoResponses: unknown;
+  extractedTextSummary: string | null;
+  sharePointStatus: string | null;
+  sharePointNote: string | null;
+  sharePointSkippedReason: string | null;
+  sharePointLastAttemptAt: Date | null;
+  sharePointFolderUrl: string | null;
+  sourceAttachmentNames: unknown;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 export type AccountOpeningDetection = {
@@ -85,10 +191,33 @@ type BuildAccountOpeningCaseInput = {
   detectedCompanyOrSupplierName?: string | null;
   attachments: AccountOpeningAttachmentInput[];
   sharePoint: AccountOpeningSharePointResult;
+  sourceFingerprint?: string;
 };
 
 const TO_BE_CONFIRMED = 'To be confirmed';
 const DEFAULT_SIGNER = 'Aman Dhillon';
+const BANK_ACCOUNT_NUMBER_WITH_LABEL_PATTERN = /\baccount\s*(?:no\.?|number)?\s*\d{8}\b/gi;
+const BANK_ACCOUNT_NUMBER_PATTERN = /(^|[^\d])\d{8}(?!\d)/g;
+const SORT_CODE_WITH_LABEL_PATTERN = /\bsort(?:\s*code)?[-\s]*\d{2}[-\s]?\d{2}[-\s]?\d{2}\b/gi;
+const SORT_CODE_PATTERN = /(^|[^\d-])\d{2}-\d{2}-\d{2}(?![\d-])/g;
+const MISSING_INFO_KEYS: Array<keyof AccountOpeningMissingInfoResponses> = [
+  'website',
+  'numberOfEmployees',
+  'businessHours',
+  'estimatedMonthlyPurchases',
+  'webOrdering',
+  'directDebitRequested',
+  'cdLicenceApplies',
+  'gphcPremisesNumber',
+  'cqcRegistration',
+  'reviewerNotes',
+];
+
+const STATUS_ACTIONS: Record<AccountOpeningStatusAction, string> = {
+  MARKED_NEEDS_INFO: 'NEEDS_INFO',
+  APPROVED_FOR_COMPLETION: 'APPROVED_FOR_COMPLETION',
+  REJECTED: 'REJECTED',
+};
 
 const ACCOUNT_OPENING_TERMS: Array<{ label: string; pattern: RegExp }> = [
   { label: 'account opening form', pattern: /\baccount\s+opening\s+forms?\b/i },
@@ -173,6 +302,73 @@ function matchLabels(text: string, terms: Array<{ label: string; pattern: RegExp
   return terms.filter((term) => term.pattern.test(text)).map((term) => term.label);
 }
 
+function jsonArray(values: string[]): Prisma.InputJsonValue {
+  return values as Prisma.InputJsonValue;
+}
+
+function jsonObject(value: Record<string, unknown>): Prisma.InputJsonValue {
+  return value as Prisma.InputJsonValue;
+}
+
+function stringArrayFromJson(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+}
+
+function sanitizeDashboardText(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return trimmed
+    .replace(BANK_ACCOUNT_NUMBER_WITH_LABEL_PATTERN, '[redacted bank account number]')
+    .replace(BANK_ACCOUNT_NUMBER_PATTERN, '$1[redacted bank account number]')
+    .replace(SORT_CODE_WITH_LABEL_PATTERN, '[redacted sort code]')
+    .replace(SORT_CODE_PATTERN, '$1[redacted sort code]');
+}
+
+function jsonRecordFromUnknown(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+export function sanitizeAccountOpeningMissingInfoResponses(
+  input: AccountOpeningMissingInfoResponses,
+): AccountOpeningMissingInfoResponses {
+  return MISSING_INFO_KEYS.reduce<AccountOpeningMissingInfoResponses>((responses, key) => {
+    const sanitized = sanitizeDashboardText(input[key]);
+    if (sanitized !== null) {
+      responses[key] = sanitized;
+    }
+    return responses;
+  }, {});
+}
+
+function missingInfoResponsesFromJson(value: unknown): AccountOpeningMissingInfoResponses {
+  const record = jsonRecordFromUnknown(value);
+
+  return sanitizeAccountOpeningMissingInfoResponses(
+    MISSING_INFO_KEYS.reduce<AccountOpeningMissingInfoResponses>((responses, key) => {
+      const rawValue = record[key];
+      if (typeof rawValue === 'string') {
+        responses[key] = rawValue;
+      }
+      return responses;
+    }, {}),
+  );
+}
+
+function safeStringArrayFromJson(value: unknown): string[] {
+  return compactUnique(stringArrayFromJson(value).map((item) => sanitizeDashboardText(item)));
+}
+
+function normalizeFingerprintPart(value: string | null | undefined): string {
+  return value?.trim().toLowerCase().replace(/\s+/g, ' ') ?? '';
+}
+
 function extractSenderDomain(senderEmail: string): string | null {
   const domain = senderEmail.includes('@') ? senderEmail.split('@').pop()?.trim().toLowerCase() : null;
   return domain || null;
@@ -192,6 +388,31 @@ function summarizeExtractedText(bodyText: string | null, attachments: AccountOpe
   return textSources.length > 0
     ? `Extracted account-opening text from ${textSources.join(' and ')}.`
     : 'No readable form text was extracted; reviewer should open the original attachments.';
+}
+
+export function buildAccountOpeningSourceFingerprint(input: {
+  messageId?: string | null;
+  externalMessageId?: string | null;
+  senderEmail: string;
+  subject?: string | null;
+  attachmentFileNames?: Array<string | null | undefined>;
+  matchedTerms?: string[];
+}): string {
+  const attachmentNames = compactUnique(input.attachmentFileNames ?? [])
+    .map(normalizeFingerprintPart)
+    .sort();
+  const matchedTerms = compactUnique(input.matchedTerms ?? [])
+    .map(normalizeFingerprintPart)
+    .sort();
+  const fingerprintSource = JSON.stringify({
+    messageId: normalizeFingerprintPart(input.messageId ?? input.externalMessageId),
+    senderEmail: normalizeFingerprintPart(input.senderEmail),
+    subject: normalizeFingerprintPart(input.subject),
+    attachmentNames,
+    matchedTerms,
+  });
+
+  return createHash('sha256').update(fingerprintSource).digest('hex');
 }
 
 export function detectAccountOpeningEmail(input: {
@@ -333,6 +554,7 @@ export function prepareAccountOpeningSharePointStorage(input: {
     return {
       enabled: false,
       folderUrl: null,
+      status: 'SKIPPED_DISABLED',
       skippedReason: 'SharePoint account-opening upload is disabled or not fully configured.',
       note: 'SharePoint upload skipped; review item was still created.',
     };
@@ -341,8 +563,357 @@ export function prepareAccountOpeningSharePointStorage(input: {
   return {
     enabled: true,
     folderUrl: null,
-    skippedReason: 'SharePoint upload adapter is configured but no uploader is active in this review-first slice.',
-    note: 'SharePoint upload skipped by the current adapter; review item was still created.',
+    status: 'CONFIGURED',
+    skippedReason: null,
+    note: 'SharePoint account-opening archive upload is configured and will run only after approval for completion.',
+  };
+}
+
+export function buildAccountOpeningCasePersistenceData(input: AccountOpeningCasePersistenceInput) {
+  const accountCase = input.accountCase;
+  const signingNotes = accountCase.signingNotes;
+
+  return {
+    where: {
+      sourceFingerprint: accountCase.sourceFingerprint,
+    },
+    create: {
+      inboundEmailId: input.inboundEmailId ?? null,
+      messageId: input.messageId ?? null,
+      senderEmail: accountCase.senderEmail,
+      senderDomain: accountCase.senderDomain,
+      subject: accountCase.subject,
+      receivedAt: accountCase.receivedDate ? new Date(accountCase.receivedDate) : null,
+      companyName: accountCase.structuredFields.companyName,
+      detectedFormType: input.detectedFormType ?? null,
+      status: 'PENDING_REVIEW',
+      recommendedSigner: signingNotes.recommendedSigner,
+      signingStatement: signingNotes.defaultSigningStatement,
+      signingExplanation: accountCase.signingSummary.signingExplanation,
+      detectedNames: jsonArray(signingNotes.detectedNames),
+      detectedRoles: jsonArray(signingNotes.detectedRolesOrSections),
+      escalationNotes: jsonArray(accountCase.signingSummary.escalationNotes),
+      riskFlags: jsonArray(accountCase.riskFlags),
+      missingFields: jsonArray(accountCase.missingFields),
+      reviewerChecks: jsonArray(signingNotes.reviewerChecks),
+      signingNotes: jsonObject(signingNotes),
+      missingInfoResponses: jsonObject({}),
+      extractedTextSummary: accountCase.extractedTextSummary,
+      sharePointStatus: accountCase.sharePointStatus,
+      sharePointNote: accountCase.sharePointNote,
+      sharePointSkippedReason: accountCase.sharePointSkippedReason,
+      sharePointFolderUrl: accountCase.sharePointFolderUrl,
+      sourceAttachmentNames: jsonArray(accountCase.originalAttachmentNames),
+      sourceFingerprint: accountCase.sourceFingerprint,
+    },
+    update: {
+      inboundEmailId: input.inboundEmailId ?? undefined,
+      messageId: input.messageId ?? null,
+      senderEmail: accountCase.senderEmail,
+      senderDomain: accountCase.senderDomain,
+      subject: accountCase.subject,
+      receivedAt: accountCase.receivedDate ? new Date(accountCase.receivedDate) : null,
+      companyName: accountCase.structuredFields.companyName,
+      detectedFormType: input.detectedFormType ?? null,
+      recommendedSigner: signingNotes.recommendedSigner,
+      signingStatement: signingNotes.defaultSigningStatement,
+      signingExplanation: accountCase.signingSummary.signingExplanation,
+      detectedNames: jsonArray(signingNotes.detectedNames),
+      detectedRoles: jsonArray(signingNotes.detectedRolesOrSections),
+      escalationNotes: jsonArray(accountCase.signingSummary.escalationNotes),
+      riskFlags: jsonArray(accountCase.riskFlags),
+      missingFields: jsonArray(accountCase.missingFields),
+      reviewerChecks: jsonArray(signingNotes.reviewerChecks),
+      signingNotes: jsonObject(signingNotes),
+      extractedTextSummary: accountCase.extractedTextSummary,
+      sharePointStatus: accountCase.sharePointStatus,
+      sharePointNote: accountCase.sharePointNote,
+      sharePointSkippedReason: accountCase.sharePointSkippedReason,
+      sharePointFolderUrl: accountCase.sharePointFolderUrl,
+      sourceAttachmentNames: jsonArray(accountCase.originalAttachmentNames),
+    },
+  };
+}
+
+export type AccountOpeningCaseEventInput = {
+  accountOpeningCaseId: string;
+  actionType: string;
+  previousStatus?: string | null;
+  newStatus?: string | null;
+  actorType?: string;
+  actorIdentifier?: string | null;
+  note?: string | null;
+  metadata?: Prisma.InputJsonValue;
+};
+
+export type AccountOpeningCaseRepository = {
+  findUnique: (args: unknown) => Promise<PersistedAccountOpeningReviewCase | null>;
+  update: (args: unknown) => Promise<PersistedAccountOpeningReviewCase>;
+  createEvent: (args: { data: AccountOpeningCaseEventInput }) => Promise<unknown>;
+};
+
+function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
+  const client = db as never as {
+    accountOpeningCase: {
+      findUnique: (args: unknown) => Promise<PersistedAccountOpeningReviewCase | null>;
+      update: (args: unknown) => Promise<PersistedAccountOpeningReviewCase>;
+    };
+    accountOpeningCaseEvent: {
+      create: (args: { data: AccountOpeningCaseEventInput }) => Promise<unknown>;
+    };
+  };
+
+  return {
+    findUnique: (args) => client.accountOpeningCase.findUnique(args),
+    update: (args) => client.accountOpeningCase.update(args),
+    createEvent: (args) => client.accountOpeningCaseEvent.create(args),
+  };
+}
+
+export function buildAccountOpeningCaseDetail(
+  accountCase: PersistedAccountOpeningReviewCase,
+): AccountOpeningCaseDetail {
+  return {
+    id: accountCase.id,
+    sourceFingerprint: accountCase.sourceFingerprint,
+    messageId: accountCase.messageId,
+    senderEmail: accountCase.senderEmail,
+    senderDomain: accountCase.senderDomain,
+    subject: accountCase.subject,
+    receivedAt: accountCase.receivedAt?.toISOString() ?? null,
+    companyName: accountCase.companyName,
+    detectedFormType: accountCase.detectedFormType,
+    status: accountCase.status,
+    recommendedSigner: accountCase.recommendedSigner,
+    signingStatement: accountCase.signingStatement,
+    signingExplanation: accountCase.signingExplanation,
+    detectedNames: stringArrayFromJson(accountCase.detectedNames),
+    detectedRoles: stringArrayFromJson(accountCase.detectedRoles),
+    escalationNotes: stringArrayFromJson(accountCase.escalationNotes),
+    riskFlags: stringArrayFromJson(accountCase.riskFlags),
+    missingFields: stringArrayFromJson(accountCase.missingFields),
+    reviewerChecks: stringArrayFromJson(accountCase.reviewerChecks),
+    signingNotes: buildSigningNotesFromPersistedCase(accountCase),
+    missingInfoResponses: missingInfoResponsesFromJson(accountCase.missingInfoResponses),
+    extractedTextSummary: accountCase.extractedTextSummary,
+    sharePointStatus: accountCase.sharePointStatus,
+    sharePointNote: accountCase.sharePointNote,
+    sharePointSkippedReason: accountCase.sharePointSkippedReason,
+    sharePointLastAttemptAt: accountCase.sharePointLastAttemptAt?.toISOString() ?? null,
+    sharePointFolderUrl: accountCase.sharePointFolderUrl,
+    sourceAttachmentNames: safeStringArrayFromJson(accountCase.sourceAttachmentNames),
+    createdAt: accountCase.createdAt.toISOString(),
+    updatedAt: accountCase.updatedAt.toISOString(),
+  };
+}
+
+export async function getAccountOpeningCaseDetail(
+  id: string,
+  repository = getAccountOpeningCaseRepository(),
+): Promise<AccountOpeningCaseDetail | null> {
+  const accountCase = await repository.findUnique({
+    where: { id },
+  });
+
+  return accountCase ? buildAccountOpeningCaseDetail(accountCase) : null;
+}
+
+export async function saveAccountOpeningMissingInfo(input: {
+  id: string;
+  missingInfoResponses: AccountOpeningMissingInfoResponses;
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  repository?: AccountOpeningCaseRepository;
+}): Promise<AccountOpeningCaseDetail> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  const existing = await repository.findUnique({
+    where: { id: input.id },
+  });
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  const responses = sanitizeAccountOpeningMissingInfoResponses(input.missingInfoResponses);
+  const updated = await repository.update({
+    where: { id: input.id },
+    data: {
+      missingInfoResponses: jsonObject(responses as Record<string, unknown>),
+    },
+  });
+
+  await repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.id,
+      actionType: 'MISSING_INFO_SAVED',
+      previousStatus: existing.status,
+      newStatus: updated.status,
+      actorType: input.actorType?.trim() || 'OPERATOR',
+      actorIdentifier: sanitizeDashboardText(input.actorIdentifier) ?? null,
+      metadata: jsonObject({ fields: Object.keys(responses) }),
+    },
+  });
+
+  return buildAccountOpeningCaseDetail(updated);
+}
+
+export async function updateAccountOpeningCaseStatus(input: {
+  id: string;
+  action: AccountOpeningStatusAction;
+  note?: string | null;
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  repository?: AccountOpeningCaseRepository;
+  sharePointConfig?: AccountOpeningSharePointArchiveConfig;
+  sharePointUploader?: AccountOpeningSharePointArchiveUploader;
+  now?: Date;
+}): Promise<AccountOpeningCaseDetail> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  const existing = await repository.findUnique({
+    where: { id: input.id },
+  });
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  const newStatus = STATUS_ACTIONS[input.action];
+  let updated = await repository.update({
+    where: { id: input.id },
+    data: { status: newStatus },
+  });
+
+  await repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.id,
+      actionType: input.action,
+      previousStatus: existing.status,
+      newStatus,
+      actorType: input.actorType?.trim() || 'OPERATOR',
+      actorIdentifier: sanitizeDashboardText(input.actorIdentifier) ?? null,
+      note: sanitizeDashboardText(input.note),
+    },
+  });
+
+  if (input.action === 'APPROVED_FOR_COMPLETION') {
+    const uploadResult = await uploadAccountOpeningArchivePack({
+      item: buildAccountOpeningCaseDetail(updated),
+      config: input.sharePointConfig,
+      uploader: input.sharePointUploader,
+      now: input.now,
+    });
+
+    updated = await repository.update({
+      where: { id: input.id },
+      data: {
+        sharePointStatus: uploadResult.status,
+        sharePointNote: uploadResult.note,
+        sharePointSkippedReason: uploadResult.skippedReason,
+        sharePointLastAttemptAt: uploadResult.attemptedAt,
+        sharePointFolderUrl: uploadResult.folderUrl,
+      },
+    });
+
+    await repository.createEvent({
+      data: {
+        accountOpeningCaseId: input.id,
+        actionType:
+          uploadResult.status === 'UPLOADED'
+            ? 'SHAREPOINT_ARCHIVE_UPLOADED'
+            : uploadResult.status === 'UPLOAD_FAILED'
+              ? 'SHAREPOINT_ARCHIVE_FAILED'
+              : 'SHAREPOINT_ARCHIVE_SKIPPED',
+        previousStatus: newStatus,
+        newStatus,
+        actorType: 'SYSTEM',
+        actorIdentifier: 'account-opening-sharepoint-archive',
+        note: sanitizeDashboardText(uploadResult.note),
+        metadata: jsonObject({
+          status: uploadResult.status,
+          skippedReason: uploadResult.skippedReason,
+          folderUrl: uploadResult.folderUrl,
+          packMetadata: uploadResult.packMetadata ?? null,
+        }),
+      },
+    });
+  }
+
+  return buildAccountOpeningCaseDetail(updated);
+}
+
+export async function upsertAccountOpeningCase(input: AccountOpeningCasePersistenceInput) {
+  const data = buildAccountOpeningCasePersistenceData(input);
+
+  return (db as never as {
+    accountOpeningCase: {
+      upsert: (args: typeof data) => Promise<PersistedAccountOpeningReviewCase>;
+    };
+  }).accountOpeningCase.upsert(data);
+}
+
+export async function listOpenAccountOpeningCases(): Promise<PersistedAccountOpeningReviewCase[]> {
+  const client = db as never as {
+    accountOpeningCase?: {
+      findMany: (args: unknown) => Promise<PersistedAccountOpeningReviewCase[]>;
+    };
+  };
+
+  if (!client.accountOpeningCase) {
+    return [];
+  }
+
+  return client.accountOpeningCase.findMany({
+    where: {
+      status: {
+        in: ['PENDING_REVIEW', 'NEEDS_INFO'],
+      },
+    },
+    orderBy: [{ updatedAt: 'desc' }],
+    take: 100,
+  });
+}
+
+export function buildSigningNotesFromPersistedCase(
+  accountCase: PersistedAccountOpeningReviewCase,
+): AccountOpeningSigningNotes {
+  const persistedNotes =
+    accountCase.signingNotes && typeof accountCase.signingNotes === 'object' && !Array.isArray(accountCase.signingNotes)
+      ? (accountCase.signingNotes as Partial<AccountOpeningSigningNotes>)
+      : null;
+
+  return {
+    title: 'Account opening signing notes',
+    recommendedSigner: 'Aman Dhillon',
+    defaultSigningStatement: 'Aman Dhillon can sign this account-opening form by default.',
+    detectedNames:
+      persistedNotes?.detectedNames && Array.isArray(persistedNotes.detectedNames)
+        ? stringArrayFromJson(persistedNotes.detectedNames)
+        : stringArrayFromJson(accountCase.detectedNames),
+    detectedRolesOrSections:
+      persistedNotes?.detectedRolesOrSections && Array.isArray(persistedNotes.detectedRolesOrSections)
+        ? stringArrayFromJson(persistedNotes.detectedRolesOrSections)
+        : stringArrayFromJson(accountCase.detectedRoles),
+    reviewerChecks:
+      persistedNotes?.reviewerChecks && Array.isArray(persistedNotes.reviewerChecks)
+        ? stringArrayFromJson(persistedNotes.reviewerChecks)
+        : stringArrayFromJson(accountCase.reviewerChecks),
+    riskFlags:
+      persistedNotes?.riskFlags && Array.isArray(persistedNotes.riskFlags)
+        ? stringArrayFromJson(persistedNotes.riskFlags)
+        : stringArrayFromJson(accountCase.riskFlags),
+    missingOrUnclear:
+      persistedNotes?.missingOrUnclear && Array.isArray(persistedNotes.missingOrUnclear)
+        ? stringArrayFromJson(persistedNotes.missingOrUnclear)
+        : stringArrayFromJson(accountCase.missingFields),
+    signatureInstruction: 'Leave signature fields blank until approved by a human reviewer.',
+    summary:
+      typeof persistedNotes?.summary === 'string' && persistedNotes.summary.trim()
+        ? persistedNotes.summary
+        : [
+            'Recommended signer: Aman Dhillon.',
+            'Aman Dhillon can sign this account-opening form by default.',
+            'Leave signature fields blank until approved by a human reviewer.',
+          ].join(' '),
   };
 }
 
@@ -392,6 +963,13 @@ export function buildAccountOpeningCase(input: BuildAccountOpeningCaseInput): Ac
   });
 
   return {
+    sourceFingerprint:
+      input.sourceFingerprint ??
+      buildAccountOpeningSourceFingerprint({
+        senderEmail: input.senderEmail,
+        subject: input.subject,
+        attachmentFileNames: input.attachments.map((attachment) => attachment.fileName),
+      }),
     status: 'pending_review',
     senderEmail: input.senderEmail,
     senderDomain: input.senderDomain ?? extractSenderDomain(input.senderEmail),
@@ -403,7 +981,9 @@ export function buildAccountOpeningCase(input: BuildAccountOpeningCaseInput): Ac
     riskFlags,
     missingFields,
     sharePointFolderUrl: input.sharePoint.folderUrl,
+    sharePointStatus: input.sharePoint.status,
     sharePointNote: input.sharePoint.note,
+    sharePointSkippedReason: input.sharePoint.skippedReason,
     structuredFields,
     signingSummary,
     signingNotes,

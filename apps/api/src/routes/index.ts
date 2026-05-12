@@ -1,5 +1,6 @@
 import { Router } from 'express';
 
+import { accountOpeningRouter } from '../accountOpening/routes';
 import { automationRouter } from '../automation/routes';
 import { buyDecisionsRouter } from '../buyDecisions/routes';
 import { buyExecutionsRouter } from '../buyExecutions/routes';
@@ -25,6 +26,7 @@ export const apiRouter = Router();
 apiRouter.use(requireInternalViewerAccess);
 
 apiRouter.use('/automation', automationRouter);
+apiRouter.use('/account-opening', accountOpeningRouter);
 apiRouter.use('/email', emailRouter);
 apiRouter.use('/buy-decisions', buyDecisionsRouter);
 apiRouter.use('/buy-executions', buyExecutionsRouter);

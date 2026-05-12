@@ -1,9 +1,11 @@
 import { Prisma } from '@prisma/client';
 
 import {
+  buildAccountOpeningSourceFingerprint,
   buildAccountOpeningCase,
   detectAccountOpeningEmail,
   prepareAccountOpeningSharePointStorage,
+  upsertAccountOpeningCase,
 } from '../../accountOpening/service';
 import { env } from '../../config/env';
 import { extractAttachmentText } from '../attachmentTextExtraction';
@@ -142,6 +144,7 @@ function buildAccountOpeningReviewItem(input: {
     warnings: string[];
   }>;
   supplierName?: string;
+  matchedTerms: string[];
 }): EmailInboundItemResult {
   const sharePoint = prepareAccountOpeningSharePointStorage({
     enabled: env.sharePointAccountOpeningEnabled,
@@ -151,6 +154,14 @@ function buildAccountOpeningReviewItem(input: {
   });
   const firstAttachment = input.attachments[0] ?? null;
   const firstExtractedAttachment = input.attachmentTexts.find((item) => item.text?.trim()) ?? null;
+  const sourceFingerprint = buildAccountOpeningSourceFingerprint({
+    messageId: input.message.messageId ?? input.message.externalMessageId ?? null,
+    externalMessageId: input.message.externalMessageId ?? null,
+    senderEmail: input.senderEmail,
+    subject: input.subject,
+    attachmentFileNames: input.attachments.map((attachment) => attachment.fileName),
+    matchedTerms: input.matchedTerms,
+  });
   const accountOpeningCase = buildAccountOpeningCase({
     senderEmail: input.senderEmail,
     senderDomain: input.senderEmail.includes('@') ? input.senderEmail.split('@').pop() ?? null : null,
@@ -164,6 +175,7 @@ function buildAccountOpeningReviewItem(input: {
         input.attachmentTexts.find((entry) => entry.attachment === attachment)?.text ?? null,
     })),
     sharePoint,
+    sourceFingerprint,
   });
 
   return {
@@ -286,6 +298,7 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
     emailReviewPerSupplierDailyLimit: env.openAiEmailReviewPerSupplierDailyLimit,
     emailReviewMinBusinessScore: env.openAiEmailReviewMinBusinessScore,
     listStoredReviewItems: listStoredEmailReviewItems,
+    persistAccountOpeningCase: upsertAccountOpeningCase,
     logger,
     ...overrides,
   };
@@ -364,8 +377,14 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
           attachments: normalizedAttachments,
           attachmentTexts: accountOpeningAttachmentTexts,
           supplierName: payloadSupplierName ?? extractedSupplierName,
+          matchedTerms: accountOpeningDetection.matchedTerms,
         });
 
+        await dependencies.persistAccountOpeningCase?.({
+          accountCase: accountOpeningItem.accountOpeningCase!,
+          messageId: message.messageId ?? message.externalMessageId ?? null,
+          detectedFormType: accountOpeningDetection.matchedTerms[0] ?? null,
+        });
         recordEmailReviewItems([accountOpeningItem]);
         dependencies.logger.info('Inbound account opening form queued for review', {
           senderEmail,

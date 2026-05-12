@@ -139,7 +139,11 @@ function buildReviewQueueSummary(group: ReviewEmailGroup): ReviewQueueSummary {
 }
 
 function buildAccountOpeningHref(item: ReviewQueueListItem): string {
-  return `/dashboard/inbox?status=REVIEW_REQUIRED#${encodeURIComponent(item.id)}`;
+  const accountOpeningId = item.id.startsWith('account-opening-')
+    ? item.id.slice('account-opening-'.length)
+    : item.id;
+
+  return `/dashboard/account-opening/${encodeURIComponent(accountOpeningId)}`;
 }
 
 function groupWorkflowItemsByInboundEmail(

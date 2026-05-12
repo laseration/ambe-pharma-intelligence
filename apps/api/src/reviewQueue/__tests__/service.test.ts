@@ -231,6 +231,7 @@ test('review queue includes account-opening items with signer explanation', asyn
           bodyText: 'Please complete.',
         },
         accountOpeningCase: {
+          sourceFingerprint: 'account-opening-fingerprint-1',
           status: 'pending_review',
           senderEmail: 'forms@supplier.co.uk',
           senderDomain: 'supplier.co.uk',
@@ -242,7 +243,9 @@ test('review queue includes account-opening items with signer explanation', asyn
           riskFlags: ['Director guarantee'],
           missingFields: ['companyNumber', 'vatNumber'],
           sharePointFolderUrl: null,
+          sharePointStatus: 'SKIPPED_DISABLED',
           sharePointNote: 'SharePoint upload skipped; review item was still created.',
+          sharePointSkippedReason: 'SharePoint account-opening upload is disabled.',
           structuredFields: {
             companyName: 'AMBE LTD',
             tradingName: 'AMBE MEDICAL GROUP',
@@ -309,6 +312,238 @@ test('review queue includes account-opening items with signer explanation', asyn
   assert.match(items[0]?.reviewSummary?.recognizedContent ?? '', /SharePoint upload skipped/);
   assert.equal(items[0]?.accountOpeningSigningNotes?.recommendedSigner, 'Aman Dhillon');
   assert.match(items[0]?.accountOpeningSigningNotes?.signatureInstruction ?? '', /Leave signature fields blank/);
+});
+
+test('review queue lists persisted account-opening cases without memory store dependency', async () => {
+  const service = createReviewQueueService({
+    listTelegramInboundItems: async () => [],
+    listEmailReviewItems: () => [],
+    listAccountOpeningCases: async () => [
+      {
+        id: 'persisted-account-case-1',
+        sourceFingerprint: 'persisted-account-opening-fingerprint',
+        messageId: 'account-email-1',
+        senderEmail: 'forms@supplier.co.uk',
+        senderDomain: 'supplier.co.uk',
+        subject: 'Credit account application',
+        receivedAt: new Date('2026-05-12T09:00:00.000Z'),
+        companyName: 'AMBE LTD',
+        detectedFormType: 'credit account application',
+        status: 'PENDING_REVIEW',
+        recommendedSigner: 'Aman Dhillon',
+        signingStatement: 'Aman Dhillon can sign this account-opening form by default.',
+        signingExplanation:
+          'Aman Dhillon can sign this account-opening form by default. The form mentions Director/Sandeep Patel. Reviewer should confirm the supplier does not specifically require a director-only signature. The form contains regulatory/RP wording. Reviewer should confirm whether this is only company information or whether an RP declaration is being requested.',
+        detectedNames: ['Sandeep Patel'],
+        detectedRoles: ['Director', 'Responsible Person', 'RP', 'GDP', 'WDA', 'Direct Debit', 'bank authority', 'guarantee'],
+        escalationNotes: [],
+        riskFlags: ['Direct Debit mandate', 'bank authority signature', 'Guarantee'],
+        missingFields: ['companyNumber', 'vatNumber'],
+        reviewerChecks: [
+          'Check whether the supplier specifically requires a director-only signature.',
+          'Check whether regulatory/RP wording is only company information or an RP declaration request.',
+        ],
+        signingNotes: {
+          title: 'Account opening signing notes',
+          recommendedSigner: 'Aman Dhillon',
+          defaultSigningStatement: 'Aman Dhillon can sign this account-opening form by default.',
+          detectedNames: ['Sandeep Patel'],
+          detectedRolesOrSections: ['Director', 'Responsible Person', 'RP', 'GDP', 'WDA', 'Direct Debit', 'bank authority', 'guarantee'],
+          reviewerChecks: [
+            'Check whether the supplier specifically requires a director-only signature.',
+            'Check whether regulatory/RP wording is only company information or an RP declaration request.',
+          ],
+          riskFlags: ['Direct Debit mandate', 'bank authority signature', 'Guarantee'],
+          missingOrUnclear: ['companyNumber', 'vatNumber'],
+          signatureInstruction: 'Leave signature fields blank until approved by a human reviewer.',
+          summary:
+            'Recommended signer: Aman Dhillon. Aman Dhillon can sign this account-opening form by default. Leave signature fields blank until approved by a human reviewer.',
+        },
+        missingInfoResponses: {},
+        extractedTextSummary: 'Extracted account-opening text from email body (40 chars).',
+        sharePointStatus: 'SKIPPED_DISABLED',
+        sharePointNote: 'SharePoint upload skipped; review item was still created.',
+        sharePointSkippedReason: 'SharePoint account-opening upload is disabled.',
+        sharePointLastAttemptAt: null,
+        sharePointFolderUrl: null,
+        sourceAttachmentNames: ['credit-account-application.pdf'],
+        createdAt: new Date('2026-05-12T09:00:00.000Z'),
+        updatedAt: new Date('2026-05-12T09:00:00.000Z'),
+      },
+    ],
+    listEmailDerivedOfferItems: async () => [],
+    getSupplierScorecardsForIds: async () => ({}),
+  });
+
+  const items = await service.listItems();
+  const dashboardFacingText = JSON.stringify(items[0]);
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0]?.sourceType, 'ACCOUNT_OPENING');
+  assert.equal(items[0]?.processingStatus, 'PENDING_REVIEW');
+  assert.equal(items[0]?.accountOpeningSigningNotes?.recommendedSigner, 'Aman Dhillon');
+  assert.match(
+    items[0]?.accountOpeningSigningNotes?.defaultSigningStatement ?? '',
+    /Aman Dhillon can sign this account-opening form by default/,
+  );
+  assert.ok(
+    items[0]?.accountOpeningSigningNotes?.reviewerChecks.some((check) =>
+      check.includes('director-only signature'),
+    ),
+  );
+  assert.ok(
+    items[0]?.accountOpeningSigningNotes?.reviewerChecks.some((check) =>
+      check.includes('regulatory\/RP wording'),
+    ),
+  );
+  assert.ok(items[0]?.accountOpeningSigningNotes?.riskFlags.includes('Direct Debit mandate'));
+  assert.ok(items[0]?.accountOpeningSigningNotes?.riskFlags.includes('bank authority signature'));
+  assert.ok(items[0]?.accountOpeningSigningNotes?.riskFlags.includes('Guarantee'));
+  assert.equal(items[0]?.hasBuyDecision, undefined);
+  assert.equal(items[0]?.buyDecisionId, undefined);
+  assert.match(items[0]?.reviewSummary?.recognizedContent ?? '', /SharePoint upload skipped/);
+  assert.doesNotMatch(dashboardFacingText, /12345678/);
+  assert.doesNotMatch(dashboardFacingText, /12-34-56/);
+});
+
+test('persisted account-opening case suppresses duplicate memory review card', async () => {
+  const service = createReviewQueueService({
+    listTelegramInboundItems: async () => [],
+    listEmailReviewItems: () => [
+      {
+        id: 'memory-account-opening',
+        createdAt: new Date('2026-05-12T09:00:00.000Z'),
+        updatedAt: new Date('2026-05-12T09:00:00.000Z'),
+        processingStatus: 'REVIEW_REQUIRED',
+        inferredImportType: null,
+        confidence: 'HIGH',
+        reason: 'Account opening form detected - review required before completion/signing.',
+        fileType: 'PDF',
+        attachment: {
+          fileName: 'account-opening-form.pdf',
+          mimeType: 'application/pdf',
+          size: 1000,
+          contentId: null,
+          disposition: null,
+        },
+        email: {
+          messageId: 'account-email-1',
+          from: 'forms@supplier.co.uk',
+          subject: 'Account opening form',
+          bodyText: 'Please complete.',
+        },
+        accountOpeningCase: {
+          sourceFingerprint: 'dedupe-fingerprint',
+          status: 'pending_review',
+          senderEmail: 'forms@supplier.co.uk',
+          senderDomain: 'supplier.co.uk',
+          subject: 'Account opening form',
+          receivedDate: '2026-05-12T09:00:00.000Z',
+          detectedCompanyOrSupplierName: null,
+          originalAttachmentNames: ['account-opening-form.pdf'],
+          extractedTextSummary: 'Extracted account-opening text from email body (16 chars).',
+          riskFlags: [],
+          missingFields: [],
+          sharePointFolderUrl: null,
+          sharePointStatus: 'SKIPPED_DISABLED',
+          sharePointNote: 'SharePoint upload skipped; review item was still created.',
+          sharePointSkippedReason: 'SharePoint account-opening upload is disabled.',
+          structuredFields: {
+            companyName: 'AMBE LTD',
+            tradingName: 'AMBE MEDICAL GROUP',
+            companyNumber: 'To be confirmed',
+            vatNumber: 'To be confirmed',
+            registeredAddress: 'To be confirmed',
+            tradingAddress: 'To be confirmed',
+            contactName: 'To be confirmed',
+            contactEmail: 'To be confirmed',
+            contactPhone: 'To be confirmed',
+            accountsContact: 'To be confirmed',
+            paymentMethodRequested: 'To be confirmed',
+            directDebitRequested: false,
+            guaranteeDetected: false,
+            regulatoryDeclarationDetected: false,
+            riskyTerms: [],
+            missingOrUnclear: [],
+            recommendedSigner: 'Aman Dhillon',
+          },
+          signingSummary: {
+            defaultSigner: 'Aman Dhillon',
+            detectedNames: [],
+            detectedSignatureRoles: [],
+            canAmanSign: true,
+            signingExplanation: 'Aman Dhillon can sign this account-opening form by default.',
+            escalationNotes: [],
+          },
+          signingNotes: {
+            title: 'Account opening signing notes',
+            recommendedSigner: 'Aman Dhillon',
+            defaultSigningStatement: 'Aman Dhillon can sign this account-opening form by default.',
+            detectedNames: [],
+            detectedRolesOrSections: [],
+            reviewerChecks: [],
+            riskFlags: [],
+            missingOrUnclear: [],
+            signatureInstruction: 'Leave signature fields blank until approved by a human reviewer.',
+            summary: 'Recommended signer: Aman Dhillon.',
+          },
+        },
+      },
+    ],
+    listAccountOpeningCases: async () => [
+      {
+        id: 'persisted-account-case-1',
+        sourceFingerprint: 'dedupe-fingerprint',
+        messageId: 'account-email-1',
+        senderEmail: 'forms@supplier.co.uk',
+        senderDomain: 'supplier.co.uk',
+        subject: 'Account opening form',
+        receivedAt: new Date('2026-05-12T09:00:00.000Z'),
+        companyName: 'AMBE LTD',
+        detectedFormType: 'account opening form',
+        status: 'PENDING_REVIEW',
+        recommendedSigner: 'Aman Dhillon',
+        signingStatement: 'Aman Dhillon can sign this account-opening form by default.',
+        signingExplanation: 'Aman Dhillon can sign this account-opening form by default.',
+        detectedNames: [],
+        detectedRoles: [],
+        escalationNotes: [],
+        riskFlags: [],
+        missingFields: [],
+        reviewerChecks: [],
+        signingNotes: {
+          title: 'Account opening signing notes',
+          recommendedSigner: 'Aman Dhillon',
+          defaultSigningStatement: 'Aman Dhillon can sign this account-opening form by default.',
+          detectedNames: [],
+          detectedRolesOrSections: [],
+          reviewerChecks: [],
+          riskFlags: [],
+          missingOrUnclear: [],
+          signatureInstruction: 'Leave signature fields blank until approved by a human reviewer.',
+          summary: 'Recommended signer: Aman Dhillon.',
+        },
+        missingInfoResponses: {},
+        extractedTextSummary: 'Persisted case.',
+        sharePointStatus: 'SKIPPED_DISABLED',
+        sharePointNote: 'SharePoint upload skipped; review item was still created.',
+        sharePointSkippedReason: 'SharePoint account-opening upload is disabled.',
+        sharePointLastAttemptAt: null,
+        sharePointFolderUrl: null,
+        sourceAttachmentNames: ['account-opening-form.pdf'],
+        createdAt: new Date('2026-05-12T09:00:00.000Z'),
+        updatedAt: new Date('2026-05-12T09:00:00.000Z'),
+      },
+    ],
+    listEmailDerivedOfferItems: async () => [],
+    getSupplierScorecardsForIds: async () => ({}),
+  });
+
+  const items = await service.listItems();
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0]?.id, 'account-opening-persisted-account-case-1');
+  assert.equal(items[0]?.sourceType, 'ACCOUNT_OPENING');
 });
 
 test('review queue summarizes Ambe purchase order PDF extraction', async () => {
