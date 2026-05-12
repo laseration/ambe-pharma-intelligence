@@ -204,6 +204,113 @@ test('review queue includes email inbound review and failure items', async () =>
   assert.match(items[1]?.reviewSummary?.suggestedAction ?? '', /choose the correct import type manually/i);
 });
 
+test('review queue includes account-opening items with signer explanation', async () => {
+  const service = createReviewQueueService({
+    listTelegramInboundItems: async () => [],
+    listEmailReviewItems: () => [
+      {
+        id: 'account-opening-review-1',
+        createdAt: new Date('2026-05-12T09:00:00.000Z'),
+        updatedAt: new Date('2026-05-12T09:00:00.000Z'),
+        processingStatus: 'REVIEW_REQUIRED',
+        inferredImportType: null,
+        confidence: 'HIGH',
+        reason: 'Account opening form detected - review required before completion/signing.',
+        fileType: 'PDF',
+        attachment: {
+          fileName: 'account-opening-form.pdf',
+          mimeType: 'application/pdf',
+          size: 1000,
+          contentId: null,
+          disposition: null,
+        },
+        email: {
+          messageId: 'account-email-1',
+          from: 'forms@supplier.co.uk',
+          subject: 'Account opening form',
+          bodyText: 'Please complete.',
+        },
+        accountOpeningCase: {
+          status: 'pending_review',
+          senderEmail: 'forms@supplier.co.uk',
+          senderDomain: 'supplier.co.uk',
+          subject: 'Account opening form',
+          receivedDate: '2026-05-12T09:00:00.000Z',
+          detectedCompanyOrSupplierName: null,
+          originalAttachmentNames: ['account-opening-form.pdf'],
+          extractedTextSummary: 'Extracted account-opening text from email body (16 chars).',
+          riskFlags: ['Director guarantee'],
+          missingFields: ['companyNumber', 'vatNumber'],
+          sharePointFolderUrl: null,
+          sharePointNote: 'SharePoint upload skipped; review item was still created.',
+          structuredFields: {
+            companyName: 'AMBE LTD',
+            tradingName: 'AMBE MEDICAL GROUP',
+            companyNumber: 'To be confirmed',
+            vatNumber: 'To be confirmed',
+            registeredAddress: 'To be confirmed',
+            tradingAddress: 'To be confirmed',
+            contactName: 'To be confirmed',
+            contactEmail: 'To be confirmed',
+            contactPhone: 'To be confirmed',
+            accountsContact: 'To be confirmed',
+            paymentMethodRequested: 'To be confirmed',
+            directDebitRequested: false,
+            guaranteeDetected: true,
+            regulatoryDeclarationDetected: false,
+            riskyTerms: ['Director guarantee'],
+            missingOrUnclear: ['companyNumber', 'vatNumber'],
+            recommendedSigner: 'Aman Dhillon',
+          },
+          signingSummary: {
+            defaultSigner: 'Aman Dhillon',
+            detectedNames: [],
+            detectedSignatureRoles: ['Director', 'guarantee'],
+            canAmanSign: true,
+            signingExplanation:
+              'Aman Dhillon can sign this account-opening form by default. The form mentions Director/Sandeep Patel. Reviewer should confirm the supplier does not specifically require a director-only signature.',
+            escalationNotes: [
+              'The form mentions Director/Sandeep Patel. Reviewer should confirm the supplier does not specifically require a director-only signature.',
+            ],
+          },
+          signingNotes: {
+            title: 'Account opening signing notes',
+            recommendedSigner: 'Aman Dhillon',
+            defaultSigningStatement: 'Aman Dhillon can sign this account-opening form by default.',
+            detectedNames: [],
+            detectedRolesOrSections: ['Director', 'guarantee'],
+            reviewerChecks: [
+              'Confirm the form is an account-opening or onboarding document for AMBE LTD t/a AMBE MEDICAL GROUP.',
+              'Check whether the supplier specifically requires a director-only signature.',
+              'Leave all signature fields blank unless a human reviewer approves signing.',
+            ],
+            riskFlags: ['Director guarantee'],
+            missingOrUnclear: ['companyNumber', 'vatNumber'],
+            signatureInstruction: 'Leave signature fields blank until approved by a human reviewer.',
+            summary:
+              'Recommended signer: Aman Dhillon. Aman Dhillon can sign this account-opening form by default. Detected roles/sections: Director, guarantee. Signature fields must remain blank until approved by a human reviewer.',
+          },
+        },
+      },
+    ],
+    listEmailDerivedOfferItems: async () => [],
+    getSupplierScorecardsForIds: async () => ({}),
+  });
+
+  const items = await service.listItems();
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0]?.sourceType, 'ACCOUNT_OPENING');
+  assert.equal(items[0]?.reviewSummary?.reviewReason, 'Account opening form detected');
+  assert.match(items[0]?.reviewSummary?.suggestedAction ?? '', /Recommended signer: Aman Dhillon/);
+  assert.match(items[0]?.reviewSummary?.suggestedAction ?? '', /Aman Dhillon can sign this account-opening form by default/);
+  assert.match(items[0]?.reviewSummary?.suggestedAction ?? '', /Detected roles\/sections: Director, guarantee/);
+  assert.match(items[0]?.reviewSummary?.suggestedAction ?? '', /director-only signature/);
+  assert.match(items[0]?.reviewSummary?.recognizedContent ?? '', /SharePoint upload skipped/);
+  assert.equal(items[0]?.accountOpeningSigningNotes?.recommendedSigner, 'Aman Dhillon');
+  assert.match(items[0]?.accountOpeningSigningNotes?.signatureInstruction ?? '', /Leave signature fields blank/);
+});
+
 test('review queue summarizes Ambe purchase order PDF extraction', async () => {
   const service = createReviewQueueService({
     listTelegramInboundItems: async () => [],

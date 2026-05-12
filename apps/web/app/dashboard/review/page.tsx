@@ -1,6 +1,11 @@
 import Link from 'next/link';
 
-import { listReviewWorkflowItems, type ReviewWorkflowListItem } from '../../../lib/reviewApi';
+import {
+  listReviewQueueItems,
+  listReviewWorkflowItems,
+  type ReviewQueueListItem,
+  type ReviewWorkflowListItem,
+} from '../../../lib/reviewApi';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,6 +72,10 @@ function renderValue(value: string | null | undefined, fallback = 'Not available
   return trimmed ? trimmed : fallback;
 }
 
+function renderListSummary(values: string[] | null | undefined, fallback: string): string {
+  return values && values.length > 0 ? values.join(', ') : fallback;
+}
+
 function formatPriorityLabel(value: string): string {
   switch (value.trim().toUpperCase()) {
     case 'HIGH':
@@ -129,6 +138,10 @@ function buildReviewQueueSummary(group: ReviewEmailGroup): ReviewQueueSummary {
   };
 }
 
+function buildAccountOpeningHref(item: ReviewQueueListItem): string {
+  return `/dashboard/inbox?status=REVIEW_REQUIRED#${encodeURIComponent(item.id)}`;
+}
+
 function groupWorkflowItemsByInboundEmail(
   items: ReviewWorkflowListItem[],
   sortMode: ReviewQueueSortMode,
@@ -182,10 +195,15 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
   const returnTo = buildReviewReturnTo(sortMode);
 
   try {
-    const items = await listReviewWorkflowItems({
-      staleFirst: sortMode === 'stale',
-    });
+    const [items, queueItems] = await Promise.all([
+      listReviewWorkflowItems({
+        staleFirst: sortMode === 'stale',
+      }),
+      listReviewQueueItems(),
+    ]);
     const emailGroups = groupWorkflowItemsByInboundEmail(items, sortMode);
+    const accountOpeningItems = queueItems.filter((item) => item.sourceType === 'ACCOUNT_OPENING');
+    const totalReviewItems = emailGroups.length + accountOpeningItems.length;
 
     return (
       <section className="review-layout">
@@ -194,7 +212,7 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
             <p className="eyebrow">Review</p>
             <h2 className="title">Supplier emails to check</h2>
             <p className="copy">
-              Review new supplier offers before they are added to the system.
+              Review supplier offers and account-opening forms before any operator action.
             </p>
           </div>
         </div>
@@ -228,7 +246,7 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
           </p>
         ) : null}
 
-        {emailGroups.length === 0 ? (
+        {totalReviewItems === 0 ? (
           <section className="panel">
             <p className="eyebrow">All clear</p>
             <h3 className="section-title">Nothing needs review right now.</h3>
@@ -238,6 +256,90 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
           </section>
         ) : (
           <div className="review-grid">
+            {accountOpeningItems.map((item) => (
+              <Link
+                className="review-card"
+                href={buildAccountOpeningHref(item)}
+                key={item.id}
+              >
+                <div className="review-card-top">
+                  <span className="pill pill-high">Review first</span>
+                  <span className="pill pill-neutral">Account opening</span>
+                </div>
+                <h3 className="review-card-title">{renderValue(item.subject, 'Account opening form')}</h3>
+                <p className="review-card-meta">
+                  {renderValue(item.sender, 'Unknown sender')}
+                  {item.receivedAt ? ` â€¢ ${formatDateTime(item.receivedAt)}` : ''}
+                </p>
+                <div className="review-card-summary">
+                  <div>
+                    <p className="review-card-label">What was received</p>
+                    <p className="review-card-copy">
+                      {item.reviewSummary?.recognizedContent ?? 'Account opening form detected.'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="review-card-label">Needs checking</p>
+                    <p className="review-card-copy">
+                      {item.reviewSummary?.missingOrUnclear ?? item.reason}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="review-card-label">Who can sign</p>
+                    <p className="review-card-copy">
+                      {item.accountOpeningSigningNotes
+                        ? `Recommended signer: ${item.accountOpeningSigningNotes.recommendedSigner}. Can Aman sign?: Yes - ${item.accountOpeningSigningNotes.defaultSigningStatement}`
+                        : item.reviewSummary?.suggestedAction ??
+                          'Recommended signer: Aman Dhillon. Review before completion/signing.'}
+                    </p>
+                  </div>
+                  {item.accountOpeningSigningNotes ? (
+                    <div>
+                      <p className="review-card-label">Detected names/roles</p>
+                      <p className="review-card-copy">
+                        Names: {renderListSummary(item.accountOpeningSigningNotes.detectedNames, 'none')}. Roles:
+                        {' '}
+                        {renderListSummary(item.accountOpeningSigningNotes.detectedRolesOrSections, 'none')}.
+                      </p>
+                    </div>
+                  ) : null}
+                  {item.accountOpeningSigningNotes ? (
+                    <div>
+                      <p className="review-card-label">Reviewer checks</p>
+                      <p className="review-card-copy">
+                        {renderListSummary(item.accountOpeningSigningNotes.reviewerChecks, 'Review before approval.')}
+                      </p>
+                    </div>
+                  ) : null}
+                  {item.accountOpeningSigningNotes ? (
+                    <div>
+                      <p className="review-card-label">Risk flags</p>
+                      <p className="review-card-copy">
+                        {renderListSummary(item.accountOpeningSigningNotes.riskFlags, 'No high-risk clauses detected.')}
+                        {' '}
+                        {item.accountOpeningSigningNotes.signatureInstruction}
+                      </p>
+                    </div>
+                  ) : null}
+                  {item.accountOpeningSigningNotes?.missingOrUnclear.length ? (
+                    <div>
+                      <p className="review-card-label">Missing or unclear</p>
+                      <p className="review-card-copy">
+                        {item.accountOpeningSigningNotes.missingOrUnclear.join(', ')}
+                      </p>
+                    </div>
+                  ) : null}
+                  <div>
+                    <p className="review-card-label">Signing note</p>
+                    <p className="review-card-copy">
+                      {item.accountOpeningSigningNotes?.summary ??
+                        item.reviewSummary?.suggestedAction ??
+                        'Leave signature fields blank until approved by a human reviewer.'}
+                    </p>
+                  </div>
+                </div>
+              </Link>
+            ))}
             {emailGroups.map((group) => {
               const summary = buildReviewQueueSummary(group);
 

@@ -1,5 +1,10 @@
 import { Prisma } from '@prisma/client';
 
+import {
+  buildAccountOpeningCase,
+  detectAccountOpeningEmail,
+  prepareAccountOpeningSharePointStorage,
+} from '../../accountOpening/service';
 import { env } from '../../config/env';
 import { extractAttachmentText } from '../attachmentTextExtraction';
 import { parseAmbePurchaseOrderPdfText } from '../purchaseOrderPdf';
@@ -121,6 +126,76 @@ function buildTriageMetadata(item: EmailInboundItemResult, triage: ReturnType<ty
     aiEscalated: false,
     aiBlockedReason: triage.aiBlockedReason,
     triageMetrics: triage.metrics,
+  };
+}
+
+function buildAccountOpeningReviewItem(input: {
+  message: EmailInboundMessage;
+  senderEmail: string;
+  subject: string;
+  bodyText: string;
+  attachments: NormalizedEmailAttachment[];
+  attachmentTexts: Array<{
+    attachment: NormalizedEmailAttachment;
+    text: string | null;
+    method: 'PDF_TEXT' | 'IMAGE_OCR' | null;
+    warnings: string[];
+  }>;
+  supplierName?: string;
+}): EmailInboundItemResult {
+  const sharePoint = prepareAccountOpeningSharePointStorage({
+    enabled: env.sharePointAccountOpeningEnabled,
+    siteId: env.sharePointSiteId,
+    driveId: env.sharePointDriveId,
+    folder: env.sharePointAccountOpeningFolder,
+  });
+  const firstAttachment = input.attachments[0] ?? null;
+  const firstExtractedAttachment = input.attachmentTexts.find((item) => item.text?.trim()) ?? null;
+  const accountOpeningCase = buildAccountOpeningCase({
+    senderEmail: input.senderEmail,
+    senderDomain: input.senderEmail.includes('@') ? input.senderEmail.split('@').pop() ?? null : null,
+    subject: input.subject,
+    bodyText: input.bodyText,
+    receivedAt: input.message.receivedAt ?? null,
+    detectedCompanyOrSupplierName: input.supplierName ?? null,
+    attachments: input.attachments.map((attachment) => ({
+      fileName: attachment.fileName,
+      extractedText:
+        input.attachmentTexts.find((entry) => entry.attachment === attachment)?.text ?? null,
+    })),
+    sharePoint,
+  });
+
+  return {
+    processingStatus: 'REVIEW_REQUIRED',
+    inferredImportType: null,
+    confidence: 'HIGH',
+    reason: 'Account opening form detected - review required before completion/signing.',
+    fileType: firstAttachment?.fileType ?? 'UNKNOWN',
+    attachment: {
+      fileName: firstAttachment?.fileName ?? null,
+      mimeType: firstAttachment?.mimeType ?? null,
+      size: firstAttachment?.size ?? null,
+      contentId: firstAttachment?.contentId ?? null,
+      disposition: firstAttachment?.disposition ?? null,
+    },
+    email: {
+      messageId: input.message.messageId ?? null,
+      from: input.senderEmail,
+      subject: input.subject,
+      bodyText: input.bodyText,
+    },
+    ...(firstExtractedAttachment?.text && firstExtractedAttachment.method
+      ? {
+          attachmentTextExtraction: {
+            method: firstExtractedAttachment.method,
+            text: firstExtractedAttachment.text,
+            extractedTextChars: firstExtractedAttachment.text.length,
+            warnings: firstExtractedAttachment.warnings,
+          },
+        }
+      : {}),
+    accountOpeningCase,
   };
 }
 
@@ -252,6 +327,60 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
       const normalizedAttachments = filterIgnorableEmailAttachments(
         (message.attachments ?? []).map(normalizeEmailAttachment),
       );
+      const accountOpeningAttachmentTexts: Array<{
+        attachment: NormalizedEmailAttachment;
+        text: string | null;
+        method: 'PDF_TEXT' | 'IMAGE_OCR' | null;
+        warnings: string[];
+      }> = [];
+
+      for (const attachment of normalizedAttachments) {
+        const attachmentTextExtraction =
+          attachment.fileType === 'PDF' || attachment.fileType === 'IMAGE'
+            ? await dependencies.extractAttachmentText(attachment)
+            : null;
+
+        accountOpeningAttachmentTexts.push({
+          attachment,
+          text: attachmentTextExtraction?.text ?? null,
+          method: attachmentTextExtraction?.method ?? null,
+          warnings: attachmentTextExtraction?.warnings ?? [],
+        });
+      }
+
+      const accountOpeningDetection = detectAccountOpeningEmail({
+        subject,
+        bodyText,
+        attachmentFileNames: normalizedAttachments.map((attachment) => attachment.fileName),
+        attachmentTexts: accountOpeningAttachmentTexts.map((item) => item.text),
+      });
+
+      if (accountOpeningDetection.detected) {
+        const accountOpeningItem = buildAccountOpeningReviewItem({
+          message,
+          senderEmail,
+          subject,
+          bodyText,
+          attachments: normalizedAttachments,
+          attachmentTexts: accountOpeningAttachmentTexts,
+          supplierName: payloadSupplierName ?? extractedSupplierName,
+        });
+
+        recordEmailReviewItems([accountOpeningItem]);
+        dependencies.logger.info('Inbound account opening form queued for review', {
+          senderEmail,
+          subject,
+          matchedTerms: accountOpeningDetection.matchedTerms,
+          attachmentCount: normalizedAttachments.length,
+          sharePointEnabled: accountOpeningItem.accountOpeningCase?.sharePointFolderUrl !== null,
+        });
+
+        return {
+          ignored: false,
+          items: [accountOpeningItem],
+        };
+      }
+
       const storedReviewItems = dependencies.listStoredReviewItems?.() ?? [];
       const now = Date.now();
       const last24Hours = storedReviewItems.filter(
@@ -384,10 +513,16 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
           attachment.fileType === 'CSV' || attachment.fileType === 'XLSX'
             ? createUploadFile(attachment)
             : null;
-        const attachmentTextExtraction =
-          attachment.fileType === 'PDF' || attachment.fileType === 'IMAGE'
-            ? await dependencies.extractAttachmentText(attachment)
-            : null;
+        const preExtractedAttachmentText = accountOpeningAttachmentTexts.find(
+          (entry) => entry.attachment === attachment,
+        );
+        const attachmentTextExtraction = preExtractedAttachmentText?.text
+          ? {
+              method: preExtractedAttachmentText.method ?? 'PDF_TEXT',
+              text: preExtractedAttachmentText.text,
+              warnings: preExtractedAttachmentText.warnings,
+            }
+          : null;
         const purchaseOrderPdf =
           attachment.fileType === 'PDF' && attachmentTextExtraction?.text
             ? parseAmbePurchaseOrderPdfText(attachmentTextExtraction.text)

@@ -5,6 +5,7 @@ import {
   type AutomationReadinessOverview,
   type OfferFeedbackSummary,
 } from '../automation/service';
+import type { AccountOpeningSigningNotes } from '../accountOpening/service';
 import { offerCorrectionService } from '../corrections/service';
 import {
   tradeOpportunityService,
@@ -23,7 +24,12 @@ type RegulatoryReviewItem = Awaited<ReturnType<typeof listOpenRegulatoryReviewQu
 
 export type ReviewQueueItem = {
   id: string;
-  sourceType: 'TELEGRAM_INBOUND' | 'EMAIL_INBOUND' | 'EMAIL_DERIVED_OFFER' | 'REGULATORY_REVIEW';
+  sourceType:
+    | 'TELEGRAM_INBOUND'
+    | 'EMAIL_INBOUND'
+    | 'EMAIL_DERIVED_OFFER'
+    | 'REGULATORY_REVIEW'
+    | 'ACCOUNT_OPENING';
   receivedAt: Date | null;
   sender: string | null;
   fileName: string | null;
@@ -89,6 +95,7 @@ export type ReviewQueueItem = {
   regulatorySeverity?: string | null;
   regulatoryEventType?: string | null;
   sourceUrl?: string | null;
+  accountOpeningSigningNotes?: AccountOpeningSigningNotes | null;
 };
 
 type ReviewQueueDependencies = {
@@ -187,11 +194,12 @@ function mapEmailItem(item: StoredEmailReviewItem): ReviewQueueItem | null {
       ? textParsing.parsedRows.length
       : null,
     purchaseOrderPdf: item.purchaseOrderPdf ?? null,
+    accountOpeningCase: item.accountOpeningCase ?? null,
   });
 
   return {
     id: item.id,
-    sourceType: 'EMAIL_INBOUND',
+    sourceType: item.accountOpeningCase ? 'ACCOUNT_OPENING' : 'EMAIL_INBOUND',
     receivedAt: item.updatedAt,
     sender: item.email.from,
     fileName: item.attachment.fileName,
@@ -199,6 +207,7 @@ function mapEmailItem(item: StoredEmailReviewItem): ReviewQueueItem | null {
     processingStatus: item.processingStatus,
     reason: describeReviewReason({ reason: item.error || item.reason || 'Queued for internal review.' }),
     reviewSummary,
+    accountOpeningSigningNotes: item.accountOpeningCase?.signingNotes ?? null,
     linkedImportBatch: item.importBatchId
       ? {
           id: item.importBatchId,

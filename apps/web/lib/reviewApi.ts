@@ -244,6 +244,35 @@ export type ReviewWorkflowActionOutcome = {
     | 'SKIPPED_NON_POSITIVE_MARGIN';
 };
 
+export type ReviewQueueListItem = {
+  id: string;
+  sourceType: string;
+  receivedAt: string | null;
+  sender: string | null;
+  fileName: string | null;
+  subject: string | null;
+  processingStatus: string;
+  reason: string;
+  reviewSummary: {
+    reviewReason: string;
+    recognizedContent: string;
+    missingOrUnclear: string;
+    suggestedAction: string;
+  } | null;
+  accountOpeningSigningNotes?: {
+    title: string;
+    recommendedSigner: string;
+    defaultSigningStatement: string;
+    detectedNames: string[];
+    detectedRolesOrSections: string[];
+    reviewerChecks: string[];
+    riskFlags: string[];
+    missingOrUnclear: string[];
+    signatureInstruction: string;
+    summary: string;
+  } | null;
+};
+
 type ListReviewWorkflowItemsOptions = {
   inboundEmailId?: string;
   staleFirst?: boolean;
@@ -323,6 +352,11 @@ export async function listReviewWorkflowItems(
     `/review-queue/workflows?${searchParams.toString()}`,
   );
   return payload.items.filter((item) => MANUAL_REVIEW_WORKFLOW_STATUSES.has(item.status));
+}
+
+export async function listReviewQueueItems(): Promise<ReviewQueueListItem[]> {
+  const payload = await requestJson<{ items: ReviewQueueListItem[] }>('/review-queue');
+  return payload.items;
 }
 
 export async function getReviewWorkflowItem(workflowItemId: string): Promise<ReviewWorkflowDetail> {

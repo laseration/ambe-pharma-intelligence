@@ -140,6 +140,13 @@ export const env = {
   microsoftGraphRefreshToken: process.env.MICROSOFT_GRAPH_REFRESH_TOKEN?.trim() || '',
   microsoftGraphSenderMailbox: process.env.MICROSOFT_GRAPH_SENDER_MAILBOX?.trim() || '',
   internalAlertEmailRecipients: readIdList(process.env.INTERNAL_ALERT_EMAIL_RECIPIENTS),
+  sharePointAccountOpeningEnabled: readBoolean(
+    process.env.SHAREPOINT_ACCOUNT_OPENING_ENABLED,
+    false,
+  ),
+  sharePointSiteId: process.env.SHAREPOINT_SITE_ID?.trim() || '',
+  sharePointDriveId: process.env.SHAREPOINT_DRIVE_ID?.trim() || '',
+  sharePointAccountOpeningFolder: process.env.SHAREPOINT_ACCOUNT_OPENING_FOLDER?.trim() || '',
   emailInboundPollingEnabled: readBoolean(process.env.EMAIL_INBOUND_POLLING_ENABLED, false),
   emailInboundPollingIntervalMs: readPort(process.env.EMAIL_INBOUND_POLLING_INTERVAL_MS, 30000),
   emailInboundAllowedSenders: readIdList(process.env.EMAIL_INBOUND_ALLOWED_SENDERS),

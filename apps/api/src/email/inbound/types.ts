@@ -1,6 +1,7 @@
 import type { ParsedEmailBodyResult } from '../parsing';
 import type { PurchaseOrderPdfExtraction } from '../purchaseOrderPdf';
 import type { ImportResponse, UploadFile } from '../../imports/types';
+import type { AccountOpeningCase } from '../../accountOpening/service';
 import type { EmailTriageResult, EmailTriageStatus } from './triage';
 
 export type EmailInboundFileType = 'CSV' | 'XLSX' | 'PDF' | 'IMAGE' | 'UNKNOWN';
@@ -106,6 +107,7 @@ export type EmailInboundItemResult = {
     warnings: string[];
   };
   purchaseOrderPdf?: PurchaseOrderPdfExtraction;
+  accountOpeningCase?: AccountOpeningCase;
 };
 
 export type EmailInboundResult = {
