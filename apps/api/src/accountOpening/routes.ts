@@ -6,6 +6,7 @@ import { asyncHandler, requireFound } from '../http/errors';
 import { actorBodySchema } from '../http/routeSchemas';
 import { idParamSchema, nullableTrimmedStringSchema, parseRequest } from '../http/validation';
 import {
+  generateCompletedAccountOpeningDraft,
   getAccountOpeningCaseDetail,
   saveAccountOpeningMissingInfo,
   updateAccountOpeningCaseStatus,
@@ -28,6 +29,8 @@ const statusBodySchema = z.object({
   action: z.enum(['MARKED_NEEDS_INFO', 'APPROVED_FOR_COMPLETION', 'REJECTED']),
   note: nullableTrimmedStringSchema,
 }).merge(actorBodySchema);
+
+const generateDraftBodySchema = actorBodySchema;
 
 export const accountOpeningRouter = Router();
 
@@ -86,6 +89,24 @@ accountOpeningRouter.patch('/:id/status', requireInternalOperatorAccess, asyncHa
       id: params.id,
       action: body.action,
       note: body.note,
+      ...resolveInternalActor(request, body),
+    }),
+  });
+}));
+
+accountOpeningRouter.post('/:id/generate-draft', requireInternalOperatorAccess, asyncHandler(async (request, response) => {
+  const { params, body } = parseRequest<
+    z.infer<typeof idParamSchema>,
+    unknown,
+    z.infer<typeof generateDraftBodySchema>
+  >(request, {
+    params: idParamSchema,
+    body: generateDraftBodySchema,
+  });
+
+  response.json({
+    item: await generateCompletedAccountOpeningDraft({
+      id: params.id,
       ...resolveInternalActor(request, body),
     }),
   });

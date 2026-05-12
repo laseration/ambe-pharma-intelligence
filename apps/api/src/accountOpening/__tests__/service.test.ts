@@ -9,6 +9,7 @@ import {
   buildAccountOpeningSigningSummary,
   buildAccountOpeningSourceFingerprint,
   detectAccountOpeningEmail,
+  generateCompletedAccountOpeningDraft,
   prepareAccountOpeningSharePointStorage,
   sanitizeAccountOpeningMissingInfoResponses,
   saveAccountOpeningMissingInfo,
@@ -17,6 +18,7 @@ import {
   type PersistedAccountOpeningReviewCase,
 } from '../service';
 import type { AccountOpeningSharePointArchiveConfig } from '../sharePointArchive';
+import { buildAccountOpeningDraftDocumentPack } from '../documentGeneration';
 
 test('detectAccountOpeningEmail detects account-opening body and attachment names', () => {
   const result = detectAccountOpeningEmail({
@@ -316,6 +318,19 @@ function buildPersistedAccountOpeningCase(
     sharePointSkippedReason: 'SharePoint account-opening upload is disabled.',
     sharePointLastAttemptAt: null,
     sharePointFolderUrl: null,
+    completedDraft: null,
+    completedDraftStatus: null,
+    completedDraftGeneratedAt: null,
+    completedDraftSharePointStatus: null,
+    completedDraftSharePointNote: null,
+    completedDraftSharePointSkippedReason: null,
+    completedDraftSharePointLastAttemptAt: null,
+    completedDraftDocument: null,
+    completedDraftDocumentStatus: null,
+    completedDraftDocumentSharePointStatus: null,
+    completedDraftDocumentSharePointNote: null,
+    completedDraftDocumentSharePointSkippedReason: null,
+    completedDraftDocumentSharePointLastAttemptAt: null,
     sourceAttachmentNames: ['account-opening-form.pdf'],
     createdAt: new Date('2026-05-12T09:00:00.000Z'),
     updatedAt: new Date('2026-05-12T09:00:00.000Z'),
@@ -524,4 +539,207 @@ test('reject changes account-opening status without send/sign/upload side effect
   assert.equal(detail.status, 'REJECTED');
   assert.equal((events[0] as { actionType?: string }).actionType, 'REJECTED');
   assert.equal((events[0] as { newStatus?: string }).newStatus, 'REJECTED');
+});
+
+test('approved account-opening case generates completed draft and event without send or sign', async () => {
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      status: 'APPROVED_FOR_COMPLETION',
+      missingInfoResponses: {
+        website: 'https://supplier.example',
+        businessHours: '9am to 5pm',
+        reviewerNotes: 'Account number 12345678 sort code 12-34-56 should be redacted.',
+      },
+    }),
+  );
+
+  const detail = await generateCompletedAccountOpeningDraft({
+    id: 'account-case-1',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+    sharePointConfig: {
+      enabled: false,
+      siteId: '',
+      driveId: '',
+      baseFolder: 'Account Opening',
+      graphAuthConfigured: false,
+    },
+    now: new Date('2026-05-12T11:00:00.000Z'),
+  });
+  const draftText = JSON.stringify(detail.completedDraft);
+
+  assert.equal(detail.status, 'COMPLETED_DRAFT_READY');
+  assert.equal(detail.completedDraftStatus, 'DRAFT_ONLY');
+  assert.equal(detail.completedDraftGeneratedAt, '2026-05-12T11:00:00.000Z');
+  assert.equal(detail.completedDraft?.completedFields.website, 'https://supplier.example');
+  assert.equal(detail.completedDraft?.completedFields.businessHours, '9am to 5pm');
+  assert.equal(detail.completedDraft?.completedFields.companyNumber, 'To be confirmed');
+  assert.equal(detail.completedDraft?.completedFields.bankDetails, 'To be confirmed in secure review');
+  assert.equal(detail.completedDraft?.signingNotes.defaultSigningStatement, 'Aman Dhillon can sign this account-opening form by default.');
+  assert.equal(detail.completedDraft?.signingNotes.signatureFields, '');
+  assert.match(draftText, /Draft only/);
+  assert.doesNotMatch(draftText, /12345678/);
+  assert.doesNotMatch(draftText, /12-34-56/);
+  assert.equal(detail.completedDraftSharePointStatus, 'SKIPPED_DISABLED');
+  assert.equal(detail.completedDraftDocumentStatus, 'DRAFT_ONLY');
+  assert.deepEqual(detail.completedDraftDocument?.fileNames, [
+    'completed-account-opening-draft.md',
+    'completed-account-opening-draft.html',
+  ]);
+  assert.equal(detail.completedDraftDocumentSharePointStatus, 'SKIPPED_DISABLED');
+  assert.match(detail.completedDraftDocumentSharePointNote ?? '', /document upload skipped/i);
+  assert.equal((events[0] as { actionType?: string }).actionType, 'COMPLETED_DRAFT_GENERATED');
+  assert.equal((events[1] as { actionType?: string }).actionType, 'COMPLETED_DRAFT_DOCUMENT_GENERATED');
+});
+
+test('pending review case cannot generate completed draft', async () => {
+  const { repository } = createAccountOpeningRepository(buildPersistedAccountOpeningCase());
+
+  await assert.rejects(
+    () =>
+      generateCompletedAccountOpeningDraft({
+        id: 'account-case-1',
+        repository,
+      }),
+    /must be approved for completion/i,
+  );
+});
+
+test('completed draft generation uploads safe draft pack when SharePoint enabled', async () => {
+  const { repository } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      status: 'APPROVED_FOR_COMPLETION',
+      missingInfoResponses: {
+        website: 'https://supplier.example',
+        reviewerNotes: 'Sort code 12-34-56 and account number 12345678.',
+      },
+    }),
+  );
+  const uploadedTexts: string[] = [];
+
+  const detail = await generateCompletedAccountOpeningDraft({
+    id: 'account-case-1',
+    repository,
+    sharePointConfig: {
+      enabled: true,
+      siteId: 'site-1',
+      driveId: 'drive-1',
+      baseFolder: 'Account Opening',
+      graphAuthConfigured: true,
+    },
+    sharePointUploader: {
+      uploadArchivePack: async (pack) => {
+        uploadedTexts.push(JSON.stringify(pack));
+        return {
+          folderUrl: 'https://sharepoint.example/folder',
+          uploadedFileNames: pack.files.map((file) => file.fileName),
+        };
+      },
+    },
+    now: new Date('2026-05-12T11:00:00.000Z'),
+  });
+
+  assert.equal(detail.status, 'COMPLETED_DRAFT_READY');
+  assert.equal(detail.completedDraftSharePointStatus, 'UPLOADED');
+  assert.equal(detail.completedDraftDocumentSharePointStatus, 'UPLOADED');
+  assert.equal(detail.sharePointFolderUrl, 'https://sharepoint.example/folder');
+  assert.equal(uploadedTexts.length, 2);
+  const [draftUploadText, documentUploadText] = uploadedTexts as [string, string];
+  const allUploadedText = uploadedTexts.join('\n');
+  assert.match(draftUploadText, /completed-form-draft\.json/);
+  assert.match(draftUploadText, /completed-form-draft\.txt/);
+  assert.match(draftUploadText, /field-mapping-summary\.json/);
+  assert.match(draftUploadText, /unresolved-fields\.json/);
+  assert.match(documentUploadText, /completed-account-opening-draft\.md/);
+  assert.match(documentUploadText, /completed-account-opening-draft\.html/);
+  assert.doesNotMatch(allUploadedText, /12345678/);
+  assert.doesNotMatch(allUploadedText, /12-34-56/);
+  assert.doesNotMatch(allUploadedText, /Raw form text said/);
+});
+
+test('completed draft document pack renders safe markdown and html', () => {
+  const item = buildAccountOpeningCaseDetail(
+    buildPersistedAccountOpeningCase({
+      status: 'COMPLETED_DRAFT_READY',
+    }),
+  );
+  const draft = {
+    caseId: item.id,
+    status: 'COMPLETED_DRAFT_READY',
+    generatedAt: '2026-05-12T11:00:00.000Z',
+    companyProfileUsed: 'AMBE master account-opening profile v1',
+    completedFields: {
+      registeredCompanyName: 'AMBE LTD',
+      tradingName: 'AMBE MEDICAL GROUP',
+      companyNumber: 'To be confirmed',
+      vatNumber: 'To be confirmed',
+      legalStatus: 'Limited company',
+      businessType: 'Pharmaceutical wholesale business',
+      yearsTrading: 'To be confirmed',
+      registeredAddress: 'To be confirmed',
+      invoiceAddress: 'To be confirmed',
+      accountantsAddress: 'To be confirmed',
+      licensedDeliveryAddress: 'To be confirmed',
+      commercialContactName: 'Aman Dhillon',
+      commercialContactEmail: 'To be confirmed',
+      accountsContactName: 'Sandeep Patel',
+      accountsContactEmail: 'To be confirmed',
+      regulatoryContactName: 'Dilshad Moulana',
+      regulatoryContactEmail: 'To be confirmed',
+      mhraWdaNumber: 'To be confirmed',
+      wdaHolder: 'To be confirmed',
+      licensedSiteAddress: 'To be confirmed',
+      wdaIssueDate: 'To be confirmed',
+      lastInspectionDate: 'To be confirmed',
+      gphcPremisesNumber: 'To be confirmed',
+      cqcRegistration: 'To be confirmed',
+      preferredPaymentMethod: 'To be confirmed',
+      webOrdering: 'To be confirmed',
+      estimatedMonthlyPurchases: 'To be confirmed',
+      saturdayDeliveries: 'To be confirmed',
+      numberOfOutlets: 'To be confirmed',
+      membershipOrderPlatformHandling: 'To be confirmed',
+      directDebitRequested: 'To be confirmed',
+      signatureFields: '',
+    },
+    unresolvedFields: [
+      { field: 'companyNumber', value: 'To be confirmed' as const, reason: 'No reviewed value is available.' },
+    ],
+    riskFlags: ['Direct Debit mandate'],
+    signingNotes: {
+      recommendedSigner: 'Aman Dhillon',
+      defaultSigningStatement: 'Aman Dhillon can sign this account-opening form by default.',
+      signatureInstruction: 'Leave signature fields blank until approved by a human reviewer.',
+      signatureFields: '' as const,
+    },
+    reviewerWarnings: ['Draft only — this has not been signed or sent.'],
+    outputStatus: 'DRAFT_ONLY' as const,
+  };
+  const pack = buildAccountOpeningDraftDocumentPack({
+    item,
+    draft,
+    config: {
+      enabled: true,
+      siteId: 'site-1',
+      driveId: 'drive-1',
+      baseFolder: 'Account Opening',
+      graphAuthConfigured: true,
+    },
+    now: new Date('2026-05-12T11:00:00.000Z'),
+  });
+  const markdown = pack.files.find((file) => file.fileName.endsWith('.md'))?.content ?? '';
+  const html = pack.files.find((file) => file.fileName.endsWith('.html'))?.content ?? '';
+  const documentText = `${markdown}\n${html}`;
+
+  assert.match(markdown, /# Account opening draft pack/);
+  assert.match(markdown, /AMBE LTD/);
+  assert.match(markdown, /Aman Dhillon can sign this account-opening form by default\./);
+  assert.match(markdown, /companyNumber: To be confirmed/);
+  assert.match(markdown, /Signature fields: $/m);
+  assert.match(html, /<h1>Account opening draft pack<\/h1>/);
+  assert.match(documentText, /Draft only — this has not been signed, sent, or submitted\./);
+  assert.doesNotMatch(documentText, /12345678/);
+  assert.doesNotMatch(documentText, /12-34-56/);
+  assert.doesNotMatch(documentText, /Raw form text said/);
 });

@@ -741,6 +741,19 @@ model AccountOpeningCase {
   sharePointSkippedReason String?
   sharePointLastAttemptAt DateTime?
   sharePointFolderUrl   String?
+  completedDraft        Json?
+  completedDraftStatus  String?
+  completedDraftGeneratedAt DateTime?
+  completedDraftSharePointStatus String?
+  completedDraftSharePointNote String?
+  completedDraftSharePointSkippedReason String?
+  completedDraftSharePointLastAttemptAt DateTime?
+  completedDraftDocument Json?
+  completedDraftDocumentStatus String?
+  completedDraftDocumentSharePointStatus String?
+  completedDraftDocumentSharePointNote String?
+  completedDraftDocumentSharePointSkippedReason String?
+  completedDraftDocumentSharePointLastAttemptAt DateTime?
   sourceAttachmentNames Json?
   sourceFingerprint     String                    @unique
   inboundEmail          InboundEmail?             @relation(fields: [inboundEmailId], references: [id], onDelete: SetNull)

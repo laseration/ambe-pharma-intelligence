@@ -1,9 +1,10 @@
-'use server';
+﻿'use server';
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import {
+  generateAccountOpeningDraft,
   saveAccountOpeningMissingInfo,
   updateAccountOpeningStatus,
   type AccountOpeningStatusAction,
@@ -49,6 +50,27 @@ function buildStatusMessage(action: AccountOpeningStatusAction): string {
     default:
       return 'Saved.';
   }
+}
+
+export async function submitAccountOpeningGenerateDraftAction(formData: FormData) {
+  const caseId = value(formData, 'caseId');
+  const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
+
+  if (!caseId) {
+    redirect('/dashboard/review?error=Missing+account-opening+case');
+  }
+
+  try {
+    await generateAccountOpeningDraft(caseId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Could not generate completed draft.';
+    redirect(buildDetailRedirect(caseId, { error: message }, returnTo));
+  }
+
+  revalidatePath('/dashboard/review');
+  revalidatePath(`/dashboard/account-opening/${caseId}`);
+
+  redirect(buildDetailRedirect(caseId, { message: 'Completed draft generated. Draft only - not signed or sent.' }, returnTo));
 }
 
 export async function submitAccountOpeningMissingInfoAction(formData: FormData) {

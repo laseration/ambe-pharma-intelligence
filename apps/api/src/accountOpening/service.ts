@@ -4,6 +4,14 @@ import { Prisma } from '@prisma/client';
 
 import { db } from '../lib/db';
 import {
+  generateAccountOpeningCompletedDraft,
+  type AccountOpeningCompletedDraft,
+} from './draftGeneration';
+import {
+  generateAccountOpeningCompletedDraftDocument,
+  type AccountOpeningCompletedDraftDocument,
+} from './documentGeneration';
+import {
   uploadAccountOpeningArchivePack,
   type AccountOpeningSharePointArchiveConfig,
   type AccountOpeningSharePointArchiveUploader,
@@ -97,6 +105,19 @@ export type AccountOpeningCaseDetail = {
   sharePointSkippedReason: string | null;
   sharePointLastAttemptAt: string | null;
   sharePointFolderUrl: string | null;
+  completedDraft: AccountOpeningCompletedDraft | null;
+  completedDraftStatus: string | null;
+  completedDraftGeneratedAt: string | null;
+  completedDraftSharePointStatus: string | null;
+  completedDraftSharePointNote: string | null;
+  completedDraftSharePointSkippedReason: string | null;
+  completedDraftSharePointLastAttemptAt: string | null;
+  completedDraftDocument: AccountOpeningCompletedDraftDocument | null;
+  completedDraftDocumentStatus: string | null;
+  completedDraftDocumentSharePointStatus: string | null;
+  completedDraftDocumentSharePointNote: string | null;
+  completedDraftDocumentSharePointSkippedReason: string | null;
+  completedDraftDocumentSharePointLastAttemptAt: string | null;
   sourceAttachmentNames: string[];
   createdAt: string;
   updatedAt: string;
@@ -166,6 +187,19 @@ export type PersistedAccountOpeningReviewCase = {
   sharePointSkippedReason: string | null;
   sharePointLastAttemptAt: Date | null;
   sharePointFolderUrl: string | null;
+  completedDraft: unknown;
+  completedDraftStatus: string | null;
+  completedDraftGeneratedAt: Date | null;
+  completedDraftSharePointStatus: string | null;
+  completedDraftSharePointNote: string | null;
+  completedDraftSharePointSkippedReason: string | null;
+  completedDraftSharePointLastAttemptAt: Date | null;
+  completedDraftDocument: unknown;
+  completedDraftDocumentStatus: string | null;
+  completedDraftDocumentSharePointStatus: string | null;
+  completedDraftDocumentSharePointNote: string | null;
+  completedDraftDocumentSharePointSkippedReason: string | null;
+  completedDraftDocumentSharePointLastAttemptAt: Date | null;
   sourceAttachmentNames: unknown;
   createdAt: Date;
   updatedAt: Date;
@@ -363,6 +397,22 @@ function missingInfoResponsesFromJson(value: unknown): AccountOpeningMissingInfo
 
 function safeStringArrayFromJson(value: unknown): string[] {
   return compactUnique(stringArrayFromJson(value).map((item) => sanitizeDashboardText(item)));
+}
+
+function completedDraftFromJson(value: unknown): AccountOpeningCompletedDraft | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  return jsonRecordFromUnknown(value) as unknown as AccountOpeningCompletedDraft;
+}
+
+function completedDraftDocumentFromJson(value: unknown): AccountOpeningCompletedDraftDocument | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  return jsonRecordFromUnknown(value) as unknown as AccountOpeningCompletedDraftDocument;
 }
 
 function normalizeFingerprintPart(value: string | null | undefined): string {
@@ -701,6 +751,20 @@ export function buildAccountOpeningCaseDetail(
     sharePointSkippedReason: accountCase.sharePointSkippedReason,
     sharePointLastAttemptAt: accountCase.sharePointLastAttemptAt?.toISOString() ?? null,
     sharePointFolderUrl: accountCase.sharePointFolderUrl,
+    completedDraft: completedDraftFromJson(accountCase.completedDraft),
+    completedDraftStatus: accountCase.completedDraftStatus,
+    completedDraftGeneratedAt: accountCase.completedDraftGeneratedAt?.toISOString() ?? null,
+    completedDraftSharePointStatus: accountCase.completedDraftSharePointStatus,
+    completedDraftSharePointNote: accountCase.completedDraftSharePointNote,
+    completedDraftSharePointSkippedReason: accountCase.completedDraftSharePointSkippedReason,
+    completedDraftSharePointLastAttemptAt: accountCase.completedDraftSharePointLastAttemptAt?.toISOString() ?? null,
+    completedDraftDocument: completedDraftDocumentFromJson(accountCase.completedDraftDocument),
+    completedDraftDocumentStatus: accountCase.completedDraftDocumentStatus,
+    completedDraftDocumentSharePointStatus: accountCase.completedDraftDocumentSharePointStatus,
+    completedDraftDocumentSharePointNote: accountCase.completedDraftDocumentSharePointNote,
+    completedDraftDocumentSharePointSkippedReason: accountCase.completedDraftDocumentSharePointSkippedReason,
+    completedDraftDocumentSharePointLastAttemptAt:
+      accountCase.completedDraftDocumentSharePointLastAttemptAt?.toISOString() ?? null,
     sourceAttachmentNames: safeStringArrayFromJson(accountCase.sourceAttachmentNames),
     createdAt: accountCase.createdAt.toISOString(),
     updatedAt: accountCase.updatedAt.toISOString(),
@@ -837,6 +901,111 @@ export async function updateAccountOpeningCaseStatus(input: {
       },
     });
   }
+
+  return buildAccountOpeningCaseDetail(updated);
+}
+
+export async function generateCompletedAccountOpeningDraft(input: {
+  id: string;
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  repository?: AccountOpeningCaseRepository;
+  sharePointConfig?: AccountOpeningSharePointArchiveConfig;
+  sharePointUploader?: AccountOpeningSharePointArchiveUploader;
+  now?: Date;
+}): Promise<AccountOpeningCaseDetail> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  const existing = await repository.findUnique({
+    where: { id: input.id },
+  });
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  if (existing.status !== 'APPROVED_FOR_COMPLETION') {
+    throw new Error('Account-opening case must be approved for completion before draft generation.');
+  }
+
+  const existingDetail = buildAccountOpeningCaseDetail(existing);
+  const result = await generateAccountOpeningCompletedDraft({
+    item: existingDetail,
+    config: input.sharePointConfig,
+    uploader: input.sharePointUploader,
+    now: input.now,
+  });
+  const documentResult = await generateAccountOpeningCompletedDraftDocument({
+    item: {
+      ...existingDetail,
+      status: 'COMPLETED_DRAFT_READY',
+      completedDraft: result.draft,
+      completedDraftStatus: result.draft.outputStatus,
+      completedDraftGeneratedAt: result.draft.generatedAt,
+      sharePointFolderUrl: result.sharePointFolderUrl ?? existingDetail.sharePointFolderUrl,
+    },
+    draft: result.draft,
+    config: input.sharePointConfig,
+    uploader: input.sharePointUploader,
+    now: input.now,
+  });
+  const updated = await repository.update({
+    where: { id: input.id },
+    data: {
+      status: 'COMPLETED_DRAFT_READY',
+      completedDraft: jsonObject(result.draft as unknown as Record<string, unknown>),
+      completedDraftStatus: result.draft.outputStatus,
+      completedDraftGeneratedAt: new Date(result.draft.generatedAt),
+      completedDraftSharePointStatus: result.sharePointStatus,
+      completedDraftSharePointNote: result.sharePointNote,
+      completedDraftSharePointSkippedReason: result.sharePointSkippedReason,
+      completedDraftSharePointLastAttemptAt: result.sharePointLastAttemptAt,
+      completedDraftDocument: jsonObject(documentResult.document as unknown as Record<string, unknown>),
+      completedDraftDocumentStatus: documentResult.document.status,
+      completedDraftDocumentSharePointStatus: documentResult.sharePointStatus,
+      completedDraftDocumentSharePointNote: documentResult.sharePointNote,
+      completedDraftDocumentSharePointSkippedReason: documentResult.sharePointSkippedReason,
+      completedDraftDocumentSharePointLastAttemptAt: documentResult.sharePointLastAttemptAt,
+      sharePointFolderUrl: documentResult.sharePointFolderUrl ?? result.sharePointFolderUrl ?? existing.sharePointFolderUrl,
+    },
+  });
+
+  await repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.id,
+      actionType: 'COMPLETED_DRAFT_GENERATED',
+      previousStatus: existing.status,
+      newStatus: 'COMPLETED_DRAFT_READY',
+      actorType: input.actorType?.trim() || 'OPERATOR',
+      actorIdentifier: sanitizeDashboardText(input.actorIdentifier) ?? null,
+      note: 'Completed draft generated. Draft only - not signed or sent.',
+      metadata: jsonObject({
+        outputStatus: result.draft.outputStatus,
+        unresolvedFieldCount: result.draft.unresolvedFields.length,
+        sharePointStatus: result.sharePointStatus,
+        sharePointSkippedReason: result.sharePointSkippedReason,
+        packMetadata: result.packMetadata ?? null,
+      }),
+    },
+  });
+
+  await repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.id,
+      actionType: 'COMPLETED_DRAFT_DOCUMENT_GENERATED',
+      previousStatus: 'COMPLETED_DRAFT_READY',
+      newStatus: 'COMPLETED_DRAFT_READY',
+      actorType: 'SYSTEM',
+      actorIdentifier: 'account-opening-document-generation',
+      note: 'Human-readable completed draft document generated. Draft only - not signed, sent, or submitted.',
+      metadata: jsonObject({
+        fileNames: documentResult.document.fileNames,
+        outputStatus: documentResult.document.status,
+        sharePointStatus: documentResult.sharePointStatus,
+        sharePointSkippedReason: documentResult.sharePointSkippedReason,
+        packMetadata: documentResult.packMetadata ?? null,
+      }),
+    },
+  });
 
   return buildAccountOpeningCaseDetail(updated);
 }

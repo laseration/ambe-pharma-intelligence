@@ -59,6 +59,46 @@ export type AccountOpeningCaseDetail = {
   sharePointSkippedReason: string | null;
   sharePointLastAttemptAt: string | null;
   sharePointFolderUrl: string | null;
+  completedDraft: {
+    caseId: string;
+    status: string;
+    generatedAt: string;
+    companyProfileUsed: string;
+    completedFields: Record<string, string>;
+    unresolvedFields: Array<{
+      field: string;
+      value: string;
+      reason: string;
+    }>;
+    riskFlags: string[];
+    signingNotes: {
+      recommendedSigner: string;
+      defaultSigningStatement: string;
+      signatureInstruction: string;
+      signatureFields: string;
+    };
+    reviewerWarnings: string[];
+    outputStatus: string;
+  } | null;
+  completedDraftStatus: string | null;
+  completedDraftGeneratedAt: string | null;
+  completedDraftSharePointStatus: string | null;
+  completedDraftSharePointNote: string | null;
+  completedDraftSharePointSkippedReason: string | null;
+  completedDraftSharePointLastAttemptAt: string | null;
+  completedDraftDocument: {
+    title: string;
+    status: string;
+    generatedAt: string;
+    fileNames: string[];
+    safetyFooter: string;
+    sharePointFolderUrl: string | null;
+  } | null;
+  completedDraftDocumentStatus: string | null;
+  completedDraftDocumentSharePointStatus: string | null;
+  completedDraftDocumentSharePointNote: string | null;
+  completedDraftDocumentSharePointSkippedReason: string | null;
+  completedDraftDocumentSharePointLastAttemptAt: string | null;
   sourceAttachmentNames: string[];
   createdAt: string;
   updatedAt: string;
@@ -155,6 +195,20 @@ export async function updateAccountOpeningStatus(
       method: 'PATCH',
       body: JSON.stringify({
         ...body,
+        actorType: 'OPERATOR',
+        actorIdentifier: 'web-account-opening-review',
+      }),
+    },
+  );
+  return payload.item;
+}
+
+export async function generateAccountOpeningDraft(id: string): Promise<AccountOpeningCaseDetail> {
+  const payload = await requestJson<{ item: AccountOpeningCaseDetail }>(
+    `/account-opening/${encodeURIComponent(id)}/generate-draft`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
         actorType: 'OPERATOR',
         actorIdentifier: 'web-account-opening-review',
       }),

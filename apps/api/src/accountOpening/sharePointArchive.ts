@@ -12,7 +12,7 @@ export type AccountOpeningSharePointArchiveConfig = {
 
 export type AccountOpeningArchivePackFile = {
   fileName: string;
-  contentType: 'application/json';
+  contentType: 'application/json' | 'text/plain' | 'text/markdown' | 'text/html';
   content: string;
 };
 
@@ -77,6 +77,14 @@ function sanitizeJson(value: unknown): unknown {
 
 function stringifySafeJson(value: unknown): string {
   return JSON.stringify(sanitizeJson(value), null, 2);
+}
+
+export function stringifyAccountOpeningSafeJson(value: unknown): string {
+  return stringifySafeJson(value);
+}
+
+export function redactAccountOpeningSensitiveText(value: string): string {
+  return redactSensitiveText(value);
 }
 
 function folderSegment(value: string | null | undefined, fallback: string): string {

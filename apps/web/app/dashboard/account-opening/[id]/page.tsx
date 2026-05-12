@@ -1,4 +1,4 @@
-import Link from 'next/link';
+﻿import Link from 'next/link';
 
 import {
   getAccountOpeningCase,
@@ -6,6 +6,7 @@ import {
   type AccountOpeningMissingInfoResponses,
 } from '../../../../lib/accountOpeningApi';
 import {
+  submitAccountOpeningGenerateDraftAction,
   submitAccountOpeningMissingInfoAction,
   submitAccountOpeningStatusAction,
 } from './actions';
@@ -101,6 +102,26 @@ function renderList(values: string[], fallback: string) {
 
 function renderHiddenInput(name: string, value: string) {
   return <input name={name} type="hidden" value={value} />;
+}
+
+function GenerateDraftForm({ item, returnTo }: { item: AccountOpeningCaseDetail; returnTo: string }) {
+  const canGenerate = item.status === 'APPROVED_FOR_COMPLETION';
+
+  return (
+    <form action={submitAccountOpeningGenerateDraftAction} className="action-form">
+      {renderHiddenInput('caseId', item.id)}
+      {renderHiddenInput('returnTo', returnTo)}
+      <p className="copy review-summary-copy">
+        Generates structured draft data only. This does not sign, send, upload signed forms, or fill PDF/Word files.
+      </p>
+      <button className="button button-primary button-large" disabled={!canGenerate} type="submit">
+        Generate completed draft
+      </button>
+      {!canGenerate ? (
+        <p className="form-helper">Approve for completion before generating the completed draft pack.</p>
+      ) : null}
+    </form>
+  );
 }
 
 function MissingInfoForm({ item, returnTo }: { item: AccountOpeningCaseDetail; returnTo: string }) {
@@ -302,6 +323,91 @@ export default async function AccountOpeningDetailPage({ params, searchParams }:
           <h3 className="section-title">Missing or unclear fields</h3>
           {renderList(signingNotes.missingOrUnclear, 'No missing fields were recorded.')}
           <MissingInfoForm item={item} returnTo={returnTo} />
+        </section>
+
+        <section className="panel dashboard-panel">
+          <h3 className="section-title">Completed draft</h3>
+          <p className="alert alert-success">Draft only — this has not been signed, sent, or submitted.</p>
+          <dl className="duplicate-product-details">
+            <div>
+              <dt>Draft status</dt>
+              <dd>{renderValue(item.completedDraftStatus, 'Not generated')}</dd>
+            </div>
+            <div>
+              <dt>Generated</dt>
+              <dd>{formatDateTime(item.completedDraftGeneratedAt)}</dd>
+            </div>
+            <div>
+              <dt>Draft SharePoint status</dt>
+              <dd>{renderValue(item.completedDraftSharePointStatus, 'Not attempted')}</dd>
+            </div>
+            <div>
+              <dt>Draft SharePoint note</dt>
+              <dd>{renderValue(item.completedDraftSharePointNote)}</dd>
+            </div>
+            <div>
+              <dt>Draft upload skipped reason</dt>
+              <dd>{renderValue(item.completedDraftSharePointSkippedReason)}</dd>
+            </div>
+            <div>
+              <dt>Draft upload attempted</dt>
+              <dd>{formatDateTime(item.completedDraftSharePointLastAttemptAt)}</dd>
+            </div>
+            <div>
+              <dt>Document status</dt>
+              <dd>{renderValue(item.completedDraftDocumentStatus, 'Not generated')}</dd>
+            </div>
+            <div>
+              <dt>Document files</dt>
+              <dd>
+                {item.completedDraftDocument?.fileNames.length
+                  ? item.completedDraftDocument.fileNames.join(', ')
+                  : 'No document files generated'}
+              </dd>
+            </div>
+            <div>
+              <dt>Document SharePoint status</dt>
+              <dd>{renderValue(item.completedDraftDocumentSharePointStatus, 'Not attempted')}</dd>
+            </div>
+            <div>
+              <dt>Document SharePoint note</dt>
+              <dd>{renderValue(item.completedDraftDocumentSharePointNote)}</dd>
+            </div>
+            <div>
+              <dt>Document upload skipped reason</dt>
+              <dd>{renderValue(item.completedDraftDocumentSharePointSkippedReason)}</dd>
+            </div>
+            <div>
+              <dt>Document upload attempted</dt>
+              <dd>{formatDateTime(item.completedDraftDocumentSharePointLastAttemptAt)}</dd>
+            </div>
+          </dl>
+          {item.completedDraft ? (
+            <div className="operator-summary-grid">
+              <div className="operator-summary-card">
+                <dt>Profile used</dt>
+                <dd>{item.completedDraft.companyProfileUsed}</dd>
+              </div>
+              <div className="operator-summary-card">
+                <dt>Output</dt>
+                <dd>{item.completedDraft.outputStatus}</dd>
+              </div>
+              <div className="operator-summary-card">
+                <dt>Unresolved fields</dt>
+                <dd>
+                  {renderList(
+                    item.completedDraft.unresolvedFields.map((field) => `${field.field}: ${field.value}`),
+                    'No unresolved fields recorded.',
+                  )}
+                </dd>
+              </div>
+              <div className="operator-summary-card">
+                <dt>Warnings</dt>
+                <dd>{renderList(item.completedDraft.reviewerWarnings, 'No warnings recorded.')}</dd>
+              </div>
+            </div>
+          ) : null}
+          <GenerateDraftForm item={item} returnTo={returnTo} />
         </section>
 
         <section className="panel dashboard-panel" id="decision">
