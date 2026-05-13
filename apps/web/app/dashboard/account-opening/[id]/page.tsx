@@ -261,6 +261,41 @@ export default async function AccountOpeningDetailPage({ params, searchParams }:
         </section>
 
         <section className="panel dashboard-panel">
+          <h3 className="section-title">Microsoft Drive archive</h3>
+          <p className="copy review-summary-copy">
+            Review archive only. This does not upload signed forms, raw extracted text, completed forms, or supplier messages.
+          </p>
+          <dl className="duplicate-product-details">
+            <div>
+              <dt>Status</dt>
+              <dd>{renderValue(item.storageStatus, 'Not attempted')}</dd>
+            </div>
+            <div>
+              <dt>Note</dt>
+              <dd>{renderValue(item.storageNote)}</dd>
+            </div>
+            <div>
+              <dt>Skipped reason</dt>
+              <dd>{renderValue(item.storageSkippedReason)}</dd>
+            </div>
+            <div>
+              <dt>Last attempt</dt>
+              <dd>{formatDateTime(item.storageLastAttemptAt)}</dd>
+            </div>
+            <div>
+              <dt>Folder URL</dt>
+              <dd>
+                {item.storageFolderUrl ? (
+                  <a href={item.storageFolderUrl}>{item.storageFolderUrl}</a>
+                ) : (
+                  'No archive folder URL stored'
+                )}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="panel dashboard-panel">
           <h3 className="section-title">Detected names and sections</h3>
           <div className="operator-summary-grid">
             <div className="operator-summary-card">
@@ -337,3 +372,4 @@ export default async function AccountOpeningDetailPage({ params, searchParams }:
     );
   }
 }
+

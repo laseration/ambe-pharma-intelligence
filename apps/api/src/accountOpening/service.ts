@@ -3,6 +3,11 @@ import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 
 import { db } from '../lib/db';
+import {
+  uploadAccountOpeningArchivePack,
+  type AccountOpeningDriveArchiveConfig,
+  type AccountOpeningDriveArchiveUploader,
+} from './driveArchive';
 
 export type AccountOpeningStructuredFields = {
   companyName: string;
@@ -87,6 +92,11 @@ export type AccountOpeningCaseDetail = {
   signingNotes: AccountOpeningSigningNotes;
   missingInfoResponses: AccountOpeningMissingInfoResponses;
   extractedTextSummary: string | null;
+  storageStatus: string | null;
+  storageNote: string | null;
+  storageSkippedReason: string | null;
+  storageLastAttemptAt: string | null;
+  storageFolderUrl: string | null;
   sourceAttachmentNames: string[];
   createdAt: string;
   updatedAt: string;
@@ -139,6 +149,11 @@ export type PersistedAccountOpeningReviewCase = {
   signingNotes: unknown;
   missingInfoResponses: unknown;
   extractedTextSummary: string | null;
+  storageStatus: string | null;
+  storageNote: string | null;
+  storageSkippedReason: string | null;
+  storageLastAttemptAt: Date | null;
+  storageFolderUrl: string | null;
   sourceAttachmentNames: unknown;
   createdAt: Date;
   updatedAt: Date;
@@ -633,6 +648,11 @@ export function buildAccountOpeningCaseDetail(
     signingNotes: buildSigningNotesFromPersistedCase(accountCase),
     missingInfoResponses: missingInfoResponsesFromJson(accountCase.missingInfoResponses),
     extractedTextSummary: accountCase.extractedTextSummary,
+    storageStatus: accountCase.storageStatus,
+    storageNote: accountCase.storageNote,
+    storageSkippedReason: accountCase.storageSkippedReason,
+    storageLastAttemptAt: accountCase.storageLastAttemptAt?.toISOString() ?? null,
+    storageFolderUrl: accountCase.storageFolderUrl,
     sourceAttachmentNames: safeStringArrayFromJson(accountCase.sourceAttachmentNames),
     createdAt: accountCase.createdAt.toISOString(),
     updatedAt: accountCase.updatedAt.toISOString(),
@@ -696,6 +716,9 @@ export async function updateAccountOpeningCaseStatus(input: {
   actorType?: string | null;
   actorIdentifier?: string | null;
   repository?: AccountOpeningCaseRepository;
+  storageConfig?: AccountOpeningDriveArchiveConfig;
+  storageUploader?: AccountOpeningDriveArchiveUploader;
+  now?: Date;
 }): Promise<AccountOpeningCaseDetail> {
   const repository = input.repository ?? getAccountOpeningCaseRepository();
   const existing = await repository.findUnique({
@@ -707,7 +730,7 @@ export async function updateAccountOpeningCaseStatus(input: {
   }
 
   const newStatus = STATUS_ACTIONS[input.action];
-  const updated = await repository.update({
+  let updated = await repository.update({
     where: { id: input.id },
     data: { status: newStatus },
   });
@@ -723,6 +746,49 @@ export async function updateAccountOpeningCaseStatus(input: {
       note: sanitizeDashboardText(input.note),
     },
   });
+
+  if (input.action === 'APPROVED_FOR_COMPLETION') {
+    const uploadResult = await uploadAccountOpeningArchivePack({
+      item: buildAccountOpeningCaseDetail(updated),
+      config: input.storageConfig,
+      uploader: input.storageUploader,
+      now: input.now,
+    });
+
+    updated = await repository.update({
+      where: { id: input.id },
+      data: {
+        storageStatus: uploadResult.status,
+        storageNote: uploadResult.note,
+        storageSkippedReason: uploadResult.skippedReason,
+        storageLastAttemptAt: uploadResult.attemptedAt,
+        storageFolderUrl: uploadResult.folderUrl,
+      },
+    });
+
+    await repository.createEvent({
+      data: {
+        accountOpeningCaseId: input.id,
+        actionType:
+          uploadResult.status === 'UPLOADED'
+            ? 'MICROSOFT_DRIVE_ARCHIVE_UPLOADED'
+            : uploadResult.status === 'UPLOAD_FAILED'
+              ? 'MICROSOFT_DRIVE_ARCHIVE_FAILED'
+              : 'MICROSOFT_DRIVE_ARCHIVE_SKIPPED',
+        previousStatus: newStatus,
+        newStatus,
+        actorType: 'SYSTEM',
+        actorIdentifier: 'account-opening-drive-archive',
+        note: sanitizeDashboardText(uploadResult.note),
+        metadata: jsonObject({
+          status: uploadResult.status,
+          skippedReason: uploadResult.skippedReason,
+          folderUrl: uploadResult.folderUrl,
+          packMetadata: uploadResult.packMetadata ?? null,
+        }),
+      },
+    });
+  }
 
   return buildAccountOpeningCaseDetail(updated);
 }
