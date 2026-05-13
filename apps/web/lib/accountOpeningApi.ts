@@ -54,6 +54,11 @@ export type AccountOpeningCaseDetail = {
   signingNotes: AccountOpeningSigningNotes;
   missingInfoResponses: AccountOpeningMissingInfoResponses;
   extractedTextSummary: string | null;
+  storageStatus: string | null;
+  storageNote: string | null;
+  storageSkippedReason: string | null;
+  storageLastAttemptAt: string | null;
+  storageFolderUrl: string | null;
   sourceAttachmentNames: string[];
   createdAt: string;
   updatedAt: string;

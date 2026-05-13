@@ -620,6 +620,11 @@ model AccountOpeningCase {
   signingNotes          Json?
   missingInfoResponses  Json?
   extractedTextSummary  String?
+  storageStatus         String?
+  storageNote           String?
+  storageSkippedReason  String?
+  storageLastAttemptAt  DateTime?
+  storageFolderUrl      String?
   sourceAttachmentNames Json?
   sourceFingerprint     String                    @unique
   inboundEmail          InboundEmail?             @relation(fields: [inboundEmailId], references: [id], onDelete: SetNull)

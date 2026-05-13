@@ -281,6 +281,11 @@ function buildPersistedAccountOpeningCase(
     },
     missingInfoResponses: {},
     extractedTextSummary: 'Extracted account-opening text from email body (40 chars).',
+    storageStatus: null,
+    storageNote: null,
+    storageSkippedReason: null,
+    storageLastAttemptAt: null,
+    storageFolderUrl: null,
     sourceAttachmentNames: ['account-opening-form.pdf'],
     createdAt: new Date('2026-05-12T09:00:00.000Z'),
     updatedAt: new Date('2026-05-12T09:00:00.000Z'),
@@ -370,7 +375,7 @@ test('saving missing info persists responses and records an audit event', async 
   assert.equal(getCurrent().status, 'PENDING_REVIEW');
 });
 
-test('approve for completion changes account-opening status without send/sign side effects', async () => {
+test('approve for completion changes status and records skipped storage when disabled', async () => {
   const { repository, events } = createAccountOpeningRepository(buildPersistedAccountOpeningCase());
 
   const detail = await updateAccountOpeningCaseStatus({
@@ -380,11 +385,71 @@ test('approve for completion changes account-opening status without send/sign si
     actorType: 'OPERATOR',
     actorIdentifier: 'test-reviewer',
     repository,
+    storageConfig: {
+      provider: 'SHAREPOINT',
+      enabled: false,
+      siteId: '',
+      driveId: '',
+      baseFolder: 'Account Opening',
+      graphAuthConfigured: false,
+    },
+    now: new Date('2026-05-12T10:00:00.000Z'),
   });
 
   assert.equal(detail.status, 'APPROVED_FOR_COMPLETION');
+  assert.equal(detail.storageStatus, 'SKIPPED_DISABLED');
+  assert.match(detail.storageNote ?? '', /upload skipped/i);
+  assert.equal(detail.storageLastAttemptAt, '2026-05-12T10:00:00.000Z');
   assert.equal((events[0] as { actionType?: string }).actionType, 'APPROVED_FOR_COMPLETION');
   assert.equal((events[0] as { newStatus?: string }).newStatus, 'APPROVED_FOR_COMPLETION');
+  assert.equal((events[1] as { actionType?: string }).actionType, 'MICROSOFT_DRIVE_ARCHIVE_SKIPPED');
+});
+
+test('approve for completion calls enabled storage adapter with safe archive payload', async () => {
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      missingInfoResponses: {
+        reviewerNotes: 'Account number 12345678 and sort code 12-34-56.',
+      },
+      sourceAttachmentNames: ['mandate-account-12345678-sort-12-34-56.pdf'],
+    }),
+  );
+  let uploadedPackText = '';
+
+  const detail = await updateAccountOpeningCaseStatus({
+    id: 'account-case-1',
+    action: 'APPROVED_FOR_COMPLETION',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+    storageConfig: {
+      provider: 'SHAREPOINT',
+      enabled: true,
+      siteId: 'site-1',
+      driveId: 'drive-1',
+      baseFolder: 'Account Opening',
+      graphAuthConfigured: true,
+    },
+    storageUploader: {
+      uploadArchivePack: async (pack) => {
+        uploadedPackText = JSON.stringify(pack);
+        return {
+          folderUrl: 'https://sharepoint.example/folder',
+          uploadedFileNames: pack.files.map((file) => file.fileName),
+        };
+      },
+    },
+    now: new Date('2026-05-12T10:00:00.000Z'),
+  });
+
+  assert.equal(detail.storageStatus, 'UPLOADED');
+  assert.equal(detail.storageFolderUrl, 'https://sharepoint.example/folder');
+  assert.match(uploadedPackText, /signing-notes\.json/);
+  assert.match(uploadedPackText, /risk-summary\.json/);
+  assert.match(uploadedPackText, /missing-info\.json/);
+  assert.doesNotMatch(uploadedPackText, /12345678/);
+  assert.doesNotMatch(uploadedPackText, /12-34-56/);
+  assert.equal((events[1] as { actionType?: string }).actionType, 'MICROSOFT_DRIVE_ARCHIVE_UPLOADED');
 });
 
 test('mark needs info changes account-opening status and records review event', async () => {
