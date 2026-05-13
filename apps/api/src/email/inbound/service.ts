@@ -1,5 +1,11 @@
 import { Prisma } from '@prisma/client';
 
+import {
+  buildAccountOpeningSourceFingerprint,
+  buildAccountOpeningCase,
+  detectAccountOpeningEmail,
+  upsertAccountOpeningCase,
+} from '../../accountOpening/service';
 import { env } from '../../config/env';
 import { extractAttachmentText } from '../attachmentTextExtraction';
 import { parseStructuredPriceEmailBody, parseStructuredPriceText } from '../parsing';
@@ -123,6 +129,79 @@ function buildTriageMetadata(item: EmailInboundItemResult, triage: ReturnType<ty
   };
 }
 
+function buildAccountOpeningReviewItem(input: {
+  message: EmailInboundMessage;
+  senderEmail: string;
+  subject: string;
+  bodyText: string;
+  attachments: NormalizedEmailAttachment[];
+  attachmentTexts: Array<{
+    attachment: NormalizedEmailAttachment;
+    text: string | null;
+    method: 'PDF_TEXT' | 'IMAGE_OCR' | null;
+    warnings: string[];
+  }>;
+  supplierName?: string;
+  matchedTerms: string[];
+}): EmailInboundItemResult {
+  const firstAttachment = input.attachments[0] ?? null;
+  const firstExtractedAttachment = input.attachmentTexts.find((item) => item.text?.trim()) ?? null;
+  const sourceFingerprint = buildAccountOpeningSourceFingerprint({
+    messageId: input.message.messageId ?? input.message.externalMessageId ?? null,
+    externalMessageId: input.message.externalMessageId ?? null,
+    senderEmail: input.senderEmail,
+    subject: input.subject,
+    attachmentFileNames: input.attachments.map((attachment) => attachment.fileName),
+    matchedTerms: input.matchedTerms,
+  });
+  const accountOpeningCase = buildAccountOpeningCase({
+    senderEmail: input.senderEmail,
+    senderDomain: input.senderEmail.includes('@') ? input.senderEmail.split('@').pop() ?? null : null,
+    subject: input.subject,
+    bodyText: input.bodyText,
+    receivedAt: input.message.receivedAt ?? null,
+    detectedCompanyOrSupplierName: input.supplierName ?? null,
+    attachments: input.attachments.map((attachment) => ({
+      fileName: attachment.fileName,
+      extractedText:
+        input.attachmentTexts.find((entry) => entry.attachment === attachment)?.text ?? null,
+    })),
+    sourceFingerprint,
+  });
+
+  return {
+    processingStatus: 'REVIEW_REQUIRED',
+    inferredImportType: null,
+    confidence: 'HIGH',
+    reason: 'Account opening form detected - review required before completion/signing.',
+    fileType: firstAttachment?.fileType ?? 'UNKNOWN',
+    attachment: {
+      fileName: firstAttachment?.fileName ?? null,
+      mimeType: firstAttachment?.mimeType ?? null,
+      size: firstAttachment?.size ?? null,
+      contentId: firstAttachment?.contentId ?? null,
+      disposition: firstAttachment?.disposition ?? null,
+    },
+    email: {
+      messageId: input.message.messageId ?? null,
+      from: input.senderEmail,
+      subject: input.subject,
+      bodyText: input.bodyText,
+    },
+    ...(firstExtractedAttachment?.text && firstExtractedAttachment.method
+      ? {
+          attachmentTextExtraction: {
+            method: firstExtractedAttachment.method,
+            text: firstExtractedAttachment.text,
+            extractedTextChars: firstExtractedAttachment.text.length,
+            warnings: firstExtractedAttachment.warnings,
+          },
+        }
+      : {}),
+    accountOpeningCase,
+  };
+}
+
 function normalizeBodyFingerprint(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 500);
 }
@@ -210,6 +289,7 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
     emailReviewPerSupplierDailyLimit: env.openAiEmailReviewPerSupplierDailyLimit,
     emailReviewMinBusinessScore: env.openAiEmailReviewMinBusinessScore,
     listStoredReviewItems: listStoredEmailReviewItems,
+    persistAccountOpeningCase: upsertAccountOpeningCase,
     logger,
     ...overrides,
   };
@@ -251,6 +331,65 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
       const normalizedAttachments = filterIgnorableEmailAttachments(
         (message.attachments ?? []).map(normalizeEmailAttachment),
       );
+      const accountOpeningAttachmentTexts: Array<{
+        attachment: NormalizedEmailAttachment;
+        text: string | null;
+        method: 'PDF_TEXT' | 'IMAGE_OCR' | null;
+        warnings: string[];
+      }> = [];
+
+      for (const attachment of normalizedAttachments) {
+        const attachmentTextExtraction =
+          attachment.fileType === 'PDF' || attachment.fileType === 'IMAGE'
+            ? await dependencies.extractAttachmentText(attachment)
+            : null;
+
+        accountOpeningAttachmentTexts.push({
+          attachment,
+          text: attachmentTextExtraction?.text ?? null,
+          method: attachmentTextExtraction?.method ?? null,
+          warnings: attachmentTextExtraction?.warnings ?? [],
+        });
+      }
+
+      const accountOpeningDetection = detectAccountOpeningEmail({
+        subject,
+        bodyText,
+        attachmentFileNames: normalizedAttachments.map((attachment) => attachment.fileName),
+        attachmentTexts: accountOpeningAttachmentTexts.map((item) => item.text),
+      });
+
+      if (accountOpeningDetection.detected) {
+        const accountOpeningItem = buildAccountOpeningReviewItem({
+          message,
+          senderEmail,
+          subject,
+          bodyText,
+          attachments: normalizedAttachments,
+          attachmentTexts: accountOpeningAttachmentTexts,
+          supplierName: payloadSupplierName ?? extractedSupplierName,
+          matchedTerms: accountOpeningDetection.matchedTerms,
+        });
+
+        await dependencies.persistAccountOpeningCase?.({
+          accountCase: accountOpeningItem.accountOpeningCase!,
+          messageId: message.messageId ?? message.externalMessageId ?? null,
+          detectedFormType: accountOpeningDetection.matchedTerms[0] ?? null,
+        });
+        recordEmailReviewItems([accountOpeningItem]);
+        dependencies.logger.info('Inbound account opening form queued for review', {
+          senderEmail,
+          subject,
+          matchedTerms: accountOpeningDetection.matchedTerms,
+          attachmentCount: normalizedAttachments.length,
+        });
+
+        return {
+          ignored: false,
+          items: [accountOpeningItem],
+        };
+      }
+
       const storedReviewItems = dependencies.listStoredReviewItems?.() ?? [];
       const now = Date.now();
       const last24Hours = storedReviewItems.filter(

@@ -5,6 +5,12 @@ import {
   type AutomationReadinessOverview,
   type OfferFeedbackSummary,
 } from '../automation/service';
+import {
+  buildSigningNotesFromPersistedCase,
+  listOpenAccountOpeningCases,
+  type AccountOpeningSigningNotes,
+  type PersistedAccountOpeningReviewCase,
+} from '../accountOpening/service';
 import { offerCorrectionService } from '../corrections/service';
 import {
   tradeOpportunityService,
@@ -23,7 +29,12 @@ type RegulatoryReviewItem = Awaited<ReturnType<typeof listOpenRegulatoryReviewQu
 
 export type ReviewQueueItem = {
   id: string;
-  sourceType: 'TELEGRAM_INBOUND' | 'EMAIL_INBOUND' | 'EMAIL_DERIVED_OFFER' | 'REGULATORY_REVIEW';
+  sourceType:
+    | 'TELEGRAM_INBOUND'
+    | 'EMAIL_INBOUND'
+    | 'EMAIL_DERIVED_OFFER'
+    | 'REGULATORY_REVIEW'
+    | 'ACCOUNT_OPENING';
   receivedAt: Date | null;
   sender: string | null;
   fileName: string | null;
@@ -89,11 +100,13 @@ export type ReviewQueueItem = {
   regulatorySeverity?: string | null;
   regulatoryEventType?: string | null;
   sourceUrl?: string | null;
+  accountOpeningSigningNotes?: AccountOpeningSigningNotes;
 };
 
 type ReviewQueueDependencies = {
   listTelegramInboundItems: () => Promise<TelegramReviewItem[]>;
   listEmailReviewItems: () => StoredEmailReviewItem[];
+  listAccountOpeningCases?: () => Promise<PersistedAccountOpeningReviewCase[]>;
   listEmailDerivedOfferItems: () => Promise<OfferWorkflowReviewItem[]>;
   listRegulatoryReviewItems: () => Promise<RegulatoryReviewItem[]>;
   getSupplierScorecardsForIds: (
@@ -208,6 +221,52 @@ function mapEmailItem(item: StoredEmailReviewItem): ReviewQueueItem | null {
           invalidRows: item.importSummary?.invalidRows ?? null,
         }
       : null,
+  };
+}
+
+function mapAccountOpeningCase(item: PersistedAccountOpeningReviewCase): ReviewQueueItem | null {
+  if (!['PENDING_REVIEW', 'NEEDS_INFO'].includes(item.status)) {
+    return null;
+  }
+
+  const signingNotes = buildSigningNotesFromPersistedCase(item);
+  const riskFlags = signingNotes.riskFlags;
+  const missingFields = signingNotes.missingOrUnclear;
+  const reviewSummary = buildReviewSummary({
+    processingStatus: item.status,
+    fileType: 'PDF',
+    fileName: null,
+    inferredImportType: null,
+    reason: 'Account opening form detected',
+    sender: item.senderEmail,
+    subjectOrCaption: item.subject,
+    accountOpeningCase: {
+      extractedTextSummary:
+        item.extractedTextSummary ?? 'Persisted account-opening review case.',
+      riskFlags,
+      missingFields,
+      signingSummary: {
+        detectedNames: signingNotes.detectedNames,
+        detectedSignatureRoles: signingNotes.detectedRolesOrSections,
+        signingExplanation:
+          item.signingExplanation ?? signingNotes.defaultSigningStatement,
+        escalationNotes: [],
+      },
+    },
+  });
+
+  return {
+    id: `account-opening-${item.id}`,
+    sourceType: 'ACCOUNT_OPENING',
+    receivedAt: item.receivedAt ?? item.updatedAt,
+    sender: item.senderEmail,
+    fileName: null,
+    subject: item.subject,
+    processingStatus: item.status,
+    reason: 'Account opening form detected - review required before completion/signing.',
+    reviewSummary,
+    accountOpeningSigningNotes: signingNotes,
+    linkedImportBatch: null,
   };
 }
 
@@ -399,6 +458,13 @@ export function createReviewQueueService(overrides?: Partial<ReviewQueueDependen
   const dependencies: ReviewQueueDependencies = {
     listTelegramInboundItems: async () => listInboundItems({}),
     listEmailReviewItems: () => listStoredEmailReviewItems(),
+    listAccountOpeningCases: async () => {
+      try {
+        return await listOpenAccountOpeningCases();
+      } catch {
+        return [];
+      }
+    },
     listEmailDerivedOfferItems: async () => {
       if (!('offerWorkflowItem' in db) || !db.offerWorkflowItem) {
         return [];
@@ -435,12 +501,27 @@ export function createReviewQueueService(overrides?: Partial<ReviewQueueDependen
 
   return {
     async listItems(): Promise<ReviewQueueItem[]> {
-      const [telegramItems, emailItems, emailDerivedOfferItems, regulatoryReviewItems] = await Promise.all([
+      const [
+        telegramItems,
+        emailItems,
+        accountOpeningCases,
+        emailDerivedOfferItems,
+        regulatoryReviewItems,
+      ] = await Promise.all([
         dependencies.listTelegramInboundItems(),
         Promise.resolve(dependencies.listEmailReviewItems()),
+        dependencies.listAccountOpeningCases?.() ?? Promise.resolve([]),
         dependencies.listEmailDerivedOfferItems(),
         dependencies.listRegulatoryReviewItems(),
       ]);
+      const persistedAccountOpeningFingerprints = new Set(
+        accountOpeningCases.map((item) => item.sourceFingerprint),
+      );
+      const emailReviewItems = emailItems.filter(
+        (item) =>
+          !item.accountOpeningCase ||
+          !persistedAccountOpeningFingerprints.has(item.accountOpeningCase.sourceFingerprint),
+      );
       const supplierScorecards = await dependencies.getSupplierScorecardsForIds(
         emailDerivedOfferItems.flatMap((item) => {
           const supplierId = resolveWorkflowSupplierId(item);
@@ -482,7 +563,8 @@ export function createReviewQueueService(overrides?: Partial<ReviewQueueDependen
 
       return [
         ...telegramItems.map(mapTelegramItem),
-        ...emailItems.map(mapEmailItem),
+        ...emailReviewItems.map(mapEmailItem),
+        ...accountOpeningCases.map(mapAccountOpeningCase),
         ...regulatoryReviewItems.map(mapRegulatoryReviewItem),
         ...emailDerivedOfferItems.map((item) =>
           mapEmailDerivedOfferItem(

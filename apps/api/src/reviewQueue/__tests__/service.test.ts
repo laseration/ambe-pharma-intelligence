@@ -686,3 +686,141 @@ test('review queue includes open email-derived workflow items with priority meta
   assert.equal(items[0]?.supplierPerformanceSummary?.tier, 'RISKY');
   assert.equal(items[0]?.recommendedNextAction, 'investigate price drift');
 });
+
+test('review queue lists durable account-opening cases after restart', async () => {
+  const service = createReviewQueueService({
+    listTelegramInboundItems: async () => [],
+    listEmailReviewItems: () => [],
+    listEmailDerivedOfferItems: async () => [],
+    listRegulatoryReviewItems: async () => [],
+    listAccountOpeningCases: async () =>
+      [
+        {
+          id: 'account-case-1',
+          sourceFingerprint: 'fingerprint-1',
+          messageId: '<message-1>',
+          senderEmail: 'forms@supplier.co.uk',
+          senderDomain: 'supplier.co.uk',
+          subject: 'Account opening form',
+          receivedAt: new Date('2026-05-12T09:00:00.000Z'),
+          companyName: 'AMBE LTD',
+          detectedFormType: 'account opening form',
+          status: 'PENDING_REVIEW',
+          recommendedSigner: 'Aman Dhillon',
+          signingStatement: 'Aman Dhillon can sign this account-opening form by default.',
+          signingExplanation: 'Aman Dhillon can sign this account-opening form by default.',
+          detectedNames: ['Sandeep Patel'],
+          detectedRoles: ['Director', 'Direct Debit'],
+          escalationNotes: ['Confirm the supplier does not require director-only signature.'],
+          riskFlags: ['Direct Debit mandate'],
+          missingFields: ['companyNumber'],
+          reviewerChecks: ['Leave all signature fields blank unless approved by a human reviewer.'],
+          signingNotes: {
+            title: 'Account opening signing notes',
+            recommendedSigner: 'Aman Dhillon',
+            defaultSigningStatement: 'Aman Dhillon can sign this account-opening form by default.',
+            detectedNames: ['Sandeep Patel'],
+            detectedRolesOrSections: ['Director', 'Direct Debit'],
+            reviewerChecks: ['Leave all signature fields blank unless approved by a human reviewer.'],
+            riskFlags: ['Direct Debit mandate'],
+            missingOrUnclear: ['companyNumber'],
+            signatureInstruction: 'Leave signature fields blank until approved by a human reviewer.',
+            summary: 'Recommended signer: Aman Dhillon.',
+          },
+          missingInfoResponses: {},
+          extractedTextSummary: 'Extracted account-opening text from attachments (120 chars).',
+          sourceAttachmentNames: ['account-opening-form.pdf'],
+          createdAt: new Date('2026-05-12T09:00:00.000Z'),
+          updatedAt: new Date('2026-05-12T09:05:00.000Z'),
+        },
+      ] as never,
+    getSupplierScorecardsForIds: async () => ({}),
+  });
+
+  const items = await service.listItems();
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0]?.id, 'account-opening-account-case-1');
+  assert.equal(items[0]?.sourceType, 'ACCOUNT_OPENING');
+  assert.equal(items[0]?.processingStatus, 'PENDING_REVIEW');
+  assert.equal(items[0]?.sender, 'forms@supplier.co.uk');
+  assert.equal(items[0]?.linkedImportBatch, null);
+  assert.equal(items[0]?.accountOpeningSigningNotes?.recommendedSigner, 'Aman Dhillon');
+  assert.equal(items[0]?.reviewSummary?.reviewReason, 'Account opening form detected');
+  assert.match(items[0]?.reviewSummary?.recognizedContent ?? '', /attachments/);
+  assert.match(items[0]?.reviewSummary?.missingOrUnclear ?? '', /Direct Debit mandate/);
+  assert.match(items[0]?.reviewSummary?.suggestedAction ?? '', /before any completion, signing, submission, or reply/);
+});
+
+test('review queue prefers durable account-opening cases over in-memory email review items', async () => {
+  const service = createReviewQueueService({
+    listTelegramInboundItems: async () => [],
+    listEmailReviewItems: () =>
+      [
+        {
+          id: 'email-review-1',
+          createdAt: new Date('2026-05-12T09:00:00.000Z'),
+          updatedAt: new Date('2026-05-12T09:00:00.000Z'),
+          processingStatus: 'REVIEW_REQUIRED',
+          inferredImportType: null,
+          confidence: 'LOW',
+          reason: 'Account opening form detected',
+          fileType: 'PDF',
+          attachment: {
+            fileName: 'account-opening-form.pdf',
+            mimeType: 'application/pdf',
+            size: null,
+            contentId: null,
+            disposition: null,
+          },
+          email: {
+            messageId: '<message-1>',
+            from: 'forms@supplier.co.uk',
+            subject: 'Account opening form',
+            bodyText: 'Please complete the account opening form.',
+          },
+          accountOpeningCase: {
+            sourceFingerprint: 'fingerprint-1',
+          },
+        },
+      ] as never,
+    listEmailDerivedOfferItems: async () => [],
+    listRegulatoryReviewItems: async () => [],
+    listAccountOpeningCases: async () =>
+      [
+        {
+          id: 'account-case-1',
+          sourceFingerprint: 'fingerprint-1',
+          messageId: '<message-1>',
+          senderEmail: 'forms@supplier.co.uk',
+          senderDomain: 'supplier.co.uk',
+          subject: 'Account opening form',
+          receivedAt: new Date('2026-05-12T09:00:00.000Z'),
+          companyName: 'AMBE LTD',
+          detectedFormType: 'account opening form',
+          status: 'PENDING_REVIEW',
+          recommendedSigner: 'Aman Dhillon',
+          signingStatement: 'Aman Dhillon can sign this account-opening form by default.',
+          signingExplanation: 'Aman Dhillon can sign this account-opening form by default.',
+          detectedNames: [],
+          detectedRoles: [],
+          escalationNotes: [],
+          riskFlags: [],
+          missingFields: [],
+          reviewerChecks: [],
+          signingNotes: {},
+          missingInfoResponses: {},
+          extractedTextSummary: 'Persisted account-opening review case.',
+          sourceAttachmentNames: ['account-opening-form.pdf'],
+          createdAt: new Date('2026-05-12T09:00:00.000Z'),
+          updatedAt: new Date('2026-05-12T09:05:00.000Z'),
+        },
+      ] as never,
+    getSupplierScorecardsForIds: async () => ({}),
+  });
+
+  const items = await service.listItems();
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0]?.sourceType, 'ACCOUNT_OPENING');
+});

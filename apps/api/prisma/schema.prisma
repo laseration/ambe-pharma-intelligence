@@ -167,6 +167,14 @@ enum OfferWorkflowActionType {
   AUTO_CLOSED
 }
 
+enum AccountOpeningStatus {
+  PENDING_REVIEW
+  APPROVED_FOR_COMPLETION
+  NEEDS_INFO
+  REJECTED
+  CLOSED
+}
+
 enum BuyDecisionApprovalStatus {
   PENDING_APPROVAL
   APPROVED
@@ -578,6 +586,7 @@ model InboundEmail {
   offerCorrections          OfferCorrection[]
   promotionDecisions        PromotionDecision[]
   promotedPriceLists        SupplierPriceList[]
+  accountOpeningCases       AccountOpeningCase[]
   createdAt                 DateTime                     @default(now())
   updatedAt                 DateTime                     @updatedAt
 
@@ -586,6 +595,57 @@ model InboundEmail {
   @@index([senderDomain, createdAt])
   @@index([sourceSystem, sourceTemplateFingerprint])
   @@index([processingStatus, createdAt])
+}
+
+model AccountOpeningCase {
+  id                    String                    @id @default(cuid())
+  inboundEmailId        String?
+  messageId             String?
+  senderEmail           String?
+  senderDomain          String?
+  subject               String?
+  receivedAt            DateTime?
+  companyName           String?
+  detectedFormType      String?
+  status                AccountOpeningStatus      @default(PENDING_REVIEW)
+  recommendedSigner     String                    @default("Aman Dhillon")
+  signingStatement      String                    @default("Aman Dhillon can sign this account-opening form by default.")
+  signingExplanation    String?
+  detectedNames         Json?
+  detectedRoles         Json?
+  escalationNotes       Json?
+  riskFlags             Json?
+  missingFields         Json?
+  reviewerChecks        Json?
+  signingNotes          Json?
+  missingInfoResponses  Json?
+  extractedTextSummary  String?
+  sourceAttachmentNames Json?
+  sourceFingerprint     String                    @unique
+  inboundEmail          InboundEmail?             @relation(fields: [inboundEmailId], references: [id], onDelete: SetNull)
+  events                AccountOpeningCaseEvent[]
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([messageId])
+  @@index([senderEmail])
+}
+
+model AccountOpeningCaseEvent {
+  id                   String                @id @default(cuid())
+  accountOpeningCaseId String
+  actionType           String
+  previousStatus       AccountOpeningStatus?
+  newStatus            AccountOpeningStatus?
+  actorType            String                @default("SYSTEM")
+  actorIdentifier      String?
+  note                 String?
+  metadata             Json?
+  accountOpeningCase   AccountOpeningCase    @relation(fields: [accountOpeningCaseId], references: [id], onDelete: Cascade)
+  createdAt            DateTime              @default(now())
+
+  @@index([accountOpeningCaseId, createdAt])
 }
 
 model InboundEmailDocument {
