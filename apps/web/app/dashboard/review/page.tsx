@@ -1,6 +1,11 @@
 import Link from 'next/link';
 
-import { listReviewWorkflowItems, type ReviewWorkflowListItem } from '../../../lib/reviewApi';
+import {
+  listReviewQueueItems,
+  listReviewWorkflowItems,
+  type ReviewQueueItem,
+  type ReviewWorkflowListItem,
+} from '../../../lib/reviewApi';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +43,12 @@ function normalizeReviewQueueSortMode(value: string | undefined): ReviewQueueSor
 
 function buildReviewReturnTo(sortMode: ReviewQueueSortMode): string {
   return sortMode === 'stale' ? '/dashboard/review?sort=stale' : '/dashboard/review';
+}
+
+function getAccountOpeningCaseId(item: ReviewQueueItem): string {
+  return item.id.startsWith('account-opening-')
+    ? item.id.slice('account-opening-'.length)
+    : item.id;
 }
 
 function formatDateTime(value: string | null) {
@@ -109,10 +120,16 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
   const returnTo = buildReviewReturnTo(sortMode);
 
   try {
-    const items = await listReviewWorkflowItems({
-      staleFirst: sortMode === 'stale',
-    });
+    const [items, reviewQueueItems] = await Promise.all([
+      listReviewWorkflowItems({
+        staleFirst: sortMode === 'stale',
+      }),
+      listReviewQueueItems(),
+    ]);
     const emailGroups = groupWorkflowItemsByInboundEmail(items, sortMode);
+    const accountOpeningItems = reviewQueueItems.filter(
+      (item) => item.sourceType === 'ACCOUNT_OPENING',
+    );
 
     return (
       <section className="review-layout">
@@ -155,7 +172,7 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
           </p>
         ) : null}
 
-        {emailGroups.length === 0 ? (
+        {emailGroups.length === 0 && accountOpeningItems.length === 0 ? (
           <section className="panel">
             <p className="eyebrow">All clear</p>
             <p className="copy">There are no supplier emails waiting for review.</p>
@@ -179,11 +196,35 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
                 <h3 className="review-card-title">{group.subject}</h3>
                 <p className="review-card-meta">
                   {group.fromEmail}
-                  {group.receivedAt ? ` • ${formatDateTime(group.receivedAt)}` : ''}
+                  {group.receivedAt ? ` | ${formatDateTime(group.receivedAt)}` : ''}
                 </p>
                 <p className="review-card-copy">Needs checking because {group.primaryReason}</p>
               </Link>
             ))}
+            {accountOpeningItems.map((item) => {
+              const caseId = getAccountOpeningCaseId(item);
+
+              return (
+                <Link
+                  className="review-card"
+                  href={`/dashboard/account-opening/${encodeURIComponent(caseId)}?returnTo=${encodeURIComponent(returnTo)}`}
+                  key={item.id}
+                >
+                  <div className="review-card-top">
+                    <span className="pill pill-high">ACCOUNT OPENING</span>
+                    <span className="pill pill-neutral">{item.processingStatus}</span>
+                  </div>
+                  <h3 className="review-card-title">{item.subject ?? 'Account opening form'}</h3>
+                  <p className="review-card-meta">
+                    {item.sender ?? 'Unknown sender'}
+                    {item.receivedAt ? ` | ${formatDateTime(item.receivedAt)}` : ''}
+                  </p>
+                  <p className="review-card-copy">
+                    {item.reviewSummary?.reviewReason ?? item.reason}
+                  </p>
+                </Link>
+              );
+            })}
           </div>
         )}
       </section>
