@@ -123,7 +123,7 @@ Recommended pilot path:
 
 1. create a dedicated mailbox such as `supplier-intake@...`
 2. point `MICROSOFT_GRAPH_SENDER_MAILBOX` at that mailbox
-3. use app-only Graph auth with `MICROSOFT_GRAPH_CLIENT_ID`, `MICROSOFT_GRAPH_CLIENT_SECRET`, and `MICROSOFT_GRAPH_TENANT_ID`
+3. use the Ambe Bot Mailer app-only Graph auth with `MICROSOFT_MAIL_CLIENT_ID`, `MICROSOFT_MAIL_CLIENT_SECRET`, and `MICROSOFT_MAIL_TENANT_ID`
 4. grant Microsoft Graph `Application` permission `Mail.ReadWrite` and admin consent
 5. enable `EMAIL_INBOUND_POLLING_ENABLED=true`
 6. restrict intake with `EMAIL_INBOUND_ALLOWED_SENDERS`
@@ -670,25 +670,27 @@ Add these to `apps/api/.env` if you want outbound email enabled through Microsof
 
 ```bash
 EMAIL_ALERTS_ENABLED=false
-MICROSOFT_GRAPH_TENANT_ID=
-MICROSOFT_GRAPH_CLIENT_ID=
-MICROSOFT_GRAPH_CLIENT_SECRET=
+MICROSOFT_MAIL_TENANT_ID=
+MICROSOFT_MAIL_CLIENT_ID=
+MICROSOFT_MAIL_CLIENT_SECRET=
 MICROSOFT_GRAPH_REFRESH_TOKEN=
 MICROSOFT_GRAPH_SENDER_MAILBOX=
 INTERNAL_ALERT_EMAIL_RECIPIENTS=
 ```
 
 - `EMAIL_ALERTS_ENABLED`: enables Microsoft Graph sending
-- `MICROSOFT_GRAPH_TENANT_ID`: Microsoft Entra tenant ID, or `consumers` for a personal Outlook.com account
-- `MICROSOFT_GRAPH_CLIENT_ID`: app registration client ID
-- `MICROSOFT_GRAPH_CLIENT_SECRET`: app registration client secret for app-only business-tenant sending
+- `MICROSOFT_MAIL_TENANT_ID`: Ambe Bot Mailer Microsoft Entra tenant ID, or `consumers` for a personal Outlook.com account
+- `MICROSOFT_MAIL_CLIENT_ID`: Ambe Bot Mailer app registration client ID
+- `MICROSOFT_MAIL_CLIENT_SECRET`: Ambe Bot Mailer app registration client secret for app-only business-tenant sending
 - `MICROSOFT_GRAPH_REFRESH_TOKEN`: refresh token for delegated sending, useful for personal Outlook.com mailboxes
 - `MICROSOFT_GRAPH_SENDER_MAILBOX`: mailbox address used in the Graph `sendMail` call
 - `INTERNAL_ALERT_EMAIL_RECIPIENTS`: comma-separated internal recipient list
 
+For backwards compatibility, mail still falls back to the existing `MICROSOFT_GRAPH_TENANT_ID`, `MICROSOFT_GRAPH_CLIENT_ID`, and `MICROSOFT_GRAPH_CLIENT_SECRET` variables if `MICROSOFT_MAIL_*` is not set.
+
 If email alerts are not configured, preview routes still work and send routes fail safely with a clear error.
 
-For a personal Outlook.com mailbox, register the app for personal Microsoft accounts, enable public client flows, obtain a delegated refresh token, set `MICROSOFT_GRAPH_TENANT_ID=consumers`, and leave `MICROSOFT_GRAPH_CLIENT_SECRET` empty. A helper command is available:
+For a personal Outlook.com mailbox, register the Ambe Bot Mailer app for personal Microsoft accounts, enable public client flows, obtain a delegated refresh token, set `MICROSOFT_MAIL_TENANT_ID=consumers`, and leave `MICROSOFT_MAIL_CLIENT_SECRET` empty. A helper command is available:
 
 ```bash
 pnpm --filter @ambe/api email:device-code
@@ -699,6 +701,20 @@ That command prints a device-code sign-in prompt and returns a `MICROSOFT_GRAPH_
 The device-code helper requests delegated Microsoft Graph `Mail.ReadWrite` and `Mail.Send` so the same refresh token can support both inbox polling and the existing outbound email flow.
 
 For direct inbox polling with a business mailbox, also grant Microsoft Graph `Application` permission `Mail.ReadWrite` and admin consent in the same tenant.
+
+## Microsoft Drive Storage App
+
+Account-opening archive and completed draft uploads use a separate Microsoft Graph app registration from email. Configure the Ambe Bot SharePoint Upload app for storage checks and uploads:
+
+```bash
+MICROSOFT_STORAGE_TENANT_ID=
+MICROSOFT_STORAGE_CLIENT_ID=
+MICROSOFT_STORAGE_CLIENT_SECRET=
+```
+
+The storage app needs Microsoft Graph `Application` permissions `Sites.ReadWrite.All` and `Files.ReadWrite.All`, and admin consent must be granted. Do not use the Ambe Bot Mailer client ID for SharePoint upload checks.
+
+If the new `MICROSOFT_STORAGE_*` values are missing, storage code falls back to the legacy generic `MICROSOFT_TENANT_ID`, `MICROSOFT_CLIENT_ID`, and `MICROSOFT_CLIENT_SECRET` values. Email code does not use those generic storage fallback values.
 
 ### Email Behavior
 

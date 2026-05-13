@@ -8,19 +8,24 @@ const repoRoot = path.resolve(apiRoot, '..', '..');
 dotenv.config({ path: path.join(apiRoot, '.env'), override: false });
 dotenv.config({ path: path.join(repoRoot, '.env'), override: false });
 
-function requiredEnv(name: string): string {
-  const value = process.env[name]?.trim();
+function readEnv(...names: string[]): string {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
 
-  if (!value) {
-    throw new Error(`Missing required env var: ${name}`);
+    if (value) {
+      return value;
+    }
   }
 
-  return value;
+  throw new Error(`Missing required env var: ${names.join(' or ')}`);
 }
 
 async function main() {
-  const clientId = requiredEnv('MICROSOFT_GRAPH_CLIENT_ID');
-  const tenantId = process.env.MICROSOFT_GRAPH_TENANT_ID?.trim() || 'consumers';
+  const clientId = readEnv('MICROSOFT_MAIL_CLIENT_ID', 'MICROSOFT_GRAPH_CLIENT_ID');
+  const tenantId =
+    process.env.MICROSOFT_MAIL_TENANT_ID?.trim() ||
+    process.env.MICROSOFT_GRAPH_TENANT_ID?.trim() ||
+    'consumers';
   const deviceCodeUrl = `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/devicecode`;
   const tokenUrl = `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`;
 

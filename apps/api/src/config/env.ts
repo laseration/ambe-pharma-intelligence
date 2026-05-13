@@ -10,6 +10,13 @@ dotenv.config({ path: path.join(repoRoot, '.env'), override: false });
 
 type NodeEnv = 'development' | 'test' | 'production';
 type OpportunityBusinessMode = 'STOCKHOLDING' | 'TRADING';
+type AccountOpeningStorageProvider = 'SHAREPOINT' | 'ONEDRIVE';
+export type MicrosoftGraphCredentialSource =
+  | 'mail-specific'
+  | 'storage-specific'
+  | 'legacy-graph'
+  | 'generic-fallback'
+  | 'missing';
 
 const DEFAULT_EMAIL_INBOUND_INTERNAL_DOMAINS = ['ambemedical.com'];
 const DEFAULT_EMAIL_INBOUND_INTERNAL_COMPANY_NAMES = [
@@ -21,6 +28,20 @@ const DEFAULT_EMAIL_INBOUND_INTERNAL_COMPANY_NAMES = [
 
 function readString(value: string | undefined, fallback: string): string {
   return value?.trim() || fallback;
+}
+
+export function buildMicrosoftDriveWorkflowFolder(
+  rootFolder: string | undefined,
+  explicitFolder: string | undefined,
+  workflowName: string,
+): string {
+  const explicit = explicitFolder?.trim();
+
+  if (explicit) {
+    return explicit;
+  }
+
+  return `${readString(rootFolder, 'AI BOT FOLDER')}/${workflowName}`;
 }
 
 function readPort(value: string | undefined, fallback: number): number {
@@ -61,6 +82,16 @@ function readOpportunityBusinessMode(value: string | undefined): OpportunityBusi
   return 'TRADING';
 }
 
+function readAccountOpeningStorageProvider(value: string | undefined): AccountOpeningStorageProvider {
+  const trimmed = value?.trim().toUpperCase();
+
+  if (trimmed === 'ONEDRIVE') {
+    return 'ONEDRIVE';
+  }
+
+  return 'SHAREPOINT';
+}
+
 function readDatabaseHost(value: string | undefined): string | null {
   const trimmed = value?.trim();
 
@@ -84,6 +115,81 @@ function readIdList(value: string | undefined): string[] {
 
 function readStringListWithDefaults(value: string | undefined, defaults: string[]): string[] {
   return Array.from(new Set([...defaults, ...readIdList(value)]));
+}
+
+function hasAnyValue(...values: Array<string | undefined>): boolean {
+  return values.some((value) => Boolean(value?.trim()));
+}
+
+type MicrosoftGraphCredentials = {
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+  source: MicrosoftGraphCredentialSource;
+};
+
+export function resolveMicrosoftMailGraphCredentials(
+  source: NodeJS.ProcessEnv = process.env,
+): MicrosoftGraphCredentials {
+  const hasMailSpecific = hasAnyValue(
+    source.MICROSOFT_MAIL_TENANT_ID,
+    source.MICROSOFT_MAIL_CLIENT_ID,
+    source.MICROSOFT_MAIL_CLIENT_SECRET,
+  );
+
+  if (hasMailSpecific) {
+    return {
+      tenantId: source.MICROSOFT_MAIL_TENANT_ID?.trim() || '',
+      clientId: source.MICROSOFT_MAIL_CLIENT_ID?.trim() || '',
+      clientSecret: source.MICROSOFT_MAIL_CLIENT_SECRET?.trim() || '',
+      source: 'mail-specific',
+    };
+  }
+
+  const hasLegacyGraph = hasAnyValue(
+    source.MICROSOFT_GRAPH_TENANT_ID,
+    source.MICROSOFT_GRAPH_CLIENT_ID,
+    source.MICROSOFT_GRAPH_CLIENT_SECRET,
+  );
+
+  return {
+    tenantId: source.MICROSOFT_GRAPH_TENANT_ID?.trim() || '',
+    clientId: source.MICROSOFT_GRAPH_CLIENT_ID?.trim() || '',
+    clientSecret: source.MICROSOFT_GRAPH_CLIENT_SECRET?.trim() || '',
+    source: hasLegacyGraph ? 'legacy-graph' : 'missing',
+  };
+}
+
+export function resolveMicrosoftStorageGraphCredentials(
+  source: NodeJS.ProcessEnv = process.env,
+): MicrosoftGraphCredentials {
+  const hasStorageSpecific = hasAnyValue(
+    source.MICROSOFT_STORAGE_TENANT_ID,
+    source.MICROSOFT_STORAGE_CLIENT_ID,
+    source.MICROSOFT_STORAGE_CLIENT_SECRET,
+  );
+
+  if (hasStorageSpecific) {
+    return {
+      tenantId: source.MICROSOFT_STORAGE_TENANT_ID?.trim() || '',
+      clientId: source.MICROSOFT_STORAGE_CLIENT_ID?.trim() || '',
+      clientSecret: source.MICROSOFT_STORAGE_CLIENT_SECRET?.trim() || '',
+      source: 'storage-specific',
+    };
+  }
+
+  const hasGenericFallback = hasAnyValue(
+    source.MICROSOFT_TENANT_ID,
+    source.MICROSOFT_CLIENT_ID,
+    source.MICROSOFT_CLIENT_SECRET,
+  );
+
+  return {
+    tenantId: source.MICROSOFT_TENANT_ID?.trim() || '',
+    clientId: source.MICROSOFT_CLIENT_ID?.trim() || '',
+    clientSecret: source.MICROSOFT_CLIENT_SECRET?.trim() || '',
+    source: hasGenericFallback ? 'generic-fallback' : 'missing',
+  };
 }
 
 function readEmailInboundSupplierMappings(value: string | undefined) {
@@ -114,6 +220,9 @@ function readEmailInboundSupplierMappings(value: string | undefined) {
     });
 }
 
+const microsoftMailGraphCredentials = resolveMicrosoftMailGraphCredentials();
+const microsoftStorageGraphCredentials = resolveMicrosoftStorageGraphCredentials();
+
 export const env = {
   nodeEnv: readNodeEnv(process.env.NODE_ENV),
   port: readPort(process.env.PORT, 4000),
@@ -134,18 +243,17 @@ export const env = {
   telegramAllowedUserIds: readIdList(process.env.TELEGRAM_ALLOWED_USER_IDS),
   telegramAllowedChatIds: readIdList(process.env.TELEGRAM_ALLOWED_CHAT_IDS),
   emailAlertsEnabled: readBoolean(process.env.EMAIL_ALERTS_ENABLED, false),
-  microsoftGraphTenantId:
-    process.env.MICROSOFT_GRAPH_TENANT_ID?.trim() ||
-    process.env.MICROSOFT_TENANT_ID?.trim() ||
-    '',
-  microsoftGraphClientId:
-    process.env.MICROSOFT_GRAPH_CLIENT_ID?.trim() ||
-    process.env.MICROSOFT_CLIENT_ID?.trim() ||
-    '',
-  microsoftGraphClientSecret:
-    process.env.MICROSOFT_GRAPH_CLIENT_SECRET?.trim() ||
-    process.env.MICROSOFT_CLIENT_SECRET?.trim() ||
-    '',
+  microsoftMailTenantId: microsoftMailGraphCredentials.tenantId,
+  microsoftMailClientId: microsoftMailGraphCredentials.clientId,
+  microsoftMailClientSecret: microsoftMailGraphCredentials.clientSecret,
+  microsoftMailCredentialSource: microsoftMailGraphCredentials.source,
+  microsoftStorageTenantId: microsoftStorageGraphCredentials.tenantId,
+  microsoftStorageClientId: microsoftStorageGraphCredentials.clientId,
+  microsoftStorageClientSecret: microsoftStorageGraphCredentials.clientSecret,
+  microsoftStorageCredentialSource: microsoftStorageGraphCredentials.source,
+  microsoftGraphTenantId: microsoftMailGraphCredentials.tenantId,
+  microsoftGraphClientId: microsoftMailGraphCredentials.clientId,
+  microsoftGraphClientSecret: microsoftMailGraphCredentials.clientSecret,
   microsoftGraphRefreshToken: process.env.MICROSOFT_GRAPH_REFRESH_TOKEN?.trim() || '',
   microsoftGraphSenderMailbox: process.env.MICROSOFT_GRAPH_SENDER_MAILBOX?.trim() || '',
   internalAlertEmailRecipients: readIdList(process.env.INTERNAL_ALERT_EMAIL_RECIPIENTS),
@@ -153,9 +261,48 @@ export const env = {
     process.env.SHAREPOINT_ACCOUNT_OPENING_ENABLED,
     false,
   ),
+  accountOpeningStorageProvider: readAccountOpeningStorageProvider(
+    process.env.ACCOUNT_OPENING_STORAGE_PROVIDER,
+  ),
   sharePointSiteId: process.env.SHAREPOINT_SITE_ID?.trim() || '',
   sharePointDriveId: process.env.SHAREPOINT_DRIVE_ID?.trim() || '',
-  sharePointAccountOpeningFolder: process.env.SHAREPOINT_ACCOUNT_OPENING_FOLDER?.trim() || '',
+  microsoftDriveRootFolder: process.env.MICROSOFT_DRIVE_ROOT_FOLDER?.trim() || 'AI BOT FOLDER',
+  sharePointAccountOpeningFolder: buildMicrosoftDriveWorkflowFolder(
+    process.env.MICROSOFT_DRIVE_ROOT_FOLDER,
+    process.env.SHAREPOINT_ACCOUNT_OPENING_FOLDER,
+    'Account Opening',
+  ),
+  oneDriveAccountOpeningEnabled: readBoolean(
+    process.env.ONEDRIVE_ACCOUNT_OPENING_ENABLED,
+    false,
+  ),
+  oneDriveUserId: process.env.ONEDRIVE_USER_ID?.trim() || '',
+  oneDriveDriveId: process.env.ONEDRIVE_DRIVE_ID?.trim() || '',
+  oneDriveAccountOpeningFolder: buildMicrosoftDriveWorkflowFolder(
+    process.env.MICROSOFT_DRIVE_ROOT_FOLDER,
+    process.env.ONEDRIVE_ACCOUNT_OPENING_FOLDER,
+    'Account Opening',
+  ),
+  oneDrivePriceListFolder: buildMicrosoftDriveWorkflowFolder(
+    process.env.MICROSOFT_DRIVE_ROOT_FOLDER,
+    process.env.ONEDRIVE_PRICE_LIST_FOLDER,
+    'Price Lists',
+  ),
+  oneDrivePurchaseOrderFolder: buildMicrosoftDriveWorkflowFolder(
+    process.env.MICROSOFT_DRIVE_ROOT_FOLDER,
+    process.env.ONEDRIVE_PURCHASE_ORDER_FOLDER,
+    'Purchase Orders',
+  ),
+  oneDriveRegulatoryFolder: buildMicrosoftDriveWorkflowFolder(
+    process.env.MICROSOFT_DRIVE_ROOT_FOLDER,
+    process.env.ONEDRIVE_REGULATORY_FOLDER,
+    'Regulatory',
+  ),
+  oneDriveReportsFolder: buildMicrosoftDriveWorkflowFolder(
+    process.env.MICROSOFT_DRIVE_ROOT_FOLDER,
+    process.env.ONEDRIVE_REPORTS_FOLDER,
+    'Reports',
+  ),
   emailInboundPollingEnabled: readBoolean(process.env.EMAIL_INBOUND_POLLING_ENABLED, false),
   emailInboundPollingIntervalMs: readPort(process.env.EMAIL_INBOUND_POLLING_INTERVAL_MS, 30000),
   emailInboundAllowedSenders: readIdList(process.env.EMAIL_INBOUND_ALLOWED_SENDERS),
