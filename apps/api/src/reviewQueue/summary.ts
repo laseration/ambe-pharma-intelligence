@@ -14,6 +14,17 @@ type ReviewSummaryInput = {
   hasUnresolvedSupplier?: boolean;
   hasConflictingSupplierCues?: boolean;
   hasManufacturerAmbiguity?: boolean;
+  accountOpeningCase?: {
+    extractedTextSummary: string;
+    riskFlags: string[];
+    missingFields: string[];
+    signingSummary: {
+      detectedNames: string[];
+      detectedSignatureRoles: string[];
+      signingExplanation: string;
+      escalationNotes: string[];
+    };
+  } | null;
 };
 
 export type ReviewSummary = {
@@ -28,6 +39,7 @@ const REVIEW_STATUSES = new Set([
   'REVIEW_REQUIRED',
   'FAILED',
   'NEW',
+  'PENDING_REVIEW',
   'IN_REVIEW',
   'NEEDS_INFO',
   'APPROVED_TO_BUY',
@@ -212,6 +224,12 @@ function humanizeImportType(importType: string | null): string | null {
 }
 
 function buildRecognizedContent(input: ReviewSummaryInput): string {
+  if (input.accountOpeningCase) {
+    return ['Account opening form detected.', input.accountOpeningCase.extractedTextSummary]
+      .filter((part): part is string => Boolean(part))
+      .join(' ');
+  }
+
   if (input.parsedLineCount && input.parsedLineCount > 0) {
     return `Structured price text with ${input.parsedLineCount} parsed line${input.parsedLineCount === 1 ? '' : 's'}.`;
   }
@@ -247,6 +265,32 @@ function buildRecognizedContent(input: ReviewSummaryInput): string {
 export function buildReviewSummary(input: ReviewSummaryInput): ReviewSummary | null {
   if (!REVIEW_STATUSES.has(input.processingStatus)) {
     return null;
+  }
+
+  if (input.accountOpeningCase) {
+    const riskText =
+      input.accountOpeningCase.riskFlags.length > 0
+        ? `Risk flags: ${input.accountOpeningCase.riskFlags.join(', ')}.`
+        : 'No high-risk account-opening wording was detected.';
+    const missingText =
+      input.accountOpeningCase.missingFields.length > 0
+        ? `Missing or unclear: ${input.accountOpeningCase.missingFields.join(', ')}.`
+        : 'No missing required fields were detected.';
+    const detectedNamesText =
+      input.accountOpeningCase.signingSummary.detectedNames.length > 0
+        ? `Detected names: ${input.accountOpeningCase.signingSummary.detectedNames.join(', ')}.`
+        : 'Detected names: none.';
+    const detectedRolesText =
+      input.accountOpeningCase.signingSummary.detectedSignatureRoles.length > 0
+        ? `Detected roles/sections: ${input.accountOpeningCase.signingSummary.detectedSignatureRoles.join(', ')}.`
+        : 'Detected roles/sections: none.';
+
+    return {
+      reviewReason: 'Account opening form detected',
+      recognizedContent: buildRecognizedContent(input),
+      missingOrUnclear: `${riskText} ${missingText}`,
+      suggestedAction: `Recommended signer: Aman Dhillon. ${input.accountOpeningCase.signingSummary.signingExplanation} ${detectedNamesText} ${detectedRolesText} Review the form pack before any completion, signing, submission, or reply.`,
+    };
   }
 
   if (input.processingStatus === 'FAILED') {
