@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createReviewQueueService } from '../service';
+import { createReviewQueueService as createReviewQueueServiceBase } from '../service';
+
+type ReviewQueueServiceOverrides = NonNullable<Parameters<typeof createReviewQueueServiceBase>[0]>;
+
+function createReviewQueueService(overrides: ReviewQueueServiceOverrides) {
+  return createReviewQueueServiceBase({
+    listAccountOpeningCases: async () => [],
+    ...overrides,
+  });
+}
 
 test('review queue includes Telegram review items', async () => {
   const service = createReviewQueueService({

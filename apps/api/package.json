@@ -12,6 +12,7 @@
     "test": "tsx --test src/**/*.test.ts",
     "telegram:replay": "tsx scripts/replay-telegram-fixture.ts",
     "email:device-code": "tsx scripts/microsoft-device-code.ts",
+    "account-opening:test-case": "tsx src/scripts/createAccountOpeningTestCase.ts",
     "microsoft-drive:check": "tsx src/scripts/checkMicrosoftDriveAccess.ts",
     "sharepoint:check": "tsx src/scripts/checkSharePointAccess.ts",
     "db:generate": "prisma generate",
