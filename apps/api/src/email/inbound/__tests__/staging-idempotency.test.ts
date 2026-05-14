@@ -926,6 +926,7 @@ test('specific promotion review reason carries through workflow and parent email
   const reviewQueueService = createReviewQueueService({
     listTelegramInboundItems: async () => [],
     listEmailReviewItems: () => [],
+    listAccountOpeningCases: async () => [],
     listEmailDerivedOfferItems: async () => (await db.offerWorkflowItem.findMany({})) as never,
     getSupplierScorecardsForIds: async () => ({}),
     getTradeOpportunitiesForOfferIds: async () => ({}),
@@ -993,6 +994,7 @@ test('unresolved supplier review reason stays consistent across storage and queu
   const reviewQueueService = createReviewQueueService({
     listTelegramInboundItems: async () => [],
     listEmailReviewItems: () => [],
+    listAccountOpeningCases: async () => [],
     listEmailDerivedOfferItems: async () => (await db.offerWorkflowItem.findMany({})) as never,
     getSupplierScorecardsForIds: async () => ({}),
     getTradeOpportunitiesForOfferIds: async () => ({}),
@@ -1477,6 +1479,7 @@ test('weak product match review reason stays consistent across storage and queue
   const reviewQueueService = createReviewQueueService({
     listTelegramInboundItems: async () => [],
     listEmailReviewItems: () => [],
+    listAccountOpeningCases: async () => [],
     listEmailDerivedOfferItems: async () => (await db.offerWorkflowItem.findMany({})) as never,
     getSupplierScorecardsForIds: async () => ({}),
     getTradeOpportunitiesForOfferIds: async () => ({}),
