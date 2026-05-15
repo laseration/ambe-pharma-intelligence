@@ -8,9 +8,16 @@ import {
 } from '../../accountOpening/service';
 import { env } from '../../config/env';
 import { extractAttachmentText } from '../attachmentTextExtraction';
-import { parseStructuredPriceEmailBody, parseStructuredPriceText } from '../parsing';
+import {
+  parseStructuredPriceEmailBody,
+  parseStructuredPriceText,
+} from '../parsing';
 import { parseUploadedFile } from '../../imports/parsers';
-import { importInventory, importSales, importSupplierPriceList } from '../../imports/service';
+import {
+  importInventory,
+  importSales,
+  importSupplierPriceList,
+} from '../../imports/service';
 import type { ImportResponse, UploadFile } from '../../imports/types';
 import { db } from '../../lib/db';
 import { logger } from '../../lib/logger';
@@ -23,8 +30,14 @@ import {
   normalizeEmailAttachment,
   resolveSupplierNameFromSender,
 } from './helpers';
-import { listStoredEmailReviewItems, recordEmailReviewItems } from './reviewStore';
-import { scoreInboundEmailTriage, type EmailTriageParserConfidence } from './triage';
+import {
+  listStoredEmailReviewItems,
+  recordEmailReviewItems,
+} from './reviewStore';
+import {
+  scoreInboundEmailTriage,
+  type EmailTriageParserConfidence,
+} from './triage';
 import { stageInboundEmailSafely } from './pipeline';
 import type {
   EmailInboundDependencies,
@@ -35,7 +48,10 @@ import type {
   NormalizedEmailAttachment,
 } from './types';
 
-export type InboundEmailInboxStatusFilter = 'REVIEW_REQUIRED' | 'FAILED' | 'RECEIVED_ONLY';
+export type InboundEmailInboxStatusFilter =
+  | 'REVIEW_REQUIRED'
+  | 'FAILED'
+  | 'RECEIVED_ONLY';
 
 export type InboundEmailInboxListItem = {
   id: string;
@@ -60,7 +76,9 @@ export type InboundEmailInboxListItem = {
   };
 };
 
-function createUploadFile(attachment: NormalizedEmailAttachment): UploadFile | null {
+function createUploadFile(
+  attachment: NormalizedEmailAttachment,
+): UploadFile | null {
   if (!attachment.buffer) {
     return null;
   }
@@ -111,7 +129,10 @@ function mapDeterministicParserConfidence(input: {
   return input.overallConfidence ?? 'LOW';
 }
 
-function buildTriageMetadata(item: EmailInboundItemResult, triage: ReturnType<typeof scoreInboundEmailTriage>) {
+function buildTriageMetadata(
+  item: EmailInboundItemResult,
+  triage: ReturnType<typeof scoreInboundEmailTriage>,
+) {
   return {
     ...item,
     triageStatus: triage.status,
@@ -145,18 +166,64 @@ function buildAccountOpeningReviewItem(input: {
   matchedTerms: string[];
 }): EmailInboundItemResult {
   const firstAttachment = input.attachments[0] ?? null;
-  const firstExtractedAttachment = input.attachmentTexts.find((item) => item.text?.trim()) ?? null;
+  const firstExtractedAttachment =
+    input.attachmentTexts.find((item) => item.text?.trim()) ?? null;
   const sourceFingerprint = buildAccountOpeningSourceFingerprint({
-    messageId: input.message.messageId ?? input.message.externalMessageId ?? null,
+    messageId:
+      input.message.messageId ?? input.message.externalMessageId ?? null,
     externalMessageId: input.message.externalMessageId ?? null,
     senderEmail: input.senderEmail,
     subject: input.subject,
-    attachmentFileNames: input.attachments.map((attachment) => attachment.fileName),
+    attachmentFileNames: input.attachments.map(
+      (attachment) => attachment.fileName,
+    ),
     matchedTerms: input.matchedTerms,
   });
+  const sourceEvidence = [
+    ...(input.bodyText.trim()
+      ? [
+          {
+            sourceType: 'EMAIL_BODY' as const,
+            sourceLabel: 'Inbound email body',
+            text: input.bodyText,
+            rawFileAvailable: false,
+            metadata: {
+              messageId:
+                input.message.messageId ??
+                input.message.externalMessageId ??
+                null,
+            },
+          },
+        ]
+      : []),
+    ...input.attachments.map((attachment) => {
+      const extracted = input.attachmentTexts.find(
+        (entry) => entry.attachment === attachment,
+      );
+
+      return {
+        sourceType: 'ATTACHMENT' as const,
+        sourceLabel: attachment.fileName ?? 'Email attachment',
+        fileName: attachment.fileName,
+        mimeType: attachment.mimeType,
+        sizeBytes: attachment.size,
+        contentId: attachment.contentId,
+        disposition: attachment.disposition,
+        extractionMethod: extracted?.method ?? null,
+        text: extracted?.text ?? null,
+        rawFileAvailable: false,
+        metadata: {
+          rawBytesAvailableAtIngestion: Boolean(attachment.buffer),
+          extractionWarnings: extracted?.warnings ?? [],
+        },
+      };
+    }),
+  ];
   const accountOpeningCase = buildAccountOpeningCase({
     senderEmail: input.senderEmail,
-    senderDomain: input.senderEmail.includes('@') ? input.senderEmail.split('@').pop() ?? null : null,
+    senderDomain: input.senderEmail.includes('@')
+      ? (input.senderEmail.split('@').pop() ?? null)
+      : null,
     subject: input.subject,
     bodyText: input.bodyText,
     receivedAt: input.message.receivedAt ?? null,
@@ -164,16 +231,19 @@ function buildAccountOpeningReviewItem(input: {
     attachments: input.attachments.map((attachment) => ({
       fileName: attachment.fileName,
       extractedText:
-        input.attachmentTexts.find((entry) => entry.attachment === attachment)?.text ?? null,
+        input.attachmentTexts.find((entry) => entry.attachment === attachment)
+          ?.text ?? null,
     })),
     sourceFingerprint,
+    sourceEvidence,
   });
 
   return {
     processingStatus: 'REVIEW_REQUIRED',
     inferredImportType: null,
     confidence: 'HIGH',
-    reason: 'Account opening form detected - review required before completion/signing.',
+    reason:
+      'Account opening form detected - review required before completion/signing.',
     fileType: firstAttachment?.fileType ?? 'UNKNOWN',
     attachment: {
       fileName: firstAttachment?.fileName ?? null,
@@ -269,7 +339,9 @@ export async function listInboundEmailInboxItems(options?: {
   });
 }
 
-export function createEmailInboundService(overrides?: Partial<EmailInboundDependencies>) {
+export function createEmailInboundService(
+  overrides?: Partial<EmailInboundDependencies>,
+) {
   const dependencies: EmailInboundDependencies = {
     inferImportDecision: inferEmailImportDecision,
     importSupplierPriceList,
@@ -286,7 +358,8 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
     isTrustedSender: isAllowedEmailSender,
     emailReviewEnabled: env.openAiEmailReviewEnabled,
     emailReviewDailyLimit: env.openAiEmailReviewDailyLimit,
-    emailReviewPerSupplierDailyLimit: env.openAiEmailReviewPerSupplierDailyLimit,
+    emailReviewPerSupplierDailyLimit:
+      env.openAiEmailReviewPerSupplierDailyLimit,
     emailReviewMinBusinessScore: env.openAiEmailReviewMinBusinessScore,
     listStoredReviewItems: listStoredEmailReviewItems,
     persistAccountOpeningCase: upsertAccountOpeningCase,
@@ -295,9 +368,12 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
   };
 
   return {
-    async ingestMessage(message: EmailInboundMessage): Promise<EmailInboundResult> {
+    async ingestMessage(
+      message: EmailInboundMessage,
+    ): Promise<EmailInboundResult> {
       const senderEmail = message.from.trim().toLowerCase();
-      const trustedSender = dependencies.isTrustedSender?.(senderEmail) ?? false;
+      const trustedSender =
+        dependencies.isTrustedSender?.(senderEmail) ?? false;
       const subject = message.subject?.trim() || '';
       const bodyText = message.bodyText ?? '';
       const payloadSupplierName = message.supplierName?.trim() || undefined;
@@ -315,11 +391,16 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
         };
       }
 
-      if (!isAllowedEmailSenderForList(senderEmail, dependencies.allowedSenders)) {
-        dependencies.logger.warn('Ignored inbound email from unapproved sender', {
-          senderEmail,
-          subject,
-        });
+      if (
+        !isAllowedEmailSenderForList(senderEmail, dependencies.allowedSenders)
+      ) {
+        dependencies.logger.warn(
+          'Ignored inbound email from unapproved sender',
+          {
+            senderEmail,
+            subject,
+          },
+        );
 
         return {
           ignored: true,
@@ -355,7 +436,9 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
       const accountOpeningDetection = detectAccountOpeningEmail({
         subject,
         bodyText,
-        attachmentFileNames: normalizedAttachments.map((attachment) => attachment.fileName),
+        attachmentFileNames: normalizedAttachments.map(
+          (attachment) => attachment.fileName,
+        ),
         attachmentTexts: accountOpeningAttachmentTexts.map((item) => item.text),
       });
 
@@ -377,12 +460,15 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
           detectedFormType: accountOpeningDetection.matchedTerms[0] ?? null,
         });
         recordEmailReviewItems([accountOpeningItem]);
-        dependencies.logger.info('Inbound account opening form queued for review', {
-          senderEmail,
-          subject,
-          matchedTerms: accountOpeningDetection.matchedTerms,
-          attachmentCount: normalizedAttachments.length,
-        });
+        dependencies.logger.info(
+          'Inbound account opening form queued for review',
+          {
+            senderEmail,
+            subject,
+            matchedTerms: accountOpeningDetection.matchedTerms,
+            attachmentCount: normalizedAttachments.length,
+          },
+        );
 
         return {
           ignored: false,
@@ -395,10 +481,16 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
       const last24Hours = storedReviewItems.filter(
         (item) => now - item.updatedAt.getTime() < 24 * 60 * 60 * 1000,
       );
-      const dailyAiReviewCount = last24Hours.filter((item) => item.aiEscalated).length;
-      const senderFingerprint = senderEmail.includes('@') ? senderEmail.split('@').pop() ?? senderEmail : senderEmail;
+      const dailyAiReviewCount = last24Hours.filter(
+        (item) => item.aiEscalated,
+      ).length;
+      const senderFingerprint = senderEmail.includes('@')
+        ? (senderEmail.split('@').pop() ?? senderEmail)
+        : senderEmail;
       const perSupplierDailyAiReviewCount = last24Hours.filter(
-        (item) => item.aiEscalated && item.email.from.toLowerCase().includes(senderFingerprint),
+        (item) =>
+          item.aiEscalated &&
+          item.email.from.toLowerCase().includes(senderFingerprint),
       ).length;
       const knownSupplierEmails = dependencies.supplierMappings
         .map((mapping) => mapping.pattern.trim().toLowerCase())
@@ -406,13 +498,16 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
       const knownSupplierDomains = dependencies.supplierMappings
         .map((mapping) => mapping.pattern.trim().toLowerCase())
         .filter(Boolean)
-        .map((pattern) => (pattern.startsWith('@') ? pattern.slice(1) : pattern))
+        .map((pattern) =>
+          pattern.startsWith('@') ? pattern.slice(1) : pattern,
+        )
         .filter((pattern) => !pattern.includes('@'));
       const duplicateBodyDetected =
         bodyText.trim() !== '' &&
         last24Hours.some(
           (item) =>
-            normalizeBodyFingerprint(item.email.bodyText) === normalizeBodyFingerprint(bodyText) &&
+            normalizeBodyFingerprint(item.email.bodyText) ===
+              normalizeBodyFingerprint(bodyText) &&
             normalizeBodyFingerprint(item.email.bodyText) !== '',
         );
 
@@ -430,7 +525,8 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
           dailyAiReviewCount,
           dailyAiReviewLimit: dependencies.emailReviewDailyLimit ?? 10,
           perSupplierDailyAiReviewCount,
-          perSupplierDailyAiReviewLimit: dependencies.emailReviewPerSupplierDailyLimit ?? 2,
+          perSupplierDailyAiReviewLimit:
+            dependencies.emailReviewPerSupplierDailyLimit ?? 2,
           duplicateBodyDetected,
           parsedStructuredRowCount: deterministicBodyParse.parsedRows.length,
           parserConfidence: mapDeterministicParserConfidence({
@@ -453,14 +549,18 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
 
         const bodyItemBase: EmailInboundItemResult = {
           processingStatus:
-            triage.status === 'AI_REVIEW_ELIGIBLE' || triage.status === 'MANUAL_REVIEW_REQUIRED'
+            triage.status === 'AI_REVIEW_ELIGIBLE' ||
+            triage.status === 'MANUAL_REVIEW_REQUIRED'
               ? 'NEEDS_REVIEW'
               : triage.status === 'AUTO_PROCESSED'
                 ? 'RECEIVED'
                 : 'IGNORED',
           inferredImportType: null,
           confidence:
-            triage.parserConfidence === 'HIGH' || triage.parserConfidence === 'MEDIUM' ? 'HIGH' : 'LOW',
+            triage.parserConfidence === 'HIGH' ||
+            triage.parserConfidence === 'MEDIUM'
+              ? 'HIGH'
+              : 'LOW',
           reason: triage.reasons[0] ?? 'Email was triaged.',
           fileType: 'UNKNOWN',
           attachment: {
@@ -483,7 +583,8 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
         if (
           triage.status === 'AI_REVIEW_ELIGIBLE' &&
           (dependencies.emailReviewEnabled ?? false) &&
-          triage.businessWorthinessScore >= (dependencies.emailReviewMinBusinessScore ?? 65)
+          triage.businessWorthinessScore >=
+            (dependencies.emailReviewMinBusinessScore ?? 65)
         ) {
           const aiParsedResult = await parseStructuredPriceText(bodyText, {
             source: 'EMAIL_BODY',
@@ -494,10 +595,14 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
             aiBlockedReason:
               aiParsedResult.aiFallbackUsed === true
                 ? null
-                : aiParsedResult.aiFallbackRejectedReason ?? triage.aiBlockedReason,
+                : (aiParsedResult.aiFallbackRejectedReason ??
+                  triage.aiBlockedReason),
             reason: aiParsedResult.parsingReason ?? finalBodyItem.reason,
           };
-        } else if (triage.status === 'AI_REVIEW_ELIGIBLE' && !(dependencies.emailReviewEnabled ?? false)) {
+        } else if (
+          triage.status === 'AI_REVIEW_ELIGIBLE' &&
+          !(dependencies.emailReviewEnabled ?? false)
+        ) {
           finalBodyItem = {
             ...finalBodyItem,
             triageStatus: 'MANUAL_REVIEW_REQUIRED',
@@ -536,11 +641,11 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
         const attachmentTextParsing = attachmentTextExtraction
           ? await dependencies.parseTextMessage(attachmentTextExtraction.text)
           : null;
-        const parsedAttachment =
-          triageUploadFile
-            ? dependencies.parseUploadedFile(triageUploadFile)
-            : null;
-        const extractedParsedRowCount = attachmentTextParsing?.parsedRows.length ?? 0;
+        const parsedAttachment = triageUploadFile
+          ? dependencies.parseUploadedFile(triageUploadFile)
+          : null;
+        const extractedParsedRowCount =
+          attachmentTextParsing?.parsedRows.length ?? 0;
         const triage = scoreInboundEmailTriage({
           fromEmail: senderEmail,
           fromName: null,
@@ -555,16 +660,20 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
           dailyAiReviewCount,
           dailyAiReviewLimit: dependencies.emailReviewDailyLimit ?? 10,
           perSupplierDailyAiReviewCount,
-          perSupplierDailyAiReviewLimit: dependencies.emailReviewPerSupplierDailyLimit ?? 2,
+          perSupplierDailyAiReviewLimit:
+            dependencies.emailReviewPerSupplierDailyLimit ?? 2,
           duplicateBodyDetected,
-          parsedStructuredRowCount: parsedAttachment?.rows.length ?? extractedParsedRowCount,
+          parsedStructuredRowCount:
+            parsedAttachment?.rows.length ?? extractedParsedRowCount,
           parserConfidence: mapDeterministicParserConfidence({
-            parsedRowCount: parsedAttachment?.rows.length ?? extractedParsedRowCount,
+            parsedRowCount:
+              parsedAttachment?.rows.length ?? extractedParsedRowCount,
             overallConfidence:
               (parsedAttachment?.rows.length ?? extractedParsedRowCount) >= 3
                 ? 'HIGH'
-                : (parsedAttachment?.rows.length ?? extractedParsedRowCount) >= 1
-                  ? attachmentTextParsing?.overallConfidence ?? 'MEDIUM'
+                : (parsedAttachment?.rows.length ?? extractedParsedRowCount) >=
+                    1
+                  ? (attachmentTextParsing?.overallConfidence ?? 'MEDIUM')
                   : undefined,
           }),
         });
@@ -652,7 +761,10 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
           preventedAiReason: triage.aiBlockedReason,
         });
 
-        if (decision.processingStatus === 'REVIEW_REQUIRED' || decision.processingStatus === 'NEEDS_REVIEW') {
+        if (
+          decision.processingStatus === 'REVIEW_REQUIRED' ||
+          decision.processingStatus === 'NEEDS_REVIEW'
+        ) {
           items.push(buildTriageMetadata(baseItem, triage));
           continue;
         }
@@ -686,7 +798,8 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
           let supplierReasonSuffix = '';
 
           if (inferredImportType === 'supplier-price-list') {
-            const parsed = parsedAttachment ?? dependencies.parseUploadedFile(uploadFile);
+            const parsed =
+              parsedAttachment ?? dependencies.parseUploadedFile(uploadFile);
             const attachmentRowSupplierName = parsed.rows.find(
               (row) =>
                 Boolean(row.supplierName?.trim()) ||
@@ -699,7 +812,10 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
               attachmentRowSupplierName?.supplier?.trim() ||
               undefined;
             const supplierNameFromMapping =
-              resolveSupplierNameFromSender(senderEmail, dependencies.supplierMappings) ?? undefined;
+              resolveSupplierNameFromSender(
+                senderEmail,
+                dependencies.supplierMappings,
+              ) ?? undefined;
 
             trustedSupplierName =
               payloadSupplierName ??
@@ -757,7 +873,9 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
           });
         } catch (error) {
           const messageText =
-            error instanceof Error ? error.message : 'Inbound email attachment processing failed.';
+            error instanceof Error
+              ? error.message
+              : 'Inbound email attachment processing failed.';
 
           items.push({
             ...buildTriageMetadata(baseItem, triage),
@@ -765,13 +883,16 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
             error: messageText,
           });
 
-          dependencies.logger.error('Failed to process inbound email attachment', {
-            error: messageText,
-            senderEmail,
-            subject,
-            fileName: attachment.fileName,
-            inferredImportType: decision.inferredImportType,
-          });
+          dependencies.logger.error(
+            'Failed to process inbound email attachment',
+            {
+              error: messageText,
+              senderEmail,
+              subject,
+              fileName: attachment.fileName,
+              inferredImportType: decision.inferredImportType,
+            },
+          );
         }
       }
 
@@ -785,7 +906,9 @@ export function createEmailInboundService(overrides?: Partial<EmailInboundDepend
   };
 }
 
-export async function ingestInboundEmail(message: EmailInboundMessage): Promise<EmailInboundResult> {
+export async function ingestInboundEmail(
+  message: EmailInboundMessage,
+): Promise<EmailInboundResult> {
   const result = await createEmailInboundService().ingestMessage(message);
   await stageInboundEmailSafely(message, result);
   return result;

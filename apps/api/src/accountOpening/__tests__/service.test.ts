@@ -9,6 +9,7 @@ import {
   buildAccountOpeningSigningSummary,
   buildAccountOpeningSourceFingerprint,
   detectAccountOpeningEmail,
+  generateAccountOpeningDraft,
   sanitizeAccountOpeningMissingInfoResponses,
   saveAccountOpeningMissingInfo,
   updateAccountOpeningCaseStatus,
@@ -25,13 +26,16 @@ test('detectAccountOpeningEmail detects account-opening body and attachment name
 
   assert.equal(result.detected, true);
   assert.ok(result.matchedTerms.includes('new account form'));
-  assert.ok(result.matchedAttachmentNames.includes('AMBE account opening form.pdf'));
+  assert.ok(
+    result.matchedAttachmentNames.includes('AMBE account opening form.pdf'),
+  );
 });
 
 test('detectAccountOpeningEmail does not classify normal supplier price lists', () => {
   const result = detectAccountOpeningEmail({
     subject: 'May supplier price list',
-    bodyText: 'Please find our wholesale price list attached. Amlodipine 5mg tablets GBP 1.20.',
+    bodyText:
+      'Please find our wholesale price list attached. Amlodipine 5mg tablets GBP 1.20.',
     attachmentFileNames: ['supplier-price-list-may.xlsx'],
   });
 
@@ -41,7 +45,8 @@ test('detectAccountOpeningEmail does not classify normal supplier price lists', 
 test('detectAccountOpeningEmail does not classify invoices or account statements', () => {
   const invoiceResult = detectAccountOpeningEmail({
     subject: 'Invoice and statement',
-    bodyText: 'Attached invoice, delivery note and wholesale account statement for your records.',
+    bodyText:
+      'Attached invoice, delivery note and wholesale account statement for your records.',
     attachmentFileNames: ['invoice-1044.pdf', 'account-statement.pdf'],
   });
   const orderResult = detectAccountOpeningEmail({
@@ -59,7 +64,8 @@ test('account-opening case flags direct debit and guarantee wording', () => {
     senderEmail: 'forms@supplier.co.uk',
     senderDomain: 'supplier.co.uk',
     subject: 'Credit account application',
-    bodyText: 'Please complete the Direct Debit mandate and personal guarantee section.',
+    bodyText:
+      'Please complete the Direct Debit mandate and personal guarantee section.',
     receivedAt: new Date('2026-05-12T10:00:00.000Z'),
     attachments: [],
   });
@@ -68,7 +74,9 @@ test('account-opening case flags direct debit and guarantee wording', () => {
   assert.equal(accountCase.structuredFields.guaranteeDetected, true);
   assert.ok(accountCase.riskFlags.includes('Direct Debit mandate'));
   assert.ok(accountCase.riskFlags.includes('Personal guarantee'));
-  assert.ok(accountCase.signingNotes.riskFlags.includes('Direct Debit mandate'));
+  assert.ok(
+    accountCase.signingNotes.riskFlags.includes('Direct Debit mandate'),
+  );
   assert.ok(accountCase.signingNotes.riskFlags.includes('Personal guarantee'));
 });
 
@@ -82,14 +90,32 @@ test('signer recommendation keeps Aman as default and explains director/regulato
   assert.ok(summary.detectedNames.includes('Sandeep Patel'));
   assert.ok(summary.detectedNames.includes('Dilshad Moulana'));
   assert.ok(summary.detectedSignatureRoles.includes('Director'));
-  assert.ok(summary.signingExplanation.includes('Aman Dhillon can sign this account-opening form by default.'));
-  assert.ok(summary.escalationNotes.some((note) => note.includes('director-only signature')));
-  assert.ok(summary.escalationNotes.some((note) => note.includes('regulatory/RP wording')));
-  assert.ok(summary.escalationNotes.some((note) => note.includes('High-risk section detected')));
+  assert.ok(
+    summary.signingExplanation.includes(
+      'Aman Dhillon can sign this account-opening form by default.',
+    ),
+  );
+  assert.ok(
+    summary.escalationNotes.some((note) =>
+      note.includes('director-only signature'),
+    ),
+  );
+  assert.ok(
+    summary.escalationNotes.some((note) =>
+      note.includes('regulatory/RP wording'),
+    ),
+  );
+  assert.ok(
+    summary.escalationNotes.some((note) =>
+      note.includes('High-risk section detected'),
+    ),
+  );
 });
 
 test('Director wording keeps Aman as default signer with director-only escalation note', () => {
-  const summary = buildAccountOpeningSigningSummary('Director signature box for the account opening form.');
+  const summary = buildAccountOpeningSigningSummary(
+    'Director signature box for the account opening form.',
+  );
   const notes = buildAccountOpeningSigningNotes({
     signingSummary: summary,
     riskFlags: ['Guarantee'],
@@ -98,14 +124,27 @@ test('Director wording keeps Aman as default signer with director-only escalatio
 
   assert.equal(summary.defaultSigner, 'Aman Dhillon');
   assert.equal(summary.canAmanSign, true);
-  assert.match(summary.signingExplanation, /Aman Dhillon can sign this account-opening form by default/);
-  assert.ok(summary.escalationNotes.some((note) => note.includes('director-only signature')));
+  assert.match(
+    summary.signingExplanation,
+    /Aman Dhillon can sign this account-opening form by default/,
+  );
+  assert.ok(
+    summary.escalationNotes.some((note) =>
+      note.includes('director-only signature'),
+    ),
+  );
   assert.equal(notes.recommendedSigner, 'Aman Dhillon');
-  assert.ok(notes.reviewerChecks.some((check) => check.includes('director-only signature')));
+  assert.ok(
+    notes.reviewerChecks.some((check) =>
+      check.includes('director-only signature'),
+    ),
+  );
 });
 
 test('RP GDP WDA wording keeps Aman as default signer with regulatory check note', () => {
-  const summary = buildAccountOpeningSigningSummary('Responsible Person RP GDP WDA declaration.');
+  const summary = buildAccountOpeningSigningSummary(
+    'Responsible Person RP GDP WDA declaration.',
+  );
   const notes = buildAccountOpeningSigningNotes({
     signingSummary: summary,
     riskFlags: ['RP/GDP/WDA regulatory declaration'],
@@ -114,9 +153,20 @@ test('RP GDP WDA wording keeps Aman as default signer with regulatory check note
 
   assert.equal(summary.defaultSigner, 'Aman Dhillon');
   assert.equal(summary.canAmanSign, true);
-  assert.match(summary.signingExplanation, /Aman Dhillon can sign this account-opening form by default/);
-  assert.ok(summary.escalationNotes.some((note) => note.includes('regulatory/RP wording')));
-  assert.ok(notes.reviewerChecks.some((check) => check.includes('regulatory/RP wording')));
+  assert.match(
+    summary.signingExplanation,
+    /Aman Dhillon can sign this account-opening form by default/,
+  );
+  assert.ok(
+    summary.escalationNotes.some((note) =>
+      note.includes('regulatory/RP wording'),
+    ),
+  );
+  assert.ok(
+    notes.reviewerChecks.some((check) =>
+      check.includes('regulatory/RP wording'),
+    ),
+  );
 });
 
 test('unknown account-opening fields remain To be confirmed', () => {
@@ -134,7 +184,9 @@ test('unknown account-opening fields remain To be confirmed', () => {
   assert.equal(accountCase.structuredFields.vatNumber, 'To be confirmed');
   assert.ok(accountCase.missingFields.includes('companyNumber'));
   assert.ok(accountCase.missingFields.includes('registeredAddress'));
-  assert.ok(accountCase.signingNotes.missingOrUnclear.includes('companyNumber'));
+  assert.ok(
+    accountCase.signingNotes.missingOrUnclear.includes('companyNumber'),
+  );
 });
 
 test('ordinary account-opening form generates signing notes', () => {
@@ -152,7 +204,10 @@ test('ordinary account-opening form generates signing notes', () => {
     accountCase.signingNotes.defaultSigningStatement,
     'Aman Dhillon can sign this account-opening form by default.',
   );
-  assert.match(accountCase.signingNotes.summary, /Leave signature fields blank/);
+  assert.match(
+    accountCase.signingNotes.summary,
+    /Leave signature fields blank/,
+  );
 });
 
 test('Direct Debit bank authority and guarantee wording appear in signing note risk flags', () => {
@@ -160,12 +215,17 @@ test('Direct Debit bank authority and guarantee wording appear in signing note r
     senderEmail: 'forms@supplier.co.uk',
     senderDomain: 'supplier.co.uk',
     subject: 'Account opening form',
-    bodyText: 'Direct Debit mandate, bank authority signature, guarantee and indemnity sections apply.',
+    bodyText:
+      'Direct Debit mandate, bank authority signature, guarantee and indemnity sections apply.',
     attachments: [],
   });
 
-  assert.ok(accountCase.signingNotes.riskFlags.includes('Direct Debit mandate'));
-  assert.ok(accountCase.signingNotes.riskFlags.includes('bank authority signature'));
+  assert.ok(
+    accountCase.signingNotes.riskFlags.includes('Direct Debit mandate'),
+  );
+  assert.ok(
+    accountCase.signingNotes.riskFlags.includes('bank authority signature'),
+  );
   assert.ok(accountCase.signingNotes.riskFlags.includes('Guarantee'));
   assert.ok(accountCase.signingNotes.riskFlags.includes('indemnity'));
 });
@@ -250,14 +310,20 @@ function buildPersistedAccountOpeningCase(
     detectedFormType: 'account opening form',
     status: 'PENDING_REVIEW',
     recommendedSigner: 'Aman Dhillon',
-    signingStatement: 'Aman Dhillon can sign this account-opening form by default.',
-    signingExplanation: 'Aman Dhillon can sign this account-opening form by default.',
+    signingStatement:
+      'Aman Dhillon can sign this account-opening form by default.',
+    signingExplanation:
+      'Aman Dhillon can sign this account-opening form by default.',
     detectedNames: ['Sandeep Patel'],
     detectedRoles: ['Director', 'Direct Debit', 'bank authority'],
     escalationNotes: [
       'The form mentions Director/Sandeep Patel. Reviewer should confirm the supplier does not specifically require a director-only signature.',
     ],
-    riskFlags: ['Direct Debit mandate', 'bank authority signature', 'Guarantee'],
+    riskFlags: [
+      'Direct Debit mandate',
+      'bank authority signature',
+      'Guarantee',
+    ],
     missingFields: ['companyNumber', 'vatNumber'],
     reviewerChecks: [
       'Check whether the supplier specifically requires a director-only signature.',
@@ -266,40 +332,56 @@ function buildPersistedAccountOpeningCase(
     signingNotes: {
       title: 'Account opening signing notes',
       recommendedSigner: 'Aman Dhillon',
-      defaultSigningStatement: 'Aman Dhillon can sign this account-opening form by default.',
+      defaultSigningStatement:
+        'Aman Dhillon can sign this account-opening form by default.',
       detectedNames: ['Sandeep Patel'],
       detectedRolesOrSections: ['Director', 'Direct Debit', 'bank authority'],
       reviewerChecks: [
         'Check whether the supplier specifically requires a director-only signature.',
         'Leave all signature fields blank unless a human reviewer approves signing.',
       ],
-      riskFlags: ['Direct Debit mandate', 'bank authority signature', 'Guarantee'],
+      riskFlags: [
+        'Direct Debit mandate',
+        'bank authority signature',
+        'Guarantee',
+      ],
       missingOrUnclear: ['companyNumber', 'vatNumber'],
-      signatureInstruction: 'Leave signature fields blank until approved by a human reviewer.',
+      signatureInstruction:
+        'Leave signature fields blank until approved by a human reviewer.',
       summary:
         'Recommended signer: Aman Dhillon. Aman Dhillon can sign this account-opening form by default. Leave signature fields blank until approved by a human reviewer.',
     },
     missingInfoResponses: {},
-    extractedTextSummary: 'Extracted account-opening text from email body (40 chars).',
+    extractedTextSummary:
+      'Extracted account-opening text from email body (40 chars).',
     storageStatus: null,
     storageNote: null,
     storageSkippedReason: null,
     storageLastAttemptAt: null,
     storageFolderUrl: null,
     sourceAttachmentNames: ['account-opening-form.pdf'],
+    draftStatus: null,
+    draftVersion: null,
+    draftGeneratedAt: null,
+    draftJson: null,
+    draftSummary: null,
     createdAt: new Date('2026-05-12T09:00:00.000Z'),
     updatedAt: new Date('2026-05-12T09:00:00.000Z'),
     ...overrides,
   };
 }
 
-function createAccountOpeningRepository(initial: PersistedAccountOpeningReviewCase) {
+function createAccountOpeningRepository(
+  initial: PersistedAccountOpeningReviewCase,
+) {
   let current = initial;
   const events: unknown[] = [];
   const repository: AccountOpeningCaseRepository = {
     findUnique: async () => current,
     update: async (args: unknown) => {
-      const data = (args as { data?: Partial<PersistedAccountOpeningReviewCase> }).data ?? {};
+      const data =
+        (args as { data?: Partial<PersistedAccountOpeningReviewCase> }).data ??
+        {};
       current = {
         ...current,
         ...data,
@@ -323,11 +405,15 @@ function createAccountOpeningRepository(initial: PersistedAccountOpeningReviewCa
 test('missing-info responses are sanitized before dashboard display', () => {
   const responses = sanitizeAccountOpeningMissingInfoResponses({
     website: 'https://supplier.example',
-    reviewerNotes: 'Account number 12345678 and sort code 12-34-56 were on the mandate.',
+    reviewerNotes:
+      'Account number 12345678 and sort code 12-34-56 were on the mandate.',
   });
 
   assert.equal(responses.website, 'https://supplier.example');
-  assert.match(responses.reviewerNotes ?? '', /\[redacted bank account number\]/);
+  assert.match(
+    responses.reviewerNotes ?? '',
+    /\[redacted bank account number\]/,
+  );
   assert.match(responses.reviewerNotes ?? '', /\[redacted sort code\]/);
   assert.doesNotMatch(JSON.stringify(responses), /12345678/);
   assert.doesNotMatch(JSON.stringify(responses), /12-34-56/);
@@ -339,12 +425,17 @@ test('account-opening detail exposes safe structured fields and signing notes', 
       missingInfoResponses: {
         reviewerNotes: 'Sort code 12-34-56. Account number 12345678.',
       },
-      sourceAttachmentNames: ['bank-mandate-account-12345678-sort-12-34-56.pdf'],
+      sourceAttachmentNames: [
+        'bank-mandate-account-12345678-sort-12-34-56.pdf',
+      ],
     }),
   );
   const dashboardText = JSON.stringify(detail);
 
-  assert.equal(detail.signingNotes.defaultSigningStatement, 'Aman Dhillon can sign this account-opening form by default.');
+  assert.equal(
+    detail.signingNotes.defaultSigningStatement,
+    'Aman Dhillon can sign this account-opening form by default.',
+  );
   assert.ok(detail.detectedNames.includes('Sandeep Patel'));
   assert.ok(detail.detectedRoles.includes('Director'));
   assert.ok(detail.riskFlags.includes('Direct Debit mandate'));
@@ -353,7 +444,9 @@ test('account-opening detail exposes safe structured fields and signing notes', 
 });
 
 test('saving missing info persists responses and records an audit event', async () => {
-  const { repository, events, getCurrent } = createAccountOpeningRepository(buildPersistedAccountOpeningCase());
+  const { repository, events, getCurrent } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase(),
+  );
 
   const detail = await saveAccountOpeningMissingInfo({
     id: 'account-case-1',
@@ -370,13 +463,100 @@ test('saving missing info persists responses and records an audit event', async 
   assert.equal(detail.missingInfoResponses.website, 'https://supplier.example');
   assert.equal(detail.missingInfoResponses.businessHours, '9am to 5pm');
   assert.doesNotMatch(JSON.stringify(detail.missingInfoResponses), /12345678/);
-  assert.equal((events[0] as { actionType?: string }).actionType, 'MISSING_INFO_SAVED');
-  assert.equal((events[0] as { previousStatus?: string }).previousStatus, 'PENDING_REVIEW');
+  assert.equal(
+    (events[0] as { actionType?: string }).actionType,
+    'MISSING_INFO_SAVED',
+  );
+  assert.equal(
+    (events[0] as { previousStatus?: string }).previousStatus,
+    'PENDING_REVIEW',
+  );
   assert.equal(getCurrent().status, 'PENDING_REVIEW');
 });
 
+test('generate draft stores safe draft metadata and records review audit events', async () => {
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      missingInfoResponses: {
+        reviewerNotes: 'Account number 12345678 and sort code 12-34-56.',
+      },
+      sourceEvidence: [
+        {
+          id: 'evidence-1',
+          sourceType: 'ATTACHMENT',
+          sourceLabel: 'account-form.pdf',
+          fileName: 'account-form.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
+          contentId: null,
+          disposition: 'attachment',
+          extractionMethod: 'PDF_TEXT',
+          extractedTextHash: 'hash-1',
+          extractedTextChars: 80,
+          safeSnippet:
+            'Direct Debit mandate with [redacted bank account number] and [redacted sort code].',
+          rawFileAvailable: false,
+          storageProvider: null,
+          storageFolderUrl: null,
+          storageFileUrl: null,
+          storageDriveItemId: null,
+          createdAt: new Date('2026-05-12T09:00:00.000Z'),
+          updatedAt: new Date('2026-05-12T09:00:00.000Z'),
+        },
+      ],
+    }),
+  );
+
+  const detail = await generateAccountOpeningDraft({
+    id: 'account-case-1',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+    now: new Date('2026-05-15T10:00:00.000Z'),
+  });
+  const detailText = JSON.stringify(detail);
+  const eventTypes = events.map(
+    (event) => (event as { actionType?: string }).actionType,
+  );
+
+  assert.equal(detail.draftStatus, 'BLOCKED');
+  assert.equal(detail.draftVersion, '2026-05-15');
+  assert.equal(detail.draftGeneratedAt, '2026-05-15T10:00:00.000Z');
+  assert.equal(detail.completionDraft.isStored, true);
+  assert.equal(detail.completionDraft.status, 'BLOCKED');
+  assert.ok(eventTypes.includes('DRAFT_GENERATED'));
+  assert.ok(eventTypes.includes('DRAFT_READY_FOR_REVIEW'));
+  assert.ok(eventTypes.includes('DRAFT_REVIEW_REQUIRED'));
+  assert.ok(eventTypes.includes('DRAFT_BLOCKED'));
+  assert.doesNotMatch(detailText, /12345678/);
+  assert.doesNotMatch(detailText, /12-34-56/);
+});
+
+test('regenerating a draft records DRAFT_REGENERATED', async () => {
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      draftGeneratedAt: new Date('2026-05-14T10:00:00.000Z'),
+    }),
+  );
+
+  await generateAccountOpeningDraft({
+    id: 'account-case-1',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+    now: new Date('2026-05-15T10:00:00.000Z'),
+  });
+
+  assert.equal(
+    (events[0] as { actionType?: string }).actionType,
+    'DRAFT_REGENERATED',
+  );
+});
+
 test('approve for completion changes status and records skipped storage when disabled', async () => {
-  const { repository, events } = createAccountOpeningRepository(buildPersistedAccountOpeningCase());
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase(),
+  );
 
   const detail = await updateAccountOpeningCaseStatus({
     id: 'account-case-1',
@@ -400,9 +580,18 @@ test('approve for completion changes status and records skipped storage when dis
   assert.equal(detail.storageStatus, 'SKIPPED_DISABLED');
   assert.match(detail.storageNote ?? '', /upload skipped/i);
   assert.equal(detail.storageLastAttemptAt, '2026-05-12T10:00:00.000Z');
-  assert.equal((events[0] as { actionType?: string }).actionType, 'APPROVED_FOR_COMPLETION');
-  assert.equal((events[0] as { newStatus?: string }).newStatus, 'APPROVED_FOR_COMPLETION');
-  assert.equal((events[1] as { actionType?: string }).actionType, 'MICROSOFT_DRIVE_ARCHIVE_SKIPPED');
+  assert.equal(
+    (events[0] as { actionType?: string }).actionType,
+    'APPROVED_FOR_COMPLETION',
+  );
+  assert.equal(
+    (events[0] as { newStatus?: string }).newStatus,
+    'APPROVED_FOR_COMPLETION',
+  );
+  assert.equal(
+    (events[1] as { actionType?: string }).actionType,
+    'MICROSOFT_DRIVE_ARCHIVE_SKIPPED',
+  );
 });
 
 test('approve for completion calls enabled storage adapter with safe archive payload', async () => {
@@ -449,11 +638,16 @@ test('approve for completion calls enabled storage adapter with safe archive pay
   assert.match(uploadedPackText, /missing-info\.json/);
   assert.doesNotMatch(uploadedPackText, /12345678/);
   assert.doesNotMatch(uploadedPackText, /12-34-56/);
-  assert.equal((events[1] as { actionType?: string }).actionType, 'MICROSOFT_DRIVE_ARCHIVE_UPLOADED');
+  assert.equal(
+    (events[1] as { actionType?: string }).actionType,
+    'MICROSOFT_DRIVE_ARCHIVE_UPLOADED',
+  );
 });
 
 test('mark needs info changes account-opening status and records review event', async () => {
-  const { repository, events } = createAccountOpeningRepository(buildPersistedAccountOpeningCase());
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase(),
+  );
 
   const detail = await updateAccountOpeningCaseStatus({
     id: 'account-case-1',
@@ -465,12 +659,17 @@ test('mark needs info changes account-opening status and records review event', 
   });
 
   assert.equal(detail.status, 'NEEDS_INFO');
-  assert.equal((events[0] as { actionType?: string }).actionType, 'MARKED_NEEDS_INFO');
+  assert.equal(
+    (events[0] as { actionType?: string }).actionType,
+    'MARKED_NEEDS_INFO',
+  );
   assert.equal((events[0] as { newStatus?: string }).newStatus, 'NEEDS_INFO');
 });
 
 test('reject changes account-opening status without send/sign/upload side effects', async () => {
-  const { repository, events } = createAccountOpeningRepository(buildPersistedAccountOpeningCase());
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase(),
+  );
 
   const detail = await updateAccountOpeningCaseStatus({
     id: 'account-case-1',

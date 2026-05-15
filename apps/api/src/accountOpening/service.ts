@@ -8,6 +8,11 @@ import {
   type AccountOpeningDriveArchiveConfig,
   type AccountOpeningDriveArchiveUploader,
 } from './driveArchive';
+import {
+  buildAccountOpeningCompletionDraft,
+  type AccountOpeningCompletionDraft,
+  type AccountOpeningDraftSourceEvidenceInput,
+} from './draft';
 
 export type AccountOpeningStructuredFields = {
   companyName: string;
@@ -98,8 +103,35 @@ export type AccountOpeningCaseDetail = {
   storageLastAttemptAt: string | null;
   storageFolderUrl: string | null;
   sourceAttachmentNames: string[];
+  draftStatus: string | null;
+  draftVersion: string | null;
+  draftGeneratedAt: string | null;
+  sourceEvidence: AccountOpeningSourceEvidenceDetail[];
+  completionDraft: AccountOpeningCompletionDraft;
   createdAt: string;
   updatedAt: string;
+};
+
+export type AccountOpeningSourceEvidenceDetail = {
+  id: string | null;
+  sourceType: string;
+  sourceLabel: string | null;
+  fileName: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  contentId: string | null;
+  disposition: string | null;
+  extractionMethod: string | null;
+  extractedTextHash: string | null;
+  extractedTextChars: number | null;
+  safeSnippet: string | null;
+  rawFileAvailable: boolean;
+  storageProvider: string | null;
+  storageFolderUrl: string | null;
+  storageFileUrl: string | null;
+  storageDriveItemId: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
 };
 
 export type AccountOpeningCase = {
@@ -117,6 +149,7 @@ export type AccountOpeningCase = {
   structuredFields: AccountOpeningStructuredFields;
   signingSummary: AccountOpeningSigningSummary;
   signingNotes: AccountOpeningSigningNotes;
+  sourceEvidence: AccountOpeningSourceEvidenceInput[];
 };
 
 export type AccountOpeningCasePersistenceInput = {
@@ -155,6 +188,36 @@ export type PersistedAccountOpeningReviewCase = {
   storageLastAttemptAt: Date | null;
   storageFolderUrl: string | null;
   sourceAttachmentNames: unknown;
+  draftStatus: string | null;
+  draftVersion: string | null;
+  draftGeneratedAt: Date | null;
+  draftJson: unknown;
+  draftSummary: unknown;
+  sourceEvidence?: PersistedAccountOpeningSourceEvidence[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type PersistedAccountOpeningSourceEvidence = {
+  id: string;
+  accountOpeningCaseId?: string;
+  sourceType: string;
+  sourceLabel: string | null;
+  fileName: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  contentId: string | null;
+  disposition: string | null;
+  extractionMethod: string | null;
+  extractedTextHash: string | null;
+  extractedTextChars: number | null;
+  safeSnippet: string | null;
+  rawFileAvailable: boolean;
+  storageProvider: string | null;
+  storageFolderUrl: string | null;
+  storageFileUrl: string | null;
+  storageDriveItemId: string | null;
+  metadata?: unknown;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -179,13 +242,34 @@ type BuildAccountOpeningCaseInput = {
   detectedCompanyOrSupplierName?: string | null;
   attachments: AccountOpeningAttachmentInput[];
   sourceFingerprint?: string;
+  sourceEvidence?: AccountOpeningSourceEvidenceInput[];
+};
+
+export type AccountOpeningSourceEvidenceInput = {
+  sourceType: 'EMAIL_BODY' | 'ATTACHMENT';
+  sourceLabel?: string | null;
+  fileName?: string | null;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  contentId?: string | null;
+  disposition?: string | null;
+  extractionMethod?: 'PDF_TEXT' | 'IMAGE_OCR' | null;
+  text?: string | null;
+  rawFileAvailable?: boolean;
+  storageProvider?: string | null;
+  storageFolderUrl?: string | null;
+  storageFileUrl?: string | null;
+  storageDriveItemId?: string | null;
+  metadata?: Record<string, unknown>;
 };
 
 const TO_BE_CONFIRMED = 'To be confirmed';
 const DEFAULT_SIGNER = 'Aman Dhillon';
-const BANK_ACCOUNT_NUMBER_WITH_LABEL_PATTERN = /\baccount\s*(?:no\.?|number)?\s*\d{8}\b/gi;
+const BANK_ACCOUNT_NUMBER_WITH_LABEL_PATTERN =
+  /\baccount\s*(?:no\.?|number)?\s*\d{8}\b/gi;
 const BANK_ACCOUNT_NUMBER_PATTERN = /(^|[^\d])\d{8}(?!\d)/g;
-const SORT_CODE_WITH_LABEL_PATTERN = /\bsort(?:\s*code)?[-\s]*\d{2}[-\s]?\d{2}[-\s]?\d{2}\b/gi;
+const SORT_CODE_WITH_LABEL_PATTERN =
+  /\bsort(?:\s*code)?[-\s]*\d{2}[-\s]?\d{2}[-\s]?\d{2}\b/gi;
 const SORT_CODE_PATTERN = /(^|[^\d-])\d{2}-\d{2}-\d{2}(?![\d-])/g;
 const MISSING_INFO_KEYS: Array<keyof AccountOpeningMissingInfoResponses> = [
   'website',
@@ -211,43 +295,86 @@ const ACCOUNT_OPENING_TERMS: Array<{ label: string; pattern: RegExp }> = [
   { label: 'new account form', pattern: /\bnew\s+account\s+forms?\b/i },
   { label: 'customer application', pattern: /\bcustomer\s+applications?\b/i },
   { label: 'supplier onboarding', pattern: /\bsupplier\s+onboarding\b/i },
-  { label: 'trade account application', pattern: /\btrade\s+account\s+applications?\b/i },
-  { label: 'credit account application', pattern: /\bcredit\s+account\s+applications?\b/i },
+  {
+    label: 'trade account application',
+    pattern: /\btrade\s+account\s+applications?\b/i,
+  },
+  {
+    label: 'credit account application',
+    pattern: /\bcredit\s+account\s+applications?\b/i,
+  },
   { label: 'direct debit mandate', pattern: /\bdirect\s+debit\s+mandates?\b/i },
   { label: 'personal guarantee', pattern: /\bpersonal\s+guarantees?\b/i },
-  { label: 'director guarantee', pattern: /\bdirector(?:s?'?)?\s+guarantees?\b/i },
+  {
+    label: 'director guarantee',
+    pattern: /\bdirector(?:s?'?)?\s+guarantees?\b/i,
+  },
   {
     label: 'wholesale account',
     pattern:
       /\bwholesale\s+account\s+(?:applications?|forms?|opening|onboarding)\b|\b(?:applications?|forms?|opening|onboarding)\s+(?:for\s+)?(?:a\s+)?wholesale\s+account\b/i,
   },
-  { label: 'onboarding questionnaire', pattern: /\bonboarding\s+questionnaires?\b/i },
+  {
+    label: 'onboarding questionnaire',
+    pattern: /\bonboarding\s+questionnaires?\b/i,
+  },
 ];
 
 const RISK_TERMS: Array<{ label: string; pattern: RegExp }> = [
-  { label: 'Director guarantee', pattern: /\bdirector(?:s?'?)?\s+guarantees?\b/i },
+  {
+    label: 'Director guarantee',
+    pattern: /\bdirector(?:s?'?)?\s+guarantees?\b/i,
+  },
   { label: 'Personal guarantee', pattern: /\bpersonal\s+guarantees?\b/i },
   { label: 'Guarantee', pattern: /\bguarantees?\b/i },
-  { label: 'Direct Debit mandate', pattern: /\bdirect\s+debit\s+mandates?\b|\bdd\s+mandates?\b/i },
-  { label: 'bank authority signature', pattern: /\bbank\s+authority\b|\bbank\s+mandates?\b/i },
-  { label: 'indemnity', pattern: /\bindemnit(?:y|ies|ies?)\b|\bindemnif(?:y|ication)\b/i },
-  { label: 'credit terms', pattern: /\bcredit\s+terms?\b|\bcredit\s+account\b/i },
-  { label: 'RP/GDP/WDA regulatory declaration', pattern: /\bresponsible\s+person\b|\bRP\b|\bGDP\b|\bWDA\b|\bwholesale\s+dealer/i },
-  { label: 'returns policy obligations', pattern: /\breturns?\s+polic(?:y|ies)\b|\breturn\s+obligations?\b/i },
+  {
+    label: 'Direct Debit mandate',
+    pattern: /\bdirect\s+debit\s+mandates?\b|\bdd\s+mandates?\b/i,
+  },
+  {
+    label: 'bank authority signature',
+    pattern: /\bbank\s+authority\b|\bbank\s+mandates?\b/i,
+  },
+  {
+    label: 'indemnity',
+    pattern: /\bindemnit(?:y|ies|ies?)\b|\bindemnif(?:y|ication)\b/i,
+  },
+  {
+    label: 'credit terms',
+    pattern: /\bcredit\s+terms?\b|\bcredit\s+account\b/i,
+  },
+  {
+    label: 'RP/GDP/WDA regulatory declaration',
+    pattern:
+      /\bresponsible\s+person\b|\bRP\b|\bGDP\b|\bWDA\b|\bwholesale\s+dealer/i,
+  },
+  {
+    label: 'returns policy obligations',
+    pattern: /\breturns?\s+polic(?:y|ies)\b|\breturn\s+obligations?\b/i,
+  },
 ];
 
 const SIGNING_SIGNALS: Array<{ label: string; pattern: RegExp }> = [
-  { label: 'Director-only signature', pattern: /\bdirector[-\s]+only\b|\bdirector\s+signature\b/i },
+  {
+    label: 'Director-only signature',
+    pattern: /\bdirector[-\s]+only\b|\bdirector\s+signature\b/i,
+  },
   { label: 'Director', pattern: /\bdirector\b/i },
   { label: 'Responsible Person', pattern: /\bresponsible\s+person\b/i },
   { label: 'RP', pattern: /\bRP\b/i },
   { label: 'GDP', pattern: /\bGDP\b/i },
   { label: 'WDA', pattern: /\bWDA\b/i },
-  { label: 'bank authority', pattern: /\bbank\s+authority\b|\bbank\s+mandates?\b/i },
+  {
+    label: 'bank authority',
+    pattern: /\bbank\s+authority\b|\bbank\s+mandates?\b/i,
+  },
   { label: 'Direct Debit', pattern: /\bdirect\s+debit\b|\bdd\s+mandate\b/i },
   { label: 'guarantee', pattern: /\bguarantees?\b/i },
   { label: 'personal guarantee', pattern: /\bpersonal\s+guarantees?\b/i },
-  { label: 'indemnity', pattern: /\bindemnit(?:y|ies|ies?)\b|\bindemnif(?:y|ication)\b/i },
+  {
+    label: 'indemnity',
+    pattern: /\bindemnit(?:y|ies|ies?)\b|\bindemnif(?:y|ication)\b/i,
+  },
 ];
 
 const SIGNING_NAMES: Array<{ label: string; pattern: RegExp }> = [
@@ -285,8 +412,13 @@ function textFromParts(parts: Array<string | null | undefined>): string {
     .join('\n\n');
 }
 
-function matchLabels(text: string, terms: Array<{ label: string; pattern: RegExp }>): string[] {
-  return terms.filter((term) => term.pattern.test(text)).map((term) => term.label);
+function matchLabels(
+  text: string,
+  terms: Array<{ label: string; pattern: RegExp }>,
+): string[] {
+  return terms
+    .filter((term) => term.pattern.test(text))
+    .map((term) => term.label);
 }
 
 function jsonArray(values: string[]): Prisma.InputJsonValue {
@@ -299,21 +431,179 @@ function jsonObject(value: Record<string, unknown>): Prisma.InputJsonValue {
 
 function stringArrayFromJson(value: unknown): string[] {
   return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    ? value.filter(
+        (item): item is string =>
+          typeof item === 'string' && item.trim().length > 0,
+      )
     : [];
 }
 
-function sanitizeDashboardText(value: string | null | undefined): string | null {
+function sanitizeDashboardText(
+  value: string | null | undefined,
+): string | null {
   const trimmed = value?.trim();
   if (!trimmed) {
     return null;
   }
 
   return trimmed
-    .replace(BANK_ACCOUNT_NUMBER_WITH_LABEL_PATTERN, '[redacted bank account number]')
+    .replace(
+      BANK_ACCOUNT_NUMBER_WITH_LABEL_PATTERN,
+      '[redacted bank account number]',
+    )
     .replace(BANK_ACCOUNT_NUMBER_PATTERN, '$1[redacted bank account number]')
     .replace(SORT_CODE_WITH_LABEL_PATTERN, '[redacted sort code]')
     .replace(SORT_CODE_PATTERN, '$1[redacted sort code]');
+}
+
+function hashText(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? createHash('sha256').update(trimmed).digest('hex') : null;
+}
+
+function safeEvidenceSnippet(value: string | null | undefined): string | null {
+  const sanitized = sanitizeDashboardText(value);
+  if (!sanitized) {
+    return null;
+  }
+
+  return sanitized.length > 360 ? `${sanitized.slice(0, 357)}...` : sanitized;
+}
+
+function normalizeSourceEvidenceInput(
+  evidence: AccountOpeningSourceEvidenceInput,
+): Omit<AccountOpeningSourceEvidenceDetail, 'id' | 'createdAt' | 'updatedAt'> {
+  const text = evidence.text?.trim() || '';
+
+  return {
+    sourceType: evidence.sourceType,
+    sourceLabel: sanitizeDashboardText(evidence.sourceLabel) ?? null,
+    fileName: sanitizeDashboardText(evidence.fileName) ?? null,
+    mimeType: sanitizeDashboardText(evidence.mimeType) ?? null,
+    sizeBytes: evidence.sizeBytes ?? null,
+    contentId: sanitizeDashboardText(evidence.contentId) ?? null,
+    disposition: sanitizeDashboardText(evidence.disposition) ?? null,
+    extractionMethod: evidence.extractionMethod ?? null,
+    extractedTextHash: hashText(text),
+    extractedTextChars: text.length || null,
+    safeSnippet: safeEvidenceSnippet(text),
+    rawFileAvailable: Boolean(evidence.rawFileAvailable),
+    storageProvider: sanitizeDashboardText(evidence.storageProvider) ?? null,
+    storageFolderUrl: sanitizeDashboardText(evidence.storageFolderUrl) ?? null,
+    storageFileUrl: sanitizeDashboardText(evidence.storageFileUrl) ?? null,
+    storageDriveItemId:
+      sanitizeDashboardText(evidence.storageDriveItemId) ?? null,
+  };
+}
+
+function buildSourceEvidenceDetailFromInput(
+  evidence: AccountOpeningSourceEvidenceInput,
+): AccountOpeningSourceEvidenceDetail {
+  return {
+    id: null,
+    createdAt: null,
+    updatedAt: null,
+    ...normalizeSourceEvidenceInput(evidence),
+  };
+}
+
+function buildSourceEvidenceDetailFromPersisted(
+  evidence: PersistedAccountOpeningSourceEvidence,
+): AccountOpeningSourceEvidenceDetail {
+  return {
+    id: evidence.id,
+    sourceType: evidence.sourceType,
+    sourceLabel: sanitizeDashboardText(evidence.sourceLabel) ?? null,
+    fileName: sanitizeDashboardText(evidence.fileName) ?? null,
+    mimeType: sanitizeDashboardText(evidence.mimeType) ?? null,
+    sizeBytes: evidence.sizeBytes,
+    contentId: sanitizeDashboardText(evidence.contentId) ?? null,
+    disposition: sanitizeDashboardText(evidence.disposition) ?? null,
+    extractionMethod: evidence.extractionMethod,
+    extractedTextHash: evidence.extractedTextHash,
+    extractedTextChars: evidence.extractedTextChars,
+    safeSnippet: safeEvidenceSnippet(evidence.safeSnippet),
+    rawFileAvailable: evidence.rawFileAvailable,
+    storageProvider: sanitizeDashboardText(evidence.storageProvider) ?? null,
+    storageFolderUrl: sanitizeDashboardText(evidence.storageFolderUrl) ?? null,
+    storageFileUrl: sanitizeDashboardText(evidence.storageFileUrl) ?? null,
+    storageDriveItemId:
+      sanitizeDashboardText(evidence.storageDriveItemId) ?? null,
+    createdAt: evidence.createdAt.toISOString(),
+    updatedAt: evidence.updatedAt.toISOString(),
+  };
+}
+
+function draftEvidenceFromDetails(
+  evidence: AccountOpeningSourceEvidenceDetail[],
+): AccountOpeningDraftSourceEvidenceInput[] {
+  return evidence.map((item) => ({
+    sourceType: item.sourceType,
+    sourceLabel: item.sourceLabel ?? item.fileName,
+    safeSnippet: item.safeSnippet,
+    extractionMethod: item.extractionMethod,
+  }));
+}
+
+function isAccountOpeningCompletionDraft(
+  value: unknown,
+): value is AccountOpeningCompletionDraft {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const draft = value as Partial<AccountOpeningCompletionDraft>;
+  return (
+    typeof draft.profileId === 'string' &&
+    typeof draft.profileVersion === 'string' &&
+    typeof draft.generatedAt === 'string' &&
+    typeof draft.status === 'string' &&
+    typeof draft.overallConfidence === 'string' &&
+    typeof draft.isStored === 'boolean' &&
+    Array.isArray(draft.fields) &&
+    Boolean(draft.summary && typeof draft.summary === 'object')
+  );
+}
+
+function buildCompletionDraftForCase(input: {
+  accountCase: PersistedAccountOpeningReviewCase;
+  sourceEvidence: AccountOpeningSourceEvidenceDetail[];
+  now?: Date;
+  stored?: boolean;
+}): AccountOpeningCompletionDraft {
+  const riskFlags = stringArrayFromJson(input.accountCase.riskFlags);
+  const detectedRoles = stringArrayFromJson(input.accountCase.detectedRoles);
+  const detectedNames = stringArrayFromJson(input.accountCase.detectedNames);
+  const missingFields = stringArrayFromJson(input.accountCase.missingFields);
+  const missingInfoResponses = missingInfoResponsesFromJson(
+    input.accountCase.missingInfoResponses,
+  );
+  const draft = buildAccountOpeningCompletionDraft({
+    missingInfoResponses,
+    riskFlags,
+    detectedRoles,
+    detectedNames,
+    missingFields,
+    sourceEvidence: draftEvidenceFromDetails(input.sourceEvidence),
+    now: input.now,
+  });
+
+  return {
+    ...draft,
+    isStored: Boolean(input.stored),
+  };
+}
+
+function draftAuditMetadata(
+  draft: AccountOpeningCompletionDraft,
+): Prisma.InputJsonValue {
+  return jsonObject({
+    profileId: draft.profileId,
+    profileVersion: draft.profileVersion,
+    status: draft.status,
+    overallConfidence: draft.overallConfidence,
+    summary: draft.summary,
+  });
 }
 
 function jsonRecordFromUnknown(value: unknown): Record<string, unknown> {
@@ -325,31 +615,41 @@ function jsonRecordFromUnknown(value: unknown): Record<string, unknown> {
 export function sanitizeAccountOpeningMissingInfoResponses(
   input: AccountOpeningMissingInfoResponses,
 ): AccountOpeningMissingInfoResponses {
-  return MISSING_INFO_KEYS.reduce<AccountOpeningMissingInfoResponses>((responses, key) => {
-    const sanitized = sanitizeDashboardText(input[key]);
-    if (sanitized !== null) {
-      responses[key] = sanitized;
-    }
-    return responses;
-  }, {});
+  return MISSING_INFO_KEYS.reduce<AccountOpeningMissingInfoResponses>(
+    (responses, key) => {
+      const sanitized = sanitizeDashboardText(input[key]);
+      if (sanitized !== null) {
+        responses[key] = sanitized;
+      }
+      return responses;
+    },
+    {},
+  );
 }
 
-function missingInfoResponsesFromJson(value: unknown): AccountOpeningMissingInfoResponses {
+function missingInfoResponsesFromJson(
+  value: unknown,
+): AccountOpeningMissingInfoResponses {
   const record = jsonRecordFromUnknown(value);
 
   return sanitizeAccountOpeningMissingInfoResponses(
-    MISSING_INFO_KEYS.reduce<AccountOpeningMissingInfoResponses>((responses, key) => {
-      const rawValue = record[key];
-      if (typeof rawValue === 'string') {
-        responses[key] = rawValue;
-      }
-      return responses;
-    }, {}),
+    MISSING_INFO_KEYS.reduce<AccountOpeningMissingInfoResponses>(
+      (responses, key) => {
+        const rawValue = record[key];
+        if (typeof rawValue === 'string') {
+          responses[key] = rawValue;
+        }
+        return responses;
+      },
+      {},
+    ),
   );
 }
 
 function safeStringArrayFromJson(value: unknown): string[] {
-  return compactUnique(stringArrayFromJson(value).map((item) => sanitizeDashboardText(item)));
+  return compactUnique(
+    stringArrayFromJson(value).map((item) => sanitizeDashboardText(item)),
+  );
 }
 
 function normalizeFingerprintPart(value: string | null | undefined): string {
@@ -357,19 +657,27 @@ function normalizeFingerprintPart(value: string | null | undefined): string {
 }
 
 function extractSenderDomain(senderEmail: string): string | null {
-  const domain = senderEmail.includes('@') ? senderEmail.split('@').pop()?.trim().toLowerCase() : null;
+  const domain = senderEmail.includes('@')
+    ? senderEmail.split('@').pop()?.trim().toLowerCase()
+    : null;
   return domain || null;
 }
 
-function summarizeExtractedText(bodyText: string | null, attachments: AccountOpeningAttachmentInput[]): string {
+function summarizeExtractedText(
+  bodyText: string | null,
+  attachments: AccountOpeningAttachmentInput[],
+): string {
   const bodyChars = bodyText?.trim().length ?? 0;
   const attachmentTextChars = attachments.reduce(
-    (total, attachment) => total + (attachment.extractedText?.trim().length ?? 0),
+    (total, attachment) =>
+      total + (attachment.extractedText?.trim().length ?? 0),
     0,
   );
   const textSources = [
     bodyChars > 0 ? `email body (${bodyChars} chars)` : null,
-    attachmentTextChars > 0 ? `attachments (${attachmentTextChars} extracted chars)` : null,
+    attachmentTextChars > 0
+      ? `attachments (${attachmentTextChars} extracted chars)`
+      : null,
   ].filter((part): part is string => Boolean(part));
 
   return textSources.length > 0
@@ -392,7 +700,9 @@ export function buildAccountOpeningSourceFingerprint(input: {
     .map(normalizeFingerprintPart)
     .sort();
   const fingerprintSource = JSON.stringify({
-    messageId: normalizeFingerprintPart(input.messageId ?? input.externalMessageId),
+    messageId: normalizeFingerprintPart(
+      input.messageId ?? input.externalMessageId,
+    ),
     senderEmail: normalizeFingerprintPart(input.senderEmail),
     subject: normalizeFingerprintPart(input.subject),
     attachmentNames,
@@ -417,8 +727,9 @@ export function detectAccountOpeningEmail(input: {
   ]);
   const matchedTerms = matchLabels(contentText, ACCOUNT_OPENING_TERMS);
   const matchedAttachmentNames = compactUnique(
-    (input.attachmentFileNames ?? []).filter((fileName) =>
-      matchLabels(fileName ?? '', ACCOUNT_OPENING_TERMS).length > 0,
+    (input.attachmentFileNames ?? []).filter(
+      (fileName) =>
+        matchLabels(fileName ?? '', ACCOUNT_OPENING_TERMS).length > 0,
     ),
   );
 
@@ -429,7 +740,9 @@ export function detectAccountOpeningEmail(input: {
   };
 }
 
-export function buildAccountOpeningSigningSummary(text: string): AccountOpeningSigningSummary {
+export function buildAccountOpeningSigningSummary(
+  text: string,
+): AccountOpeningSigningSummary {
   const detectedNames = matchLabels(text, SIGNING_NAMES);
   const detectedSignatureRoles = matchLabels(text, SIGNING_SIGNALS);
   const escalationNotes: string[] = [];
@@ -440,7 +753,11 @@ export function buildAccountOpeningSigningSummary(text: string): AccountOpeningS
     );
   }
 
-  if (/\bresponsible\s+person\b|\bRP\b|\bGDP\b|\bWDA\b|\bdilshad\s+moulana\b/i.test(text)) {
+  if (
+    /\bresponsible\s+person\b|\bRP\b|\bGDP\b|\bWDA\b|\bdilshad\s+moulana\b/i.test(
+      text,
+    )
+  ) {
     escalationNotes.push(
       'The form contains regulatory/RP wording. Reviewer should confirm whether this is only company information or whether an RP declaration is being requested.',
     );
@@ -479,7 +796,9 @@ export function buildAccountOpeningSigningNotes(input: {
   const reviewerChecks = compactUnique([
     'Confirm the form is an account-opening or onboarding document for AMBE LTD t/a AMBE MEDICAL GROUP.',
     input.signingSummary.detectedSignatureRoles.includes('Director') ||
-    input.signingSummary.detectedSignatureRoles.includes('Director-only signature')
+    input.signingSummary.detectedSignatureRoles.includes(
+      'Director-only signature',
+    )
       ? 'Check whether the supplier specifically requires a director-only signature.'
       : null,
     input.signingSummary.detectedSignatureRoles.some((role) =>
@@ -511,13 +830,15 @@ export function buildAccountOpeningSigningNotes(input: {
   return {
     title: 'Account opening signing notes',
     recommendedSigner: DEFAULT_SIGNER,
-    defaultSigningStatement: 'Aman Dhillon can sign this account-opening form by default.',
+    defaultSigningStatement:
+      'Aman Dhillon can sign this account-opening form by default.',
     detectedNames: input.signingSummary.detectedNames,
     detectedRolesOrSections: input.signingSummary.detectedSignatureRoles,
     reviewerChecks,
     riskFlags: input.riskFlags,
     missingOrUnclear: input.missingOrUnclear,
-    signatureInstruction: 'Leave signature fields blank until approved by a human reviewer.',
+    signatureInstruction:
+      'Leave signature fields blank until approved by a human reviewer.',
     summary: [
       'Recommended signer: Aman Dhillon.',
       'Aman Dhillon can sign this account-opening form by default.',
@@ -529,7 +850,9 @@ export function buildAccountOpeningSigningNotes(input: {
   };
 }
 
-export function buildAccountOpeningCasePersistenceData(input: AccountOpeningCasePersistenceInput) {
+export function buildAccountOpeningCasePersistenceData(
+  input: AccountOpeningCasePersistenceInput,
+) {
   const accountCase = input.accountCase;
   const signingNotes = accountCase.signingNotes;
 
@@ -543,7 +866,9 @@ export function buildAccountOpeningCasePersistenceData(input: AccountOpeningCase
       senderEmail: accountCase.senderEmail,
       senderDomain: accountCase.senderDomain,
       subject: accountCase.subject,
-      receivedAt: accountCase.receivedDate ? new Date(accountCase.receivedDate) : null,
+      receivedAt: accountCase.receivedDate
+        ? new Date(accountCase.receivedDate)
+        : null,
       companyName: accountCase.structuredFields.companyName,
       detectedFormType: input.detectedFormType ?? null,
       status: 'PENDING_REVIEW',
@@ -568,7 +893,9 @@ export function buildAccountOpeningCasePersistenceData(input: AccountOpeningCase
       senderEmail: accountCase.senderEmail,
       senderDomain: accountCase.senderDomain,
       subject: accountCase.subject,
-      receivedAt: accountCase.receivedDate ? new Date(accountCase.receivedDate) : null,
+      receivedAt: accountCase.receivedDate
+        ? new Date(accountCase.receivedDate)
+        : null,
       companyName: accountCase.structuredFields.companyName,
       detectedFormType: input.detectedFormType ?? null,
       recommendedSigner: signingNotes.recommendedSigner,
@@ -599,19 +926,27 @@ export type AccountOpeningCaseEventInput = {
 };
 
 export type AccountOpeningCaseRepository = {
-  findUnique: (args: unknown) => Promise<PersistedAccountOpeningReviewCase | null>;
+  findUnique: (
+    args: unknown,
+  ) => Promise<PersistedAccountOpeningReviewCase | null>;
   update: (args: unknown) => Promise<PersistedAccountOpeningReviewCase>;
-  createEvent: (args: { data: AccountOpeningCaseEventInput }) => Promise<unknown>;
+  createEvent: (args: {
+    data: AccountOpeningCaseEventInput;
+  }) => Promise<unknown>;
 };
 
 function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
   const client = db as never as {
     accountOpeningCase: {
-      findUnique: (args: unknown) => Promise<PersistedAccountOpeningReviewCase | null>;
+      findUnique: (
+        args: unknown,
+      ) => Promise<PersistedAccountOpeningReviewCase | null>;
       update: (args: unknown) => Promise<PersistedAccountOpeningReviewCase>;
     };
     accountOpeningCaseEvent: {
-      create: (args: { data: AccountOpeningCaseEventInput }) => Promise<unknown>;
+      create: (args: {
+        data: AccountOpeningCaseEventInput;
+      }) => Promise<unknown>;
     };
   };
 
@@ -625,6 +960,35 @@ function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
 export function buildAccountOpeningCaseDetail(
   accountCase: PersistedAccountOpeningReviewCase,
 ): AccountOpeningCaseDetail {
+  const sourceEvidence = (accountCase.sourceEvidence ?? []).map(
+    buildSourceEvidenceDetailFromPersisted,
+  );
+  const riskFlags = stringArrayFromJson(accountCase.riskFlags);
+  const detectedRoles = stringArrayFromJson(accountCase.detectedRoles);
+  const detectedNames = stringArrayFromJson(accountCase.detectedNames);
+  const missingFields = stringArrayFromJson(accountCase.missingFields);
+  const missingInfoResponses = missingInfoResponsesFromJson(
+    accountCase.missingInfoResponses,
+  );
+  const fallbackDraft = buildAccountOpeningCompletionDraft({
+    missingInfoResponses,
+    riskFlags,
+    detectedRoles,
+    detectedNames,
+    missingFields,
+    sourceEvidence: draftEvidenceFromDetails(sourceEvidence),
+  });
+  const completionDraft = isAccountOpeningCompletionDraft(accountCase.draftJson)
+    ? {
+        ...accountCase.draftJson,
+        isStored: true,
+      }
+    : {
+        ...fallbackDraft,
+        status: 'PREVIEW' as const,
+        isStored: false,
+      };
+
   return {
     id: accountCase.id,
     sourceFingerprint: accountCase.sourceFingerprint,
@@ -639,21 +1003,29 @@ export function buildAccountOpeningCaseDetail(
     recommendedSigner: accountCase.recommendedSigner,
     signingStatement: accountCase.signingStatement,
     signingExplanation: accountCase.signingExplanation,
-    detectedNames: stringArrayFromJson(accountCase.detectedNames),
-    detectedRoles: stringArrayFromJson(accountCase.detectedRoles),
+    detectedNames,
+    detectedRoles,
     escalationNotes: stringArrayFromJson(accountCase.escalationNotes),
-    riskFlags: stringArrayFromJson(accountCase.riskFlags),
-    missingFields: stringArrayFromJson(accountCase.missingFields),
+    riskFlags,
+    missingFields,
     reviewerChecks: stringArrayFromJson(accountCase.reviewerChecks),
     signingNotes: buildSigningNotesFromPersistedCase(accountCase),
-    missingInfoResponses: missingInfoResponsesFromJson(accountCase.missingInfoResponses),
+    missingInfoResponses,
     extractedTextSummary: accountCase.extractedTextSummary,
     storageStatus: accountCase.storageStatus,
     storageNote: accountCase.storageNote,
     storageSkippedReason: accountCase.storageSkippedReason,
-    storageLastAttemptAt: accountCase.storageLastAttemptAt?.toISOString() ?? null,
+    storageLastAttemptAt:
+      accountCase.storageLastAttemptAt?.toISOString() ?? null,
     storageFolderUrl: accountCase.storageFolderUrl,
-    sourceAttachmentNames: safeStringArrayFromJson(accountCase.sourceAttachmentNames),
+    sourceAttachmentNames: safeStringArrayFromJson(
+      accountCase.sourceAttachmentNames,
+    ),
+    draftStatus: accountCase.draftStatus,
+    draftVersion: accountCase.draftVersion,
+    draftGeneratedAt: accountCase.draftGeneratedAt?.toISOString() ?? null,
+    sourceEvidence,
+    completionDraft,
     createdAt: accountCase.createdAt.toISOString(),
     updatedAt: accountCase.updatedAt.toISOString(),
   };
@@ -665,6 +1037,11 @@ export async function getAccountOpeningCaseDetail(
 ): Promise<AccountOpeningCaseDetail | null> {
   const accountCase = await repository.findUnique({
     where: { id },
+    include: {
+      sourceEvidence: {
+        orderBy: { createdAt: 'asc' },
+      },
+    },
   });
 
   return accountCase ? buildAccountOpeningCaseDetail(accountCase) : null;
@@ -686,13 +1063,24 @@ export async function saveAccountOpeningMissingInfo(input: {
     throw new Error('Account-opening case not found.');
   }
 
-  const responses = sanitizeAccountOpeningMissingInfoResponses(input.missingInfoResponses);
+  const responses = sanitizeAccountOpeningMissingInfoResponses(
+    input.missingInfoResponses,
+  );
   const updated = await repository.update({
     where: { id: input.id },
     data: {
       missingInfoResponses: jsonObject(responses as Record<string, unknown>),
     },
   });
+  const updatedWithEvidence =
+    (await repository.findUnique({
+      where: { id: input.id },
+      include: {
+        sourceEvidence: {
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    })) ?? updated;
 
   await repository.createEvent({
     data: {
@@ -706,7 +1094,7 @@ export async function saveAccountOpeningMissingInfo(input: {
     },
   });
 
-  return buildAccountOpeningCaseDetail(updated);
+  return buildAccountOpeningCaseDetail(updatedWithEvidence);
 }
 
 export async function updateAccountOpeningCaseStatus(input: {
@@ -734,6 +1122,15 @@ export async function updateAccountOpeningCaseStatus(input: {
     where: { id: input.id },
     data: { status: newStatus },
   });
+  updated =
+    (await repository.findUnique({
+      where: { id: input.id },
+      include: {
+        sourceEvidence: {
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    })) ?? updated;
 
   await repository.createEvent({
     data: {
@@ -765,6 +1162,15 @@ export async function updateAccountOpeningCaseStatus(input: {
         storageFolderUrl: uploadResult.folderUrl,
       },
     });
+    updated =
+      (await repository.findUnique({
+        where: { id: input.id },
+        include: {
+          sourceEvidence: {
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+      })) ?? updated;
 
     await repository.createEvent({
       data: {
@@ -793,17 +1199,261 @@ export async function updateAccountOpeningCaseStatus(input: {
   return buildAccountOpeningCaseDetail(updated);
 }
 
-export async function upsertAccountOpeningCase(input: AccountOpeningCasePersistenceInput) {
-  const data = buildAccountOpeningCasePersistenceData(input);
-
-  return (db as never as {
-    accountOpeningCase: {
-      upsert: (args: typeof data) => Promise<PersistedAccountOpeningReviewCase>;
-    };
-  }).accountOpeningCase.upsert(data);
+async function findCaseWithEvidence(
+  id: string,
+  repository: AccountOpeningCaseRepository,
+): Promise<PersistedAccountOpeningReviewCase | null> {
+  return repository.findUnique({
+    where: { id },
+    include: {
+      sourceEvidence: {
+        orderBy: { createdAt: 'asc' },
+      },
+    },
+  });
 }
 
-export async function listOpenAccountOpeningCases(): Promise<PersistedAccountOpeningReviewCase[]> {
+async function writeDraftAuditEvents(input: {
+  accountCaseId: string;
+  previousStatus?: string | null;
+  draft: AccountOpeningCompletionDraft;
+  generatedActionType: 'DRAFT_GENERATED' | 'DRAFT_REGENERATED';
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  repository: AccountOpeningCaseRepository;
+}) {
+  const actorType = input.actorType?.trim() || 'OPERATOR';
+  const actorIdentifier = sanitizeDashboardText(input.actorIdentifier) ?? null;
+  const metadata = draftAuditMetadata(input.draft);
+
+  await input.repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.accountCaseId,
+      actionType: input.generatedActionType,
+      previousStatus: input.previousStatus,
+      newStatus: input.previousStatus,
+      actorType,
+      actorIdentifier,
+      metadata,
+    },
+  });
+
+  await input.repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.accountCaseId,
+      actionType: 'DRAFT_READY_FOR_REVIEW',
+      previousStatus: input.previousStatus,
+      newStatus: input.previousStatus,
+      actorType: 'SYSTEM',
+      actorIdentifier: 'account-opening-draft-generator',
+      metadata,
+    },
+  });
+
+  if (input.draft.summary.reviewRequiredFields > 0) {
+    await input.repository.createEvent({
+      data: {
+        accountOpeningCaseId: input.accountCaseId,
+        actionType: 'DRAFT_REVIEW_REQUIRED',
+        previousStatus: input.previousStatus,
+        newStatus: input.previousStatus,
+        actorType: 'SYSTEM',
+        actorIdentifier: 'account-opening-draft-generator',
+        metadata,
+      },
+    });
+  }
+
+  if (input.draft.summary.blockedFields > 0) {
+    await input.repository.createEvent({
+      data: {
+        accountOpeningCaseId: input.accountCaseId,
+        actionType: 'DRAFT_BLOCKED',
+        previousStatus: input.previousStatus,
+        newStatus: input.previousStatus,
+        actorType: 'SYSTEM',
+        actorIdentifier: 'account-opening-draft-generator',
+        metadata,
+      },
+    });
+  }
+}
+
+export async function generateAccountOpeningDraft(input: {
+  id: string;
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  repository?: AccountOpeningCaseRepository;
+  now?: Date;
+}): Promise<AccountOpeningCaseDetail> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  const existing = await findCaseWithEvidence(input.id, repository);
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  const draft = buildCompletionDraftForCase({
+    accountCase: existing,
+    sourceEvidence: (existing.sourceEvidence ?? []).map(
+      buildSourceEvidenceDetailFromPersisted,
+    ),
+    now: input.now,
+    stored: true,
+  });
+  const generatedActionType = existing.draftGeneratedAt
+    ? 'DRAFT_REGENERATED'
+    : 'DRAFT_GENERATED';
+  const updated = await repository.update({
+    where: { id: input.id },
+    data: {
+      draftStatus: draft.status,
+      draftVersion: draft.profileVersion,
+      draftGeneratedAt: new Date(draft.generatedAt),
+      draftJson: jsonObject(draft as unknown as Record<string, unknown>),
+      draftSummary: jsonObject(
+        draft.summary as unknown as Record<string, unknown>,
+      ),
+    },
+  });
+  const updatedWithEvidence =
+    (await findCaseWithEvidence(input.id, repository)) ?? updated;
+
+  await writeDraftAuditEvents({
+    accountCaseId: input.id,
+    previousStatus: existing.status,
+    draft,
+    generatedActionType,
+    actorType: input.actorType,
+    actorIdentifier: input.actorIdentifier,
+    repository,
+  });
+
+  return buildAccountOpeningCaseDetail(updatedWithEvidence);
+}
+
+export async function upsertAccountOpeningCase(
+  input: AccountOpeningCasePersistenceInput,
+) {
+  const data = buildAccountOpeningCasePersistenceData(input);
+  const evidenceRows = input.accountCase.sourceEvidence.map((evidence) => ({
+    ...normalizeSourceEvidenceInput(evidence),
+    metadata: evidence.metadata ? jsonObject(evidence.metadata) : undefined,
+  }));
+  const client = db as never as {
+    accountOpeningCase: {
+      upsert: (args: typeof data) => Promise<PersistedAccountOpeningReviewCase>;
+      update: (args: unknown) => Promise<PersistedAccountOpeningReviewCase>;
+      findUnique: (
+        args: unknown,
+      ) => Promise<PersistedAccountOpeningReviewCase | null>;
+    };
+    accountOpeningCaseEvent: {
+      create: (args: {
+        data: AccountOpeningCaseEventInput;
+      }) => Promise<unknown>;
+    };
+    accountOpeningSourceEvidence: {
+      deleteMany: (args: unknown) => Promise<unknown>;
+      createMany: (args: unknown) => Promise<unknown>;
+    };
+  };
+
+  const accountCase = await client.accountOpeningCase.upsert(data);
+
+  await client.accountOpeningSourceEvidence.deleteMany({
+    where: { accountOpeningCaseId: accountCase.id },
+  });
+
+  if (evidenceRows.length > 0) {
+    await client.accountOpeningSourceEvidence.createMany({
+      data: evidenceRows.map((evidence) => ({
+        ...evidence,
+        accountOpeningCaseId: accountCase.id,
+      })),
+    });
+
+    await client.accountOpeningCaseEvent.create({
+      data: {
+        accountOpeningCaseId: accountCase.id,
+        actionType: 'SOURCE_EVIDENCE_CAPTURED',
+        previousStatus: accountCase.status,
+        newStatus: accountCase.status,
+        actorType: 'SYSTEM',
+        actorIdentifier: 'email-account-opening-ingestion',
+        metadata: jsonObject({
+          evidenceCount: evidenceRows.length,
+          rawFileBytesStored: false,
+          rawExtractedTextStored: false,
+        }),
+      },
+    });
+  }
+
+  const accountCaseWithEvidence = await client.accountOpeningCase.findUnique({
+    where: { id: accountCase.id },
+    include: {
+      sourceEvidence: {
+        orderBy: { createdAt: 'asc' },
+      },
+    },
+  });
+
+  if (!accountCaseWithEvidence) {
+    return null;
+  }
+
+  const draft = buildCompletionDraftForCase({
+    accountCase: accountCaseWithEvidence,
+    sourceEvidence: (accountCaseWithEvidence.sourceEvidence ?? []).map(
+      buildSourceEvidenceDetailFromPersisted,
+    ),
+    stored: true,
+  });
+  const generatedActionType = accountCaseWithEvidence.draftGeneratedAt
+    ? 'DRAFT_REGENERATED'
+    : 'DRAFT_GENERATED';
+
+  await client.accountOpeningCase.update({
+    where: { id: accountCase.id },
+    data: {
+      draftStatus: draft.status,
+      draftVersion: draft.profileVersion,
+      draftGeneratedAt: new Date(draft.generatedAt),
+      draftJson: jsonObject(draft as unknown as Record<string, unknown>),
+      draftSummary: jsonObject(
+        draft.summary as unknown as Record<string, unknown>,
+      ),
+    },
+  });
+
+  await writeDraftAuditEvents({
+    accountCaseId: accountCase.id,
+    previousStatus: accountCase.status,
+    draft,
+    generatedActionType,
+    actorType: 'SYSTEM',
+    actorIdentifier: 'email-account-opening-ingestion',
+    repository: {
+      findUnique: (args) => client.accountOpeningCase.findUnique(args),
+      update: (args) => client.accountOpeningCase.update(args),
+      createEvent: (args) => client.accountOpeningCaseEvent.create(args),
+    },
+  });
+
+  return client.accountOpeningCase.findUnique({
+    where: { id: accountCase.id },
+    include: {
+      sourceEvidence: {
+        orderBy: { createdAt: 'asc' },
+      },
+    },
+  });
+}
+
+export async function listOpenAccountOpeningCases(): Promise<
+  PersistedAccountOpeningReviewCase[]
+> {
   const client = db as never as {
     accountOpeningCase?: {
       findMany: (args: unknown) => Promise<PersistedAccountOpeningReviewCase[]>;
@@ -829,24 +1479,30 @@ export function buildSigningNotesFromPersistedCase(
   accountCase: PersistedAccountOpeningReviewCase,
 ): AccountOpeningSigningNotes {
   const persistedNotes =
-    accountCase.signingNotes && typeof accountCase.signingNotes === 'object' && !Array.isArray(accountCase.signingNotes)
+    accountCase.signingNotes &&
+    typeof accountCase.signingNotes === 'object' &&
+    !Array.isArray(accountCase.signingNotes)
       ? (accountCase.signingNotes as Partial<AccountOpeningSigningNotes>)
       : null;
 
   return {
     title: 'Account opening signing notes',
     recommendedSigner: 'Aman Dhillon',
-    defaultSigningStatement: 'Aman Dhillon can sign this account-opening form by default.',
+    defaultSigningStatement:
+      'Aman Dhillon can sign this account-opening form by default.',
     detectedNames:
-      persistedNotes?.detectedNames && Array.isArray(persistedNotes.detectedNames)
+      persistedNotes?.detectedNames &&
+      Array.isArray(persistedNotes.detectedNames)
         ? stringArrayFromJson(persistedNotes.detectedNames)
         : stringArrayFromJson(accountCase.detectedNames),
     detectedRolesOrSections:
-      persistedNotes?.detectedRolesOrSections && Array.isArray(persistedNotes.detectedRolesOrSections)
+      persistedNotes?.detectedRolesOrSections &&
+      Array.isArray(persistedNotes.detectedRolesOrSections)
         ? stringArrayFromJson(persistedNotes.detectedRolesOrSections)
         : stringArrayFromJson(accountCase.detectedRoles),
     reviewerChecks:
-      persistedNotes?.reviewerChecks && Array.isArray(persistedNotes.reviewerChecks)
+      persistedNotes?.reviewerChecks &&
+      Array.isArray(persistedNotes.reviewerChecks)
         ? stringArrayFromJson(persistedNotes.reviewerChecks)
         : stringArrayFromJson(accountCase.reviewerChecks),
     riskFlags:
@@ -854,12 +1510,15 @@ export function buildSigningNotesFromPersistedCase(
         ? stringArrayFromJson(persistedNotes.riskFlags)
         : stringArrayFromJson(accountCase.riskFlags),
     missingOrUnclear:
-      persistedNotes?.missingOrUnclear && Array.isArray(persistedNotes.missingOrUnclear)
+      persistedNotes?.missingOrUnclear &&
+      Array.isArray(persistedNotes.missingOrUnclear)
         ? stringArrayFromJson(persistedNotes.missingOrUnclear)
         : stringArrayFromJson(accountCase.missingFields),
-    signatureInstruction: 'Leave signature fields blank until approved by a human reviewer.',
+    signatureInstruction:
+      'Leave signature fields blank until approved by a human reviewer.',
     summary:
-      typeof persistedNotes?.summary === 'string' && persistedNotes.summary.trim()
+      typeof persistedNotes?.summary === 'string' &&
+      persistedNotes.summary.trim()
         ? persistedNotes.summary
         : [
             'Recommended signer: Aman Dhillon.',
@@ -869,7 +1528,9 @@ export function buildSigningNotesFromPersistedCase(
   };
 }
 
-export function buildAccountOpeningCase(input: BuildAccountOpeningCaseInput): AccountOpeningCase {
+export function buildAccountOpeningCase(
+  input: BuildAccountOpeningCaseInput,
+): AccountOpeningCase {
   const combinedText = textFromParts([
     input.subject,
     input.bodyText,
@@ -878,9 +1539,12 @@ export function buildAccountOpeningCase(input: BuildAccountOpeningCaseInput): Ac
   ]);
   const riskFlags = compactUnique(matchLabels(combinedText, RISK_TERMS));
   const signingSummary = buildAccountOpeningSigningSummary(combinedText);
-  const directDebitRequested = /\bdirect\s+debit\b|\bdd\s+mandate\b/i.test(combinedText);
+  const directDebitRequested = /\bdirect\s+debit\b|\bdd\s+mandate\b/i.test(
+    combinedText,
+  );
   const guaranteeDetected = /\bguarantees?\b/i.test(combinedText);
-  const regulatoryDeclarationDetected = /\bresponsible\s+person\b|\bRP\b|\bGDP\b|\bWDA\b/i.test(combinedText);
+  const regulatoryDeclarationDetected =
+    /\bresponsible\s+person\b|\bRP\b|\bGDP\b|\bWDA\b/i.test(combinedText);
   const paymentMethodRequested = directDebitRequested
     ? 'Direct Debit requested'
     : /\bcredit\s+account\b|\bcredit\s+terms?\b/i.test(combinedText)
@@ -905,7 +1569,9 @@ export function buildAccountOpeningCase(input: BuildAccountOpeningCaseInput): Ac
     missingOrUnclear: [],
     recommendedSigner: signingSummary.defaultSigner,
   };
-  const missingFields = REQUIRED_FIELD_LABELS.filter((field) => structuredFields[field] === TO_BE_CONFIRMED);
+  const missingFields = REQUIRED_FIELD_LABELS.filter(
+    (field) => structuredFields[field] === TO_BE_CONFIRMED,
+  );
 
   structuredFields.missingOrUnclear = missingFields;
   const signingNotes = buildAccountOpeningSigningNotes({
@@ -920,20 +1586,47 @@ export function buildAccountOpeningCase(input: BuildAccountOpeningCaseInput): Ac
       buildAccountOpeningSourceFingerprint({
         senderEmail: input.senderEmail,
         subject: input.subject,
-        attachmentFileNames: input.attachments.map((attachment) => attachment.fileName),
+        attachmentFileNames: input.attachments.map(
+          (attachment) => attachment.fileName,
+        ),
       }),
     status: 'pending_review',
     senderEmail: input.senderEmail,
     senderDomain: input.senderDomain ?? extractSenderDomain(input.senderEmail),
     subject: input.subject,
     receivedDate: input.receivedAt?.toISOString() ?? null,
-    detectedCompanyOrSupplierName: input.detectedCompanyOrSupplierName?.trim() || null,
-    originalAttachmentNames: compactUnique(input.attachments.map((attachment) => attachment.fileName)),
-    extractedTextSummary: summarizeExtractedText(input.bodyText, input.attachments),
+    detectedCompanyOrSupplierName:
+      input.detectedCompanyOrSupplierName?.trim() || null,
+    originalAttachmentNames: compactUnique(
+      input.attachments.map((attachment) => attachment.fileName),
+    ),
+    extractedTextSummary: summarizeExtractedText(
+      input.bodyText,
+      input.attachments,
+    ),
     riskFlags,
     missingFields,
     structuredFields,
     signingSummary,
     signingNotes,
+    sourceEvidence: input.sourceEvidence ?? [
+      ...(input.bodyText?.trim()
+        ? [
+            {
+              sourceType: 'EMAIL_BODY' as const,
+              sourceLabel: 'Email body',
+              text: input.bodyText,
+              rawFileAvailable: false,
+            },
+          ]
+        : []),
+      ...input.attachments.map((attachment) => ({
+        sourceType: 'ATTACHMENT' as const,
+        sourceLabel: attachment.fileName,
+        fileName: attachment.fileName,
+        text: attachment.extractedText ?? null,
+        rawFileAvailable: false,
+      })),
+    ],
   };
 }

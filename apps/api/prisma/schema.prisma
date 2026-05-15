@@ -626,9 +626,15 @@ model AccountOpeningCase {
   storageLastAttemptAt  DateTime?
   storageFolderUrl      String?
   sourceAttachmentNames Json?
+  draftStatus           String?
+  draftVersion          String?
+  draftGeneratedAt      DateTime?
+  draftJson             Json?
+  draftSummary          Json?
   sourceFingerprint     String                    @unique
   inboundEmail          InboundEmail?             @relation(fields: [inboundEmailId], references: [id], onDelete: SetNull)
   events                AccountOpeningCaseEvent[]
+  sourceEvidence        AccountOpeningSourceEvidence[]
   createdAt             DateTime                  @default(now())
   updatedAt             DateTime                  @updatedAt
 
@@ -651,6 +657,34 @@ model AccountOpeningCaseEvent {
   createdAt            DateTime              @default(now())
 
   @@index([accountOpeningCaseId, createdAt])
+}
+
+model AccountOpeningSourceEvidence {
+  id                   String             @id @default(cuid())
+  accountOpeningCaseId String
+  sourceType           String
+  sourceLabel          String?
+  fileName             String?
+  mimeType             String?
+  sizeBytes            Int?
+  contentId            String?
+  disposition          String?
+  extractionMethod     String?
+  extractedTextHash    String?
+  extractedTextChars   Int?
+  safeSnippet          String?
+  rawFileAvailable     Boolean            @default(false)
+  storageProvider      String?
+  storageFolderUrl     String?
+  storageFileUrl       String?
+  storageDriveItemId   String?
+  metadata             Json?
+  accountOpeningCase   AccountOpeningCase @relation(fields: [accountOpeningCaseId], references: [id], onDelete: Cascade)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([accountOpeningCaseId, sourceType])
+  @@index([extractedTextHash])
 }
 
 model InboundEmailDocument {

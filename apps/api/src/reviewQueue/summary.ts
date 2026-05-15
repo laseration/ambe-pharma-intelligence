@@ -60,7 +60,10 @@ function normalizeReasonCode(reason: string | null): string | null {
 function buildReasonDetail(input: ReviewSummaryInput): ReasonDetail | null {
   const reasonCode = normalizeReasonCode(input.reason);
 
-  if (input.hasConflictingSupplierCues || reasonCode === 'conflicting_supplier_cues') {
+  if (
+    input.hasConflictingSupplierCues ||
+    reasonCode === 'conflicting_supplier_cues'
+  ) {
     return {
       reviewReason: 'Conflicting supplier cues',
       missingOrUnclear:
@@ -85,7 +88,8 @@ function buildReasonDetail(input: ReviewSummaryInput): ReasonDetail | null {
       reviewReason: 'Manufacturer is unclear',
       missingOrUnclear:
         'There is more than one plausible manufacturer signal, so the manufacturer details are not safe yet.',
-      suggestedAction: 'Confirm the manufacturer details before approving or promoting the offer.',
+      suggestedAction:
+        'Confirm the manufacturer details before approving or promoting the offer.',
     };
   }
 
@@ -103,14 +107,16 @@ function buildReasonDetail(input: ReviewSummaryInput): ReasonDetail | null {
         reviewReason: 'Missing price',
         missingOrUnclear:
           'The system found a possible offer, but no safe price could be extracted.',
-        suggestedAction: 'Open the item and confirm the unit price before proceeding.',
+        suggestedAction:
+          'Open the item and confirm the unit price before proceeding.',
       };
     case 'missing_currency':
       return {
         reviewReason: 'Missing currency',
         missingOrUnclear:
           'A price was found, but the currency is missing or unclear.',
-        suggestedAction: 'Confirm the currency before approving or promoting the offer.',
+        suggestedAction:
+          'Confirm the currency before approving or promoting the offer.',
       };
     case 'ocr_text_too_weak':
       return {
@@ -225,7 +231,10 @@ function humanizeImportType(importType: string | null): string | null {
 
 function buildRecognizedContent(input: ReviewSummaryInput): string {
   if (input.accountOpeningCase) {
-    return ['Account opening form detected.', input.accountOpeningCase.extractedTextSummary]
+    return [
+      'Account opening form detected.',
+      input.accountOpeningCase.extractedTextSummary,
+    ]
       .filter((part): part is string => Boolean(part))
       .join(' ');
   }
@@ -235,11 +244,15 @@ function buildRecognizedContent(input: ReviewSummaryInput): string {
   }
 
   if (input.fileType === 'PDF') {
-    return input.fileName ? `PDF file received: ${input.fileName}.` : 'PDF file received.';
+    return input.fileName
+      ? `PDF file received: ${input.fileName}.`
+      : 'PDF file received.';
   }
 
   if (input.fileType === 'IMAGE') {
-    return input.fileName ? `Image file received: ${input.fileName}.` : 'Image file received.';
+    return input.fileName
+      ? `Image file received: ${input.fileName}.`
+      : 'Image file received.';
   }
 
   if (input.fileType === 'CSV' || input.fileType === 'XLSX') {
@@ -262,7 +275,9 @@ function buildRecognizedContent(input: ReviewSummaryInput): string {
   return 'Inbound item received for review.';
 }
 
-export function buildReviewSummary(input: ReviewSummaryInput): ReviewSummary | null {
+export function buildReviewSummary(
+  input: ReviewSummaryInput,
+): ReviewSummary | null {
   if (!REVIEW_STATUSES.has(input.processingStatus)) {
     return null;
   }
@@ -289,7 +304,7 @@ export function buildReviewSummary(input: ReviewSummaryInput): ReviewSummary | n
       reviewReason: 'Account opening form detected',
       recognizedContent: buildRecognizedContent(input),
       missingOrUnclear: `${riskText} ${missingText}`,
-      suggestedAction: `Recommended signer: Aman Dhillon. ${input.accountOpeningCase.signingSummary.signingExplanation} ${detectedNamesText} ${detectedRolesText} Review the form pack before any completion, signing, submission, or reply.`,
+      suggestedAction: `Recommended signer: Aman Dhillon. ${input.accountOpeningCase.signingSummary.signingExplanation} ${detectedNamesText} ${detectedRolesText} Review the form pack before any completion, PDF/Word form filling, signing, supplier sending, submission, or reply.`,
     };
   }
 
@@ -297,8 +312,10 @@ export function buildReviewSummary(input: ReviewSummaryInput): ReviewSummary | n
     return {
       reviewReason: 'Automatic processing failed',
       recognizedContent: buildRecognizedContent(input),
-      missingOrUnclear: 'The file could not be processed safely with the current import pipeline.',
-      suggestedAction: 'Open the item, check the file format and contents, and retry or import it manually.',
+      missingOrUnclear:
+        'The file could not be processed safely with the current import pipeline.',
+      suggestedAction:
+        'Open the item, check the file format and contents, and retry or import it manually.',
     };
   }
 
@@ -309,7 +326,8 @@ export function buildReviewSummary(input: ReviewSummaryInput): ReviewSummary | n
         ? `Potentially relevant MHRA update: ${input.subjectOrCaption}.`
         : 'Potentially relevant MHRA update found.',
       missingOrUnclear:
-        input.reason?.trim() || 'Product match or regulatory impact needs review.',
+        input.reason?.trim() ||
+        'Product match or regulatory impact needs review.',
       suggestedAction:
         'Review the source update and confirm affected stock before acting.',
     };
@@ -329,8 +347,10 @@ export function buildReviewSummary(input: ReviewSummaryInput): ReviewSummary | n
     return {
       reviewReason: 'PDF file received and needs manual review',
       recognizedContent: buildRecognizedContent(input),
-      missingOrUnclear: 'PDF content cannot be routed into CSV/XLSX imports automatically.',
-      suggestedAction: 'Open the PDF and decide whether it should be entered manually or converted before import.',
+      missingOrUnclear:
+        'PDF content cannot be routed into CSV/XLSX imports automatically.',
+      suggestedAction:
+        'Open the PDF and decide whether it should be entered manually or converted before import.',
     };
   }
 
@@ -338,8 +358,10 @@ export function buildReviewSummary(input: ReviewSummaryInput): ReviewSummary | n
     return {
       reviewReason: 'Image file received and needs manual review',
       recognizedContent: buildRecognizedContent(input),
-      missingOrUnclear: 'Image text cannot be imported automatically in the current workflow.',
-      suggestedAction: 'Open the image and decide whether the details should be entered manually.',
+      missingOrUnclear:
+        'Image text cannot be imported automatically in the current workflow.',
+      suggestedAction:
+        'Open the image and decide whether the details should be entered manually.',
     };
   }
 
@@ -352,9 +374,13 @@ export function buildReviewSummary(input: ReviewSummaryInput): ReviewSummary | n
       input.hasManufacturerAmbiguity
     ) {
       const riskParts = [
-        input.qualificationStatus ? `Supplier qualification: ${input.qualificationStatus}.` : null,
+        input.qualificationStatus
+          ? `Supplier qualification: ${input.qualificationStatus}.`
+          : null,
         input.qualificationRiskSummary ? input.qualificationRiskSummary : null,
-        input.hasBuyDecision ? 'A buy decision already exists for this offer.' : null,
+        input.hasBuyDecision
+          ? 'A buy decision already exists for this offer.'
+          : null,
       ]
         .filter((part): part is string => Boolean(part))
         .join(' ');
@@ -363,7 +389,8 @@ export function buildReviewSummary(input: ReviewSummaryInput): ReviewSummary | n
           ? 'Review supplier identity before approving any buy action.'
           : input.qualificationStatus === 'BLOCKED'
             ? 'Do not approve. Resolve the blocked supplier status first.'
-            : input.qualificationStatus === 'RESTRICTED' || input.qualificationStatus === 'UNKNOWN'
+            : input.qualificationStatus === 'RESTRICTED' ||
+                input.qualificationStatus === 'UNKNOWN'
               ? 'Review supplier qualification, then approve to buy only with explicit operator intent.'
               : input.hasManufacturerAmbiguity
                 ? 'Confirm the manufacturer details before approving the offer.'
@@ -372,31 +399,39 @@ export function buildReviewSummary(input: ReviewSummaryInput): ReviewSummary | n
                   : 'Review the staged offer and decide whether to approve to buy or reject.';
 
       return {
-        reviewReason: 'Structured price text was recognized but still needs checking',
+        reviewReason:
+          'Structured price text was recognized but still needs checking',
         recognizedContent: buildRecognizedContent(input),
         missingOrUnclear:
-          riskParts || 'The text looks commercially relevant, but the extracted lines still need manual confirmation.',
+          riskParts ||
+          'The text looks commercially relevant, but the extracted lines still need manual confirmation.',
         suggestedAction: nextStep,
       };
     }
 
     return {
-      reviewReason: 'Structured price text was recognized but still needs checking',
+      reviewReason:
+        'Structured price text was recognized but still needs checking',
       recognizedContent: buildRecognizedContent(input),
-      missingOrUnclear: 'The text looks commercially relevant, but the extracted lines still need manual confirmation.',
-      suggestedAction: 'Review the parsed lines and confirm the import type before importing anything.',
+      missingOrUnclear:
+        'The text looks commercially relevant, but the extracted lines still need manual confirmation.',
+      suggestedAction:
+        'Review the parsed lines and confirm the import type before importing anything.',
     };
   }
 
-  if ((input.fileType === 'CSV' || input.fileType === 'XLSX') && !input.inferredImportType) {
+  if (
+    (input.fileType === 'CSV' || input.fileType === 'XLSX') &&
+    !input.inferredImportType
+  ) {
     return {
       reviewReason: 'Import type is unclear',
       recognizedContent: buildRecognizedContent(input),
-      missingOrUnclear: 'It is unclear whether this should be treated as a supplier price list, inventory file, or sales file.',
-      suggestedAction:
-        input.sender
-          ? 'Review the spreadsheet and choose the correct import type manually.'
-          : 'Review the spreadsheet and confirm the correct import type before importing.',
+      missingOrUnclear:
+        'It is unclear whether this should be treated as a supplier price list, inventory file, or sales file.',
+      suggestedAction: input.sender
+        ? 'Review the spreadsheet and choose the correct import type manually.'
+        : 'Review the spreadsheet and confirm the correct import type before importing.',
     };
   }
 
@@ -407,6 +442,7 @@ export function buildReviewSummary(input: ReviewSummaryInput): ReviewSummary | n
       input.reason && input.reason.trim()
         ? input.reason.trim()
         : 'The item needs manual review before it can be processed safely.',
-    suggestedAction: 'Open the item, confirm what it contains, and decide the next manual step.',
+    suggestedAction:
+      'Open the item, confirm what it contains, and decide the next manual step.',
   };
 }

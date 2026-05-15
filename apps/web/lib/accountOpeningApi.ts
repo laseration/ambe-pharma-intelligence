@@ -26,6 +26,72 @@ export type AccountOpeningMissingInfoResponses = {
   reviewerNotes?: string | null;
 };
 
+export type AccountOpeningDraftField = {
+  key: string;
+  supplierLabel: string;
+  proposedValue: string | null;
+  valueSource:
+    | 'AMBE_MASTER_PROFILE'
+    | 'REVIEWER_RESPONSE'
+    | 'EXTRACTED_TEXT'
+    | 'SYSTEM_PLACEHOLDER'
+    | 'NOT_PROVIDED';
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'BLOCKED';
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'BLOCKED';
+  requiresReview: boolean;
+  reviewReason: string | null;
+  evidence: Array<{
+    sourceType:
+      | 'MASTER_PROFILE'
+      | 'EMAIL_BODY'
+      | 'ATTACHMENT_TEXT'
+      | 'REVIEWER_INPUT'
+      | 'SYSTEM_RULE';
+    sourceLabel: string | null;
+    snippet: string | null;
+  }>;
+};
+
+export type AccountOpeningCompletionDraft = {
+  status: 'PREVIEW' | 'READY_FOR_REVIEW' | 'REVIEW_REQUIRED' | 'BLOCKED';
+  overallConfidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'BLOCKED';
+  isStored: boolean;
+  profileId: string;
+  profileVersion: string;
+  generatedAt: string;
+  fields: AccountOpeningDraftField[];
+  summary: {
+    totalFields: number;
+    highConfidenceFields: number;
+    reviewRequiredFields: number;
+    blockedFields: number;
+    safeToAutoFill: boolean;
+  };
+  safetyNotes: string[];
+};
+
+export type AccountOpeningSourceEvidence = {
+  id: string | null;
+  sourceType: string;
+  sourceLabel: string | null;
+  fileName: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  contentId: string | null;
+  disposition: string | null;
+  extractionMethod: string | null;
+  extractedTextHash: string | null;
+  extractedTextChars: number | null;
+  safeSnippet: string | null;
+  rawFileAvailable: boolean;
+  storageProvider: string | null;
+  storageFolderUrl: string | null;
+  storageFileUrl: string | null;
+  storageDriveItemId: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
 export type AccountOpeningStatusAction =
   | 'MARKED_NEEDS_INFO'
   | 'APPROVED_FOR_COMPLETION'
@@ -60,6 +126,11 @@ export type AccountOpeningCaseDetail = {
   storageLastAttemptAt: string | null;
   storageFolderUrl: string | null;
   sourceAttachmentNames: string[];
+  draftStatus: string | null;
+  draftVersion: string | null;
+  draftGeneratedAt: string | null;
+  sourceEvidence: AccountOpeningSourceEvidence[];
+  completionDraft: AccountOpeningCompletionDraft;
   createdAt: string;
   updatedAt: string;
 };
@@ -75,7 +146,9 @@ function getInternalApiBaseUrl(): string {
 function buildHeaders(includeJsonContentType = false): HeadersInit {
   const headers: Record<string, string> = {};
   const apiKey =
-    process.env.INTERNAL_API_KEY?.trim() || process.env.INTERNAL_ADMIN_API_KEY?.trim() || '';
+    process.env.INTERNAL_API_KEY?.trim() ||
+    process.env.INTERNAL_ADMIN_API_KEY?.trim() ||
+    '';
 
   if (apiKey) {
     headers['x-internal-api-key'] = apiKey;
@@ -117,10 +190,37 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function getAccountOpeningCase(id: string): Promise<AccountOpeningCaseDetail> {
+export async function getAccountOpeningCase(
+  id: string,
+): Promise<AccountOpeningCaseDetail> {
   const payload = await requestJson<{ item: AccountOpeningCaseDetail }>(
     `/account-opening/${encodeURIComponent(id)}`,
   );
+  return payload.item;
+}
+
+export async function getAccountOpeningDraft(
+  id: string,
+): Promise<AccountOpeningCompletionDraft> {
+  const payload = await requestJson<{ item: AccountOpeningCompletionDraft }>(
+    `/account-opening/${encodeURIComponent(id)}/draft`,
+  );
+  return payload.item;
+}
+
+export async function generateAccountOpeningDraft(
+  id: string,
+): Promise<AccountOpeningCaseDetail> {
+  const payload = await requestJson<{
+    item: AccountOpeningCaseDetail;
+    draft: AccountOpeningCompletionDraft;
+  }>(`/account-opening/${encodeURIComponent(id)}/generate-draft`, {
+    method: 'POST',
+    body: JSON.stringify({
+      actorType: 'OPERATOR',
+      actorIdentifier: 'web-account-opening-review',
+    }),
+  });
   return payload.item;
 }
 

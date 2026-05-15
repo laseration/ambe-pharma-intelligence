@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import {
+  generateAccountOpeningDraft,
   saveAccountOpeningMissingInfo,
   updateAccountOpeningStatus,
   type AccountOpeningMissingInfoResponses,
@@ -35,23 +36,35 @@ function sanitizeReturnTo(value: string | null | undefined): string {
   return trimmed;
 }
 
-function buildRedirectTarget(caseId: string, params: Record<string, string>, returnTo: string): string {
+function buildRedirectTarget(
+  caseId: string,
+  params: Record<string, string>,
+  returnTo: string,
+): string {
   const searchParams = new URLSearchParams(params);
   searchParams.set('returnTo', returnTo);
   return `/dashboard/account-opening/${encodeURIComponent(caseId)}?${searchParams.toString()}`;
 }
 
-function optionalValue(formData: FormData, key: keyof AccountOpeningMissingInfoResponses): string | undefined {
+function optionalValue(
+  formData: FormData,
+  key: keyof AccountOpeningMissingInfoResponses,
+): string | undefined {
   const trimmed = value(formData, key);
   return trimmed || undefined;
 }
 
-function buildMissingInfoResponses(formData: FormData): AccountOpeningMissingInfoResponses {
+function buildMissingInfoResponses(
+  formData: FormData,
+): AccountOpeningMissingInfoResponses {
   return {
     website: optionalValue(formData, 'website'),
     numberOfEmployees: optionalValue(formData, 'numberOfEmployees'),
     businessHours: optionalValue(formData, 'businessHours'),
-    estimatedMonthlyPurchases: optionalValue(formData, 'estimatedMonthlyPurchases'),
+    estimatedMonthlyPurchases: optionalValue(
+      formData,
+      'estimatedMonthlyPurchases',
+    ),
     webOrdering: optionalValue(formData, 'webOrdering'),
     directDebitRequested: optionalValue(formData, 'directDebitRequested'),
     cdLicenceApplies: optionalValue(formData, 'cdLicenceApplies'),
@@ -72,7 +85,9 @@ function successMessage(action: AccountOpeningStatusAction): string {
   }
 }
 
-export async function submitAccountOpeningMissingInfoAction(formData: FormData) {
+export async function submitAccountOpeningMissingInfoAction(
+  formData: FormData,
+) {
   const caseId = value(formData, 'caseId');
   const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
 
@@ -81,21 +96,35 @@ export async function submitAccountOpeningMissingInfoAction(formData: FormData) 
   }
 
   try {
-    await saveAccountOpeningMissingInfo(caseId, buildMissingInfoResponses(formData));
+    await saveAccountOpeningMissingInfo(
+      caseId,
+      buildMissingInfoResponses(formData),
+    );
   } catch (error) {
     redirect(
-      buildRedirectTarget(caseId, {
-        error: error instanceof Error ? error.message : 'Failed to save missing information.',
-      }, returnTo),
+      buildRedirectTarget(
+        caseId,
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to save missing information.',
+        },
+        returnTo,
+      ),
     );
   }
 
   revalidatePath('/dashboard/review');
   revalidatePath(`/dashboard/account-opening/${caseId}`);
   redirect(
-    buildRedirectTarget(caseId, {
-      message: 'Missing information saved.',
-    }, returnTo),
+    buildRedirectTarget(
+      caseId,
+      {
+        message: 'Missing information saved.',
+      },
+      returnTo,
+    ),
   );
 }
 
@@ -115,17 +144,68 @@ export async function submitAccountOpeningStatusAction(formData: FormData) {
     });
   } catch (error) {
     redirect(
-      buildRedirectTarget(caseId, {
-        error: error instanceof Error ? error.message : 'Failed to update account-opening status.',
-      }, returnTo),
+      buildRedirectTarget(
+        caseId,
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to update account-opening status.',
+        },
+        returnTo,
+      ),
     );
   }
 
   revalidatePath('/dashboard/review');
   revalidatePath(`/dashboard/account-opening/${caseId}`);
   redirect(
-    buildRedirectTarget(caseId, {
-      message: successMessage(action),
-    }, returnTo),
+    buildRedirectTarget(
+      caseId,
+      {
+        message: successMessage(action),
+      },
+      returnTo,
+    ),
+  );
+}
+
+export async function submitGenerateAccountOpeningDraftAction(
+  formData: FormData,
+) {
+  const caseId = value(formData, 'caseId');
+  const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
+
+  if (!caseId) {
+    redirect('/dashboard/review?error=Missing+account-opening+case');
+  }
+
+  try {
+    await generateAccountOpeningDraft(caseId);
+  } catch (error) {
+    redirect(
+      buildRedirectTarget(
+        caseId,
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to generate completion draft.',
+        },
+        returnTo,
+      ),
+    );
+  }
+
+  revalidatePath('/dashboard/review');
+  revalidatePath(`/dashboard/account-opening/${caseId}`);
+  redirect(
+    buildRedirectTarget(
+      caseId,
+      {
+        message: 'Completion draft generated for review.',
+      },
+      returnTo,
+    ),
   );
 }

@@ -6,9 +6,14 @@ import express from 'express';
 
 import { errorHandler } from '../../http/errors';
 import { createAccountOpeningRouter } from '../routes';
-import type { AccountOpeningCaseDetail, AccountOpeningMissingInfoResponses } from '../service';
+import type {
+  AccountOpeningCaseDetail,
+  AccountOpeningMissingInfoResponses,
+} from '../service';
 
-function buildCaseDetail(overrides: Partial<AccountOpeningCaseDetail> = {}): AccountOpeningCaseDetail {
+function buildCaseDetail(
+  overrides: Partial<AccountOpeningCaseDetail> = {},
+): AccountOpeningCaseDetail {
   return {
     id: 'case-1',
     sourceFingerprint: 'fingerprint-1',
@@ -21,42 +26,75 @@ function buildCaseDetail(overrides: Partial<AccountOpeningCaseDetail> = {}): Acc
     detectedFormType: 'account opening form',
     status: 'PENDING_REVIEW',
     recommendedSigner: 'Aman Dhillon',
-    signingStatement: 'Aman Dhillon can sign this account-opening form by default.',
-    signingExplanation: 'Aman Dhillon can sign this account-opening form by default.',
+    signingStatement:
+      'Aman Dhillon can sign this account-opening form by default.',
+    signingExplanation:
+      'Aman Dhillon can sign this account-opening form by default.',
     detectedNames: [],
     detectedRoles: [],
     escalationNotes: [],
     riskFlags: ['Direct Debit mandate'],
     missingFields: ['companyNumber'],
-    reviewerChecks: ['Leave all signature fields blank unless approved by a human reviewer.'],
+    reviewerChecks: [
+      'Leave all signature fields blank unless approved by a human reviewer.',
+    ],
     signingNotes: {
       title: 'Account opening signing notes',
       recommendedSigner: 'Aman Dhillon',
-      defaultSigningStatement: 'Aman Dhillon can sign this account-opening form by default.',
+      defaultSigningStatement:
+        'Aman Dhillon can sign this account-opening form by default.',
       detectedNames: [],
       detectedRolesOrSections: [],
-      reviewerChecks: ['Leave all signature fields blank unless approved by a human reviewer.'],
+      reviewerChecks: [
+        'Leave all signature fields blank unless approved by a human reviewer.',
+      ],
       riskFlags: ['Direct Debit mandate'],
       missingOrUnclear: ['companyNumber'],
-      signatureInstruction: 'Leave signature fields blank until approved by a human reviewer.',
+      signatureInstruction:
+        'Leave signature fields blank until approved by a human reviewer.',
       summary:
         'Recommended signer: Aman Dhillon. Aman Dhillon can sign this account-opening form by default.',
     },
     missingInfoResponses: {},
-    extractedTextSummary: 'Extracted account-opening text from attachments (120 chars).',
+    extractedTextSummary:
+      'Extracted account-opening text from attachments (120 chars).',
     storageStatus: null,
     storageNote: null,
     storageSkippedReason: null,
     storageLastAttemptAt: null,
     storageFolderUrl: null,
     sourceAttachmentNames: ['account-opening-form.pdf'],
+    draftStatus: null,
+    draftVersion: null,
+    draftGeneratedAt: null,
+    sourceEvidence: [],
+    completionDraft: {
+      status: 'PREVIEW',
+      overallConfidence: 'BLOCKED',
+      isStored: false,
+      profileId: 'ambe-master-profile',
+      profileVersion: '2026-05-15',
+      generatedAt: '2026-05-15T00:00:00.000Z',
+      fields: [],
+      summary: {
+        totalFields: 0,
+        highConfidenceFields: 0,
+        reviewRequiredFields: 0,
+        blockedFields: 0,
+        safeToAutoFill: false,
+      },
+      safetyNotes: [],
+    },
     createdAt: '2026-05-12T09:00:00.000Z',
     updatedAt: '2026-05-12T09:05:00.000Z',
     ...overrides,
   };
 }
 
-async function startServer(context: TestContext, dependencies: Parameters<typeof createAccountOpeningRouter>[0]) {
+async function startServer(
+  context: TestContext,
+  dependencies: Parameters<typeof createAccountOpeningRouter>[0],
+) {
   const app = express();
   app.use(express.json());
   app.use('/account-opening', createAccountOpeningRouter(dependencies));
@@ -82,6 +120,7 @@ async function startServer(context: TestContext, dependencies: Parameters<typeof
 test('account-opening routes read a case without exposing raw form text fields', async (t) => {
   const baseUrl = await startServer(t, {
     getCaseDetail: async () => buildCaseDetail(),
+    generateDraft: async () => buildCaseDetail(),
     saveMissingInfo: async () => buildCaseDetail(),
     updateStatus: async () => buildCaseDetail(),
   });
@@ -107,23 +146,30 @@ test('account-opening missing-info route saves sanitized review fields with audi
   }> = [];
   const baseUrl = await startServer(t, {
     getCaseDetail: async () => buildCaseDetail(),
+    generateDraft: async () => buildCaseDetail(),
     saveMissingInfo: async (input) => {
       savedInputs.push(input);
-      return buildCaseDetail({ missingInfoResponses: input.missingInfoResponses });
+      return buildCaseDetail({
+        missingInfoResponses: input.missingInfoResponses,
+      });
     },
     updateStatus: async () => buildCaseDetail(),
   });
 
-  const response = await fetch(`${baseUrl}/account-opening/case-1/missing-info`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      website: 'https://supplier.example',
-      reviewerNotes: 'Account number 12345678 should be redacted by the service.',
-      actorType: 'OPERATOR',
-      actorIdentifier: 'route-test',
-    }),
-  });
+  const response = await fetch(
+    `${baseUrl}/account-opening/case-1/missing-info`,
+    {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        website: 'https://supplier.example',
+        reviewerNotes:
+          'Account number 12345678 should be redacted by the service.',
+        actorType: 'OPERATOR',
+        actorIdentifier: 'route-test',
+      }),
+    },
+  );
   const payload = (await response.json()) as { item: AccountOpeningCaseDetail };
 
   assert.equal(response.status, 200);
@@ -131,14 +177,21 @@ test('account-opening missing-info route saves sanitized review fields with audi
   assert.equal(savedInput?.id, 'case-1');
   assert.equal(savedInput?.actorType, 'OPERATOR');
   assert.equal(savedInput?.actorIdentifier, 'route-test');
-  assert.equal(savedInput?.missingInfoResponses.website, 'https://supplier.example');
-  assert.match(payload.item.missingInfoResponses.reviewerNotes ?? '', /Account number/);
+  assert.equal(
+    savedInput?.missingInfoResponses.website,
+    'https://supplier.example',
+  );
+  assert.match(
+    payload.item.missingInfoResponses.reviewerNotes ?? '',
+    /Account number/,
+  );
 });
 
 test('account-opening status route allows only safe review status actions', async (t) => {
   const actions: string[] = [];
   const baseUrl = await startServer(t, {
     getCaseDetail: async () => buildCaseDetail(),
+    generateDraft: async () => buildCaseDetail(),
     saveMissingInfo: async () => buildCaseDetail(),
     updateStatus: async (input) => {
       actions.push(input.action);
@@ -153,32 +206,95 @@ test('account-opening status route allows only safe review status actions', asyn
     },
   });
 
-  const approveResponse = await fetch(`${baseUrl}/account-opening/case-1/status`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      action: 'APPROVED_FOR_COMPLETION',
-      note: 'Approved for completion only. This does not sign or send.',
-    }),
-  });
-  const rejectResponse = await fetch(`${baseUrl}/account-opening/case-1/status`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      action: 'REJECTED',
-      note: 'No form will be completed, signed, uploaded, or sent.',
-    }),
-  });
-  const unsafeResponse = await fetch(`${baseUrl}/account-opening/case-1/status`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      action: 'GENERATE_DRAFT',
-    }),
-  });
+  const approveResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/status`,
+    {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action: 'APPROVED_FOR_COMPLETION',
+        note: 'Approved for completion only. This does not sign or send.',
+      }),
+    },
+  );
+  const rejectResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/status`,
+    {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action: 'REJECTED',
+        note: 'No form will be completed, signed, uploaded, or sent.',
+      }),
+    },
+  );
+  const unsafeResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/status`,
+    {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action: 'GENERATE_DRAFT',
+      }),
+    },
+  );
 
   assert.equal(approveResponse.status, 200);
   assert.equal(rejectResponse.status, 200);
   assert.equal(unsafeResponse.status, 422);
   assert.deepEqual(actions, ['APPROVED_FOR_COMPLETION', 'REJECTED']);
+});
+
+test('account-opening draft routes return safe draft and protect generation', async (t) => {
+  const generatedInputs: Array<{
+    id: string;
+    actorType?: string | null;
+    actorIdentifier?: string | null;
+  }> = [];
+  const generatedDetail = buildCaseDetail({
+    draftStatus: 'BLOCKED',
+    draftGeneratedAt: '2026-05-15T10:00:00.000Z',
+    completionDraft: {
+      ...buildCaseDetail().completionDraft,
+      status: 'BLOCKED',
+      isStored: true,
+      generatedAt: '2026-05-15T10:00:00.000Z',
+    },
+  });
+  const baseUrl = await startServer(t, {
+    getCaseDetail: async () => buildCaseDetail(),
+    generateDraft: async (input) => {
+      generatedInputs.push(input);
+      return generatedDetail;
+    },
+    saveMissingInfo: async () => buildCaseDetail(),
+    updateStatus: async () => buildCaseDetail(),
+  });
+
+  const readResponse = await fetch(`${baseUrl}/account-opening/case-1/draft`);
+  const generateResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/generate-draft`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        actorType: 'OPERATOR',
+        actorIdentifier: 'route-draft-test',
+      }),
+    },
+  );
+  const readPayload = (await readResponse.json()) as {
+    item: AccountOpeningCaseDetail['completionDraft'];
+  };
+  const generatePayload = (await generateResponse.json()) as {
+    item: AccountOpeningCaseDetail;
+    draft: AccountOpeningCaseDetail['completionDraft'];
+  };
+
+  assert.equal(readResponse.status, 200);
+  assert.equal(readPayload.item.status, 'PREVIEW');
+  assert.equal(generateResponse.status, 200);
+  assert.equal(generatePayload.draft.isStored, true);
+  assert.equal(generatedInputs[0]?.id, 'case-1');
+  assert.equal(generatedInputs[0]?.actorIdentifier, 'route-draft-test');
 });

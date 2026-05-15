@@ -32,18 +32,21 @@ body {
 body {
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 24%),
-    radial-gradient(circle at top right, rgba(15, 118, 110, 0.05), transparent 22%),
+    radial-gradient(
+      circle at top left,
+      rgba(15, 118, 110, 0.08),
+      transparent 24%
+    ),
+    radial-gradient(
+      circle at top right,
+      rgba(15, 118, 110, 0.05),
+      transparent 22%
+    ),
     linear-gradient(180deg, #fbfbfc 0%, var(--background) 100%);
   color: var(--text);
   font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "SF Pro Display",
-    "SF Pro Text",
-    "Inter",
-    "Segoe UI",
-    sans-serif;
+    -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter',
+    'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -342,7 +345,11 @@ summary {
   padding: 18px 20px;
   border: 1px solid var(--border);
   border-radius: 22px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(236, 253, 245, 0.8) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(236, 253, 245, 0.8) 100%
+  );
 }
 
 .dashboard-hero-pill-row {
@@ -490,7 +497,11 @@ summary {
   padding: 18px 20px;
   border: 1px solid rgba(15, 118, 110, 0.14);
   border-radius: 22px;
-  background: linear-gradient(180deg, #ffffff 0%, rgba(236, 253, 245, 0.7) 100%);
+  background: linear-gradient(
+    180deg,
+    #ffffff 0%,
+    rgba(236, 253, 245, 0.7) 100%
+  );
 }
 
 .dashboard-proof-copy {
@@ -612,6 +623,11 @@ summary {
 .alert-error {
   background: var(--danger-soft);
   border-color: rgba(180, 35, 24, 0.18);
+}
+
+.alert-warning {
+  background: rgba(255, 247, 237, 0.86);
+  border-color: rgba(194, 65, 12, 0.18);
 }
 
 .dashboard-signal-list,
@@ -760,12 +776,7 @@ summary {
   white-space: pre-wrap;
   word-break: break-word;
   font-family:
-    ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    Monaco,
-    Consolas,
-    "Liberation Mono",
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
     monospace;
   font-size: 0.88rem;
   line-height: 1.6;
@@ -963,7 +974,11 @@ summary {
 
 .resolution-candidate-card-selected {
   border-color: rgba(15, 118, 110, 0.2);
-  background: linear-gradient(180deg, #ffffff 0%, rgba(236, 253, 245, 0.72) 100%);
+  background: linear-gradient(
+    180deg,
+    #ffffff 0%,
+    rgba(236, 253, 245, 0.72) 100%
+  );
 }
 
 .resolution-candidate-copy-secondary {
@@ -1026,6 +1041,38 @@ summary {
 
 .review-inline-alert {
   margin-top: 16px;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.data-table {
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  min-width: 760px;
+  width: 100%;
+}
+
+.data-table th,
+.data-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.7rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.data-table th {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.data-table td {
+  color: var(--text);
 }
 
 @media (max-width: 1080px) {
