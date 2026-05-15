@@ -5,7 +5,9 @@ import { createReviewQueueService as createReviewQueueServiceBase } from '../ser
 
 type ReviewQueueServiceOverrides = NonNullable<Parameters<typeof createReviewQueueServiceBase>[0]>;
 
-function createReviewQueueService(overrides: ReviewQueueServiceOverrides) {
+function createReviewQueueService(
+  overrides?: ReviewQueueServiceOverrides,
+) {
   return createReviewQueueServiceBase({
     listAccountOpeningCases: async () => [],
     ...overrides,

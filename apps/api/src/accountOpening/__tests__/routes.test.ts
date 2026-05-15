@@ -4,12 +4,28 @@ import test, { type TestContext } from 'node:test';
 
 import express from 'express';
 
+import { env } from '../../config/env';
 import { errorHandler } from '../../http/errors';
 import { createAccountOpeningRouter } from '../routes';
+import {
+  buildAccountOpeningReviewExportPack,
+  getAccountOpeningReviewExportFile,
+} from '../reviewExport';
 import type {
   AccountOpeningCaseDetail,
   AccountOpeningMissingInfoResponses,
 } from '../service';
+
+function overrideEnv(context: TestContext, overrides: Partial<typeof env>) {
+  const snapshot = Object.fromEntries(
+    Object.keys(overrides).map((key) => [key, env[key as keyof typeof env]]),
+  ) as Partial<typeof env>;
+
+  Object.assign(env, overrides);
+  context.after(() => {
+    Object.assign(env, snapshot);
+  });
+}
 
 function buildCaseDetail(
   overrides: Partial<AccountOpeningCaseDetail> = {},
@@ -93,11 +109,32 @@ function buildCaseDetail(
 
 async function startServer(
   context: TestContext,
-  dependencies: Parameters<typeof createAccountOpeningRouter>[0],
+  dependencies: Partial<Parameters<typeof createAccountOpeningRouter>[0]>,
 ) {
   const app = express();
+  const defaultDetail = buildCaseDetail();
+  const routerDependencies: Parameters<typeof createAccountOpeningRouter>[0] = {
+    getCaseDetail: async () => defaultDetail,
+    generateDraft: async () => defaultDetail,
+    exportPack: async () => buildAccountOpeningReviewExportPack(defaultDetail),
+    downloadExportFile: async (input) => {
+      const file = getAccountOpeningReviewExportFile(
+        buildAccountOpeningReviewExportPack(defaultDetail),
+        input.fileName,
+      );
+
+      if (!file) {
+        throw new Error('Account-opening review export file not found.');
+      }
+
+      return file;
+    },
+    saveMissingInfo: async () => defaultDetail,
+    updateStatus: async () => defaultDetail,
+    ...dependencies,
+  };
   app.use(express.json());
-  app.use('/account-opening', createAccountOpeningRouter(dependencies));
+  app.use('/account-opening', createAccountOpeningRouter(routerDependencies));
   app.use(errorHandler);
   const server = app.listen(0);
 
@@ -297,4 +334,175 @@ test('account-opening draft routes return safe draft and protect generation', as
   assert.equal(generatePayload.draft.isStored, true);
   assert.equal(generatedInputs[0]?.id, 'case-1');
   assert.equal(generatedInputs[0]?.actorIdentifier, 'route-draft-test');
+});
+
+test('account-opening review export routes return safe pack and downloadable files', async (t) => {
+  const exportedInputs: Array<{ id: string; actorIdentifier?: string | null }> =
+    [];
+  const downloadedInputs: Array<{
+    id: string;
+    fileName: string;
+    actorIdentifier?: string | null;
+  }> = [];
+  const detail = buildCaseDetail({
+    sourceAttachmentNames: ['mandate-account-12345678-sort-12-34-56.pdf'],
+    sourceEvidence: [
+      {
+        id: 'evidence-1',
+        sourceType: 'ATTACHMENT',
+        sourceLabel: 'mandate-account-12345678-sort-12-34-56.pdf',
+        fileName: 'mandate-account-12345678-sort-12-34-56.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1200,
+        contentId: null,
+        disposition: 'attachment',
+        extractionMethod: 'PDF_TEXT',
+        extractedTextHash: 'hash-1',
+        extractedTextChars: 180,
+        safeSnippet:
+          'Direct Debit mandate with account number 12345678 and sort code 12-34-56.',
+        rawFileAvailable: false,
+        storageProvider: null,
+        storageFolderUrl: null,
+        storageFileUrl: null,
+        storageDriveItemId: null,
+        createdAt: '2026-05-15T10:00:00.000Z',
+        updatedAt: '2026-05-15T10:00:00.000Z',
+      },
+    ],
+    completionDraft: {
+      ...buildCaseDetail().completionDraft,
+      status: 'BLOCKED',
+      isStored: true,
+      fields: [
+        {
+          key: 'directDebit',
+          supplierLabel: 'Direct Debit',
+          proposedValue: 'To be confirmed in secure review',
+          valueSource: 'SYSTEM_PLACEHOLDER',
+          confidence: 'BLOCKED',
+          riskLevel: 'BLOCKED',
+          requiresReview: true,
+          reviewReason: 'Direct Debit cannot be auto-filled.',
+          evidence: [
+            {
+              sourceType: 'SYSTEM_RULE',
+              sourceLabel: 'safety',
+              snippet: 'Direct Debit requires review.',
+            },
+          ],
+        },
+      ],
+    },
+  });
+  const baseUrl = await startServer(t, {
+    exportPack: async (input) => {
+      exportedInputs.push(input);
+      return buildAccountOpeningReviewExportPack(
+        detail,
+        new Date('2026-05-16T10:00:00.000Z'),
+      );
+    },
+    downloadExportFile: async (input) => {
+      downloadedInputs.push(input);
+      const file = getAccountOpeningReviewExportFile(
+        buildAccountOpeningReviewExportPack(
+          detail,
+          new Date('2026-05-16T10:00:00.000Z'),
+        ),
+        input.fileName,
+      );
+
+      if (!file) {
+        throw new Error('Account-opening review export file not found.');
+      }
+
+      return file;
+    },
+  });
+
+  const packResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/export-pack`,
+  );
+  const fileResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/export-pack/review-pack.md`,
+  );
+  const packText = await packResponse.text();
+  const fileText = await fileResponse.text();
+
+  assert.equal(packResponse.status, 200);
+  assert.match(packText, /review-pack\.json/);
+  assert.match(packText, /source-evidence\.json/);
+  assert.doesNotMatch(packText, /12345678/);
+  assert.doesNotMatch(packText, /12-34-56/);
+  assert.equal(fileResponse.status, 200);
+  assert.match(
+    fileResponse.headers.get('content-disposition') ?? '',
+    /review-pack\.md/,
+  );
+  assert.match(fileText, /This does not sign the form\./);
+  assert.match(fileText, /This does not fill PDF\/Word supplier forms\./);
+  assert.doesNotMatch(fileText, /12345678/);
+  assert.doesNotMatch(fileText, /12-34-56/);
+  assert.equal(exportedInputs[0]?.id, 'case-1');
+  assert.equal(downloadedInputs[0]?.fileName, 'review-pack.md');
+});
+
+test('account-opening review export routes reject unknown and traversal filenames safely', async (t) => {
+  const downloadedInputs: Array<{ fileName: string }> = [];
+  const baseUrl = await startServer(t, {
+    downloadExportFile: async (input) => {
+      downloadedInputs.push(input);
+      return getAccountOpeningReviewExportFile(
+        buildAccountOpeningReviewExportPack(buildCaseDetail()),
+        input.fileName,
+      ) as never;
+    },
+  });
+
+  const unknownResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/export-pack/unknown.json`,
+  );
+  const traversalResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/export-pack/${encodeURIComponent('../secret.json')}`,
+  );
+
+  assert.equal(unknownResponse.status, 404);
+  assert.equal(traversalResponse.status, 404);
+  assert.equal(downloadedInputs.length, 0);
+});
+
+test('account-opening review export routes require internal operator access', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
+  const exportedInputs: Array<{ actorIdentifier?: string | null }> = [];
+  const baseUrl = await startServer(t, {
+    exportPack: async (input) => {
+      exportedInputs.push(input);
+      return buildAccountOpeningReviewExportPack(buildCaseDetail());
+    },
+  });
+
+  const missingAuthResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/export-pack`,
+  );
+  const validAuthResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/export-pack`,
+    {
+      headers: {
+        'x-internal-api-key': 'test-secret',
+        'x-internal-caller-name': 'route-export-test',
+      },
+    },
+  );
+
+  assert.equal(missingAuthResponse.status, 401);
+  assert.equal(validAuthResponse.status, 200);
+  assert.equal(
+    exportedInputs[0]?.actorIdentifier,
+    'internal-operator:route-export-test',
+  );
 });

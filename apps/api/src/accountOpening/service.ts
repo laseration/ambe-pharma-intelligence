@@ -13,6 +13,12 @@ import {
   type AccountOpeningCompletionDraft,
   type AccountOpeningDraftSourceEvidenceInput,
 } from './draft';
+import {
+  buildAccountOpeningReviewExportPack,
+  getAccountOpeningReviewExportFile,
+  type AccountOpeningReviewExportFile,
+  type AccountOpeningReviewExportPack,
+} from './reviewExport';
 
 export type AccountOpeningStructuredFields = {
   companyName: string;
@@ -1369,6 +1375,99 @@ export async function generateAccountOpeningDraft(input: {
   });
 
   return buildAccountOpeningCaseDetail(updatedWithEvidence);
+}
+
+function exportAuditMetadata(
+  pack: AccountOpeningReviewExportPack,
+  fileName?: string | null,
+) {
+  return jsonObject({
+    generatedAt: pack.generatedAt,
+    fileName: fileName ?? null,
+    fileNames: pack.metadata.fileNames,
+    reviewExportOnly: true,
+    rawExtractedTextIncluded: false,
+    rawBankDetailsIncluded: false,
+    signedFormsIncluded: false,
+    completedSupplierFormsIncluded: false,
+    pdfWordFormsFilled: false,
+    supplierMessageIncluded: false,
+    purchaseWorkflowTriggered: false,
+  });
+}
+
+export async function exportAccountOpeningReviewedPack(input: {
+  id: string;
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  repository?: AccountOpeningCaseRepository;
+  now?: Date;
+}): Promise<AccountOpeningReviewExportPack> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  const existing = await findCaseWithEvidence(input.id, repository);
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  const pack = buildAccountOpeningReviewExportPack(
+    buildAccountOpeningCaseDetail(existing),
+    input.now,
+  );
+
+  await repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.id,
+      actionType: 'SAFE_REVIEW_EXPORT_PACK_EXPORTED',
+      previousStatus: existing.status,
+      newStatus: existing.status,
+      actorType: input.actorType?.trim() || 'OPERATOR',
+      actorIdentifier: sanitizeDashboardText(input.actorIdentifier) ?? null,
+      metadata: exportAuditMetadata(pack),
+    },
+  });
+
+  return pack;
+}
+
+export async function downloadAccountOpeningReviewedExportFile(input: {
+  id: string;
+  fileName: string;
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  repository?: AccountOpeningCaseRepository;
+  now?: Date;
+}): Promise<AccountOpeningReviewExportFile> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  const existing = await findCaseWithEvidence(input.id, repository);
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  const pack = buildAccountOpeningReviewExportPack(
+    buildAccountOpeningCaseDetail(existing),
+    input.now,
+  );
+  const file = getAccountOpeningReviewExportFile(pack, input.fileName);
+
+  if (!file) {
+    throw new Error('Account-opening review export file not found.');
+  }
+
+  await repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.id,
+      actionType: 'SAFE_REVIEW_EXPORT_FILE_DOWNLOADED',
+      previousStatus: existing.status,
+      newStatus: existing.status,
+      actorType: input.actorType?.trim() || 'OPERATOR',
+      actorIdentifier: sanitizeDashboardText(input.actorIdentifier) ?? null,
+      metadata: exportAuditMetadata(pack, file.fileName),
+    },
+  });
+
+  return file;
 }
 
 export async function upsertAccountOpeningCase(
