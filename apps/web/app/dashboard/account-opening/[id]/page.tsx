@@ -375,8 +375,8 @@ export default async function AccountOpeningDetailPage({
               {hiddenInput('returnTo', returnTo)}
               <button className="button" type="submit">
                 {item.completionDraft.isStored
-                  ? 'Regenerate draft'
-                  : 'Generate draft'}
+                  ? 'Regenerate completion draft'
+                  : 'Generate completion draft'}
               </button>
             </form>
           </div>

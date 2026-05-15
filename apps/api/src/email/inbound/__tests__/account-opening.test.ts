@@ -75,23 +75,32 @@ test('inbound email service queues account-opening forms for review before impor
     result.items[0]?.accountOpeningCase?.signingNotes.defaultSigningStatement,
     'Aman Dhillon can sign this account-opening form by default.',
   );
-  assert.equal(result.items[0]?.accountOpeningCase?.signingSummary.defaultSigner, 'Aman Dhillon');
+  assert.equal(
+    result.items[0]?.accountOpeningCase?.signingSummary.defaultSigner,
+    'Aman Dhillon',
+  );
   assert.match(
-    result.items[0]?.accountOpeningCase?.signingSummary.signingExplanation ?? '',
+    result.items[0]?.accountOpeningCase?.signingSummary.signingExplanation ??
+      '',
     /Aman Dhillon can sign this account-opening form by default/,
   );
 });
 
 test('duplicate account-opening inbound message upserts one durable case and creates no buying action', async () => {
   const persistedCases = new Map<string, unknown>();
+  const persistedInputs: AccountOpeningCasePersistenceInput[] = [];
   const service = createEmailInboundService({
     allowedSenders: ['supplier.co.uk'],
     isTrustedSender: () => true,
     importSupplierPriceList: async () => {
-      throw new Error('supplier price list import should not run for account-opening forms');
+      throw new Error(
+        'supplier price list import should not run for account-opening forms',
+      );
     },
     importInventory: async () => {
-      throw new Error('inventory import should not run for account-opening forms');
+      throw new Error(
+        'inventory import should not run for account-opening forms',
+      );
     },
     importSales: async () => {
       throw new Error('sales import should not run for account-opening forms');
@@ -117,6 +126,7 @@ test('duplicate account-opening inbound message upserts one durable case and cre
       warnings: [],
     }),
     persistAccountOpeningCase: async (input) => {
+      persistedInputs.push(input);
       persistedCases.set(input.accountCase.sourceFingerprint, input);
     },
     logger: {
@@ -141,12 +151,26 @@ test('duplicate account-opening inbound message upserts one durable case and cre
 
   const first = await service.ingestMessage(message);
   const second = await service.ingestMessage(message);
-  const persistedInput = Array.from(persistedCases.values())[0] as AccountOpeningCasePersistenceInput;
+  const persistedInput = Array.from(
+    persistedCases.values(),
+  )[0] as AccountOpeningCasePersistenceInput;
 
   assert.equal(first.items[0]?.processingStatus, 'REVIEW_REQUIRED');
   assert.equal(second.items[0]?.processingStatus, 'REVIEW_REQUIRED');
+  assert.equal(persistedInputs.length, 2);
   assert.equal(persistedCases.size, 1);
-  assert.equal(persistedInput.accountCase.signingSummary.defaultSigner, 'Aman Dhillon');
+  assert.equal(
+    persistedInputs[0]?.accountCase.sourceFingerprint,
+    persistedInputs[1]?.accountCase.sourceFingerprint,
+  );
+  assert.deepEqual(
+    persistedInputs[0]?.accountCase.sourceEvidence,
+    persistedInputs[1]?.accountCase.sourceEvidence,
+  );
+  assert.equal(
+    persistedInput.accountCase.signingSummary.defaultSigner,
+    'Aman Dhillon',
+  );
   assert.ok(
     persistedInput.accountCase.signingNotes.reviewerChecks.some((check) =>
       check.includes('director-only signature'),
@@ -157,8 +181,12 @@ test('duplicate account-opening inbound message upserts one durable case and cre
       check.includes('regulatory/RP wording'),
     ),
   );
-  assert.ok(persistedInput.accountCase.riskFlags.includes('Direct Debit mandate'));
-  assert.ok(persistedInput.accountCase.riskFlags.includes('bank authority signature'));
+  assert.ok(
+    persistedInput.accountCase.riskFlags.includes('Direct Debit mandate'),
+  );
+  assert.ok(
+    persistedInput.accountCase.riskFlags.includes('bank authority signature'),
+  );
   assert.ok(persistedInput.accountCase.riskFlags.includes('Guarantee'));
   assert.equal(first.items[0]?.importBatchId, undefined);
   assert.equal(second.items[0]?.importBatchId, undefined);

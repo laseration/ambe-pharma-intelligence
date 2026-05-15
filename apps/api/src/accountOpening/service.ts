@@ -606,6 +606,72 @@ function draftAuditMetadata(
   });
 }
 
+function evidenceComparable(
+  evidence:
+    | ReturnType<typeof normalizeSourceEvidenceInput>
+    | AccountOpeningSourceEvidenceDetail
+    | PersistedAccountOpeningSourceEvidence,
+) {
+  return {
+    sourceType: evidence.sourceType,
+    sourceLabel: evidence.sourceLabel ?? null,
+    fileName: evidence.fileName ?? null,
+    mimeType: evidence.mimeType ?? null,
+    sizeBytes: evidence.sizeBytes ?? null,
+    contentId: evidence.contentId ?? null,
+    disposition: evidence.disposition ?? null,
+    extractionMethod: evidence.extractionMethod ?? null,
+    extractedTextHash: evidence.extractedTextHash ?? null,
+    extractedTextChars: evidence.extractedTextChars ?? null,
+    safeSnippet: evidence.safeSnippet ?? null,
+    rawFileAvailable: Boolean(evidence.rawFileAvailable),
+    storageProvider: evidence.storageProvider ?? null,
+    storageFolderUrl: evidence.storageFolderUrl ?? null,
+    storageFileUrl: evidence.storageFileUrl ?? null,
+    storageDriveItemId: evidence.storageDriveItemId ?? null,
+  };
+}
+
+function evidenceFingerprint(
+  evidence: Array<
+    | ReturnType<typeof normalizeSourceEvidenceInput>
+    | AccountOpeningSourceEvidenceDetail
+    | PersistedAccountOpeningSourceEvidence
+  >,
+): string {
+  return JSON.stringify(evidence.map(evidenceComparable));
+}
+
+function draftRoutingEventType(
+  draft: AccountOpeningCompletionDraft,
+): 'DRAFT_READY_FOR_REVIEW' | 'DRAFT_REVIEW_REQUIRED' | 'DRAFT_BLOCKED' {
+  if (draft.status === 'READY_FOR_REVIEW') {
+    return 'DRAFT_READY_FOR_REVIEW';
+  }
+
+  if (draft.status === 'REVIEW_REQUIRED') {
+    return 'DRAFT_REVIEW_REQUIRED';
+  }
+
+  return 'DRAFT_BLOCKED';
+}
+
+function draftComparable(draft: AccountOpeningCompletionDraft) {
+  return {
+    status: draft.status,
+    overallConfidence: draft.overallConfidence,
+    profileId: draft.profileId,
+    profileVersion: draft.profileVersion,
+    fields: draft.fields,
+    summary: draft.summary,
+    safetyNotes: draft.safetyNotes,
+  };
+}
+
+function draftFingerprint(draft: AccountOpeningCompletionDraft): string {
+  return JSON.stringify(draftComparable(draft));
+}
+
 function jsonRecordFromUnknown(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -1213,7 +1279,7 @@ async function findCaseWithEvidence(
   });
 }
 
-async function writeDraftAuditEvents(input: {
+export async function writeDraftAuditEvents(input: {
   accountCaseId: string;
   previousStatus?: string | null;
   draft: AccountOpeningCompletionDraft;
@@ -1238,10 +1304,11 @@ async function writeDraftAuditEvents(input: {
     },
   });
 
+  const routingEventType = draftRoutingEventType(input.draft);
   await input.repository.createEvent({
     data: {
       accountOpeningCaseId: input.accountCaseId,
-      actionType: 'DRAFT_READY_FOR_REVIEW',
+      actionType: routingEventType,
       previousStatus: input.previousStatus,
       newStatus: input.previousStatus,
       actorType: 'SYSTEM',
@@ -1249,34 +1316,6 @@ async function writeDraftAuditEvents(input: {
       metadata,
     },
   });
-
-  if (input.draft.summary.reviewRequiredFields > 0) {
-    await input.repository.createEvent({
-      data: {
-        accountOpeningCaseId: input.accountCaseId,
-        actionType: 'DRAFT_REVIEW_REQUIRED',
-        previousStatus: input.previousStatus,
-        newStatus: input.previousStatus,
-        actorType: 'SYSTEM',
-        actorIdentifier: 'account-opening-draft-generator',
-        metadata,
-      },
-    });
-  }
-
-  if (input.draft.summary.blockedFields > 0) {
-    await input.repository.createEvent({
-      data: {
-        accountOpeningCaseId: input.accountCaseId,
-        actionType: 'DRAFT_BLOCKED',
-        previousStatus: input.previousStatus,
-        newStatus: input.previousStatus,
-        actorType: 'SYSTEM',
-        actorIdentifier: 'account-opening-draft-generator',
-        metadata,
-      },
-    });
-  }
 }
 
 export async function generateAccountOpeningDraft(input: {
@@ -1360,34 +1399,47 @@ export async function upsertAccountOpeningCase(
   };
 
   const accountCase = await client.accountOpeningCase.upsert(data);
-
-  await client.accountOpeningSourceEvidence.deleteMany({
-    where: { accountOpeningCaseId: accountCase.id },
-  });
-
-  if (evidenceRows.length > 0) {
-    await client.accountOpeningSourceEvidence.createMany({
-      data: evidenceRows.map((evidence) => ({
-        ...evidence,
-        accountOpeningCaseId: accountCase.id,
-      })),
-    });
-
-    await client.accountOpeningCaseEvent.create({
-      data: {
-        accountOpeningCaseId: accountCase.id,
-        actionType: 'SOURCE_EVIDENCE_CAPTURED',
-        previousStatus: accountCase.status,
-        newStatus: accountCase.status,
-        actorType: 'SYSTEM',
-        actorIdentifier: 'email-account-opening-ingestion',
-        metadata: jsonObject({
-          evidenceCount: evidenceRows.length,
-          rawFileBytesStored: false,
-          rawExtractedTextStored: false,
-        }),
+  const existingWithEvidence = await client.accountOpeningCase.findUnique({
+    where: { id: accountCase.id },
+    include: {
+      sourceEvidence: {
+        orderBy: { createdAt: 'asc' },
       },
+    },
+  });
+  const existingEvidence = existingWithEvidence?.sourceEvidence ?? [];
+  const evidenceChanged =
+    evidenceFingerprint(existingEvidence) !== evidenceFingerprint(evidenceRows);
+
+  if (evidenceChanged) {
+    await client.accountOpeningSourceEvidence.deleteMany({
+      where: { accountOpeningCaseId: accountCase.id },
     });
+
+    if (evidenceRows.length > 0) {
+      await client.accountOpeningSourceEvidence.createMany({
+        data: evidenceRows.map((evidence) => ({
+          ...evidence,
+          accountOpeningCaseId: accountCase.id,
+        })),
+      });
+
+      await client.accountOpeningCaseEvent.create({
+        data: {
+          accountOpeningCaseId: accountCase.id,
+          actionType: 'SOURCE_EVIDENCE_CAPTURED',
+          previousStatus: accountCase.status,
+          newStatus: accountCase.status,
+          actorType: 'SYSTEM',
+          actorIdentifier: 'email-account-opening-ingestion',
+          metadata: jsonObject({
+            evidenceCount: evidenceRows.length,
+            rawFileBytesStored: false,
+            rawExtractedTextStored: false,
+          }),
+        },
+      });
+    }
   }
 
   const accountCaseWithEvidence = await client.accountOpeningCase.findUnique({
@@ -1413,33 +1465,39 @@ export async function upsertAccountOpeningCase(
   const generatedActionType = accountCaseWithEvidence.draftGeneratedAt
     ? 'DRAFT_REGENERATED'
     : 'DRAFT_GENERATED';
+  const draftChanged =
+    !isAccountOpeningCompletionDraft(accountCaseWithEvidence.draftJson) ||
+    draftFingerprint(accountCaseWithEvidence.draftJson) !==
+      draftFingerprint(draft);
 
-  await client.accountOpeningCase.update({
-    where: { id: accountCase.id },
-    data: {
-      draftStatus: draft.status,
-      draftVersion: draft.profileVersion,
-      draftGeneratedAt: new Date(draft.generatedAt),
-      draftJson: jsonObject(draft as unknown as Record<string, unknown>),
-      draftSummary: jsonObject(
-        draft.summary as unknown as Record<string, unknown>,
-      ),
-    },
-  });
+  if (draftChanged) {
+    await client.accountOpeningCase.update({
+      where: { id: accountCase.id },
+      data: {
+        draftStatus: draft.status,
+        draftVersion: draft.profileVersion,
+        draftGeneratedAt: new Date(draft.generatedAt),
+        draftJson: jsonObject(draft as unknown as Record<string, unknown>),
+        draftSummary: jsonObject(
+          draft.summary as unknown as Record<string, unknown>,
+        ),
+      },
+    });
 
-  await writeDraftAuditEvents({
-    accountCaseId: accountCase.id,
-    previousStatus: accountCase.status,
-    draft,
-    generatedActionType,
-    actorType: 'SYSTEM',
-    actorIdentifier: 'email-account-opening-ingestion',
-    repository: {
-      findUnique: (args) => client.accountOpeningCase.findUnique(args),
-      update: (args) => client.accountOpeningCase.update(args),
-      createEvent: (args) => client.accountOpeningCaseEvent.create(args),
-    },
-  });
+    await writeDraftAuditEvents({
+      accountCaseId: accountCase.id,
+      previousStatus: accountCase.status,
+      draft,
+      generatedActionType,
+      actorType: 'SYSTEM',
+      actorIdentifier: 'email-account-opening-ingestion',
+      repository: {
+        findUnique: (args) => client.accountOpeningCase.findUnique(args),
+        update: (args) => client.accountOpeningCase.update(args),
+        createEvent: (args) => client.accountOpeningCaseEvent.create(args),
+      },
+    });
+  }
 
   return client.accountOpeningCase.findUnique({
     where: { id: accountCase.id },

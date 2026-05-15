@@ -13,9 +13,12 @@ import {
   sanitizeAccountOpeningMissingInfoResponses,
   saveAccountOpeningMissingInfo,
   updateAccountOpeningCaseStatus,
+  writeDraftAuditEvents,
   type AccountOpeningCaseRepository,
+  type AccountOpeningCaseEventInput,
   type PersistedAccountOpeningReviewCase,
 } from '../service';
+import type { AccountOpeningCompletionDraft } from '../draft';
 
 test('detectAccountOpeningEmail detects account-opening body and attachment names', () => {
   const result = detectAccountOpeningEmail({
@@ -375,7 +378,7 @@ function createAccountOpeningRepository(
   initial: PersistedAccountOpeningReviewCase,
 ) {
   let current = initial;
-  const events: unknown[] = [];
+  const events: AccountOpeningCaseEventInput[] = [];
   const repository: AccountOpeningCaseRepository = {
     findUnique: async () => current,
     update: async (args: unknown) => {
@@ -400,6 +403,59 @@ function createAccountOpeningRepository(
     events,
     getCurrent: () => current,
   };
+}
+
+function buildDraftFixture(
+  overrides: Partial<AccountOpeningCompletionDraft> = {},
+): AccountOpeningCompletionDraft {
+  const status = overrides.status ?? 'BLOCKED';
+  const blockedFields = status === 'BLOCKED' ? 1 : 0;
+  const reviewRequiredFields = status === 'REVIEW_REQUIRED' ? 1 : blockedFields;
+  return {
+    status,
+    overallConfidence:
+      overrides.overallConfidence ??
+      (status === 'READY_FOR_REVIEW'
+        ? 'HIGH'
+        : status === 'REVIEW_REQUIRED'
+          ? 'LOW'
+          : 'BLOCKED'),
+    isStored: true,
+    profileId: 'ambe-master-profile',
+    profileVersion: '2026-05-15',
+    generatedAt: '2026-05-15T10:00:00.000Z',
+    fields: [],
+    summary: {
+      totalFields: 1,
+      highConfidenceFields: status === 'READY_FOR_REVIEW' ? 1 : 0,
+      reviewRequiredFields,
+      blockedFields,
+      safeToAutoFill: false,
+    },
+    safetyNotes: ['Review draft only. This does not sign or submit anything.'],
+    ...overrides,
+  };
+}
+
+async function recordDraftAuditEventTypes(input: {
+  draft: AccountOpeningCompletionDraft;
+  generatedActionType?: 'DRAFT_GENERATED' | 'DRAFT_REGENERATED';
+}): Promise<string[]> {
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase(),
+  );
+
+  await writeDraftAuditEvents({
+    accountCaseId: 'account-case-1',
+    previousStatus: 'PENDING_REVIEW',
+    draft: input.draft,
+    generatedActionType: input.generatedActionType ?? 'DRAFT_GENERATED',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+  });
+
+  return events.map((event) => event.actionType);
 }
 
 test('missing-info responses are sanitized before dashboard display', () => {
@@ -474,7 +530,7 @@ test('saving missing info persists responses and records an audit event', async 
   assert.equal(getCurrent().status, 'PENDING_REVIEW');
 });
 
-test('generate draft stores safe draft metadata and records review audit events', async () => {
+test('generate draft stores safe draft metadata and records blocked audit route only', async () => {
   const { repository, events } = createAccountOpeningRepository(
     buildPersistedAccountOpeningCase({
       missingInfoResponses: {
@@ -525,9 +581,9 @@ test('generate draft stores safe draft metadata and records review audit events'
   assert.equal(detail.completionDraft.isStored, true);
   assert.equal(detail.completionDraft.status, 'BLOCKED');
   assert.ok(eventTypes.includes('DRAFT_GENERATED'));
-  assert.ok(eventTypes.includes('DRAFT_READY_FOR_REVIEW'));
-  assert.ok(eventTypes.includes('DRAFT_REVIEW_REQUIRED'));
   assert.ok(eventTypes.includes('DRAFT_BLOCKED'));
+  assert.equal(eventTypes.includes('DRAFT_READY_FOR_REVIEW'), false);
+  assert.equal(eventTypes.includes('DRAFT_REVIEW_REQUIRED'), false);
   assert.doesNotMatch(detailText, /12345678/);
   assert.doesNotMatch(detailText, /12-34-56/);
 });
@@ -551,6 +607,39 @@ test('regenerating a draft records DRAFT_REGENERATED', async () => {
     (events[0] as { actionType?: string }).actionType,
     'DRAFT_REGENERATED',
   );
+});
+
+test('blocked draft records generated plus blocked routing only', async () => {
+  const eventTypes = await recordDraftAuditEventTypes({
+    draft: buildDraftFixture({ status: 'BLOCKED' }),
+  });
+
+  assert.deepEqual(eventTypes, ['DRAFT_GENERATED', 'DRAFT_BLOCKED']);
+});
+
+test('review-required draft records generated plus review-required routing only', async () => {
+  const eventTypes = await recordDraftAuditEventTypes({
+    draft: buildDraftFixture({ status: 'REVIEW_REQUIRED' }),
+  });
+
+  assert.deepEqual(eventTypes, ['DRAFT_GENERATED', 'DRAFT_REVIEW_REQUIRED']);
+});
+
+test('ready draft records generated plus ready-for-review routing only', async () => {
+  const eventTypes = await recordDraftAuditEventTypes({
+    draft: buildDraftFixture({ status: 'READY_FOR_REVIEW' }),
+  });
+
+  assert.deepEqual(eventTypes, ['DRAFT_GENERATED', 'DRAFT_READY_FOR_REVIEW']);
+});
+
+test('regenerated draft records regenerated plus exactly one routing event', async () => {
+  const eventTypes = await recordDraftAuditEventTypes({
+    draft: buildDraftFixture({ status: 'BLOCKED' }),
+    generatedActionType: 'DRAFT_REGENERATED',
+  });
+
+  assert.deepEqual(eventTypes, ['DRAFT_REGENERATED', 'DRAFT_BLOCKED']);
 });
 
 test('approve for completion changes status and records skipped storage when disabled', async () => {
