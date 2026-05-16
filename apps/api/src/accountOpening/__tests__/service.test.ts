@@ -12,6 +12,7 @@ import {
   downloadAccountOpeningReviewedExportFile,
   exportAccountOpeningReviewedPack,
   generateAccountOpeningDraft,
+  saveAccountOpeningFieldMappings,
   sanitizeAccountOpeningMissingInfoResponses,
   saveAccountOpeningMissingInfo,
   updateAccountOpeningCaseStatus,
@@ -380,9 +381,13 @@ function createAccountOpeningRepository(
   initial: PersistedAccountOpeningReviewCase,
 ) {
   let current = initial;
+  let fieldMappings = initial.fieldMappings ?? [];
   const events: AccountOpeningCaseEventInput[] = [];
   const repository: AccountOpeningCaseRepository = {
-    findUnique: async () => current,
+    findUnique: async () => ({
+      ...current,
+      fieldMappings,
+    }),
     update: async (args: unknown) => {
       const data =
         (args as { data?: Partial<PersistedAccountOpeningReviewCase> }).data ??
@@ -390,9 +395,24 @@ function createAccountOpeningRepository(
       current = {
         ...current,
         ...data,
+        fieldMappings,
         updatedAt: new Date('2026-05-12T10:00:00.000Z'),
       };
       return current;
+    },
+    replaceFieldMappings: async ({ mappings }) => {
+      fieldMappings = mappings.map((mapping, index) => ({
+        ...mapping,
+        id: `field-mapping-${index + 1}`,
+        sortOrder: index,
+        createdAt: new Date('2026-05-12T10:00:00.000Z'),
+        updatedAt: new Date('2026-05-12T10:00:00.000Z'),
+      }));
+      current = {
+        ...current,
+        fieldMappings,
+      };
+      return fieldMappings;
     },
     createEvent: async (args) => {
       events.push(args.data);
@@ -501,6 +521,54 @@ test('account-opening detail exposes safe structured fields and signing notes', 
   assert.doesNotMatch(dashboardText, /12-34-56/);
 });
 
+test('account-opening detail exposes safe field mapping candidates', () => {
+  const detail = buildAccountOpeningCaseDetail(
+    buildPersistedAccountOpeningCase({
+      sourceEvidence: [
+        {
+          id: 'evidence-1',
+          sourceType: 'ATTACHMENT',
+          sourceLabel: 'supplier-form.pdf',
+          fileName: 'supplier-form.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
+          contentId: null,
+          disposition: 'attachment',
+          extractionMethod: 'PDF_TEXT',
+          extractedTextHash: 'hash-1',
+          extractedTextChars: 120,
+          safeSnippet:
+            'Company Name, Direct Debit Mandate, Bank Account Number and Responsible Person requested.',
+          rawFileAvailable: false,
+          storageProvider: null,
+          storageFolderUrl: null,
+          storageFileUrl: null,
+          storageDriveItemId: null,
+          createdAt: new Date('2026-05-12T09:00:00.000Z'),
+          updatedAt: new Date('2026-05-12T09:00:00.000Z'),
+        },
+      ],
+    }),
+  );
+
+  assert.equal(detail.fieldMappings.status, 'PREVIEW');
+  assert.equal(detail.fieldMappings.summary.safeToFillSupplierForms, false);
+  assert.ok(
+    detail.fieldMappings.mappings.some(
+      (mapping) =>
+        mapping.supplierFieldLabel === 'Direct Debit Mandate' &&
+        mapping.status === 'BLOCKED',
+    ),
+  );
+  assert.ok(
+    detail.fieldMappings.mappings.some(
+      (mapping) =>
+        mapping.supplierFieldLabel === 'Responsible Person' &&
+        mapping.status === 'MAPPED_REVIEW_REQUIRED',
+    ),
+  );
+});
+
 test('saving missing info persists responses and records an audit event', async () => {
   const { repository, events, getCurrent } = createAccountOpeningRepository(
     buildPersistedAccountOpeningCase(),
@@ -530,6 +598,78 @@ test('saving missing info persists responses and records an audit event', async 
     'PENDING_REVIEW',
   );
   assert.equal(getCurrent().status, 'PENDING_REVIEW');
+});
+
+test('saving field mappings persists safe decisions and records safe audit metadata', async () => {
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      sourceEvidence: [
+        {
+          id: 'evidence-1',
+          sourceType: 'ATTACHMENT',
+          sourceLabel: 'direct-debit-form.pdf',
+          fileName: 'direct-debit-form.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
+          contentId: null,
+          disposition: 'attachment',
+          extractionMethod: 'PDF_TEXT',
+          extractedTextHash: 'hash-1',
+          extractedTextChars: 120,
+          safeSnippet:
+            'Direct Debit Mandate. Account number 12345678 and sort code 12-34-56.',
+          rawFileAvailable: false,
+          storageProvider: null,
+          storageFolderUrl: null,
+          storageFileUrl: null,
+          storageDriveItemId: null,
+          createdAt: new Date('2026-05-12T09:00:00.000Z'),
+          updatedAt: new Date('2026-05-12T09:00:00.000Z'),
+        },
+      ],
+    }),
+  );
+
+  const review = await saveAccountOpeningFieldMappings({
+    id: 'account-case-1',
+    mappings: [
+      {
+        supplierFieldLabel: 'Company Name',
+        sourceType: 'SOURCE_EVIDENCE',
+        sourceEvidenceId: 'evidence-1',
+        mappedDraftFieldKey: 'legalCompanyName',
+        status: 'MAPPED_SAFE',
+      },
+      {
+        supplierFieldLabel: 'Bank Account Number',
+        sourceType: 'SOURCE_EVIDENCE',
+        sourceEvidenceId: 'evidence-1',
+        mappedDraftFieldKey: 'bankDetails',
+        status: 'MAPPED_SAFE',
+        operatorNote:
+          'Supplier asked for account number 12345678 and sort code 12-34-56.',
+      },
+    ],
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+  });
+  const reviewText = JSON.stringify(review);
+  const event = events[0];
+
+  assert.equal(review.status, 'SAVED');
+  assert.equal(review.mappings[0]?.status, 'MAPPED_SAFE');
+  assert.equal(review.mappings[1]?.status, 'BLOCKED');
+  assert.equal(review.mappings[1]?.riskLevel, 'BLOCKED');
+  assert.doesNotMatch(reviewText, /12345678/);
+  assert.doesNotMatch(reviewText, /12-34-56/);
+  assert.equal(event?.actionType, 'FIELD_MAPPINGS_SAVED');
+  assert.doesNotMatch(JSON.stringify(event?.metadata), /12345678/);
+  assert.doesNotMatch(JSON.stringify(event?.metadata), /12-34-56/);
+  assert.match(
+    JSON.stringify(event?.metadata),
+    /rawBankDetailsIncluded":false/,
+  );
 });
 
 test('generate draft stores safe draft metadata and records blocked audit route only', async () => {
@@ -711,6 +851,11 @@ test('safe review export pack includes review files and records export audit eve
   assert.equal(pack.metadata.pdfWordFormsFilled, false);
   assert.equal(pack.metadata.supplierMessageIncluded, false);
   assert.equal(pack.metadata.purchaseWorkflowTriggered, false);
+  assert.match(
+    pack.files.find((file) => file.fileName === 'field-mapping-summary.json')
+      ?.content ?? '',
+    /safeToFillSupplierForms/,
+  );
   assert.doesNotMatch(packText, /12345678/);
   assert.doesNotMatch(packText, /12-34-56/);
   for (const file of pack.files) {

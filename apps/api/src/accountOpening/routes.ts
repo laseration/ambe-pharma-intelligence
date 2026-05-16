@@ -17,18 +17,23 @@ import {
   downloadAccountOpeningReviewedExportFile,
   exportAccountOpeningReviewedPack,
   generateAccountOpeningDraft,
+  getAccountOpeningFieldMappingReview,
   getAccountOpeningCaseDetail,
   saveAccountOpeningMissingInfo,
+  saveAccountOpeningFieldMappings,
   updateAccountOpeningCaseStatus,
   type AccountOpeningCaseDetail,
   type AccountOpeningMissingInfoResponses,
   type AccountOpeningStatusAction,
 } from './service';
 import { ACCOUNT_OPENING_REVIEW_EXPORT_FILE_NAMES } from './reviewExport';
+import type { AccountOpeningFieldMappingSaveInput } from './fieldMapping';
 
 type AccountOpeningRouteDependencies = {
   getCaseDetail: typeof getAccountOpeningCaseDetail;
   generateDraft: typeof generateAccountOpeningDraft;
+  getFieldMappings: typeof getAccountOpeningFieldMappingReview;
+  saveFieldMappings: typeof saveAccountOpeningFieldMappings;
   exportPack: typeof exportAccountOpeningReviewedPack;
   downloadExportFile: typeof downloadAccountOpeningReviewedExportFile;
   saveMissingInfo: typeof saveAccountOpeningMissingInfo;
@@ -62,6 +67,37 @@ const statusBodySchema = z
   .merge(actorBodySchema);
 
 const generateDraftBodySchema = actorBodySchema.partial().default({});
+const fieldMappingStatusSchema = z.enum([
+  'UNMAPPED',
+  'MAPPED_SAFE',
+  'MAPPED_REVIEW_REQUIRED',
+  'BLOCKED',
+  'IGNORED',
+  'NEEDS_OPERATOR_INPUT',
+]);
+const fieldMappingSourceTypeSchema = z.enum([
+  'DRAFT_FIELD',
+  'SOURCE_EVIDENCE',
+  'SYSTEM_RULE',
+  'OPERATOR_CREATED',
+]);
+const fieldMappingSchema = z.object({
+  id: nullableTrimmedStringSchema,
+  supplierFieldLabel: z.string().trim().min(1).max(240),
+  supplierSectionLabel: nullableTrimmedStringSchema,
+  sourceType: fieldMappingSourceTypeSchema,
+  sourceEvidenceId: nullableTrimmedStringSchema,
+  evidenceSnippet: nullableTrimmedStringSchema,
+  suggestedDraftFieldKey: nullableTrimmedStringSchema,
+  mappedDraftFieldKey: nullableTrimmedStringSchema,
+  status: fieldMappingStatusSchema.optional(),
+  operatorNote: nullableTrimmedStringSchema,
+});
+const fieldMappingBodySchema = z
+  .object({
+    mappings: z.array(fieldMappingSchema).max(120),
+  })
+  .merge(actorBodySchema);
 const exportFileParamSchema = idParamSchema.extend({
   fileName: z.string().trim().min(1).max(128),
 });
@@ -72,6 +108,8 @@ const exportFileNames = new Set<string>(
 const defaultDependencies: AccountOpeningRouteDependencies = {
   getCaseDetail: getAccountOpeningCaseDetail,
   generateDraft: generateAccountOpeningDraft,
+  getFieldMappings: getAccountOpeningFieldMappingReview,
+  saveFieldMappings: saveAccountOpeningFieldMappings,
   exportPack: exportAccountOpeningReviewedPack,
   downloadExportFile: downloadAccountOpeningReviewedExportFile,
   saveMissingInfo: saveAccountOpeningMissingInfo,
@@ -93,6 +131,23 @@ function pickMissingInfoResponses(
     cqcRegistration: body.cqcRegistration,
     reviewerNotes: body.reviewerNotes,
   };
+}
+
+function pickFieldMappings(
+  body: z.infer<typeof fieldMappingBodySchema>,
+): AccountOpeningFieldMappingSaveInput[] {
+  return body.mappings.map((mapping) => ({
+    id: mapping.id,
+    supplierFieldLabel: mapping.supplierFieldLabel,
+    supplierSectionLabel: mapping.supplierSectionLabel,
+    sourceType: mapping.sourceType,
+    sourceEvidenceId: mapping.sourceEvidenceId,
+    evidenceSnippet: mapping.evidenceSnippet,
+    suggestedDraftFieldKey: mapping.suggestedDraftFieldKey,
+    mappedDraftFieldKey: mapping.mappedDraftFieldKey,
+    status: mapping.status,
+    operatorNote: mapping.operatorNote,
+  }));
 }
 
 export function createAccountOpeningRouter(
@@ -156,6 +211,46 @@ export function createAccountOpeningRouter(
         item,
         draft: item.completionDraft,
       });
+    }),
+  );
+
+  router.get(
+    '/:id/field-mappings',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {
+        params: idParamSchema,
+      });
+
+      response.json({
+        item: await dependencies.getFieldMappings({
+          id: params.id,
+        }),
+      });
+    }),
+  );
+
+  router.patch(
+    '/:id/field-mappings',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { params, body } = parseRequest<
+        z.infer<typeof idParamSchema>,
+        unknown,
+        z.infer<typeof fieldMappingBodySchema>
+      >(request, {
+        params: idParamSchema,
+        body: fieldMappingBodySchema,
+      });
+      const actor = resolveInternalActor(request, body);
+
+      const item = await dependencies.saveFieldMappings({
+        id: params.id,
+        mappings: pickFieldMappings(body),
+        ...actor,
+      });
+
+      response.json({ item });
     }),
   );
 

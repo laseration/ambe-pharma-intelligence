@@ -598,7 +598,7 @@ model InboundEmail {
 }
 
 model AccountOpeningCase {
-  id                    String                    @id @default(cuid())
+  id                    String                         @id @default(cuid())
   inboundEmailId        String?
   messageId             String?
   senderEmail           String?
@@ -607,9 +607,9 @@ model AccountOpeningCase {
   receivedAt            DateTime?
   companyName           String?
   detectedFormType      String?
-  status                AccountOpeningStatus      @default(PENDING_REVIEW)
-  recommendedSigner     String                    @default("Aman Dhillon")
-  signingStatement      String                    @default("Aman Dhillon can sign this account-opening form by default.")
+  status                AccountOpeningStatus           @default(PENDING_REVIEW)
+  recommendedSigner     String                         @default("Aman Dhillon")
+  signingStatement      String                         @default("Aman Dhillon can sign this account-opening form by default.")
   signingExplanation    String?
   detectedNames         Json?
   detectedRoles         Json?
@@ -631,12 +631,13 @@ model AccountOpeningCase {
   draftGeneratedAt      DateTime?
   draftJson             Json?
   draftSummary          Json?
-  sourceFingerprint     String                    @unique
-  inboundEmail          InboundEmail?             @relation(fields: [inboundEmailId], references: [id], onDelete: SetNull)
+  sourceFingerprint     String                         @unique
+  inboundEmail          InboundEmail?                  @relation(fields: [inboundEmailId], references: [id], onDelete: SetNull)
   events                AccountOpeningCaseEvent[]
   sourceEvidence        AccountOpeningSourceEvidence[]
-  createdAt             DateTime                  @default(now())
-  updatedAt             DateTime                  @updatedAt
+  fieldMappings         AccountOpeningFieldMapping[]
+  createdAt             DateTime                       @default(now())
+  updatedAt             DateTime                       @updatedAt
 
   @@index([status, updatedAt])
   @@index([messageId])
@@ -660,7 +661,7 @@ model AccountOpeningCaseEvent {
 }
 
 model AccountOpeningSourceEvidence {
-  id                   String             @id @default(cuid())
+  id                   String                       @id @default(cuid())
   accountOpeningCaseId String
   sourceType           String
   sourceLabel          String?
@@ -673,18 +674,50 @@ model AccountOpeningSourceEvidence {
   extractedTextHash    String?
   extractedTextChars   Int?
   safeSnippet          String?
-  rawFileAvailable     Boolean            @default(false)
+  rawFileAvailable     Boolean                      @default(false)
   storageProvider      String?
   storageFolderUrl     String?
   storageFileUrl       String?
   storageDriveItemId   String?
   metadata             Json?
-  accountOpeningCase   AccountOpeningCase @relation(fields: [accountOpeningCaseId], references: [id], onDelete: Cascade)
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
+  accountOpeningCase   AccountOpeningCase           @relation(fields: [accountOpeningCaseId], references: [id], onDelete: Cascade)
+  fieldMappings        AccountOpeningFieldMapping[]
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
 
   @@index([accountOpeningCaseId, sourceType])
   @@index([extractedTextHash])
+}
+
+model AccountOpeningFieldMapping {
+  id                     String                        @id @default(cuid())
+  accountOpeningCaseId   String
+  supplierFieldLabel     String
+  supplierSectionLabel   String?
+  normalizedLabel        String
+  sourceType             String
+  sourceEvidenceId       String?
+  evidenceSnippet        String?
+  suggestedDraftFieldKey String?
+  mappedDraftFieldKey    String?
+  proposedValue          String?
+  valueSource            String?
+  confidence             String
+  riskLevel              String
+  status                 String
+  requiresReview         Boolean                       @default(true)
+  blockedReason          String?
+  reviewReason           String?
+  operatorNote           String?
+  sortOrder              Int                           @default(0)
+  accountOpeningCase     AccountOpeningCase            @relation(fields: [accountOpeningCaseId], references: [id], onDelete: Cascade)
+  sourceEvidence         AccountOpeningSourceEvidence? @relation(fields: [sourceEvidenceId], references: [id], onDelete: SetNull)
+  createdAt              DateTime                      @default(now())
+  updatedAt              DateTime                      @updatedAt
+
+  @@index([accountOpeningCaseId, sortOrder])
+  @@index([accountOpeningCaseId, status])
+  @@index([sourceEvidenceId])
 }
 
 model InboundEmailDocument {

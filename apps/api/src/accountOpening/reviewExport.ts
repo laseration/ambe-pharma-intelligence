@@ -104,6 +104,27 @@ function fieldLine(
 }
 
 function safeFieldMappingSummary(item: AccountOpeningCaseDetail) {
+  if (item.fieldMappings.mappings.length > 0) {
+    return item.fieldMappings.mappings.map((mapping, index) => ({
+      order: index + 1,
+      supplierFieldLabel: mapping.supplierFieldLabel,
+      supplierSectionLabel: mapping.supplierSectionLabel,
+      sourceType: mapping.sourceType,
+      suggestedDraftFieldKey: mapping.suggestedDraftFieldKey,
+      mappedDraftFieldKey: mapping.mappedDraftFieldKey,
+      proposedValue: mapping.proposedValue,
+      valueSource: mapping.valueSource,
+      confidence: mapping.confidence,
+      riskLevel: mapping.riskLevel,
+      status: mapping.status,
+      requiresReview: mapping.requiresReview,
+      blockedReason: mapping.blockedReason,
+      reviewReason: mapping.reviewReason,
+      evidenceSnippet: mapping.evidenceSnippet,
+      operatorNote: mapping.operatorNote,
+    }));
+  }
+
   return item.completionDraft.fields.map((field, index) => ({
     order: index + 1,
     key: field.key,
@@ -135,6 +156,8 @@ function riskSummary(item: AccountOpeningCaseDetail) {
     caseId: item.id,
     status: item.status,
     draftStatus: item.completionDraft.status,
+    fieldMappingStatus: item.fieldMappings.status,
+    fieldMappingSummary: item.fieldMappings.summary,
     overallConfidence: item.completionDraft.overallConfidence,
     riskFlags: item.riskFlags,
     reviewerChecks: item.reviewerChecks,
@@ -197,6 +220,7 @@ function reviewPackPayload(
     note: 'Internal review export only. This does not fill PDF/Word supplier forms, sign forms, send anything to suppliers, submit forms, or trigger purchase/order/buy workflows.',
     caseSummary: caseSummary(item),
     completionDraft: item.completionDraft,
+    fieldMappingControls: item.fieldMappings,
     fieldMappingSummary: safeFieldMappingSummary(item),
     unresolvedFields: unresolvedFields(item),
     blockedFields: blockedFields(item),
@@ -212,6 +236,16 @@ function buildReviewMarkdown(
 ): string {
   const unresolved = unresolvedFields(item);
   const blocked = blockedFields(item);
+  const mappingLines = item.fieldMappings.mappings.length
+    ? item.fieldMappings.mappings
+        .map((mapping) => {
+          const value = mapping.proposedValue
+            ? sanitizeExportText(mapping.proposedValue)
+            : 'Not provided';
+          return `- ${sanitizeExportText(mapping.supplierFieldLabel)} -> ${mapping.mappedDraftFieldKey ?? 'unmapped'} | ${mapping.status} | confidence ${mapping.confidence} | risk ${mapping.riskLevel} | ${value}${mapping.reviewReason ? ` | ${sanitizeExportText(mapping.reviewReason)}` : ''}${mapping.blockedReason ? ` | ${sanitizeExportText(mapping.blockedReason)}` : ''}`;
+        })
+        .join('\n')
+    : '';
   const lines = [
     `# Account-opening review export`,
     '',
@@ -219,6 +253,7 @@ function buildReviewMarkdown(
     `Case ID: ${item.id}`,
     `Status: ${item.status}`,
     `Draft status: ${item.completionDraft.status}`,
+    `Field mapping status: ${item.fieldMappings.status}`,
     `Overall confidence: ${item.completionDraft.overallConfidence}`,
     '',
     'Internal review export only.',
@@ -238,9 +273,10 @@ function buildReviewMarkdown(
     sanitizeExportText(item.signingNotes.summary),
     '',
     '## Field Mapping Summary',
-    item.completionDraft.fields.length
-      ? item.completionDraft.fields.map(fieldLine).join('\n')
-      : '- No draft fields recorded',
+    mappingLines ||
+      (item.completionDraft.fields.length
+        ? item.completionDraft.fields.map(fieldLine).join('\n')
+        : '- No draft fields recorded'),
     '',
     '## Unresolved Fields',
     unresolved.length
@@ -322,7 +358,9 @@ export function buildAccountOpeningReviewExportPack(
       fileName: 'field-mapping-summary.json',
       contentType: 'application/json',
       content: stringifySafeJson({
-        fields: safeFieldMappingSummary(item),
+        fieldMappings: safeFieldMappingSummary(item),
+        summary: item.fieldMappings.summary,
+        safetyNotes: item.fieldMappings.safetyNotes,
         note: 'Field mapping summary for internal review only.',
       }),
     },

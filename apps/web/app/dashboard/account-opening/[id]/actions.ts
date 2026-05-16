@@ -5,8 +5,12 @@ import { redirect } from 'next/navigation';
 
 import {
   generateAccountOpeningDraft,
+  saveAccountOpeningFieldMappings,
   saveAccountOpeningMissingInfo,
   updateAccountOpeningStatus,
+  type AccountOpeningFieldMapping,
+  type AccountOpeningFieldMappingSaveInput,
+  type AccountOpeningFieldMappingStatus,
   type AccountOpeningMissingInfoResponses,
   type AccountOpeningStatusAction,
 } from '../../../../lib/accountOpeningApi';
@@ -16,6 +20,17 @@ const STATUS_ACTIONS = new Set<AccountOpeningStatusAction>([
   'APPROVED_FOR_COMPLETION',
   'REJECTED',
 ]);
+const FIELD_MAPPING_STATUSES = new Set<AccountOpeningFieldMappingStatus>([
+  'UNMAPPED',
+  'MAPPED_SAFE',
+  'MAPPED_REVIEW_REQUIRED',
+  'BLOCKED',
+  'IGNORED',
+  'NEEDS_OPERATOR_INPUT',
+]);
+const FIELD_MAPPING_SOURCE_TYPES = new Set<
+  AccountOpeningFieldMapping['sourceType']
+>(['DRAFT_FIELD', 'SOURCE_EVIDENCE', 'SYSTEM_RULE', 'OPERATOR_CREATED']);
 
 function value(formData: FormData, key: string): string {
   const rawValue = formData.get(key);
@@ -72,6 +87,63 @@ function buildMissingInfoResponses(
     cqcRegistration: optionalValue(formData, 'cqcRegistration'),
     reviewerNotes: optionalValue(formData, 'reviewerNotes'),
   };
+}
+
+function nullableValue(formData: FormData, key: string): string | null {
+  return value(formData, key) || null;
+}
+
+function buildFieldMappings(
+  formData: FormData,
+): AccountOpeningFieldMappingSaveInput[] {
+  const count = Number.parseInt(value(formData, 'mappingCount'), 10);
+  const mappingCount = Number.isFinite(count) && count > 0 ? count : 0;
+  const mappings: AccountOpeningFieldMappingSaveInput[] = [];
+
+  for (let index = 0; index < mappingCount; index += 1) {
+    const prefix = `mapping-${index}`;
+    const supplierFieldLabel = value(formData, `${prefix}-supplierFieldLabel`);
+    const sourceType = value(
+      formData,
+      `${prefix}-sourceType`,
+    ) as AccountOpeningFieldMapping['sourceType'];
+    const status = value(
+      formData,
+      `${prefix}-status`,
+    ) as AccountOpeningFieldMappingStatus;
+
+    if (
+      !supplierFieldLabel ||
+      !FIELD_MAPPING_SOURCE_TYPES.has(sourceType) ||
+      !FIELD_MAPPING_STATUSES.has(status)
+    ) {
+      continue;
+    }
+
+    mappings.push({
+      id: nullableValue(formData, `${prefix}-id`),
+      supplierFieldLabel,
+      supplierSectionLabel: nullableValue(
+        formData,
+        `${prefix}-supplierSectionLabel`,
+      ),
+      sourceType,
+      sourceEvidenceId: nullableValue(formData, `${prefix}-sourceEvidenceId`),
+      evidenceSnippet: nullableValue(formData, `${prefix}-evidenceSnippet`),
+      suggestedDraftFieldKey: nullableValue(
+        formData,
+        `${prefix}-suggestedDraftFieldKey`,
+      ),
+      mappedDraftFieldKey: nullableValue(
+        formData,
+        `${prefix}-mappedDraftFieldKey`,
+      ),
+      status,
+      operatorNote: nullableValue(formData, `${prefix}-operatorNote`),
+    });
+  }
+
+  return mappings;
 }
 
 function successMessage(action: AccountOpeningStatusAction): string {
@@ -204,6 +276,46 @@ export async function submitGenerateAccountOpeningDraftAction(
       caseId,
       {
         message: 'Completion draft generated for review.',
+      },
+      returnTo,
+    ),
+  );
+}
+
+export async function submitAccountOpeningFieldMappingsAction(
+  formData: FormData,
+) {
+  const caseId = value(formData, 'caseId');
+  const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
+
+  if (!caseId) {
+    redirect('/dashboard/review?error=Missing+account-opening+case');
+  }
+
+  try {
+    await saveAccountOpeningFieldMappings(caseId, buildFieldMappings(formData));
+  } catch (error) {
+    redirect(
+      buildRedirectTarget(
+        caseId,
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to save field mappings.',
+        },
+        returnTo,
+      ),
+    );
+  }
+
+  revalidatePath('/dashboard/review');
+  revalidatePath(`/dashboard/account-opening/${caseId}`);
+  redirect(
+    buildRedirectTarget(
+      caseId,
+      {
+        message: 'Field mappings saved for review.',
       },
       returnTo,
     ),

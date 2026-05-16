@@ -101,6 +101,22 @@ function buildCaseDetail(
       },
       safetyNotes: [],
     },
+    fieldMappings: {
+      status: 'PREVIEW',
+      generatedAt: '2026-05-15T00:00:00.000Z',
+      mappings: [],
+      summary: {
+        totalMappings: 0,
+        mappedSafe: 0,
+        reviewRequired: 0,
+        blocked: 0,
+        ignored: 0,
+        unmapped: 0,
+        needsOperatorInput: 0,
+        safeToFillSupplierForms: false,
+      },
+      safetyNotes: [],
+    },
     createdAt: '2026-05-12T09:00:00.000Z',
     updatedAt: '2026-05-12T09:05:00.000Z',
     ...overrides,
@@ -116,6 +132,8 @@ async function startServer(
   const routerDependencies: Parameters<typeof createAccountOpeningRouter>[0] = {
     getCaseDetail: async () => defaultDetail,
     generateDraft: async () => defaultDetail,
+    getFieldMappings: async () => defaultDetail.fieldMappings,
+    saveFieldMappings: async () => defaultDetail.fieldMappings,
     exportPack: async () => buildAccountOpeningReviewExportPack(defaultDetail),
     downloadExportFile: async (input) => {
       const file = getAccountOpeningReviewExportFile(
@@ -334,6 +352,98 @@ test('account-opening draft routes return safe draft and protect generation', as
   assert.equal(generatePayload.draft.isStored, true);
   assert.equal(generatedInputs[0]?.id, 'case-1');
   assert.equal(generatedInputs[0]?.actorIdentifier, 'route-draft-test');
+});
+
+test('account-opening field mapping routes require operator access and save mappings', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
+  const savedInputs: Array<{
+    id: string;
+    mappings: Array<{ supplierFieldLabel: string; status?: string | null }>;
+    actorIdentifier?: string | null;
+  }> = [];
+  const detail = buildCaseDetail({
+    fieldMappings: {
+      ...buildCaseDetail().fieldMappings,
+      mappings: [
+        {
+          id: 'mapping-1',
+          supplierFieldLabel: 'Company Name',
+          supplierSectionLabel: null,
+          normalizedLabel: 'company name',
+          sourceType: 'SOURCE_EVIDENCE',
+          sourceEvidenceId: 'evidence-1',
+          evidenceSnippet: 'Company Name',
+          suggestedDraftFieldKey: 'legalCompanyName',
+          mappedDraftFieldKey: 'legalCompanyName',
+          proposedValue: 'AMBE LTD',
+          valueSource: 'AMBE_MASTER_PROFILE',
+          confidence: 'HIGH',
+          riskLevel: 'LOW',
+          status: 'MAPPED_SAFE',
+          requiresReview: false,
+          blockedReason: null,
+          reviewReason: null,
+          operatorNote: null,
+        },
+      ],
+    },
+  });
+  const baseUrl = await startServer(t, {
+    getFieldMappings: async () => detail.fieldMappings,
+    saveFieldMappings: async (input) => {
+      savedInputs.push(input);
+      return detail.fieldMappings;
+    },
+  });
+
+  const unauthorizedResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/field-mappings`,
+  );
+  const readResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/field-mappings`,
+    {
+      headers: {
+        'x-internal-api-key': 'test-secret',
+        'x-internal-caller-name': 'route-field-mapping-test',
+      },
+    },
+  );
+  const saveResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/field-mappings`,
+    {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-api-key': 'test-secret',
+        'x-internal-caller-name': 'route-field-mapping-test',
+      },
+      body: JSON.stringify({
+        mappings: [
+          {
+            supplierFieldLabel: 'Company Name',
+            sourceType: 'SOURCE_EVIDENCE',
+            sourceEvidenceId: 'evidence-1',
+            mappedDraftFieldKey: 'legalCompanyName',
+            status: 'MAPPED_SAFE',
+          },
+        ],
+      }),
+    },
+  );
+
+  assert.equal(unauthorizedResponse.status, 401);
+  assert.equal(readResponse.status, 200);
+  assert.equal(saveResponse.status, 200);
+  assert.equal(savedInputs[0]?.id, 'case-1');
+  assert.equal(savedInputs[0]?.mappings[0]?.supplierFieldLabel, 'Company Name');
+  assert.equal(
+    savedInputs[0]?.actorIdentifier,
+    'internal-operator:route-field-mapping-test',
+  );
 });
 
 test('account-opening review export routes return safe pack and downloadable files', async (t) => {

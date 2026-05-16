@@ -268,6 +268,13 @@ summary {
   line-height: 1.7;
 }
 
+.muted-text {
+  color: var(--muted);
+  display: block;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
 .actions {
   margin-top: 22px;
   display: flex;
