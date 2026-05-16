@@ -70,6 +70,69 @@ export type AccountOpeningCompletionDraft = {
   safetyNotes: string[];
 };
 
+export type AccountOpeningFieldMappingStatus =
+  | 'UNMAPPED'
+  | 'MAPPED_SAFE'
+  | 'MAPPED_REVIEW_REQUIRED'
+  | 'BLOCKED'
+  | 'IGNORED'
+  | 'NEEDS_OPERATOR_INPUT';
+
+export type AccountOpeningFieldMapping = {
+  id: string;
+  supplierFieldLabel: string;
+  supplierSectionLabel: string | null;
+  normalizedLabel: string;
+  sourceType:
+    | 'DRAFT_FIELD'
+    | 'SOURCE_EVIDENCE'
+    | 'SYSTEM_RULE'
+    | 'OPERATOR_CREATED';
+  sourceEvidenceId: string | null;
+  evidenceSnippet: string | null;
+  suggestedDraftFieldKey: string | null;
+  mappedDraftFieldKey: string | null;
+  proposedValue: string | null;
+  valueSource: string | null;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'BLOCKED';
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'BLOCKED';
+  status: AccountOpeningFieldMappingStatus;
+  requiresReview: boolean;
+  blockedReason: string | null;
+  reviewReason: string | null;
+  operatorNote: string | null;
+};
+
+export type AccountOpeningFieldMappingReview = {
+  status: 'PREVIEW' | 'SAVED';
+  generatedAt: string;
+  mappings: AccountOpeningFieldMapping[];
+  summary: {
+    totalMappings: number;
+    mappedSafe: number;
+    reviewRequired: number;
+    blocked: number;
+    ignored: number;
+    unmapped: number;
+    needsOperatorInput: number;
+    safeToFillSupplierForms: false;
+  };
+  safetyNotes: string[];
+};
+
+export type AccountOpeningFieldMappingSaveInput = {
+  id?: string | null;
+  supplierFieldLabel: string;
+  supplierSectionLabel?: string | null;
+  sourceType: AccountOpeningFieldMapping['sourceType'];
+  sourceEvidenceId?: string | null;
+  evidenceSnippet?: string | null;
+  suggestedDraftFieldKey?: string | null;
+  mappedDraftFieldKey?: string | null;
+  status?: AccountOpeningFieldMappingStatus | null;
+  operatorNote?: string | null;
+};
+
 export type AccountOpeningSourceEvidence = {
   id: string | null;
   sourceType: string;
@@ -131,6 +194,7 @@ export type AccountOpeningCaseDetail = {
   draftGeneratedAt: string | null;
   sourceEvidence: AccountOpeningSourceEvidence[];
   completionDraft: AccountOpeningCompletionDraft;
+  fieldMappings: AccountOpeningFieldMappingReview;
   createdAt: string;
   updatedAt: string;
 };
@@ -276,6 +340,24 @@ export async function downloadAccountOpeningReviewExportFile(
   return requestTextFile(
     `/account-opening/${encodeURIComponent(id)}/export-pack/${encodeURIComponent(fileName)}`,
   );
+}
+
+export async function saveAccountOpeningFieldMappings(
+  id: string,
+  mappings: AccountOpeningFieldMappingSaveInput[],
+): Promise<AccountOpeningFieldMappingReview> {
+  const payload = await requestJson<{ item: AccountOpeningFieldMappingReview }>(
+    `/account-opening/${encodeURIComponent(id)}/field-mappings`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        mappings,
+        actorType: 'OPERATOR',
+        actorIdentifier: 'web-account-opening-review',
+      }),
+    },
+  );
+  return payload.item;
 }
 
 export async function saveAccountOpeningMissingInfo(

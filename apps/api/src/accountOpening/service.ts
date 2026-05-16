@@ -14,6 +14,14 @@ import {
   type AccountOpeningDraftSourceEvidenceInput,
 } from './draft';
 import {
+  buildAccountOpeningFieldMappingCandidateForSave,
+  buildAccountOpeningFieldMappingReview,
+  type AccountOpeningFieldMappingCandidate,
+  type AccountOpeningFieldMappingReview,
+  type AccountOpeningFieldMappingSaveInput,
+  type PersistedAccountOpeningFieldMapping,
+} from './fieldMapping';
+import {
   buildAccountOpeningReviewExportPack,
   getAccountOpeningReviewExportFile,
   type AccountOpeningReviewExportFile,
@@ -114,6 +122,7 @@ export type AccountOpeningCaseDetail = {
   draftGeneratedAt: string | null;
   sourceEvidence: AccountOpeningSourceEvidenceDetail[];
   completionDraft: AccountOpeningCompletionDraft;
+  fieldMappings: AccountOpeningFieldMappingReview;
   createdAt: string;
   updatedAt: string;
 };
@@ -200,6 +209,7 @@ export type PersistedAccountOpeningReviewCase = {
   draftJson: unknown;
   draftSummary: unknown;
   sourceEvidence?: PersistedAccountOpeningSourceEvidence[];
+  fieldMappings?: PersistedAccountOpeningFieldMapping[];
   createdAt: Date;
   updatedAt: Date;
 };
@@ -1002,6 +1012,15 @@ export type AccountOpeningCaseRepository = {
     args: unknown,
   ) => Promise<PersistedAccountOpeningReviewCase | null>;
   update: (args: unknown) => Promise<PersistedAccountOpeningReviewCase>;
+  replaceFieldMappings?: (args: {
+    accountOpeningCaseId: string;
+    mappings: Array<
+      Omit<
+        PersistedAccountOpeningFieldMapping,
+        'id' | 'createdAt' | 'updatedAt'
+      >
+    >;
+  }) => Promise<PersistedAccountOpeningFieldMapping[]>;
   createEvent: (args: {
     data: AccountOpeningCaseEventInput;
   }) => Promise<unknown>;
@@ -1015,6 +1034,13 @@ function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
       ) => Promise<PersistedAccountOpeningReviewCase | null>;
       update: (args: unknown) => Promise<PersistedAccountOpeningReviewCase>;
     };
+    accountOpeningFieldMapping: {
+      deleteMany: (args: unknown) => Promise<unknown>;
+      createMany: (args: unknown) => Promise<unknown>;
+      findMany: (
+        args: unknown,
+      ) => Promise<PersistedAccountOpeningFieldMapping[]>;
+    };
     accountOpeningCaseEvent: {
       create: (args: {
         data: AccountOpeningCaseEventInput;
@@ -1025,6 +1051,22 @@ function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
   return {
     findUnique: (args) => client.accountOpeningCase.findUnique(args),
     update: (args) => client.accountOpeningCase.update(args),
+    replaceFieldMappings: async ({ accountOpeningCaseId, mappings }) => {
+      await client.accountOpeningFieldMapping.deleteMany({
+        where: { accountOpeningCaseId },
+      });
+
+      if (mappings.length > 0) {
+        await client.accountOpeningFieldMapping.createMany({
+          data: mappings,
+        });
+      }
+
+      return client.accountOpeningFieldMapping.findMany({
+        where: { accountOpeningCaseId },
+        orderBy: { sortOrder: 'asc' },
+      });
+    },
     createEvent: (args) => client.accountOpeningCaseEvent.create(args),
   };
 }
@@ -1060,6 +1102,17 @@ export function buildAccountOpeningCaseDetail(
         status: 'PREVIEW' as const,
         isStored: false,
       };
+  const fieldMappings = buildAccountOpeningFieldMappingReview({
+    completionDraft,
+    sourceEvidence: sourceEvidence.map((evidence) => ({
+      id: evidence.id,
+      sourceType: evidence.sourceType,
+      sourceLabel: evidence.sourceLabel,
+      fileName: evidence.fileName,
+      safeSnippet: evidence.safeSnippet,
+    })),
+    persistedMappings: accountCase.fieldMappings ?? [],
+  });
 
   return {
     id: accountCase.id,
@@ -1098,6 +1151,7 @@ export function buildAccountOpeningCaseDetail(
     draftGeneratedAt: accountCase.draftGeneratedAt?.toISOString() ?? null,
     sourceEvidence,
     completionDraft,
+    fieldMappings,
     createdAt: accountCase.createdAt.toISOString(),
     updatedAt: accountCase.updatedAt.toISOString(),
   };
@@ -1112,6 +1166,9 @@ export async function getAccountOpeningCaseDetail(
     include: {
       sourceEvidence: {
         orderBy: { createdAt: 'asc' },
+      },
+      fieldMappings: {
+        orderBy: { sortOrder: 'asc' },
       },
     },
   });
@@ -1150,6 +1207,9 @@ export async function saveAccountOpeningMissingInfo(input: {
       include: {
         sourceEvidence: {
           orderBy: { createdAt: 'asc' },
+        },
+        fieldMappings: {
+          orderBy: { sortOrder: 'asc' },
         },
       },
     })) ?? updated;
@@ -1201,6 +1261,9 @@ export async function updateAccountOpeningCaseStatus(input: {
         sourceEvidence: {
           orderBy: { createdAt: 'asc' },
         },
+        fieldMappings: {
+          orderBy: { sortOrder: 'asc' },
+        },
       },
     })) ?? updated;
 
@@ -1240,6 +1303,9 @@ export async function updateAccountOpeningCaseStatus(input: {
         include: {
           sourceEvidence: {
             orderBy: { createdAt: 'asc' },
+          },
+          fieldMappings: {
+            orderBy: { sortOrder: 'asc' },
           },
         },
       })) ?? updated;
@@ -1281,8 +1347,141 @@ async function findCaseWithEvidence(
       sourceEvidence: {
         orderBy: { createdAt: 'asc' },
       },
+      fieldMappings: {
+        orderBy: { sortOrder: 'asc' },
+      },
     },
   });
+}
+
+function fieldMappingSourceEvidenceFromDetails(
+  evidence: AccountOpeningSourceEvidenceDetail[],
+) {
+  return evidence.map((item) => ({
+    id: item.id,
+    sourceType: item.sourceType,
+    sourceLabel: item.sourceLabel,
+    fileName: item.fileName,
+    safeSnippet: item.safeSnippet,
+  }));
+}
+
+function fieldMappingRowsFromCandidates(input: {
+  accountOpeningCaseId: string;
+  candidates: AccountOpeningFieldMappingCandidate[];
+}): Array<
+  Omit<PersistedAccountOpeningFieldMapping, 'id' | 'createdAt' | 'updatedAt'>
+> {
+  return input.candidates.map((candidate, index) => ({
+    accountOpeningCaseId: input.accountOpeningCaseId,
+    supplierFieldLabel: candidate.supplierFieldLabel,
+    supplierSectionLabel: candidate.supplierSectionLabel,
+    normalizedLabel: candidate.normalizedLabel,
+    sourceType: candidate.sourceType,
+    sourceEvidenceId: candidate.sourceEvidenceId,
+    evidenceSnippet: candidate.evidenceSnippet,
+    suggestedDraftFieldKey: candidate.suggestedDraftFieldKey,
+    mappedDraftFieldKey: candidate.mappedDraftFieldKey,
+    proposedValue: candidate.proposedValue,
+    valueSource: candidate.valueSource,
+    confidence: candidate.confidence,
+    riskLevel: candidate.riskLevel,
+    status: candidate.status,
+    requiresReview: candidate.requiresReview,
+    blockedReason: candidate.blockedReason,
+    reviewReason: candidate.reviewReason,
+    operatorNote: candidate.operatorNote,
+    sortOrder: index,
+  }));
+}
+
+function fieldMappingAuditMetadata(
+  review: AccountOpeningFieldMappingReview,
+): Prisma.InputJsonValue {
+  return jsonObject({
+    status: review.status,
+    summary: review.summary,
+    fieldMappingControlsOnly: true,
+    rawExtractedTextIncluded: false,
+    rawBankDetailsIncluded: false,
+    pdfWordFormsFilled: false,
+    signedFormsIncluded: false,
+    supplierMessageIncluded: false,
+    purchaseWorkflowTriggered: false,
+  });
+}
+
+export async function getAccountOpeningFieldMappingReview(input: {
+  id: string;
+  repository?: AccountOpeningCaseRepository;
+}): Promise<AccountOpeningFieldMappingReview> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  const existing = await findCaseWithEvidence(input.id, repository);
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  return buildAccountOpeningCaseDetail(existing).fieldMappings;
+}
+
+export async function saveAccountOpeningFieldMappings(input: {
+  id: string;
+  mappings: AccountOpeningFieldMappingSaveInput[];
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  repository?: AccountOpeningCaseRepository;
+}): Promise<AccountOpeningFieldMappingReview> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  const existing = await findCaseWithEvidence(input.id, repository);
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  if (!repository.replaceFieldMappings) {
+    throw new Error(
+      'Account-opening field mapping repository is not writable.',
+    );
+  }
+
+  const detail = buildAccountOpeningCaseDetail(existing);
+  const sourceEvidence = fieldMappingSourceEvidenceFromDetails(
+    detail.sourceEvidence,
+  );
+  const candidates = input.mappings.map((mapping) =>
+    buildAccountOpeningFieldMappingCandidateForSave({
+      mapping,
+      completionDraft: detail.completionDraft,
+      sourceEvidence,
+    }),
+  );
+  const savedMappings = await repository.replaceFieldMappings({
+    accountOpeningCaseId: input.id,
+    mappings: fieldMappingRowsFromCandidates({
+      accountOpeningCaseId: input.id,
+      candidates,
+    }),
+  });
+  const review = buildAccountOpeningFieldMappingReview({
+    completionDraft: detail.completionDraft,
+    sourceEvidence,
+    persistedMappings: savedMappings,
+  });
+
+  await repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.id,
+      actionType: 'FIELD_MAPPINGS_SAVED',
+      previousStatus: existing.status,
+      newStatus: existing.status,
+      actorType: input.actorType?.trim() || 'OPERATOR',
+      actorIdentifier: sanitizeDashboardText(input.actorIdentifier) ?? null,
+      metadata: fieldMappingAuditMetadata(review),
+    },
+  });
+
+  return review;
 }
 
 export async function writeDraftAuditEvents(input: {
@@ -1504,6 +1703,9 @@ export async function upsertAccountOpeningCase(
       sourceEvidence: {
         orderBy: { createdAt: 'asc' },
       },
+      fieldMappings: {
+        orderBy: { sortOrder: 'asc' },
+      },
     },
   });
   const existingEvidence = existingWithEvidence?.sourceEvidence ?? [];
@@ -1546,6 +1748,9 @@ export async function upsertAccountOpeningCase(
     include: {
       sourceEvidence: {
         orderBy: { createdAt: 'asc' },
+      },
+      fieldMappings: {
+        orderBy: { sortOrder: 'asc' },
       },
     },
   });
@@ -1603,6 +1808,9 @@ export async function upsertAccountOpeningCase(
     include: {
       sourceEvidence: {
         orderBy: { createdAt: 'asc' },
+      },
+      fieldMappings: {
+        orderBy: { sortOrder: 'asc' },
       },
     },
   });

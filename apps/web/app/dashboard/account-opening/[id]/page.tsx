@@ -6,6 +6,7 @@ import {
   type AccountOpeningMissingInfoResponses,
 } from '../../../../lib/accountOpeningApi';
 import {
+  submitAccountOpeningFieldMappingsAction,
   submitGenerateAccountOpeningDraftAction,
   submitAccountOpeningMissingInfoAction,
   submitAccountOpeningStatusAction,
@@ -42,6 +43,14 @@ const MISSING_INFO_FIELDS: MissingInfoField[] = [
   { key: 'cqcRegistration', label: 'CQC registration' },
   { key: 'reviewerNotes', label: 'Reviewer notes', multiline: true },
 ];
+const FIELD_MAPPING_STATUSES = [
+  'UNMAPPED',
+  'MAPPED_SAFE',
+  'MAPPED_REVIEW_REQUIRED',
+  'BLOCKED',
+  'IGNORED',
+  'NEEDS_OPERATOR_INPUT',
+] as const;
 
 function sanitizeReturnTo(value: string | null | undefined): string {
   const trimmed = value?.trim();
@@ -204,6 +213,160 @@ function StatusActionForm({
         type="submit"
       >
         {buttonLabel}
+      </button>
+    </form>
+  );
+}
+
+function FieldMappingForm({
+  item,
+  returnTo,
+}: {
+  item: AccountOpeningCaseDetail;
+  returnTo: string;
+}) {
+  const draftFields = item.completionDraft.fields;
+
+  return (
+    <form
+      action={submitAccountOpeningFieldMappingsAction}
+      className="action-form"
+    >
+      {hiddenInput('caseId', item.id)}
+      {hiddenInput('returnTo', returnTo)}
+      {hiddenInput('mappingCount', String(item.fieldMappings.mappings.length))}
+      <dl className="duplicate-product-details">
+        <div>
+          <dt>Mapping status</dt>
+          <dd>{item.fieldMappings.status}</dd>
+        </div>
+        <div>
+          <dt>Total mappings</dt>
+          <dd>{item.fieldMappings.summary.totalMappings}</dd>
+        </div>
+        <div>
+          <dt>Mapped safe</dt>
+          <dd>{item.fieldMappings.summary.mappedSafe}</dd>
+        </div>
+        <div>
+          <dt>Needs review</dt>
+          <dd>{item.fieldMappings.summary.reviewRequired}</dd>
+        </div>
+        <div>
+          <dt>Blocked</dt>
+          <dd>{item.fieldMappings.summary.blocked}</dd>
+        </div>
+        <div>
+          <dt>Safe to fill supplier forms</dt>
+          <dd>
+            {item.fieldMappings.summary.safeToFillSupplierForms ? 'Yes' : 'No'}
+          </dd>
+        </div>
+      </dl>
+      <div className="table-wrapper">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Supplier field</th>
+              <th>Mapped AMBE field</th>
+              <th>Proposed value</th>
+              <th>Status</th>
+              <th>Confidence</th>
+              <th>Risk</th>
+              <th>Review reason</th>
+              <th>Operator note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {item.fieldMappings.mappings.map((mapping, index) => {
+              const prefix = `mapping-${index}`;
+
+              return (
+                <tr key={mapping.id}>
+                  <td>
+                    {hiddenInput(`${prefix}-id`, mapping.id)}
+                    {hiddenInput(
+                      `${prefix}-supplierFieldLabel`,
+                      mapping.supplierFieldLabel,
+                    )}
+                    {hiddenInput(
+                      `${prefix}-supplierSectionLabel`,
+                      mapping.supplierSectionLabel ?? '',
+                    )}
+                    {hiddenInput(`${prefix}-sourceType`, mapping.sourceType)}
+                    {hiddenInput(
+                      `${prefix}-sourceEvidenceId`,
+                      mapping.sourceEvidenceId ?? '',
+                    )}
+                    {hiddenInput(
+                      `${prefix}-evidenceSnippet`,
+                      mapping.evidenceSnippet ?? '',
+                    )}
+                    {hiddenInput(
+                      `${prefix}-suggestedDraftFieldKey`,
+                      mapping.suggestedDraftFieldKey ?? '',
+                    )}
+                    <strong>{mapping.supplierFieldLabel}</strong>
+                    <span className="muted-text">
+                      {mapping.supplierSectionLabel
+                        ? ` ${mapping.supplierSectionLabel}`
+                        : ''}
+                      {` ${mapping.sourceType.toLowerCase().replace(/_/g, ' ')}`}
+                    </span>
+                  </td>
+                  <td>
+                    <select
+                      defaultValue={mapping.mappedDraftFieldKey ?? ''}
+                      name={`${prefix}-mappedDraftFieldKey`}
+                    >
+                      <option value="">Unmapped</option>
+                      {draftFields.map((field) => (
+                        <option key={field.key} value={field.key}>
+                          {field.supplierLabel}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>{renderNullable(mapping.proposedValue, 'Blank')}</td>
+                  <td>
+                    <select
+                      defaultValue={mapping.status}
+                      name={`${prefix}-status`}
+                    >
+                      {FIELD_MAPPING_STATUSES.map((status) => (
+                        <option key={status} value={status}>
+                          {humanizeStatus(status)}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>{mapping.confidence}</td>
+                  <td>{mapping.riskLevel}</td>
+                  <td>
+                    {renderValue(
+                      mapping.blockedReason ?? mapping.reviewReason,
+                      mapping.requiresReview ? 'Review required' : 'No',
+                    )}
+                  </td>
+                  <td>
+                    <input
+                      defaultValue={mapping.operatorNote ?? ''}
+                      name={`${prefix}-operatorNote`}
+                      placeholder="Optional review note"
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {renderList(
+        item.fieldMappings.safetyNotes,
+        'No field-mapping safety notes recorded.',
+      )}
+      <button className="button button-primary button-large" type="submit">
+        Save field mappings
       </button>
     </form>
   );
@@ -523,6 +686,18 @@ export default async function AccountOpeningDetailPage({
             item.completionDraft.safetyNotes,
             'No safety notes recorded.',
           )}
+        </section>
+
+        <section className="panel dashboard-panel">
+          <h3 className="section-title">Supplier field mappings</h3>
+          <p className="copy review-summary-copy">
+            Internal mapping controls only. These mappings help reviewers decide
+            how supplier form labels line up with AMBE draft fields before any
+            future document completion work. This does not fill PDF/Word
+            supplier forms, sign, send, submit, or create purchase/order/buy
+            workflow records.
+          </p>
+          <FieldMappingForm item={item} returnTo={returnTo} />
         </section>
 
         <section className="panel dashboard-panel">
