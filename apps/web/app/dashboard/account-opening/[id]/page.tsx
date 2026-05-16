@@ -122,6 +122,10 @@ function hiddenInput(name: string, value: string) {
   return <input name={name} type="hidden" value={value} />;
 }
 
+function downloadHref(caseId: string, fileName: string) {
+  return `/dashboard/account-opening/${encodeURIComponent(caseId)}/downloads/${encodeURIComponent(fileName)}`;
+}
+
 function MissingInfoForm({
   item,
   returnTo,
@@ -356,6 +360,51 @@ export default async function AccountOpeningDetailPage({
               </dd>
             </div>
           </dl>
+        </section>
+
+        <section className="panel dashboard-panel">
+          <h3 className="section-title">Safe review exports</h3>
+          <p className="copy review-summary-copy">
+            Internal review downloads only. These files include safe draft,
+            field mapping, unresolved and blocked fields, signing notes, risk
+            summary, and source evidence metadata. They do not include raw
+            extracted text, raw bank details, signed forms, completed supplier
+            forms, supplier-facing messages, or purchase/order/buy workflow
+            actions. Downloads require an operator download token before the web
+            proxy can use server-side internal API credentials.
+          </p>
+          <div className="actions">
+            <a
+              className="button"
+              href={downloadHref(item.id, 'review-pack.md')}
+            >
+              Download review markdown
+            </a>
+            <a
+              className="button"
+              href={downloadHref(item.id, 'review-pack.json')}
+            >
+              Download review JSON
+            </a>
+            <a
+              className="button"
+              href={downloadHref(item.id, 'source-evidence.json')}
+            >
+              Download evidence JSON
+            </a>
+            <a
+              className="button"
+              href={downloadHref(item.id, 'field-mapping-summary.json')}
+            >
+              Download field mapping
+            </a>
+            <a
+              className="button"
+              href={downloadHref(item.id, 'blocked-fields.json')}
+            >
+              Download blocked fields
+            </a>
+          </div>
         </section>
 
         <section className="panel dashboard-panel">

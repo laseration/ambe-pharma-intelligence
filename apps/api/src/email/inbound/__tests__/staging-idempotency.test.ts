@@ -3,9 +3,18 @@ import test, { type TestContext } from 'node:test';
 
 import { db } from '../../../lib/db';
 import { env } from '../../../config/env';
-import { createReviewQueueService } from '../../../reviewQueue/service';
+import { createReviewQueueService as createReviewQueueServiceBase } from '../../../reviewQueue/service';
 import { mergeResolvedOffers, persistPromotion, stageInboundEmail } from '../pipeline';
 import type { EmailInboundResult } from '../types';
+
+function createReviewQueueService(
+  overrides?: Parameters<typeof createReviewQueueServiceBase>[0],
+) {
+  return createReviewQueueServiceBase({
+    listAccountOpeningCases: async () => [],
+    ...overrides,
+  });
+}
 
 function createInboundResult(overrides?: Partial<EmailInboundResult['items'][number]>): EmailInboundResult {
   return {

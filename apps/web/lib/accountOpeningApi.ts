@@ -135,6 +135,12 @@ export type AccountOpeningCaseDetail = {
   updatedAt: string;
 };
 
+export type AccountOpeningReviewExportFile = {
+  fileName: string;
+  contentType: string;
+  content: string;
+};
+
 function getInternalApiBaseUrl(): string {
   return (
     process.env.INTERNAL_API_BASE_URL?.trim() ||
@@ -190,6 +196,45 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function requestTextFile(
+  path: string,
+  init?: RequestInit,
+): Promise<AccountOpeningReviewExportFile> {
+  const response = await fetch(`${getInternalApiBaseUrl()}${path}`, {
+    ...init,
+    cache: 'no-store',
+    headers: {
+      ...buildHeaders(false),
+      ...(init?.headers ?? {}),
+    },
+  });
+
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}.`;
+
+    try {
+      const payload = (await response.json()) as { error?: string };
+      if (payload.error) {
+        message = payload.error;
+      }
+    } catch {
+      // Keep the generic status-based message.
+    }
+
+    throw new Error(message);
+  }
+
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const fileNameMatch = /filename="([^"]+)"/i.exec(disposition);
+
+  return {
+    fileName: fileNameMatch?.[1] ?? 'account-opening-review-export.txt',
+    contentType:
+      response.headers.get('content-type') ?? 'text/plain; charset=utf-8',
+    content: await response.text(),
+  };
+}
+
 export async function getAccountOpeningCase(
   id: string,
 ): Promise<AccountOpeningCaseDetail> {
@@ -222,6 +267,15 @@ export async function generateAccountOpeningDraft(
     }),
   });
   return payload.item;
+}
+
+export async function downloadAccountOpeningReviewExportFile(
+  id: string,
+  fileName: string,
+): Promise<AccountOpeningReviewExportFile> {
+  return requestTextFile(
+    `/account-opening/${encodeURIComponent(id)}/export-pack/${encodeURIComponent(fileName)}`,
+  );
 }
 
 export async function saveAccountOpeningMissingInfo(

@@ -5,7 +5,7 @@ import {
   requireInternalOperatorAccess,
   resolveInternalActor,
 } from '../http/auth';
-import { asyncHandler, requireFound } from '../http/errors';
+import { asyncHandler, NotFoundError, requireFound } from '../http/errors';
 import { actorBodySchema } from '../http/routeSchemas';
 import {
   idParamSchema,
@@ -14,6 +14,8 @@ import {
   parseRequest,
 } from '../http/validation';
 import {
+  downloadAccountOpeningReviewedExportFile,
+  exportAccountOpeningReviewedPack,
   generateAccountOpeningDraft,
   getAccountOpeningCaseDetail,
   saveAccountOpeningMissingInfo,
@@ -22,10 +24,13 @@ import {
   type AccountOpeningMissingInfoResponses,
   type AccountOpeningStatusAction,
 } from './service';
+import { ACCOUNT_OPENING_REVIEW_EXPORT_FILE_NAMES } from './reviewExport';
 
 type AccountOpeningRouteDependencies = {
   getCaseDetail: typeof getAccountOpeningCaseDetail;
   generateDraft: typeof generateAccountOpeningDraft;
+  exportPack: typeof exportAccountOpeningReviewedPack;
+  downloadExportFile: typeof downloadAccountOpeningReviewedExportFile;
   saveMissingInfo: typeof saveAccountOpeningMissingInfo;
   updateStatus: typeof updateAccountOpeningCaseStatus;
 };
@@ -57,10 +62,18 @@ const statusBodySchema = z
   .merge(actorBodySchema);
 
 const generateDraftBodySchema = actorBodySchema.partial().default({});
+const exportFileParamSchema = idParamSchema.extend({
+  fileName: z.string().trim().min(1).max(128),
+});
+const exportFileNames = new Set<string>(
+  ACCOUNT_OPENING_REVIEW_EXPORT_FILE_NAMES,
+);
 
 const defaultDependencies: AccountOpeningRouteDependencies = {
   getCaseDetail: getAccountOpeningCaseDetail,
   generateDraft: generateAccountOpeningDraft,
+  exportPack: exportAccountOpeningReviewedPack,
+  downloadExportFile: downloadAccountOpeningReviewedExportFile,
   saveMissingInfo: saveAccountOpeningMissingInfo,
   updateStatus: updateAccountOpeningCaseStatus,
 };
@@ -143,6 +156,57 @@ export function createAccountOpeningRouter(
         item,
         draft: item.completionDraft,
       });
+    }),
+  );
+
+  router.get(
+    '/:id/export-pack',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {
+        params: idParamSchema,
+      });
+      const actor = resolveInternalActor(request, {});
+      const pack = await dependencies.exportPack({
+        id: params.id,
+        ...actor,
+      });
+
+      response.json({ item: pack });
+    }),
+  );
+
+  router.get(
+    '/:id/export-pack/:fileName',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { params } = parseRequest<z.infer<typeof exportFileParamSchema>>(
+        request,
+        {
+          params: exportFileParamSchema,
+        },
+      );
+      const actor = resolveInternalActor(request, {});
+      if (!exportFileNames.has(params.fileName)) {
+        throw new NotFoundError(
+          'Account-opening review export file not found.',
+        );
+      }
+
+      const file = await dependencies.downloadExportFile({
+        id: params.id,
+        fileName: params.fileName,
+        ...actor,
+      });
+
+      response
+        .status(200)
+        .type(file.contentType)
+        .setHeader(
+          'content-disposition',
+          `attachment; filename="${file.fileName}"`,
+        )
+        .send(file.content);
     }),
   );
 

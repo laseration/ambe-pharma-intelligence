@@ -9,6 +9,8 @@ import {
   buildAccountOpeningSigningSummary,
   buildAccountOpeningSourceFingerprint,
   detectAccountOpeningEmail,
+  downloadAccountOpeningReviewedExportFile,
+  exportAccountOpeningReviewedPack,
   generateAccountOpeningDraft,
   sanitizeAccountOpeningMissingInfoResponses,
   saveAccountOpeningMissingInfo,
@@ -640,6 +642,115 @@ test('regenerated draft records regenerated plus exactly one routing event', asy
   });
 
   assert.deepEqual(eventTypes, ['DRAFT_REGENERATED', 'DRAFT_BLOCKED']);
+});
+
+test('safe review export pack includes review files and records export audit event', async () => {
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      sourceAttachmentNames: [
+        'direct-debit-account-12345678-sort-12-34-56.pdf',
+      ],
+      sourceEvidence: [
+        {
+          id: 'evidence-1',
+          sourceType: 'ATTACHMENT',
+          sourceLabel: 'direct-debit-account-12345678-sort-12-34-56.pdf',
+          fileName: 'direct-debit-account-12345678-sort-12-34-56.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
+          contentId: null,
+          disposition: 'attachment',
+          extractionMethod: 'PDF_TEXT',
+          extractedTextHash: 'hash-1',
+          extractedTextChars: 80,
+          safeSnippet:
+            'Direct Debit mandate with account number 12345678 and sort code 12-34-56.',
+          rawFileAvailable: false,
+          storageProvider: null,
+          storageFolderUrl: null,
+          storageFileUrl: null,
+          storageDriveItemId: null,
+          createdAt: new Date('2026-05-12T09:00:00.000Z'),
+          updatedAt: new Date('2026-05-12T09:00:00.000Z'),
+        },
+      ],
+    }),
+  );
+
+  const pack = await exportAccountOpeningReviewedPack({
+    id: 'account-case-1',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+    now: new Date('2026-05-16T10:00:00.000Z'),
+  });
+  const packText = JSON.stringify(pack);
+  const event = events[0];
+
+  assert.deepEqual(pack.metadata.fileNames, [
+    'review-pack.json',
+    'review-pack.md',
+    'completion-draft.json',
+    'field-mapping-summary.json',
+    'unresolved-fields.json',
+    'blocked-fields.json',
+    'signing-notes.json',
+    'risk-summary.json',
+    'source-evidence.json',
+    'source-evidence.md',
+  ]);
+  assert.equal(pack.files.length, pack.metadata.fileNames.length);
+  assert.equal(
+    pack.files.some((file) => /\.(pdf|docx?|xlsx?)$/i.test(file.fileName)),
+    false,
+  );
+  assert.equal(pack.metadata.rawExtractedTextIncluded, false);
+  assert.equal(pack.metadata.rawBankDetailsIncluded, false);
+  assert.equal(pack.metadata.signedFormsIncluded, false);
+  assert.equal(pack.metadata.completedSupplierFormsIncluded, false);
+  assert.equal(pack.metadata.pdfWordFormsFilled, false);
+  assert.equal(pack.metadata.supplierMessageIncluded, false);
+  assert.equal(pack.metadata.purchaseWorkflowTriggered, false);
+  assert.doesNotMatch(packText, /12345678/);
+  assert.doesNotMatch(packText, /12-34-56/);
+  for (const file of pack.files) {
+    assert.doesNotMatch(file.content, /12345678/);
+    assert.doesNotMatch(file.content, /12-34-56/);
+    assert.doesNotMatch(file.content, /raw extracted text":\s*true/i);
+    assert.doesNotMatch(file.content, /signed forms included":\s*true/i);
+    assert.doesNotMatch(
+      file.content,
+      /completed supplier forms included":\s*true/i,
+    );
+  }
+  assert.equal(event?.actionType, 'SAFE_REVIEW_EXPORT_PACK_EXPORTED');
+  assert.doesNotMatch(JSON.stringify(event?.metadata), /12345678/);
+  assert.doesNotMatch(JSON.stringify(event?.metadata), /12-34-56/);
+  assert.doesNotMatch(JSON.stringify(event?.metadata), /This does not sign/);
+});
+
+test('safe review export file download records file audit event', async () => {
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase(),
+  );
+
+  const file = await downloadAccountOpeningReviewedExportFile({
+    id: 'account-case-1',
+    fileName: 'review-pack.md',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+    now: new Date('2026-05-16T10:00:00.000Z'),
+  });
+  const event = events[0];
+
+  assert.equal(file.fileName, 'review-pack.md');
+  assert.match(file.content, /This does not sign the form\./);
+  assert.match(file.content, /This does not send anything to the supplier\./);
+  assert.match(file.content, /This does not submit the form\./);
+  assert.match(file.content, /This does not fill PDF\/Word supplier forms\./);
+  assert.equal(event?.actionType, 'SAFE_REVIEW_EXPORT_FILE_DOWNLOADED');
+  assert.match(JSON.stringify(event?.metadata), /review-pack\.md/);
 });
 
 test('approve for completion changes status and records skipped storage when disabled', async () => {
