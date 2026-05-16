@@ -636,6 +636,8 @@ model AccountOpeningCase {
   events                AccountOpeningCaseEvent[]
   sourceEvidence        AccountOpeningSourceEvidence[]
   fieldMappings         AccountOpeningFieldMapping[]
+  originalForms         AccountOpeningOriginalForm[]
+  fillPreviews          AccountOpeningFillPreview[]
   createdAt             DateTime                       @default(now())
   updatedAt             DateTime                       @updatedAt
 
@@ -682,6 +684,7 @@ model AccountOpeningSourceEvidence {
   metadata             Json?
   accountOpeningCase   AccountOpeningCase           @relation(fields: [accountOpeningCaseId], references: [id], onDelete: Cascade)
   fieldMappings        AccountOpeningFieldMapping[]
+  originalForms        AccountOpeningOriginalForm[]
   createdAt            DateTime                     @default(now())
   updatedAt            DateTime                     @updatedAt
 
@@ -718,6 +721,54 @@ model AccountOpeningFieldMapping {
   @@index([accountOpeningCaseId, sortOrder])
   @@index([accountOpeningCaseId, status])
   @@index([sourceEvidenceId])
+}
+
+model AccountOpeningOriginalForm {
+  id                   String                       @id @default(cuid())
+  accountOpeningCaseId String
+  sourceEvidenceId     String?
+  fileName             String
+  mimeType             String?
+  sizeBytes            Int?
+  fileHash             String?
+  storageProvider      String?
+  storageFolderUrl     String?
+  storageFileUrl       String?
+  storageDriveItemId   String?
+  localBlobAvailable   Boolean                      @default(false)
+  formType             String                       @default("UNKNOWN")
+  fillSupportStatus    String                       @default("UNSUPPORTED")
+  detectedFieldCount   Int?
+  detectionSummary     Json?
+  accountOpeningCase   AccountOpeningCase           @relation(fields: [accountOpeningCaseId], references: [id], onDelete: Cascade)
+  sourceEvidence       AccountOpeningSourceEvidence? @relation(fields: [sourceEvidenceId], references: [id], onDelete: SetNull)
+  fillPreviews         AccountOpeningFillPreview[]
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+
+  @@index([accountOpeningCaseId, createdAt])
+  @@index([sourceEvidenceId])
+  @@index([fileHash])
+}
+
+model AccountOpeningFillPreview {
+  id                   String                      @id @default(cuid())
+  accountOpeningCaseId String
+  originalFormId       String?
+  status               String                      @default("GENERATED_FOR_REVIEW")
+  previewVersion       String                      @default("fill-preview-v1")
+  fileNames            Json
+  previewJson          Json
+  fieldSummary         Json?
+  safetySummary        Json?
+  createdByType        String?
+  createdByIdentifier  String?
+  accountOpeningCase   AccountOpeningCase          @relation(fields: [accountOpeningCaseId], references: [id], onDelete: Cascade)
+  originalForm         AccountOpeningOriginalForm? @relation(fields: [originalFormId], references: [id], onDelete: SetNull)
+  createdAt            DateTime                    @default(now())
+
+  @@index([accountOpeningCaseId, createdAt])
+  @@index([originalFormId, createdAt])
 }
 
 model InboundEmailDocument {

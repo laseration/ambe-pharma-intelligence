@@ -9,8 +9,10 @@ import {
   buildAccountOpeningSigningSummary,
   buildAccountOpeningSourceFingerprint,
   detectAccountOpeningEmail,
+  downloadAccountOpeningFillPreviewFile,
   downloadAccountOpeningReviewedExportFile,
   exportAccountOpeningReviewedPack,
+  generateAccountOpeningFillPreview,
   generateAccountOpeningDraft,
   saveAccountOpeningFieldMappings,
   sanitizeAccountOpeningMissingInfoResponses,
@@ -19,6 +21,8 @@ import {
   writeDraftAuditEvents,
   type AccountOpeningCaseRepository,
   type AccountOpeningCaseEventInput,
+  type PersistedAccountOpeningFillPreview,
+  type PersistedAccountOpeningOriginalForm,
   type PersistedAccountOpeningReviewCase,
 } from '../service';
 import type { AccountOpeningCompletionDraft } from '../draft';
@@ -371,6 +375,39 @@ function buildPersistedAccountOpeningCase(
     draftGeneratedAt: null,
     draftJson: null,
     draftSummary: null,
+    sourceEvidence: [],
+    fieldMappings: [],
+    originalForms: [],
+    fillPreviews: [],
+    createdAt: new Date('2026-05-12T09:00:00.000Z'),
+    updatedAt: new Date('2026-05-12T09:00:00.000Z'),
+    ...overrides,
+  };
+}
+
+function buildPersistedOriginalForm(
+  overrides: Partial<PersistedAccountOpeningOriginalForm> = {},
+): PersistedAccountOpeningOriginalForm {
+  return {
+    id: 'original-form-1',
+    accountOpeningCaseId: 'account-case-1',
+    sourceEvidenceId: 'evidence-1',
+    fileName: 'supplier-account-opening-form.pdf',
+    mimeType: 'application/pdf',
+    sizeBytes: 12000,
+    fileHash: 'form-hash-1',
+    storageProvider: 'MICROSOFT_DRIVE',
+    storageFolderUrl: 'https://sharepoint.example/account-opening',
+    storageFileUrl: 'https://sharepoint.example/account-opening/form.pdf',
+    storageDriveItemId: 'drive-item-1',
+    localBlobAvailable: false,
+    formType: 'PDF',
+    fillSupportStatus: 'PREVIEW_SUPPORTED',
+    detectedFieldCount: null,
+    detectionSummary: {
+      metadataOnly: true,
+      rawFileBytesStored: false,
+    },
     createdAt: new Date('2026-05-12T09:00:00.000Z'),
     updatedAt: new Date('2026-05-12T09:00:00.000Z'),
     ...overrides,
@@ -382,11 +419,19 @@ function createAccountOpeningRepository(
 ) {
   let current = initial;
   let fieldMappings = initial.fieldMappings ?? [];
+  let originalForms = initial.originalForms ?? [];
+  let fillPreviews = initial.fillPreviews ?? [];
   const events: AccountOpeningCaseEventInput[] = [];
   const repository: AccountOpeningCaseRepository = {
     findUnique: async () => ({
       ...current,
       fieldMappings,
+      originalForms,
+      fillPreviews: fillPreviews
+        .slice()
+        .sort(
+          (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
+        ),
     }),
     update: async (args: unknown) => {
       const data =
@@ -396,6 +441,8 @@ function createAccountOpeningRepository(
         ...current,
         ...data,
         fieldMappings,
+        originalForms,
+        fillPreviews,
         updatedAt: new Date('2026-05-12T10:00:00.000Z'),
       };
       return current;
@@ -414,6 +461,32 @@ function createAccountOpeningRepository(
       };
       return fieldMappings;
     },
+    replaceOriginalForms: async ({ forms }) => {
+      originalForms = forms.map((form, index) => ({
+        ...form,
+        id: `original-form-${index + 1}`,
+        createdAt: new Date('2026-05-12T10:00:00.000Z'),
+        updatedAt: new Date('2026-05-12T10:00:00.000Z'),
+      }));
+      current = {
+        ...current,
+        originalForms,
+      };
+      return originalForms;
+    },
+    createFillPreview: async ({ data }) => {
+      const created: PersistedAccountOpeningFillPreview = {
+        ...data,
+        id: `fill-preview-${fillPreviews.length + 1}`,
+        createdAt: new Date('2026-05-12T11:00:00.000Z'),
+      };
+      fillPreviews = [created, ...fillPreviews];
+      current = {
+        ...current,
+        fillPreviews,
+      };
+      return created;
+    },
     createEvent: async (args) => {
       events.push(args.data);
       return args.data;
@@ -424,6 +497,8 @@ function createAccountOpeningRepository(
     repository,
     events,
     getCurrent: () => current,
+    getOriginalForms: () => originalForms,
+    getFillPreviews: () => fillPreviews,
   };
 }
 
@@ -670,6 +745,345 @@ test('saving field mappings persists safe decisions and records safe audit metad
     JSON.stringify(event?.metadata),
     /rawBankDetailsIncluded":false/,
   );
+});
+
+function buildStoredFillPreviewDraft(): AccountOpeningCompletionDraft {
+  return {
+    ...buildDraftFixture({
+      status: 'REVIEW_REQUIRED',
+      overallConfidence: 'MEDIUM',
+      summary: {
+        totalFields: 4,
+        highConfidenceFields: 1,
+        reviewRequiredFields: 1,
+        blockedFields: 2,
+        safeToAutoFill: false,
+      },
+    }),
+    fields: [
+      {
+        key: 'legalCompanyName',
+        supplierLabel: 'Company Name',
+        proposedValue: 'AMBE LTD',
+        valueSource: 'AMBE_MASTER_PROFILE',
+        confidence: 'HIGH',
+        riskLevel: 'LOW',
+        requiresReview: false,
+        reviewReason: null,
+        evidence: [],
+      },
+      {
+        key: 'bankDetails',
+        supplierLabel: 'Bank Details',
+        proposedValue: 'Account number 12345678 sort code 12-34-56',
+        valueSource: 'SYSTEM_PLACEHOLDER',
+        confidence: 'BLOCKED',
+        riskLevel: 'BLOCKED',
+        requiresReview: true,
+        reviewReason: 'Bank details require secure review.',
+        evidence: [],
+      },
+      {
+        key: 'signature',
+        supplierLabel: 'Signature',
+        proposedValue: null,
+        valueSource: 'SYSTEM_PLACEHOLDER',
+        confidence: 'BLOCKED',
+        riskLevel: 'BLOCKED',
+        requiresReview: true,
+        reviewReason: 'Signature fields remain blank.',
+        evidence: [],
+      },
+      {
+        key: 'gphcPremisesNumber',
+        supplierLabel: 'GPhC Premises Number',
+        proposedValue: 'To be confirmed',
+        valueSource: 'SYSTEM_PLACEHOLDER',
+        confidence: 'LOW',
+        riskLevel: 'HIGH',
+        requiresReview: true,
+        reviewReason: 'GPhC details require review.',
+        evidence: [],
+      },
+    ],
+  };
+}
+
+test('fill preview uses original form reference and fills only saved safe mapped values', async () => {
+  const draft = buildStoredFillPreviewDraft();
+  const { repository, events, getFillPreviews } =
+    createAccountOpeningRepository(
+      buildPersistedAccountOpeningCase({
+        draftStatus: draft.status,
+        draftVersion: draft.profileVersion,
+        draftGeneratedAt: new Date(draft.generatedAt),
+        draftJson: draft,
+        draftSummary: draft.summary,
+        originalForms: [buildPersistedOriginalForm()],
+      }),
+    );
+
+  await saveAccountOpeningFieldMappings({
+    id: 'account-case-1',
+    mappings: [
+      {
+        supplierFieldLabel: 'Company Name',
+        sourceType: 'OPERATOR_CREATED',
+        mappedDraftFieldKey: 'legalCompanyName',
+        status: 'MAPPED_SAFE',
+      },
+      {
+        supplierFieldLabel: 'Bank Account Number',
+        sourceType: 'OPERATOR_CREATED',
+        mappedDraftFieldKey: 'bankDetails',
+        status: 'MAPPED_SAFE',
+      },
+      {
+        supplierFieldLabel: 'Director Signature',
+        sourceType: 'OPERATOR_CREATED',
+        mappedDraftFieldKey: 'signature',
+        status: 'MAPPED_SAFE',
+      },
+      {
+        supplierFieldLabel: 'GPhC Premises Number',
+        sourceType: 'OPERATOR_CREATED',
+        mappedDraftFieldKey: 'gphcPremisesNumber',
+        status: 'MAPPED_SAFE',
+      },
+    ],
+    repository,
+  });
+
+  const result = await generateAccountOpeningFillPreview({
+    id: 'account-case-1',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+    now: new Date('2026-05-16T12:00:00.000Z'),
+  });
+  const previewText = JSON.stringify(result.preview);
+  const event = events.find(
+    (item) => item.actionType === 'FILL_PREVIEW_GENERATED',
+  );
+
+  assert.equal(result.preview.payload.summary.filledFieldCount, 1);
+  assert.equal(
+    result.preview.payload.filledFields[0]?.proposedValue,
+    'AMBE LTD',
+  );
+  assert.equal(result.preview.payload.summary.blankFieldCount, 3);
+  assert.match(
+    JSON.stringify(result.preview.payload.blankFields),
+    /Bank Account Number/,
+  );
+  assert.match(
+    JSON.stringify(result.preview.payload.blankFields),
+    /Director Signature/,
+  );
+  assert.equal(result.preview.metadata.sharePointCompletedFormFiled, false);
+  assert.equal(result.preview.metadata.supplierSubmissionTriggered, false);
+  assert.equal(result.preview.metadata.purchaseWorkflowTriggered, false);
+  assert.doesNotMatch(previewText, /12345678/);
+  assert.doesNotMatch(previewText, /12-34-56/);
+  assert.equal(getFillPreviews().length, 1);
+  assert.equal(result.item.latestFillPreview?.status, 'GENERATED_FOR_REVIEW');
+  assert.equal(event?.actionType, 'FILL_PREVIEW_GENERATED');
+  assert.doesNotMatch(JSON.stringify(event?.metadata), /12345678/);
+  assert.match(
+    JSON.stringify(event?.metadata),
+    /sharePointCompletedFormFiled":false/,
+  );
+});
+
+test('fill preview requires stored draft, saved mappings, and original form reference', async () => {
+  const { repository } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase(),
+  );
+
+  await assert.rejects(
+    () =>
+      generateAccountOpeningFillPreview({
+        id: 'account-case-1',
+        repository,
+      }),
+    /Generate and store the completion draft/,
+  );
+
+  const draft = buildStoredFillPreviewDraft();
+  const { repository: missingMappingsRepository } =
+    createAccountOpeningRepository(
+      buildPersistedAccountOpeningCase({
+        draftStatus: draft.status,
+        draftVersion: draft.profileVersion,
+        draftGeneratedAt: new Date(draft.generatedAt),
+        draftJson: draft,
+        draftSummary: draft.summary,
+        originalForms: [buildPersistedOriginalForm()],
+      }),
+    );
+
+  await assert.rejects(
+    () =>
+      generateAccountOpeningFillPreview({
+        id: 'account-case-1',
+        repository: missingMappingsRepository,
+      }),
+    /Save reviewed field mappings/,
+  );
+
+  const { repository: missingOriginalFormRepository } =
+    createAccountOpeningRepository(
+      buildPersistedAccountOpeningCase({
+        draftStatus: draft.status,
+        draftVersion: draft.profileVersion,
+        draftGeneratedAt: new Date(draft.generatedAt),
+        draftJson: draft,
+        draftSummary: draft.summary,
+      }),
+    );
+
+  await saveAccountOpeningFieldMappings({
+    id: 'account-case-1',
+    mappings: [
+      {
+        supplierFieldLabel: 'Company Name',
+        sourceType: 'OPERATOR_CREATED',
+        mappedDraftFieldKey: 'legalCompanyName',
+        status: 'MAPPED_SAFE',
+      },
+    ],
+    repository: missingOriginalFormRepository,
+  });
+  await assert.rejects(
+    () =>
+      generateAccountOpeningFillPreview({
+        id: 'account-case-1',
+        repository: missingOriginalFormRepository,
+      }),
+    /No original supplier\/client form reference/,
+  );
+});
+
+test('fill preview backfills original form references from attachment evidence', async () => {
+  const draft = buildStoredFillPreviewDraft();
+  const { repository, events, getOriginalForms } =
+    createAccountOpeningRepository(
+      buildPersistedAccountOpeningCase({
+        draftStatus: draft.status,
+        draftVersion: draft.profileVersion,
+        draftGeneratedAt: new Date(draft.generatedAt),
+        draftJson: draft,
+        draftSummary: draft.summary,
+        sourceEvidence: [
+          {
+            id: 'evidence-1',
+            sourceType: 'ATTACHMENT',
+            sourceLabel: 'supplier-account-opening-form.pdf',
+            fileName: 'supplier-account-opening-form.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 12000,
+            contentId: null,
+            disposition: 'attachment',
+            extractionMethod: 'PDF_TEXT',
+            extractedTextHash: 'hash-1',
+            extractedTextChars: 120,
+            safeSnippet: 'Company Name and website requested.',
+            rawFileAvailable: false,
+            storageProvider: 'MICROSOFT_DRIVE',
+            storageFolderUrl: 'https://sharepoint.example/account-opening',
+            storageFileUrl:
+              'https://sharepoint.example/account-opening/form.pdf',
+            storageDriveItemId: 'drive-item-1',
+            createdAt: new Date('2026-05-12T09:00:00.000Z'),
+            updatedAt: new Date('2026-05-12T09:00:00.000Z'),
+          },
+        ],
+      }),
+    );
+
+  await saveAccountOpeningFieldMappings({
+    id: 'account-case-1',
+    mappings: [
+      {
+        supplierFieldLabel: 'Company Name',
+        sourceType: 'SOURCE_EVIDENCE',
+        sourceEvidenceId: 'evidence-1',
+        mappedDraftFieldKey: 'legalCompanyName',
+        status: 'MAPPED_SAFE',
+      },
+    ],
+    repository,
+  });
+
+  const result = await generateAccountOpeningFillPreview({
+    id: 'account-case-1',
+    repository,
+  });
+  const capturedEvent = events.find(
+    (item) => item.actionType === 'ORIGINAL_FORM_REFERENCE_CAPTURED',
+  );
+
+  assert.equal(getOriginalForms().length, 1);
+  assert.equal(result.item.originalForms[0]?.formType, 'PDF');
+  assert.equal(
+    result.item.originalForms[0]?.fillSupportStatus,
+    'PREVIEW_SUPPORTED',
+  );
+  assert.equal(capturedEvent?.actorType, 'SYSTEM');
+  assert.doesNotMatch(JSON.stringify(capturedEvent?.metadata), /raw text/i);
+  assert.match(
+    JSON.stringify(capturedEvent?.metadata),
+    /completedSupplierFormsGenerated":false/,
+  );
+});
+
+test('fill preview download returns persisted safe files and records audit event', async () => {
+  const draft = buildStoredFillPreviewDraft();
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      draftStatus: draft.status,
+      draftVersion: draft.profileVersion,
+      draftGeneratedAt: new Date(draft.generatedAt),
+      draftJson: draft,
+      draftSummary: draft.summary,
+      originalForms: [buildPersistedOriginalForm()],
+    }),
+  );
+
+  await saveAccountOpeningFieldMappings({
+    id: 'account-case-1',
+    mappings: [
+      {
+        supplierFieldLabel: 'Company Name',
+        sourceType: 'OPERATOR_CREATED',
+        mappedDraftFieldKey: 'legalCompanyName',
+        status: 'MAPPED_SAFE',
+      },
+    ],
+    repository,
+  });
+  await generateAccountOpeningFillPreview({
+    id: 'account-case-1',
+    repository,
+  });
+
+  const file = await downloadAccountOpeningFillPreviewFile({
+    id: 'account-case-1',
+    fileName: 'fill-preview.md',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+  });
+  const event = events.find(
+    (item) => item.actionType === 'FILL_PREVIEW_FILE_DOWNLOADED',
+  );
+
+  assert.equal(file.fileName, 'fill-preview.md');
+  assert.match(file.content, /Internal preview only/);
+  assert.doesNotMatch(file.content, /12345678/);
+  assert.doesNotMatch(file.content, /12-34-56/);
+  assert.equal(event?.actionType, 'FILL_PREVIEW_FILE_DOWNLOADED');
+  assert.doesNotMatch(JSON.stringify(event?.metadata), /AMBE LTD/);
 });
 
 test('generate draft stores safe draft metadata and records blocked audit route only', async () => {

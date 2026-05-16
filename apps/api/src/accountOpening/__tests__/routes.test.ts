@@ -8,6 +8,10 @@ import { env } from '../../config/env';
 import { errorHandler } from '../../http/errors';
 import { createAccountOpeningRouter } from '../routes';
 import {
+  buildAccountOpeningFillPreviewPack,
+  getAccountOpeningFillPreviewFile,
+} from '../fillPreview';
+import {
   buildAccountOpeningReviewExportPack,
   getAccountOpeningReviewExportFile,
 } from '../reviewExport';
@@ -84,6 +88,7 @@ function buildCaseDetail(
     draftVersion: null,
     draftGeneratedAt: null,
     sourceEvidence: [],
+    originalForms: [],
     completionDraft: {
       status: 'PREVIEW',
       overallConfidence: 'BLOCKED',
@@ -117,6 +122,7 @@ function buildCaseDetail(
       },
       safetyNotes: [],
     },
+    latestFillPreview: null,
     createdAt: '2026-05-12T09:00:00.000Z',
     updatedAt: '2026-05-12T09:05:00.000Z',
     ...overrides,
@@ -134,6 +140,22 @@ async function startServer(
     generateDraft: async () => defaultDetail,
     getFieldMappings: async () => defaultDetail.fieldMappings,
     saveFieldMappings: async () => defaultDetail.fieldMappings,
+    generateFillPreview: async () => ({
+      item: defaultDetail,
+      preview: buildAccountOpeningFillPreviewPack(defaultDetail),
+    }),
+    downloadFillPreviewFile: async (input) => {
+      const file = getAccountOpeningFillPreviewFile(
+        buildAccountOpeningFillPreviewPack(defaultDetail),
+        input.fileName,
+      );
+
+      if (!file) {
+        throw new Error('Account-opening fill preview file not found.');
+      }
+
+      return file;
+    },
     exportPack: async () => buildAccountOpeningReviewExportPack(defaultDetail),
     downloadExportFile: async (input) => {
       const file = getAccountOpeningReviewExportFile(
@@ -444,6 +466,191 @@ test('account-opening field mapping routes require operator access and save mapp
     savedInputs[0]?.actorIdentifier,
     'internal-operator:route-field-mapping-test',
   );
+});
+
+test('account-opening fill preview routes require operator access and allowlisted downloads', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
+  const generatedInputs: Array<{
+    id: string;
+    actorIdentifier?: string | null;
+  }> = [];
+  const downloadedInputs: Array<{
+    id: string;
+    fileName: string;
+    actorIdentifier?: string | null;
+  }> = [];
+  const detail = buildCaseDetail({
+    originalForms: [
+      {
+        id: 'original-form-1',
+        sourceEvidenceId: 'evidence-1',
+        fileName: 'supplier-account-opening-form.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1234,
+        fileHash: 'form-hash-1',
+        storageProvider: 'MICROSOFT_DRIVE',
+        storageFolderUrl: 'https://sharepoint.example/account-opening',
+        storageFileUrl: 'https://sharepoint.example/account-opening/form.pdf',
+        storageDriveItemId: 'drive-item-1',
+        localBlobAvailable: false,
+        formType: 'PDF',
+        fillSupportStatus: 'PREVIEW_SUPPORTED',
+        detectedFieldCount: null,
+        detectionSummary: {
+          metadataOnly: true,
+          rawFileBytesStored: false,
+        },
+        createdAt: '2026-05-16T10:00:00.000Z',
+        updatedAt: '2026-05-16T10:00:00.000Z',
+      },
+    ],
+    fieldMappings: {
+      ...buildCaseDetail().fieldMappings,
+      status: 'SAVED',
+      mappings: [
+        {
+          id: 'mapping-1',
+          supplierFieldLabel: 'Company Name',
+          supplierSectionLabel: null,
+          normalizedLabel: 'company name',
+          sourceType: 'OPERATOR_CREATED',
+          sourceEvidenceId: null,
+          evidenceSnippet: null,
+          suggestedDraftFieldKey: null,
+          mappedDraftFieldKey: 'legalCompanyName',
+          proposedValue: 'AMBE LTD',
+          valueSource: 'AMBE_MASTER_PROFILE',
+          confidence: 'HIGH',
+          riskLevel: 'LOW',
+          status: 'MAPPED_SAFE',
+          requiresReview: false,
+          blockedReason: null,
+          reviewReason: null,
+          operatorNote: null,
+        },
+      ],
+      summary: {
+        totalMappings: 1,
+        mappedSafe: 1,
+        reviewRequired: 0,
+        blocked: 0,
+        ignored: 0,
+        unmapped: 0,
+        needsOperatorInput: 0,
+        safeToFillSupplierForms: false,
+      },
+    },
+  });
+  const pack = buildAccountOpeningFillPreviewPack(
+    detail,
+    new Date('2026-05-16T10:30:00.000Z'),
+  );
+  const baseUrl = await startServer(t, {
+    generateFillPreview: async (input) => {
+      generatedInputs.push(input);
+      return {
+        item: {
+          ...detail,
+          latestFillPreview: {
+            id: 'fill-preview-1',
+            originalFormId: 'original-form-1',
+            status: 'GENERATED_FOR_REVIEW',
+            previewVersion: 'fill-preview-v1',
+            fileNames: pack.metadata.fileNames,
+            summary: pack.payload.summary,
+            safetySummary: pack.payload.safety,
+            generatedAt: '2026-05-16T10:30:00.000Z',
+            createdByType: 'OPERATOR',
+            createdByIdentifier: 'route-fill-preview-test',
+          },
+        },
+        preview: pack,
+      };
+    },
+    downloadFillPreviewFile: async (input) => {
+      downloadedInputs.push(input);
+      const file = getAccountOpeningFillPreviewFile(pack, input.fileName);
+
+      if (!file) {
+        throw new Error('Account-opening fill preview file not found.');
+      }
+
+      return file;
+    },
+  });
+
+  const unauthorizedGenerateResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/fill-preview`,
+    { method: 'POST' },
+  );
+  const generateResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/fill-preview`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-api-key': 'test-secret',
+        'x-internal-caller-name': 'route-fill-preview-test',
+      },
+      body: JSON.stringify({
+        actorType: 'OPERATOR',
+        actorIdentifier: 'route-fill-preview-test',
+      }),
+    },
+  );
+  const fileResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/fill-preview/fill-preview.md`,
+    {
+      headers: {
+        'x-internal-api-key': 'test-secret',
+        'x-internal-caller-name': 'route-fill-preview-test',
+      },
+    },
+  );
+  const unknownResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/fill-preview/unknown.json`,
+    {
+      headers: {
+        'x-internal-api-key': 'test-secret',
+        'x-internal-caller-name': 'route-fill-preview-test',
+      },
+    },
+  );
+  const traversalResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/fill-preview/${encodeURIComponent('../secret.json')}`,
+    {
+      headers: {
+        'x-internal-api-key': 'test-secret',
+        'x-internal-caller-name': 'route-fill-preview-test',
+      },
+    },
+  );
+  const fileText = await fileResponse.text();
+
+  assert.equal(unauthorizedGenerateResponse.status, 401);
+  assert.equal(generateResponse.status, 200);
+  assert.equal(fileResponse.status, 200);
+  assert.match(
+    fileResponse.headers.get('content-type') ?? '',
+    /text\/markdown/,
+  );
+  assert.match(
+    fileResponse.headers.get('content-disposition') ?? '',
+    /fill-preview\.md/,
+  );
+  assert.match(fileText, /Internal preview only/);
+  assert.match(fileText, /This does not submit the form\./);
+  assert.doesNotMatch(fileText, /12345678/);
+  assert.equal(unknownResponse.status, 404);
+  assert.equal(traversalResponse.status, 404);
+  assert.equal(generatedInputs[0]?.id, 'case-1');
+  assert.equal(generatedInputs[0]?.actorIdentifier, 'route-fill-preview-test');
+  assert.equal(downloadedInputs.length, 1);
+  assert.equal(downloadedInputs[0]?.fileName, 'fill-preview.md');
 });
 
 test('account-opening review export routes return safe pack and downloadable files', async (t) => {
