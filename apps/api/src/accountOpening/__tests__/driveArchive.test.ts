@@ -26,7 +26,9 @@ const disabledConfig: AccountOpeningDriveArchiveConfig = {
   graphAuthConfigured: false,
 };
 
-function buildDetail(overrides: Partial<AccountOpeningCaseDetail> = {}): AccountOpeningCaseDetail {
+function buildDetail(
+  overrides: Partial<AccountOpeningCaseDetail> = {},
+): AccountOpeningCaseDetail {
   return {
     id: 'account-case-abcdefghi',
     sourceFingerprint: 'fingerprint-1',
@@ -39,40 +41,123 @@ function buildDetail(overrides: Partial<AccountOpeningCaseDetail> = {}): Account
     detectedFormType: 'account opening form',
     status: 'APPROVED_FOR_COMPLETION',
     recommendedSigner: 'Aman Dhillon',
-    signingStatement: 'Aman Dhillon can sign this account-opening form by default.',
-    signingExplanation: 'Aman Dhillon can sign this account-opening form by default.',
+    signingStatement:
+      'Aman Dhillon can sign this account-opening form by default.',
+    signingExplanation:
+      'Aman Dhillon can sign this account-opening form by default.',
     detectedNames: ['Sandeep Patel'],
     detectedRoles: ['Director', 'Direct Debit', 'bank authority'],
     escalationNotes: [
       'The form mentions Director/Sandeep Patel. Reviewer should confirm the supplier does not specifically require a director-only signature.',
     ],
-    riskFlags: ['Direct Debit mandate', 'bank authority signature', 'Guarantee'],
+    riskFlags: [
+      'Direct Debit mandate',
+      'bank authority signature',
+      'Guarantee',
+    ],
     missingFields: ['companyNumber', 'vatNumber'],
-    reviewerChecks: ['Check whether the supplier specifically requires a director-only signature.'],
+    reviewerChecks: [
+      'Check whether the supplier specifically requires a director-only signature.',
+    ],
     signingNotes: {
       title: 'Account opening signing notes',
       recommendedSigner: 'Aman Dhillon',
-      defaultSigningStatement: 'Aman Dhillon can sign this account-opening form by default.',
+      defaultSigningStatement:
+        'Aman Dhillon can sign this account-opening form by default.',
       detectedNames: ['Sandeep Patel'],
       detectedRolesOrSections: ['Director', 'Direct Debit', 'bank authority'],
-      reviewerChecks: ['Check whether the supplier specifically requires a director-only signature.'],
-      riskFlags: ['Direct Debit mandate', 'bank authority signature', 'Guarantee'],
+      reviewerChecks: [
+        'Check whether the supplier specifically requires a director-only signature.',
+      ],
+      riskFlags: [
+        'Direct Debit mandate',
+        'bank authority signature',
+        'Guarantee',
+      ],
       missingOrUnclear: ['companyNumber', 'vatNumber'],
-      signatureInstruction: 'Leave signature fields blank until approved by a human reviewer.',
+      signatureInstruction:
+        'Leave signature fields blank until approved by a human reviewer.',
       summary:
         'Recommended signer: Aman Dhillon. Aman Dhillon can sign this account-opening form by default.',
     },
     missingInfoResponses: {
       website: 'https://supplier.example',
-      reviewerNotes: 'Account number 12345678 and sort code 12-34-56 were seen on the mandate.',
+      reviewerNotes:
+        'Account number 12345678 and sort code 12-34-56 were seen on the mandate.',
     },
-    extractedTextSummary: 'Raw form text said account number 12345678 sort code 12-34-56.',
+    extractedTextSummary:
+      'Raw form text said account number 12345678 sort code 12-34-56.',
     storageStatus: null,
     storageNote: null,
     storageSkippedReason: null,
     storageLastAttemptAt: null,
     storageFolderUrl: null,
     sourceAttachmentNames: ['mandate-account-12345678-sort-12-34-56.pdf'],
+    draftStatus: 'BLOCKED',
+    draftVersion: '2026-05-15',
+    draftGeneratedAt: '2026-05-15T00:00:00.000Z',
+    sourceEvidence: [
+      {
+        id: 'evidence-1',
+        sourceType: 'ATTACHMENT',
+        sourceLabel: 'mandate.pdf',
+        fileName: 'mandate-account-12345678-sort-12-34-56.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1234,
+        contentId: null,
+        disposition: 'attachment',
+        extractionMethod: 'PDF_TEXT',
+        extractedTextHash: 'hash-1',
+        extractedTextChars: 80,
+        safeSnippet:
+          'Direct Debit mandate with [redacted bank account number] and [redacted sort code].',
+        rawFileAvailable: false,
+        storageProvider: null,
+        storageFolderUrl: null,
+        storageFileUrl: null,
+        storageDriveItemId: null,
+        createdAt: '2026-05-12T09:00:00.000Z',
+        updatedAt: '2026-05-12T09:00:00.000Z',
+      },
+    ],
+    completionDraft: {
+      status: 'BLOCKED',
+      overallConfidence: 'BLOCKED',
+      isStored: true,
+      profileId: 'ambe-master-profile',
+      profileVersion: '2026-05-15',
+      generatedAt: '2026-05-15T00:00:00.000Z',
+      fields: [
+        {
+          key: 'bankDetails',
+          supplierLabel: 'Bank details',
+          proposedValue:
+            'To be confirmed in secure review. Bank account and sort code details must not be exposed in dashboard drafts.',
+          valueSource: 'SYSTEM_PLACEHOLDER',
+          confidence: 'BLOCKED',
+          riskLevel: 'BLOCKED',
+          requiresReview: true,
+          reviewReason: 'Bank details are blocked.',
+          evidence: [
+            {
+              sourceType: 'SYSTEM_RULE',
+              sourceLabel: 'Account-opening safety rule',
+              snippet: 'Sensitive bank fields stay blocked.',
+            },
+          ],
+        },
+      ],
+      summary: {
+        totalFields: 1,
+        highConfidenceFields: 0,
+        reviewRequiredFields: 1,
+        blockedFields: 1,
+        safeToAutoFill: false,
+      },
+      safetyNotes: [
+        'Do not sign, send, submit, or complete blocked sections from this draft.',
+      ],
+    },
     createdAt: '2026-05-12T09:00:00.000Z',
     updatedAt: '2026-05-12T09:00:00.000Z',
     ...overrides,
@@ -86,7 +171,10 @@ test('archive folder path uses configured account-opening folder and approved st
     new Date('2026-05-12T10:00:00.000Z'),
   );
 
-  assert.equal(folderPath, 'Account Opening/Approved/Supplier Ltd - 2026-05-12 - account-');
+  assert.equal(
+    folderPath,
+    'Account Opening/Approved/Supplier Ltd - 2026-05-12 - account-',
+  );
 });
 
 test('archive pack includes safe review JSON files without raw extracted text or bank values', () => {
@@ -102,10 +190,14 @@ test('archive pack includes safe review JSON files without raw extracted text or
     'risk-summary.json',
     'missing-info.json',
     'account-opening-case-summary.json',
+    'completion-draft.json',
+    'source-evidence.json',
     'original-attachments.json',
   ]);
   assert.equal(pack.metadata.rawExtractedTextIncluded, false);
   assert.equal(pack.metadata.signedFormsIncluded, false);
+  assert.equal(pack.metadata.completedSupplierFormsIncluded, false);
+  assert.equal(pack.metadata.pdfWordFormsFilled, false);
   assert.equal(pack.metadata.supplierMessageIncluded, false);
   assert.match(packText, /Direct Debit mandate/);
   assert.match(packText, /https:\/\/supplier\.example/);
@@ -122,7 +214,10 @@ test('disabled Microsoft Drive archive path skips without calling adapter', asyn
     uploader: {
       uploadArchivePack: async () => {
         called = true;
-        return { folderUrl: 'https://sharepoint.example/folder', uploadedFileNames: [] };
+        return {
+          folderUrl: 'https://sharepoint.example/folder',
+          uploadedFileNames: [],
+        };
       },
     },
     now: new Date('2026-05-12T10:00:00.000Z'),
@@ -197,6 +292,8 @@ test('enabled Microsoft Drive archive path calls adapter with safe payload', asy
   assert.match(uploadedPackText, /signing-notes\.json/);
   assert.match(uploadedPackText, /risk-summary\.json/);
   assert.match(uploadedPackText, /missing-info\.json/);
+  assert.match(uploadedPackText, /completion-draft\.json/);
+  assert.match(uploadedPackText, /source-evidence\.json/);
   assert.doesNotMatch(uploadedPackText, /Raw form text said/);
   assert.doesNotMatch(uploadedPackText, /12345678/);
   assert.doesNotMatch(uploadedPackText, /12-34-56/);
@@ -220,29 +317,49 @@ test('OneDrive archive uploader uses configured drive ID directly', async () => 
       fetchImpl: async (url, init) => {
         requestedUrls.push(String(url));
         if (init?.method === 'PUT') {
-          return new Response(JSON.stringify({ id: 'file-1', webUrl: 'https://onedrive.example/file' }));
+          return new Response(
+            JSON.stringify({
+              id: 'file-1',
+              webUrl: 'https://onedrive.example/file',
+            }),
+          );
         }
 
-        return new Response(JSON.stringify({ id: 'folder-1', webUrl: 'https://onedrive.example/folder' }));
+        return new Response(
+          JSON.stringify({
+            id: 'folder-1',
+            webUrl: 'https://onedrive.example/folder',
+          }),
+        );
       },
     },
   );
 
   await uploader.uploadArchivePack({
     folderPath: 'AI BOT FOLDER/Account Opening/Approved/Test',
-    files: [{ fileName: 'safe.json', contentType: 'application/json', content: '{}' }],
+    files: [
+      { fileName: 'safe.json', contentType: 'application/json', content: '{}' },
+    ],
     metadata: {
       caseId: 'case-1',
       sourceFingerprint: 'fingerprint-1',
       fileNames: ['safe.json'],
       rawExtractedTextIncluded: false,
       signedFormsIncluded: false,
+      completedSupplierFormsIncluded: false,
+      pdfWordFormsFilled: false,
       supplierMessageIncluded: false,
     },
   });
 
-  assert.equal(requestedUrls.some((url) => url.includes('/users/')), false);
-  assert.equal(requestedUrls.some((url) => url.includes('/drives/onedrive-drive-1/')), true);
+  assert.equal(
+    requestedUrls.some((url) => url.includes('/users/')),
+    false,
+  );
+  assert.equal(
+    requestedUrls.some((url) => url.includes('/drives/onedrive-drive-1/')),
+    true,
+  );
 });
 
 test('OneDrive archive uploader resolves drive from user ID when drive ID is missing', async () => {
@@ -265,33 +382,60 @@ test('OneDrive archive uploader resolves drive from user ID when drive ID is mis
         requestedUrls.push(requestUrl);
 
         if (requestUrl.includes('/users/sandeep%40example.com/drive')) {
-          return new Response(JSON.stringify({ id: 'resolved-drive-1', name: 'Sandeep OneDrive' }));
+          return new Response(
+            JSON.stringify({
+              id: 'resolved-drive-1',
+              name: 'Sandeep OneDrive',
+            }),
+          );
         }
 
         if (init?.method === 'PUT') {
-          return new Response(JSON.stringify({ id: 'file-1', webUrl: 'https://onedrive.example/file' }));
+          return new Response(
+            JSON.stringify({
+              id: 'file-1',
+              webUrl: 'https://onedrive.example/file',
+            }),
+          );
         }
 
-        return new Response(JSON.stringify({ id: 'folder-1', webUrl: 'https://onedrive.example/folder' }));
+        return new Response(
+          JSON.stringify({
+            id: 'folder-1',
+            webUrl: 'https://onedrive.example/folder',
+          }),
+        );
       },
     },
   );
 
   await uploader.uploadArchivePack({
     folderPath: 'AI BOT FOLDER/Account Opening/Approved/Test',
-    files: [{ fileName: 'safe.json', contentType: 'application/json', content: '{}' }],
+    files: [
+      { fileName: 'safe.json', contentType: 'application/json', content: '{}' },
+    ],
     metadata: {
       caseId: 'case-1',
       sourceFingerprint: 'fingerprint-1',
       fileNames: ['safe.json'],
       rawExtractedTextIncluded: false,
       signedFormsIncluded: false,
+      completedSupplierFormsIncluded: false,
+      pdfWordFormsFilled: false,
       supplierMessageIncluded: false,
     },
   });
 
-  assert.equal(requestedUrls.some((url) => url.includes('/users/sandeep%40example.com/drive')), true);
-  assert.equal(requestedUrls.some((url) => url.includes('/drives/resolved-drive-1/')), true);
+  assert.equal(
+    requestedUrls.some((url) =>
+      url.includes('/users/sandeep%40example.com/drive'),
+    ),
+    true,
+  );
+  assert.equal(
+    requestedUrls.some((url) => url.includes('/drives/resolved-drive-1/')),
+    true,
+  );
 });
 
 test('SharePoint archive uploader keeps site and drive path behavior', async () => {
@@ -310,13 +454,17 @@ test('SharePoint archive uploader keeps site and drive path behavior', async () 
 
   await uploader.uploadArchivePack({
     folderPath: 'Account Opening/Approved/Test',
-    files: [{ fileName: 'safe.json', contentType: 'application/json', content: '{}' }],
+    files: [
+      { fileName: 'safe.json', contentType: 'application/json', content: '{}' },
+    ],
     metadata: {
       caseId: 'case-1',
       sourceFingerprint: 'fingerprint-1',
       fileNames: ['safe.json'],
       rawExtractedTextIncluded: false,
       signedFormsIncluded: false,
+      completedSupplierFormsIncluded: false,
+      pdfWordFormsFilled: false,
       supplierMessageIncluded: false,
     },
   });

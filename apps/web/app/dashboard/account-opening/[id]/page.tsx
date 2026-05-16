@@ -6,6 +6,7 @@ import {
   type AccountOpeningMissingInfoResponses,
 } from '../../../../lib/accountOpeningApi';
 import {
+  submitGenerateAccountOpeningDraftAction,
   submitAccountOpeningMissingInfoAction,
   submitAccountOpeningStatusAction,
 } from './actions';
@@ -80,7 +81,10 @@ function humanizeStatus(value: string): string {
     .join(' ');
 }
 
-function renderValue(value: string | null | undefined, fallback = 'Not available') {
+function renderValue(
+  value: string | null | undefined,
+  fallback = 'Not available',
+) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : fallback;
 }
@@ -99,13 +103,37 @@ function renderList(values: string[], fallback: string) {
   );
 }
 
+function renderNullable(
+  value: string | number | boolean | null | undefined,
+  fallback = 'Not available',
+) {
+  if (typeof value === 'boolean') {
+    return value ? 'Yes' : 'No';
+  }
+
+  if (typeof value === 'number') {
+    return String(value);
+  }
+
+  return renderValue(value, fallback);
+}
+
 function hiddenInput(name: string, value: string) {
   return <input name={name} type="hidden" value={value} />;
 }
 
-function MissingInfoForm({ item, returnTo }: { item: AccountOpeningCaseDetail; returnTo: string }) {
+function MissingInfoForm({
+  item,
+  returnTo,
+}: {
+  item: AccountOpeningCaseDetail;
+  returnTo: string;
+}) {
   return (
-    <form action={submitAccountOpeningMissingInfoAction} className="action-form">
+    <form
+      action={submitAccountOpeningMissingInfoAction}
+      className="action-form"
+    >
       {hiddenInput('caseId', item.id)}
       {hiddenInput('returnTo', returnTo)}
       <div className="duplicate-product-details technical-details-grid">
@@ -157,10 +185,18 @@ function StatusActionForm({
       <p className="copy review-summary-copy">{copy}</p>
       <label>
         Note
-        <textarea name="note" placeholder="Add a short review note if useful" rows={3} />
+        <textarea
+          name="note"
+          placeholder="Add a short review note if useful"
+          rows={3}
+        />
       </label>
       <button
-        className={action === 'APPROVED_FOR_COMPLETION' ? 'button button-primary button-large' : 'button button-large'}
+        className={
+          action === 'APPROVED_FOR_COMPLETION'
+            ? 'button button-primary button-large'
+            : 'button button-large'
+        }
         type="submit"
       >
         {buttonLabel}
@@ -169,7 +205,10 @@ function StatusActionForm({
   );
 }
 
-export default async function AccountOpeningDetailPage({ params, searchParams }: PageProps) {
+export default async function AccountOpeningDetailPage({
+  params,
+  searchParams,
+}: PageProps) {
   const { id } = await params;
   const query = searchParams ? await searchParams : undefined;
   const returnTo = sanitizeReturnTo(query?.returnTo);
@@ -184,9 +223,13 @@ export default async function AccountOpeningDetailPage({ params, searchParams }:
           <div className="dashboard-section-header">
             <div>
               <p className="eyebrow">Account Opening</p>
-              <h2 className="title">{renderValue(item.subject, 'Account opening form')}</h2>
+              <h2 className="title">
+                {renderValue(item.subject, 'Account opening form')}
+              </h2>
               <p className="copy">
-                Review the account-opening case before completion. This page does not sign, upload, submit, or send any form.
+                Review the account-opening case before completion. This page
+                does not sign the form, send anything to the supplier, submit
+                the form, or fill PDF/Word supplier forms.
               </p>
             </div>
             <Link className="button" href={returnTo}>
@@ -195,19 +238,34 @@ export default async function AccountOpeningDetailPage({ params, searchParams }:
           </div>
 
           <p className="alert alert-success">
-            {signingNotes.defaultSigningStatement} Leave signature fields blank until approved by a human reviewer.
+            {signingNotes.defaultSigningStatement} Leave signature fields blank
+            until approved by a human reviewer.
           </p>
-          {query?.error ? <p className="alert alert-error">{query.error}</p> : null}
-          {query?.message ? <p className="alert alert-success">{query.message}</p> : null}
+          <p className="alert alert-warning">
+            Signature fields remain blank until human approval. This workflow is
+            a review desk only; it prepares safe structured data but does not
+            complete supplier documents.
+          </p>
+          {query?.error ? (
+            <p className="alert alert-error">{query.error}</p>
+          ) : null}
+          {query?.message ? (
+            <p className="alert alert-success">{query.message}</p>
+          ) : null}
         </section>
 
         <section className="panel dashboard-panel">
           <div className="dashboard-section-header">
             <div>
               <h3 className="section-title">Source</h3>
-              <p className="copy">{item.extractedTextSummary ?? 'Structured account-opening review case.'}</p>
+              <p className="copy">
+                {item.extractedTextSummary ??
+                  'Structured account-opening review case.'}
+              </p>
             </div>
-            <span className="pill pill-high">{humanizeStatus(item.status)}</span>
+            <span className="pill pill-high">
+              {humanizeStatus(item.status)}
+            </span>
           </div>
           <dl className="duplicate-product-details">
             <div>
@@ -228,7 +286,11 @@ export default async function AccountOpeningDetailPage({ params, searchParams }:
             </div>
             <div>
               <dt>Attachments</dt>
-              <dd>{item.sourceAttachmentNames.length ? item.sourceAttachmentNames.join(', ') : 'No attachment names stored'}</dd>
+              <dd>
+                {item.sourceAttachmentNames.length
+                  ? item.sourceAttachmentNames.join(', ')
+                  : 'No attachment names stored'}
+              </dd>
             </div>
             <div>
               <dt>Company</dt>
@@ -263,7 +325,8 @@ export default async function AccountOpeningDetailPage({ params, searchParams }:
         <section className="panel dashboard-panel">
           <h3 className="section-title">Microsoft Drive archive</h3>
           <p className="copy review-summary-copy">
-            Review archive only. This does not upload signed forms, raw extracted text, completed forms, or supplier messages.
+            Review archive only. This does not upload signed forms, raw
+            extracted text, completed forms, or supplier messages.
           </p>
           <dl className="duplicate-product-details">
             <div>
@@ -296,38 +359,240 @@ export default async function AccountOpeningDetailPage({ params, searchParams }:
         </section>
 
         <section className="panel dashboard-panel">
+          <div className="dashboard-section-header">
+            <div>
+              <h3 className="section-title">Completion draft</h3>
+              <p className="copy review-summary-copy">
+                Structured draft only. It uses the approved AMBE master profile
+                plus reviewer responses and keeps signing, sending, supplier
+                submission, PDF/Word form filling, Direct Debit, bank authority,
+                guarantee, indemnity, director-only, and RP/GDP/WDA sections
+                review-blocked.
+              </p>
+            </div>
+            <form action={submitGenerateAccountOpeningDraftAction}>
+              {hiddenInput('caseId', item.id)}
+              {hiddenInput('returnTo', returnTo)}
+              <button className="button" type="submit">
+                {item.completionDraft.isStored
+                  ? 'Regenerate completion draft'
+                  : 'Generate completion draft'}
+              </button>
+            </form>
+          </div>
+          <dl className="duplicate-product-details">
+            <div>
+              <dt>Draft status</dt>
+              <dd>{humanizeStatus(item.completionDraft.status)}</dd>
+            </div>
+            <div>
+              <dt>Stored draft</dt>
+              <dd>{item.completionDraft.isStored ? 'Yes' : 'Preview only'}</dd>
+            </div>
+            <div>
+              <dt>Overall confidence</dt>
+              <dd>{item.completionDraft.overallConfidence}</dd>
+            </div>
+            <div>
+              <dt>Generated</dt>
+              <dd>
+                {formatDateTime(
+                  item.draftGeneratedAt ?? item.completionDraft.generatedAt,
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt>Profile</dt>
+              <dd>{item.completionDraft.profileVersion}</dd>
+            </div>
+            <div>
+              <dt>Total fields</dt>
+              <dd>{item.completionDraft.summary.totalFields}</dd>
+            </div>
+            <div>
+              <dt>High confidence</dt>
+              <dd>{item.completionDraft.summary.highConfidenceFields}</dd>
+            </div>
+            <div>
+              <dt>Needs review</dt>
+              <dd>{item.completionDraft.summary.reviewRequiredFields}</dd>
+            </div>
+            <div>
+              <dt>Blocked</dt>
+              <dd>{item.completionDraft.summary.blockedFields}</dd>
+            </div>
+            <div>
+              <dt>Safe to auto-fill</dt>
+              <dd>
+                {item.completionDraft.summary.safeToAutoFill ? 'Yes' : 'No'}
+              </dd>
+            </div>
+          </dl>
+          <div className="table-wrapper">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>Proposed value</th>
+                  <th>Source</th>
+                  <th>Confidence</th>
+                  <th>Risk</th>
+                  <th>Review</th>
+                  <th>Evidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {item.completionDraft.fields.map((field) => (
+                  <tr key={field.key}>
+                    <td>{field.supplierLabel}</td>
+                    <td>{renderNullable(field.proposedValue, 'Blank')}</td>
+                    <td>
+                      {field.valueSource.toLowerCase().replace(/_/g, ' ')}
+                    </td>
+                    <td>{field.confidence}</td>
+                    <td>{field.riskLevel}</td>
+                    <td>
+                      {field.requiresReview
+                        ? (field.reviewReason ?? 'Review required')
+                        : 'No'}
+                    </td>
+                    <td>
+                      {field.evidence
+                        .map((evidence) => evidence.snippet)
+                        .filter((snippet): snippet is string =>
+                          Boolean(snippet),
+                        )
+                        .slice(0, 2)
+                        .join(' | ') || 'No snippet'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {renderList(
+            item.completionDraft.safetyNotes,
+            'No safety notes recorded.',
+          )}
+        </section>
+
+        <section className="panel dashboard-panel">
+          <h3 className="section-title">Source evidence</h3>
+          <p className="copy review-summary-copy">
+            Metadata and safe snippets only. Raw extracted text, original file
+            bytes, bank account numbers, and sort codes are not shown here.
+          </p>
+          {item.sourceEvidence.length === 0 ? (
+            <p className="copy">
+              No source evidence records have been stored yet.
+            </p>
+          ) : (
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Source</th>
+                    <th>File</th>
+                    <th>Extraction</th>
+                    <th>Text hash</th>
+                    <th>Snippet</th>
+                    <th>Storage ref</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {item.sourceEvidence.map((evidence, index) => (
+                    <tr key={evidence.id ?? `${evidence.sourceType}-${index}`}>
+                      <td>
+                        {renderValue(
+                          evidence.sourceLabel ?? evidence.sourceType,
+                        )}
+                      </td>
+                      <td>{renderValue(evidence.fileName, 'Email body')}</td>
+                      <td>
+                        {renderValue(
+                          evidence.extractionMethod,
+                          evidence.extractedTextChars
+                            ? `${evidence.extractedTextChars} chars`
+                            : 'Metadata only',
+                        )}
+                      </td>
+                      <td>
+                        {evidence.extractedTextHash
+                          ? evidence.extractedTextHash.slice(0, 12)
+                          : 'No text hash'}
+                      </td>
+                      <td>{renderValue(evidence.safeSnippet)}</td>
+                      <td>
+                        {renderValue(
+                          evidence.storageFileUrl ?? evidence.storageFolderUrl,
+                          'Not filed yet',
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <section className="panel dashboard-panel">
           <h3 className="section-title">Detected names and sections</h3>
           <div className="operator-summary-grid">
             <div className="operator-summary-card">
               <dt>Detected names</dt>
-              <dd>{renderList(signingNotes.detectedNames, 'No named signer was detected.')}</dd>
+              <dd>
+                {renderList(
+                  signingNotes.detectedNames,
+                  'No named signer was detected.',
+                )}
+              </dd>
             </div>
             <div className="operator-summary-card">
               <dt>Detected roles/sections</dt>
-              <dd>{renderList(signingNotes.detectedRolesOrSections, 'No roles or signing sections detected.')}</dd>
+              <dd>
+                {renderList(
+                  signingNotes.detectedRolesOrSections,
+                  'No roles or signing sections detected.',
+                )}
+              </dd>
             </div>
             <div className="operator-summary-card">
               <dt>Reviewer checks</dt>
-              <dd>{renderList(signingNotes.reviewerChecks, 'Review before approval.')}</dd>
+              <dd>
+                {renderList(
+                  signingNotes.reviewerChecks,
+                  'Review before approval.',
+                )}
+              </dd>
             </div>
             <div className="operator-summary-card">
               <dt>Risk flags</dt>
-              <dd>{renderList(signingNotes.riskFlags, 'No high-risk clauses detected.')}</dd>
+              <dd>
+                {renderList(
+                  signingNotes.riskFlags,
+                  'No high-risk clauses detected.',
+                )}
+              </dd>
             </div>
           </div>
         </section>
 
         <section className="panel dashboard-panel">
           <h3 className="section-title">Missing or unclear fields</h3>
-          {renderList(signingNotes.missingOrUnclear, 'No missing fields were recorded.')}
+          {renderList(
+            signingNotes.missingOrUnclear,
+            'No missing fields were recorded.',
+          )}
           <MissingInfoForm item={item} returnTo={returnTo} />
         </section>
 
         <section className="panel dashboard-panel" id="decision">
           <h3 className="section-title">Safe review actions</h3>
           <p className="copy review-summary-copy">
-            These actions only update the account-opening review case. They do not create a purchase approval,
-            buy decision, order, signature, upload, or outbound email.
+            These actions only update the account-opening review case. They do
+            not create a purchase approval, buy decision, order, signature,
+            upload, or outbound email.
           </p>
           <div className="action-row action-row-stacked-mobile">
             <StatusActionForm
@@ -361,7 +626,9 @@ export default async function AccountOpeningDetailPage({ params, searchParams }:
         <p className="eyebrow">Account Opening</p>
         <h2 className="title">Account-opening case unavailable</h2>
         <p className="copy">
-          {error instanceof Error ? error.message : 'Failed to load account-opening case.'}
+          {error instanceof Error
+            ? error.message
+            : 'Failed to load account-opening case.'}
         </p>
         <div className="actions">
           <Link className="button" href={returnTo}>
@@ -372,4 +639,3 @@ export default async function AccountOpeningDetailPage({ params, searchParams }:
     );
   }
 }
-

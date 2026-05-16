@@ -27,6 +27,8 @@ export type AccountOpeningArchivePack = {
     fileNames: string[];
     rawExtractedTextIncluded: false;
     signedFormsIncluded: false;
+    completedSupplierFormsIncluded: false;
+    pdfWordFormsFilled: false;
     supplierMessageIncluded: false;
   };
 };
@@ -52,16 +54,21 @@ type GraphRequestDependencies = {
   accessTokenProvider?: () => Promise<string>;
 };
 
-const BANK_ACCOUNT_NUMBER_WITH_LABEL_PATTERN = /\baccount\s*(?:no\.?|number)?\s*\d{8}\b/gi;
+const BANK_ACCOUNT_NUMBER_WITH_LABEL_PATTERN =
+  /\baccount\s*(?:no\.?|number)?\s*\d{8}\b/gi;
 const BANK_ACCOUNT_NUMBER_PATTERN = /(^|[^\d])\d{8}(?!\d)/g;
-const SORT_CODE_WITH_LABEL_PATTERN = /\bsort(?:\s*code)?[-\s]*\d{2}[-\s]?\d{2}[-\s]?\d{2}\b/gi;
+const SORT_CODE_WITH_LABEL_PATTERN =
+  /\bsort(?:\s*code)?[-\s]*\d{2}[-\s]?\d{2}[-\s]?\d{2}\b/gi;
 const SORT_CODE_PATTERN = /(^|[^\d-])\d{2}-\d{2}-\d{2}(?![\d-])/g;
 const MISSING_STORAGE_CREDENTIALS_MESSAGE =
   'Missing Microsoft storage credentials. Set MICROSOFT_STORAGE_TENANT_ID, MICROSOFT_STORAGE_CLIENT_ID, MICROSOFT_STORAGE_CLIENT_SECRET.';
 
 function redactSensitiveText(value: string): string {
   return value
-    .replace(BANK_ACCOUNT_NUMBER_WITH_LABEL_PATTERN, '[redacted bank account number]')
+    .replace(
+      BANK_ACCOUNT_NUMBER_WITH_LABEL_PATTERN,
+      '[redacted bank account number]',
+    )
     .replace(BANK_ACCOUNT_NUMBER_PATTERN, '$1[redacted bank account number]')
     .replace(SORT_CODE_WITH_LABEL_PATTERN, '[redacted sort code]')
     .replace(SORT_CODE_PATTERN, '$1[redacted sort code]');
@@ -89,7 +96,10 @@ function stringifySafeJson(value: unknown): string {
   return JSON.stringify(sanitizeJson(value), null, 2);
 }
 
-function folderSegment(value: string | null | undefined, fallback: string): string {
+function folderSegment(
+  value: string | null | undefined,
+  fallback: string,
+): string {
   const sanitized = redactSensitiveText(value?.trim() || fallback)
     .split('')
     .map((character) => {
@@ -105,7 +115,9 @@ function folderSegment(value: string | null | undefined, fallback: string): stri
 
 function datePart(value: string | null | undefined, fallback: Date): string {
   const parsed = value ? new Date(value) : fallback;
-  return Number.isNaN(parsed.getTime()) ? fallback.toISOString().slice(0, 10) : parsed.toISOString().slice(0, 10);
+  return Number.isNaN(parsed.getTime())
+    ? fallback.toISOString().slice(0, 10)
+    : parsed.toISOString().slice(0, 10);
 }
 
 function encodeDrivePath(path: string): string {
@@ -117,10 +129,16 @@ function encodeDrivePath(path: string): string {
 }
 
 function splitFolderPath(path: string): string[] {
-  return path.split('/').map((segment) => segment.trim()).filter(Boolean);
+  return path
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
 }
 
-function folderPath(value: string | null | undefined, fallback: string): string {
+function folderPath(
+  value: string | null | undefined,
+  fallback: string,
+): string {
   const segments = splitFolderPath(value?.trim() || fallback)
     .map((segment) => folderSegment(segment, fallback))
     .filter(Boolean);
@@ -128,19 +146,26 @@ function folderPath(value: string | null | undefined, fallback: string): string 
   return segments.join('/') || fallback;
 }
 
-function storageProviderLabel(config: AccountOpeningDriveArchiveConfig): string {
+function storageProviderLabel(
+  config: AccountOpeningDriveArchiveConfig,
+): string {
   return config.provider === 'ONEDRIVE' ? 'OneDrive' : 'SharePoint';
 }
 
 function storageTargetLabel(config: AccountOpeningDriveArchiveConfig): string {
-  return config.provider === 'ONEDRIVE' ? 'OneDrive' : 'SharePoint document library';
+  return config.provider === 'ONEDRIVE'
+    ? 'OneDrive'
+    : 'SharePoint document library';
 }
 
 function microsoftDriveLabel(config: AccountOpeningDriveArchiveConfig): string {
   return `${storageProviderLabel(config)} Microsoft Drive`;
 }
 
-function driveApiBasePath(config: AccountOpeningDriveArchiveConfig, driveId: string): string {
+function driveApiBasePath(
+  config: AccountOpeningDriveArchiveConfig,
+  driveId: string,
+): string {
   return config.provider === 'SHAREPOINT'
     ? `/sites/${encodeURIComponent(config.siteId)}/drives/${encodeURIComponent(driveId)}`
     : `/drives/${encodeURIComponent(driveId)}`;
@@ -171,7 +196,9 @@ export async function getMicrosoftStorageGraphAccessToken(): Promise<string> {
 
   const payload = (await response.json()) as { access_token?: string };
   if (!payload.access_token) {
-    throw new Error('Microsoft storage Graph token response did not include an access token.');
+    throw new Error(
+      'Microsoft storage Graph token response did not include an access token.',
+    );
   }
 
   return payload.access_token;
@@ -180,8 +207,8 @@ export async function getMicrosoftStorageGraphAccessToken(): Promise<string> {
 export function getAccountOpeningDriveArchiveConfig(): AccountOpeningDriveArchiveConfig {
   const graphAuthConfigured = Boolean(
     env.microsoftStorageTenantId &&
-      env.microsoftStorageClientId &&
-      env.microsoftStorageClientSecret,
+    env.microsoftStorageClientId &&
+    env.microsoftStorageClientSecret,
   );
 
   if (env.accountOpeningStorageProvider === 'ONEDRIVE') {
@@ -208,16 +235,24 @@ export function getAccountOpeningDriveArchiveConfig(): AccountOpeningDriveArchiv
   };
 }
 
-export function getDriveArchiveSkippedReason(config: AccountOpeningDriveArchiveConfig): string | null {
+export function getDriveArchiveSkippedReason(
+  config: AccountOpeningDriveArchiveConfig,
+): string | null {
   if (!config.enabled) {
     return `${microsoftDriveLabel(config)} account-opening upload is disabled.`;
   }
 
-  if (config.provider === 'SHAREPOINT' && (!config.siteId || !config.driveId || !config.baseFolder)) {
+  if (
+    config.provider === 'SHAREPOINT' &&
+    (!config.siteId || !config.driveId || !config.baseFolder)
+  ) {
     return 'SharePoint account-opening upload is enabled but site, drive, or folder configuration is missing.';
   }
 
-  if (config.provider === 'ONEDRIVE' && (!config.baseFolder || (!config.driveId && !config.userId))) {
+  if (
+    config.provider === 'ONEDRIVE' &&
+    (!config.baseFolder || (!config.driveId && !config.userId))
+  ) {
     return 'OneDrive account-opening upload is enabled but drive ID, user ID, or folder configuration is missing.';
   }
 
@@ -239,7 +274,10 @@ export function buildAccountOpeningArchiveFolderPath(
       : item.status === 'APPROVED_FOR_COMPLETION'
         ? 'Approved'
         : 'Pending Review';
-  const supplierOrSender = folderSegment(item.companyName || item.senderDomain || item.senderEmail, 'Unknown sender');
+  const supplierOrSender = folderSegment(
+    item.companyName || item.senderDomain || item.senderEmail,
+    'Unknown sender',
+  );
   const shortId = folderSegment(item.id.slice(0, 8), 'case');
 
   return [
@@ -299,8 +337,27 @@ export function buildAccountOpeningArchivePack(
           signingStatement: item.signingStatement,
           rawExtractedTextIncluded: false,
           signedFormsIncluded: false,
+          completedSupplierFormsIncluded: false,
+          pdfWordFormsFilled: false,
           supplierMessageIncluded: false,
-          note: 'Review archive only. No signed forms, completed forms, raw extracted text, or supplier-facing messages are included.',
+          note: 'Review archive only. No signed forms, completed supplier PDF/Word forms, raw extracted text, or supplier-facing messages are included.',
+        }),
+      },
+      {
+        fileName: 'completion-draft.json',
+        contentType: 'application/json',
+        content: stringifySafeJson({
+          ...item.completionDraft,
+          note: 'Structured completion draft only. This does not fill supplier PDF/Word forms. Blocked fields must not be signed, sent, submitted, or completed automatically.',
+        }),
+      },
+      {
+        fileName: 'source-evidence.json',
+        contentType: 'application/json',
+        content: stringifySafeJson({
+          metadataOnly: true,
+          sourceEvidence: item.sourceEvidence,
+          note: 'Safe evidence references only. Original file bytes and raw extracted text are not included.',
         }),
       },
       {
@@ -319,6 +376,8 @@ export function buildAccountOpeningArchivePack(
       fileNames: [],
       rawExtractedTextIncluded: false,
       signedFormsIncluded: false,
+      completedSupplierFormsIncluded: false,
+      pdfWordFormsFilled: false,
       supplierMessageIncluded: false,
     },
   };
@@ -369,7 +428,9 @@ async function resolveDriveId(
   }
 
   if (config.provider !== 'ONEDRIVE' || !config.userId) {
-    throw new Error(`${storageTargetLabel(config)} drive ID is not configured.`);
+    throw new Error(
+      `${storageTargetLabel(config)} drive ID is not configured.`,
+    );
   }
 
   const driveResult = await graphJsonRequest<{ id?: string }>(
@@ -379,7 +440,9 @@ async function resolveDriveId(
   );
 
   if (!driveResult.ok || !driveResult.payload?.id) {
-    throw new Error(`OneDrive drive resolution failed with status ${driveResult.status}.`);
+    throw new Error(
+      `OneDrive drive resolution failed with status ${driveResult.status}.`,
+    );
   }
 
   return driveResult.payload.id;
@@ -411,7 +474,9 @@ async function ensureDriveFolderPath(
     }
 
     if (getResult.status !== 404) {
-      throw new Error(`${storageTargetLabel(config)} folder lookup failed with status ${getResult.status}.`);
+      throw new Error(
+        `${storageTargetLabel(config)} folder lookup failed with status ${getResult.status}.`,
+      );
     }
 
     const parentChildrenPath = currentPath
@@ -433,7 +498,9 @@ async function ensureDriveFolderPath(
     );
 
     if (!createResult.ok) {
-      throw new Error(`${storageTargetLabel(config)} folder creation failed with status ${createResult.status}.`);
+      throw new Error(
+        `${storageTargetLabel(config)} folder creation failed with status ${createResult.status}.`,
+      );
     }
 
     latestFolderUrl = createResult.payload?.webUrl ?? latestFolderUrl;
@@ -449,11 +516,18 @@ export function createGraphDriveArchiveUploader(
 ): AccountOpeningDriveArchiveUploader {
   return {
     uploadArchivePack: async (pack) => {
-      const accessToken = await (dependencies.accessTokenProvider ?? getMicrosoftStorageGraphAccessToken)();
+      const accessToken = await (
+        dependencies.accessTokenProvider ?? getMicrosoftStorageGraphAccessToken
+      )();
       const fetchImpl = dependencies.fetchImpl ?? fetch;
       const driveId = await resolveDriveId(accessToken, config, fetchImpl);
       const configWithDrive = { ...config, driveId };
-      const folderUrl = await ensureDriveFolderPath(accessToken, configWithDrive, pack.folderPath, fetchImpl);
+      const folderUrl = await ensureDriveFolderPath(
+        accessToken,
+        configWithDrive,
+        pack.folderPath,
+        fetchImpl,
+      );
       const driveBasePath = driveApiBasePath(configWithDrive, driveId);
 
       for (const file of pack.files) {
@@ -469,7 +543,9 @@ export function createGraphDriveArchiveUploader(
         );
 
         if (!uploadResult.ok) {
-          throw new Error(`${storageTargetLabel(config)} archive upload failed for ${file.fileName} with status ${uploadResult.status}.`);
+          throw new Error(
+            `${storageTargetLabel(config)} archive upload failed for ${file.fileName} with status ${uploadResult.status}.`,
+          );
         }
       }
 
@@ -504,7 +580,9 @@ export async function uploadAccountOpeningArchivePack(input: {
   const pack = buildAccountOpeningArchivePack(input.item, config, attemptedAt);
 
   try {
-    const result = await (input.uploader ?? createGraphDriveArchiveUploader(config)).uploadArchivePack(pack);
+    const result = await (
+      input.uploader ?? createGraphDriveArchiveUploader(config)
+    ).uploadArchivePack(pack);
     return {
       status: 'UPLOADED',
       note: `${microsoftDriveLabel(config)} archive pack uploaded: ${pack.metadata.fileNames.join(', ')}.`,
@@ -516,7 +594,10 @@ export async function uploadAccountOpeningArchivePack(input: {
   } catch (error) {
     return {
       status: 'UPLOAD_FAILED',
-      note: error instanceof Error ? error.message : 'Microsoft Drive archive upload failed.',
+      note:
+        error instanceof Error
+          ? error.message
+          : 'Microsoft Drive archive upload failed.',
       folderUrl: null,
       skippedReason: null,
       attemptedAt,

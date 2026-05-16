@@ -58,8 +58,14 @@ test('review queue includes Telegram review items', async () => {
   assert.equal(items[0]?.fileName, 'quote.pdf');
   assert.equal(items[0]?.processingStatus, 'REVIEW_REQUIRED');
   assert.equal(items[0]?.reason, 'File type requires manual review.');
-  assert.equal(items[0]?.reviewSummary?.reviewReason, 'PDF file received and needs manual review');
-  assert.match(items[0]?.reviewSummary?.missingOrUnclear ?? '', /cannot be routed/i);
+  assert.equal(
+    items[0]?.reviewSummary?.reviewReason,
+    'PDF file received and needs manual review',
+  );
+  assert.match(
+    items[0]?.reviewSummary?.missingOrUnclear ?? '',
+    /cannot be routed/i,
+  );
   assert.equal(items[0]?.linkedImportBatch?.id, 'batch-1');
 });
 
@@ -77,7 +83,8 @@ test('review queue includes regulatory review items with safe wording', async ()
           productId: null,
           status: 'NEW',
           priority: 'HIGH',
-          reason: 'No safe existing product match was found. Requires compliance review.',
+          reason:
+            'No safe existing product match was found. Requires compliance review.',
           latestNote: null,
           assigneeLabel: null,
           completedAt: null,
@@ -126,9 +133,18 @@ test('review queue includes regulatory review items with safe wording', async ()
   assert.equal(items[0]?.sourceType, 'REGULATORY_REVIEW');
   assert.equal(items[0]?.workflowPriority, 'HIGH');
   assert.equal(items[0]?.regulatoryEventType, 'RECALL');
-  assert.equal(items[0]?.reviewSummary?.reviewReason, 'Regulatory update needs review');
-  assert.match(items[0]?.reviewSummary?.recognizedContent ?? '', /Potentially relevant MHRA update/);
-  assert.match(items[0]?.reviewSummary?.suggestedAction ?? '', /confirm affected stock/i);
+  assert.equal(
+    items[0]?.reviewSummary?.reviewReason,
+    'Regulatory update needs review',
+  );
+  assert.match(
+    items[0]?.reviewSummary?.recognizedContent ?? '',
+    /Potentially relevant MHRA update/,
+  );
+  assert.match(
+    items[0]?.reviewSummary?.suggestedAction ?? '',
+    /confirm affected stock/i,
+  );
 });
 
 test('review queue includes email inbound review and failure items', async () => {
@@ -142,7 +158,8 @@ test('review queue includes email inbound review and failure items', async () =>
         processingStatus: 'NEEDS_REVIEW',
         inferredImportType: null,
         confidence: 'LOW',
-        reason: 'Import type is unclear from the subject and attachment filename.',
+        reason:
+          'Import type is unclear from the subject and attachment filename.',
         fileType: 'CSV',
         attachment: {
           fileName: 'data.csv',
@@ -169,7 +186,8 @@ test('review queue includes email inbound review and failure items', async () =>
         fileType: 'XLSX',
         attachment: {
           fileName: 'weekly-inventory.xlsx',
-          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           size: 200,
           contentId: null,
           disposition: null,
@@ -202,7 +220,10 @@ test('review queue includes email inbound review and failure items', async () =>
   assert.equal(items[0]?.processingStatus, 'FAILED');
   assert.equal(items[0]?.sender, 'ops@ambe.test');
   assert.equal(items[0]?.subject, 'Weekly inventory export');
-  assert.equal(items[0]?.reviewSummary?.reviewReason, 'Automatic processing failed');
+  assert.equal(
+    items[0]?.reviewSummary?.reviewReason,
+    'Automatic processing failed',
+  );
   assert.equal(items[0]?.linkedImportBatch?.id, 'batch-email-1');
   assert.equal(items[1]?.processingStatus, 'NEEDS_REVIEW');
   assert.equal(items[1]?.reviewSummary?.reviewReason, 'Import type is unclear');
@@ -210,7 +231,10 @@ test('review queue includes email inbound review and failure items', async () =>
     items[1]?.reviewSummary?.missingOrUnclear ?? '',
     /supplier price list, inventory file, or sales file/i,
   );
-  assert.match(items[1]?.reviewSummary?.suggestedAction ?? '', /choose the correct import type manually/i);
+  assert.match(
+    items[1]?.reviewSummary?.suggestedAction ?? '',
+    /choose the correct import type manually/i,
+  );
 });
 
 test('review queue output shape stays simple and excludes non-review imported items', async () => {
@@ -371,8 +395,14 @@ test('review queue includes clear summary for image review items', async () => {
 
   const items = await service.listItems();
 
-  assert.equal(items[0]?.reviewSummary?.reviewReason, 'Image file received and needs manual review');
-  assert.match(items[0]?.reviewSummary?.missingOrUnclear ?? '', /image text cannot be imported automatically/i);
+  assert.equal(
+    items[0]?.reviewSummary?.reviewReason,
+    'Image file received and needs manual review',
+  );
+  assert.match(
+    items[0]?.reviewSummary?.missingOrUnclear ?? '',
+    /image text cannot be imported automatically/i,
+  );
 });
 
 test('review queue includes open email-derived workflow items with priority metadata', async () => {
@@ -387,7 +417,8 @@ test('review queue includes open email-derived workflow items with priority meta
           inboundEmailId: 'email-1',
           status: 'NEW',
           priority: 'HIGH',
-          priorityReason: 'conflicting supplier cues require operator review before buying.',
+          priorityReason:
+            'conflicting supplier cues require operator review before buying.',
           assigneeUserId: null,
           assigneeLabel: 'buyer-desk',
           latestNote: null,
@@ -401,7 +432,8 @@ test('review queue includes open email-derived workflow items with priority meta
           hasUnknownSupplierQualification: true,
           hasRestrictedSupplier: false,
           hasBlockedSupplier: false,
-          qualificationRiskNote: 'Supplier qualification is unknown and should be reviewed before purchase.',
+          qualificationRiskNote:
+            'Supplier qualification is unknown and should be reviewed before purchase.',
           createdByType: 'SYSTEM',
           createdByIdentifier: null,
           completedAt: null,
@@ -424,7 +456,8 @@ test('review queue includes open email-derived workflow items with priority meta
             approvedAt: new Date('2026-04-20T08:00:00.000Z'),
             orderedAt: new Date('2026-04-20T10:00:00.000Z'),
             externalOrderReference: 'PO-001',
-            qualificationRiskNote: 'Supplier qualification is unknown and should be reviewed before purchase.',
+            qualificationRiskNote:
+              'Supplier qualification is unknown and should be reviewed before purchase.',
             execution: {
               id: 'execution-1',
               buyDecisionId: 'buy-1',
@@ -555,15 +588,21 @@ test('review queue includes open email-derived workflow items with priority meta
         decisions: {
           internalSignals: {
             eligible: false,
-            blockedReasons: ['supplier resolution precision is below policy minimum'],
+            blockedReasons: [
+              'supplier resolution precision is below policy minimum',
+            ],
           },
           supplierDrafts: {
             eligible: false,
-            blockedReasons: ['policy mode is below drafts-only for supplier outreach drafts'],
+            blockedReasons: [
+              'policy mode is below drafts-only for supplier outreach drafts',
+            ],
           },
           buyerDrafts: {
             eligible: false,
-            blockedReasons: ['policy mode is below drafts-only for buyer outreach drafts'],
+            blockedReasons: [
+              'policy mode is below drafts-only for buyer outreach drafts',
+            ],
           },
           assistedOutreach: {
             eligible: false,
@@ -571,11 +610,13 @@ test('review queue includes open email-derived workflow items with priority meta
           },
           actualSend: {
             eligible: false,
-            blockedReasons: ['live autonomous sending remains blocked in this implementation pass'],
+            blockedReasons: [
+              'live autonomous sending remains blocked in this implementation pass',
+            ],
           },
         },
         recommendedAction: 'fix supplier mapping',
-      } as never),
+      }) as never,
     getTradeOpportunitiesForOfferIds: async () => ({
       'offer-1': {
         id: 'trade-1',
@@ -660,7 +701,10 @@ test('review queue includes open email-derived workflow items with priority meta
   assert.equal(items[0]?.workflowPriority, 'HIGH');
   assert.equal(items[0]?.workflowAssignee, 'buyer-desk');
   assert.equal(items[0]?.reason, 'Conflicting supplier cues');
-  assert.equal(items[0]?.reviewSummary?.reviewReason, 'Conflicting supplier cues');
+  assert.equal(
+    items[0]?.reviewSummary?.reviewReason,
+    'Conflicting supplier cues',
+  );
   assert.equal(items[0]?.qualificationStatus, 'UNKNOWN');
   assert.match(items[0]?.qualificationRiskSummary ?? '', /unknown/i);
   assert.equal(items[0]?.hasBuyExecution, true);
@@ -687,7 +731,10 @@ test('review queue includes open email-derived workflow items with priority meta
   assert.equal(items[0]?.automationMode, 'INTERNAL_SIGNALS_ONLY');
   assert.equal(items[0]?.automationEligibleForInternalSignals, false);
   assert.equal(items[0]?.automationEligibleForDrafts, false);
-  assert.match(JSON.stringify(items[0]?.automationBlockedReasons ?? []), /drafts-only/i);
+  assert.match(
+    JSON.stringify(items[0]?.automationBlockedReasons ?? []),
+    /drafts-only/i,
+  );
   assert.equal(items[0]?.automationRecommendedAction, 'fix supplier mapping');
   assert.equal(items[0]?.executionFulfillmentStatus, 'ORDER_PLACED');
   assert.equal(items[0]?.executionReconciliationStatus, 'PRICE_DRIFT');
@@ -716,28 +763,39 @@ test('review queue lists durable account-opening cases after restart', async () 
           detectedFormType: 'account opening form',
           status: 'PENDING_REVIEW',
           recommendedSigner: 'Aman Dhillon',
-          signingStatement: 'Aman Dhillon can sign this account-opening form by default.',
-          signingExplanation: 'Aman Dhillon can sign this account-opening form by default.',
+          signingStatement:
+            'Aman Dhillon can sign this account-opening form by default.',
+          signingExplanation:
+            'Aman Dhillon can sign this account-opening form by default.',
           detectedNames: ['Sandeep Patel'],
           detectedRoles: ['Director', 'Direct Debit'],
-          escalationNotes: ['Confirm the supplier does not require director-only signature.'],
+          escalationNotes: [
+            'Confirm the supplier does not require director-only signature.',
+          ],
           riskFlags: ['Direct Debit mandate'],
           missingFields: ['companyNumber'],
-          reviewerChecks: ['Leave all signature fields blank unless approved by a human reviewer.'],
+          reviewerChecks: [
+            'Leave all signature fields blank unless approved by a human reviewer.',
+          ],
           signingNotes: {
             title: 'Account opening signing notes',
             recommendedSigner: 'Aman Dhillon',
-            defaultSigningStatement: 'Aman Dhillon can sign this account-opening form by default.',
+            defaultSigningStatement:
+              'Aman Dhillon can sign this account-opening form by default.',
             detectedNames: ['Sandeep Patel'],
             detectedRolesOrSections: ['Director', 'Direct Debit'],
-            reviewerChecks: ['Leave all signature fields blank unless approved by a human reviewer.'],
+            reviewerChecks: [
+              'Leave all signature fields blank unless approved by a human reviewer.',
+            ],
             riskFlags: ['Direct Debit mandate'],
             missingOrUnclear: ['companyNumber'],
-            signatureInstruction: 'Leave signature fields blank until approved by a human reviewer.',
+            signatureInstruction:
+              'Leave signature fields blank until approved by a human reviewer.',
             summary: 'Recommended signer: Aman Dhillon.',
           },
           missingInfoResponses: {},
-          extractedTextSummary: 'Extracted account-opening text from attachments (120 chars).',
+          extractedTextSummary:
+            'Extracted account-opening text from attachments (120 chars).',
           sourceAttachmentNames: ['account-opening-form.pdf'],
           createdAt: new Date('2026-05-12T09:00:00.000Z'),
           updatedAt: new Date('2026-05-12T09:05:00.000Z'),
@@ -754,11 +812,23 @@ test('review queue lists durable account-opening cases after restart', async () 
   assert.equal(items[0]?.processingStatus, 'PENDING_REVIEW');
   assert.equal(items[0]?.sender, 'forms@supplier.co.uk');
   assert.equal(items[0]?.linkedImportBatch, null);
-  assert.equal(items[0]?.accountOpeningSigningNotes?.recommendedSigner, 'Aman Dhillon');
-  assert.equal(items[0]?.reviewSummary?.reviewReason, 'Account opening form detected');
+  assert.equal(
+    items[0]?.accountOpeningSigningNotes?.recommendedSigner,
+    'Aman Dhillon',
+  );
+  assert.equal(
+    items[0]?.reviewSummary?.reviewReason,
+    'Account opening form detected',
+  );
   assert.match(items[0]?.reviewSummary?.recognizedContent ?? '', /attachments/);
-  assert.match(items[0]?.reviewSummary?.missingOrUnclear ?? '', /Direct Debit mandate/);
-  assert.match(items[0]?.reviewSummary?.suggestedAction ?? '', /before any completion, signing, submission, or reply/);
+  assert.match(
+    items[0]?.reviewSummary?.missingOrUnclear ?? '',
+    /Direct Debit mandate/,
+  );
+  assert.match(
+    items[0]?.reviewSummary?.suggestedAction ?? '',
+    /before any completion, PDF\/Word form filling, signing, supplier sending, submission, or reply/,
+  );
 });
 
 test('review queue prefers durable account-opening cases over in-memory email review items', async () => {
@@ -809,8 +879,10 @@ test('review queue prefers durable account-opening cases over in-memory email re
           detectedFormType: 'account opening form',
           status: 'PENDING_REVIEW',
           recommendedSigner: 'Aman Dhillon',
-          signingStatement: 'Aman Dhillon can sign this account-opening form by default.',
-          signingExplanation: 'Aman Dhillon can sign this account-opening form by default.',
+          signingStatement:
+            'Aman Dhillon can sign this account-opening form by default.',
+          signingExplanation:
+            'Aman Dhillon can sign this account-opening form by default.',
           detectedNames: [],
           detectedRoles: [],
           escalationNotes: [],
