@@ -720,6 +720,26 @@ model AccountOpeningFieldMapping {
   @@index([sourceEvidenceId])
 }
 
+model AccountOpeningFieldMappingTemplate {
+  id                  String   @id @default(cuid())
+  supplierDomain      String?
+  supplierName        String?
+  formFingerprint     String
+  templateName        String
+  templateVersion     Int      @default(1)
+  status              String   @default("ACTIVE")
+  mappingJson         Json
+  safetySummary       Json?
+  createdFromCaseId   String?
+  createdByType       String?
+  createdByIdentifier String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([supplierDomain, formFingerprint])
+  @@index([status, updatedAt])
+}
+
 model InboundEmailDocument {
   id             String                      @id @default(cuid())
   inboundEmailId String

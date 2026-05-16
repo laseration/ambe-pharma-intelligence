@@ -12,6 +12,9 @@ import {
   downloadAccountOpeningReviewedExportFile,
   exportAccountOpeningReviewedPack,
   generateAccountOpeningDraft,
+  applyAccountOpeningFieldMappingTemplate,
+  createAccountOpeningFieldMappingTemplate,
+  listAccountOpeningFieldMappingTemplates,
   saveAccountOpeningFieldMappings,
   sanitizeAccountOpeningMissingInfoResponses,
   saveAccountOpeningMissingInfo,
@@ -19,6 +22,7 @@ import {
   writeDraftAuditEvents,
   type AccountOpeningCaseRepository,
   type AccountOpeningCaseEventInput,
+  type PersistedAccountOpeningFieldMappingTemplate,
   type PersistedAccountOpeningReviewCase,
 } from '../service';
 import type { AccountOpeningCompletionDraft } from '../draft';
@@ -377,11 +381,71 @@ function buildPersistedAccountOpeningCase(
   };
 }
 
+function buildPersistedTemplate(
+  overrides: Partial<PersistedAccountOpeningFieldMappingTemplate> = {},
+): PersistedAccountOpeningFieldMappingTemplate {
+  return {
+    id: 'template-1',
+    supplierDomain: 'supplier.co.uk',
+    supplierName: 'AMBE LTD',
+    formFingerprint:
+      '1737610831de0903c023ddf08c790db1c1a1fa13c6bc2fb482dc0aefbcd03368',
+    templateName: 'Supplier account-opening mapping',
+    templateVersion: 1,
+    status: 'ACTIVE',
+    mappingJson: {
+      version: 1,
+      mappings: [
+        {
+          supplierFieldLabel: 'Company Name',
+          supplierSectionLabel: null,
+          normalizedLabel: 'company name',
+          sourceType: 'OPERATOR_CREATED',
+          suggestedDraftFieldKey: 'legalCompanyName',
+          mappedDraftFieldKey: 'legalCompanyName',
+          status: 'MAPPED_SAFE',
+          requiresReview: false,
+          blockedReason: null,
+          reviewReason: null,
+          operatorNote: null,
+        },
+        {
+          supplierFieldLabel: 'Bank Account Number',
+          supplierSectionLabel: 'Payment',
+          normalizedLabel: 'bank account number',
+          sourceType: 'OPERATOR_CREATED',
+          suggestedDraftFieldKey: 'bankDetails',
+          mappedDraftFieldKey: 'bankDetails',
+          status: 'MAPPED_SAFE',
+          requiresReview: false,
+          blockedReason: null,
+          reviewReason: null,
+          operatorNote: 'Should be forced blocked on apply.',
+        },
+      ],
+    },
+    safetySummary: {
+      templateReuseControlsOnly: true,
+      rawBankDetailsIncluded: false,
+      pdfWordFormsFilled: false,
+      purchaseWorkflowTriggered: false,
+    },
+    createdFromCaseId: 'account-case-1',
+    createdByType: 'OPERATOR',
+    createdByIdentifier: 'test-reviewer',
+    createdAt: new Date('2026-05-16T10:00:00.000Z'),
+    updatedAt: new Date('2026-05-16T10:00:00.000Z'),
+    ...overrides,
+  };
+}
+
 function createAccountOpeningRepository(
   initial: PersistedAccountOpeningReviewCase,
+  initialTemplates: PersistedAccountOpeningFieldMappingTemplate[] = [],
 ) {
   let current = initial;
   let fieldMappings = initial.fieldMappings ?? [];
+  let templates = initialTemplates;
   const events: AccountOpeningCaseEventInput[] = [];
   const repository: AccountOpeningCaseRepository = {
     findUnique: async () => ({
@@ -414,6 +478,47 @@ function createAccountOpeningRepository(
       };
       return fieldMappings;
     },
+    listFieldMappingTemplates: async (args: unknown) => {
+      const where =
+        (
+          args as {
+            where?: {
+              status?: string;
+              formFingerprint?: string;
+              templateName?: string;
+              supplierDomain?: string | null;
+            };
+            take?: number;
+          }
+        ).where ?? {};
+      const take = (args as { take?: number }).take ?? templates.length;
+      return templates
+        .filter(
+          (template) =>
+            (!where.status || template.status === where.status) &&
+            (!where.formFingerprint ||
+              template.formFingerprint === where.formFingerprint) &&
+            (!where.templateName ||
+              template.templateName === where.templateName) &&
+            (!('supplierDomain' in where) ||
+              template.supplierDomain === where.supplierDomain),
+        )
+        .slice(0, take);
+    },
+    findFieldMappingTemplate: async (args: unknown) => {
+      const id = (args as { where?: { id?: string } }).where?.id;
+      return templates.find((template) => template.id === id) ?? null;
+    },
+    createFieldMappingTemplate: async ({ data }) => {
+      const created = {
+        ...data,
+        id: `template-${templates.length + 1}`,
+        createdAt: new Date('2026-05-16T10:00:00.000Z'),
+        updatedAt: new Date('2026-05-16T10:00:00.000Z'),
+      };
+      templates = [created, ...templates];
+      return created;
+    },
     createEvent: async (args) => {
       events.push(args.data);
       return args.data;
@@ -424,6 +529,7 @@ function createAccountOpeningRepository(
     repository,
     events,
     getCurrent: () => current,
+    getTemplates: () => templates,
   };
 }
 
@@ -670,6 +776,203 @@ test('saving field mappings persists safe decisions and records safe audit metad
     JSON.stringify(event?.metadata),
     /rawBankDetailsIncluded":false/,
   );
+});
+
+test('creating a field mapping template stores reviewed reusable mapping safely', async () => {
+  const { repository, events, getTemplates } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase(),
+  );
+
+  await saveAccountOpeningFieldMappings({
+    id: 'account-case-1',
+    mappings: [
+      {
+        supplierFieldLabel: 'Company Name',
+        sourceType: 'OPERATOR_CREATED',
+        mappedDraftFieldKey: 'legalCompanyName',
+        status: 'MAPPED_SAFE',
+      },
+      {
+        supplierFieldLabel: 'Bank Account Number',
+        supplierSectionLabel: 'Payment',
+        sourceType: 'OPERATOR_CREATED',
+        mappedDraftFieldKey: 'bankDetails',
+        status: 'MAPPED_SAFE',
+        operatorNote:
+          'Supplier wording included account number 12345678 and sort code 12-34-56.',
+      },
+    ],
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+  });
+
+  const template = await createAccountOpeningFieldMappingTemplate({
+    id: 'account-case-1',
+    templateName:
+      'Reusable account 12345678 sort code 12-34-56 mapping template',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+  });
+  const storedTemplate = getTemplates()[0];
+  const storedText = JSON.stringify(storedTemplate);
+  const templateEvent = events.find(
+    (item) => item.actionType === 'FIELD_MAPPING_TEMPLATE_CREATED',
+  );
+
+  assert.equal(template.templateVersion, 1);
+  assert.equal(template.mappingCount, 2);
+  assert.match(template.templateName, /\[redacted bank account number\]/);
+  assert.match(template.templateName, /\[redacted sort code\]/);
+  assert.doesNotMatch(storedText, /12345678/);
+  assert.doesNotMatch(storedText, /12-34-56/);
+  assert.doesNotMatch(storedText, /proposedValue/);
+  assert.match(storedText, /templateReuseControlsOnly/);
+  assert.equal(templateEvent?.actionType, 'FIELD_MAPPING_TEMPLATE_CREATED');
+  assert.doesNotMatch(JSON.stringify(templateEvent?.metadata), /12345678/);
+  assert.doesNotMatch(JSON.stringify(templateEvent?.metadata), /12-34-56/);
+});
+
+test('creating a field mapping template requires saved reviewed decisions', async () => {
+  const { repository } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase(),
+  );
+
+  await assert.rejects(
+    () =>
+      createAccountOpeningFieldMappingTemplate({
+        id: 'account-case-1',
+        repository,
+      }),
+    /Save reviewed field mappings/i,
+  );
+
+  await saveAccountOpeningFieldMappings({
+    id: 'account-case-1',
+    mappings: [
+      {
+        supplierFieldLabel: 'Unclear Supplier Field',
+        sourceType: 'OPERATOR_CREATED',
+        status: 'NEEDS_OPERATOR_INPUT',
+      },
+    ],
+    repository,
+  });
+
+  await assert.rejects(
+    () =>
+      createAccountOpeningFieldMappingTemplate({
+        id: 'account-case-1',
+        repository,
+      }),
+    /Resolve unmapped and needs-operator-input fields/i,
+  );
+});
+
+test('listing field mapping templates returns active matches for the current form fingerprint', async () => {
+  const { repository } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase(),
+    [
+      buildPersistedTemplate(),
+      buildPersistedTemplate({
+        id: 'template-mismatch',
+        formFingerprint: 'different-fingerprint',
+      }),
+      buildPersistedTemplate({
+        id: 'template-retired',
+        status: 'RETIRED',
+      }),
+    ],
+  );
+
+  const templates = await listAccountOpeningFieldMappingTemplates({
+    id: 'account-case-1',
+    repository,
+  });
+
+  assert.deepEqual(
+    templates.map((template) => template.id),
+    ['template-1'],
+  );
+  assert.equal(templates[0]?.mappingCount, 2);
+  assert.equal(templates[0]?.safetySummary.rawBankDetailsIncluded, false);
+});
+
+test('applying a field mapping template re-runs safety classification and records safe audit metadata', async () => {
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase(),
+    [buildPersistedTemplate()],
+  );
+
+  const review = await applyAccountOpeningFieldMappingTemplate({
+    id: 'account-case-1',
+    templateId: 'template-1',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+  });
+  const bankMapping = review.mappings.find(
+    (mapping) => mapping.supplierFieldLabel === 'Bank Account Number',
+  );
+  const event = events[0];
+
+  assert.equal(bankMapping?.status, 'BLOCKED');
+  assert.equal(bankMapping?.confidence, 'BLOCKED');
+  assert.equal(bankMapping?.riskLevel, 'BLOCKED');
+  assert.equal(review.summary.safeToFillSupplierForms, false);
+  assert.equal(event?.actionType, 'FIELD_MAPPING_TEMPLATE_APPLIED');
+  assert.doesNotMatch(JSON.stringify(event?.metadata), /12345678/);
+  assert.doesNotMatch(JSON.stringify(event?.metadata), /12-34-56/);
+  assert.match(JSON.stringify(event?.metadata), /pdfWordFormsFilled":false/);
+  assert.match(
+    JSON.stringify(event?.metadata),
+    /purchaseWorkflowTriggered":false/,
+  );
+});
+
+test('applying a field mapping template rejects mismatched form fingerprints', async () => {
+  const { repository } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase(),
+    [
+      buildPersistedTemplate({
+        formFingerprint: 'different-fingerprint',
+      }),
+    ],
+  );
+
+  await assert.rejects(
+    () =>
+      applyAccountOpeningFieldMappingTemplate({
+        id: 'account-case-1',
+        templateId: 'template-1',
+        repository,
+      }),
+    /fingerprint does not match/i,
+  );
+});
+
+test('applying a field mapping template rejects empty reusable mappings', async () => {
+  const { repository, getCurrent } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase(),
+    [
+      buildPersistedTemplate({
+        mappingJson: { version: 1, mappings: [] },
+      }),
+    ],
+  );
+
+  await assert.rejects(
+    () =>
+      applyAccountOpeningFieldMappingTemplate({
+        id: 'account-case-1',
+        templateId: 'template-1',
+        repository,
+      }),
+    /has no reusable mappings/i,
+  );
+
+  assert.equal(getCurrent().fieldMappings?.length ?? 0, 0);
 });
 
 test('generate draft stores safe draft metadata and records blocked audit route only', async () => {

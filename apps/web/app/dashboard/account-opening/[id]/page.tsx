@@ -2,10 +2,14 @@ import Link from 'next/link';
 
 import {
   getAccountOpeningCase,
+  listAccountOpeningFieldMappingTemplates,
   type AccountOpeningCaseDetail,
+  type AccountOpeningFieldMappingTemplate,
   type AccountOpeningMissingInfoResponses,
 } from '../../../../lib/accountOpeningApi';
 import {
+  submitApplyAccountOpeningFieldMappingTemplateAction,
+  submitCreateAccountOpeningFieldMappingTemplateAction,
   submitAccountOpeningFieldMappingsAction,
   submitGenerateAccountOpeningDraftAction,
   submitAccountOpeningMissingInfoAction,
@@ -372,6 +376,121 @@ function FieldMappingForm({
   );
 }
 
+function FieldMappingTemplateControls({
+  item,
+  templates,
+  returnTo,
+}: {
+  item: AccountOpeningCaseDetail;
+  templates: AccountOpeningFieldMappingTemplate[];
+  returnTo: string;
+}) {
+  return (
+    <div className="template-controls">
+      <div className="operator-summary-grid">
+        <div className="operator-summary-card">
+          <dt>Matching templates</dt>
+          <dd>{templates.length}</dd>
+        </div>
+        <div className="operator-summary-card">
+          <dt>Saved mapping status</dt>
+          <dd>{item.fieldMappings.status}</dd>
+        </div>
+        <div className="operator-summary-card">
+          <dt>Template reuse scope</dt>
+          <dd>Same supplier form fingerprint only</dd>
+        </div>
+      </div>
+
+      <form
+        action={submitCreateAccountOpeningFieldMappingTemplateAction}
+        className="action-form"
+      >
+        {hiddenInput('caseId', item.id)}
+        {hiddenInput('returnTo', returnTo)}
+        <p className="copy review-summary-copy">
+          Save the reviewed mappings on this case as an internal reuse template.
+          Templates keep field labels and mapping decisions only; they do not
+          store proposed values, raw extracted text, raw bank details, completed
+          forms, signatures, or supplier-facing messages.
+        </p>
+        <label>
+          Template name
+          <input
+            name="templateName"
+            placeholder={`${item.senderDomain ?? 'Supplier'} account-opening mapping`}
+          />
+        </label>
+        <button className="button" type="submit">
+          Save mapping template
+        </button>
+      </form>
+
+      {templates.length ? (
+        <div className="table-wrapper">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Template</th>
+                <th>Supplier</th>
+                <th>Mappings</th>
+                <th>Version</th>
+                <th>Updated</th>
+                <th>Reuse</th>
+              </tr>
+            </thead>
+            <tbody>
+              {templates.map((template) => (
+                <tr key={template.id}>
+                  <td>
+                    <strong>{template.templateName}</strong>
+                    <span className="muted-text">
+                      {template.status} -{' '}
+                      {template.formFingerprint.slice(0, 12)}
+                    </span>
+                  </td>
+                  <td>
+                    {renderValue(
+                      template.supplierName ?? template.supplierDomain,
+                      'Any matching supplier',
+                    )}
+                  </td>
+                  <td>{template.mappingCount}</td>
+                  <td>{template.templateVersion}</td>
+                  <td>{formatDateTime(template.updatedAt)}</td>
+                  <td>
+                    <form
+                      action={
+                        submitApplyAccountOpeningFieldMappingTemplateAction
+                      }
+                    >
+                      {hiddenInput('caseId', item.id)}
+                      {hiddenInput('templateId', template.id)}
+                      {hiddenInput('returnTo', returnTo)}
+                      <button className="button" type="submit">
+                        Apply for review
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="copy review-summary-copy">
+          No active template matches this supplier form fingerprint yet.
+        </p>
+      )}
+      <p className="alert alert-warning">
+        Applying a template only preloads mapping decisions for operator review.
+        It does not fill PDF/Word forms, sign, send, submit, or trigger any
+        purchase/order/buy workflow.
+      </p>
+    </div>
+  );
+}
+
 export default async function AccountOpeningDetailPage({
   params,
   searchParams,
@@ -381,7 +500,10 @@ export default async function AccountOpeningDetailPage({
   const returnTo = sanitizeReturnTo(query?.returnTo);
 
   try {
-    const item = await getAccountOpeningCase(id);
+    const [item, mappingTemplates] = await Promise.all([
+      getAccountOpeningCase(id),
+      listAccountOpeningFieldMappingTemplates(id),
+    ]);
     const signingNotes = item.signingNotes;
 
     return (
@@ -697,6 +819,11 @@ export default async function AccountOpeningDetailPage({
             supplier forms, sign, send, submit, or create purchase/order/buy
             workflow records.
           </p>
+          <FieldMappingTemplateControls
+            item={item}
+            templates={mappingTemplates}
+            returnTo={returnTo}
+          />
           <FieldMappingForm item={item} returnTo={returnTo} />
         </section>
 
@@ -829,14 +956,14 @@ export default async function AccountOpeningDetailPage({
             <StatusActionForm
               action="APPROVED_FOR_COMPLETION"
               buttonLabel="Approve for completion"
-              copy="Approved for completion only — this does not sign or send the form."
+              copy="Approved for completion only - this does not sign or send the form."
               item={item}
               returnTo={returnTo}
             />
             <StatusActionForm
               action="REJECTED"
               buttonLabel="Reject"
-              copy="Rejected — no form will be completed, signed, uploaded, or sent."
+              copy="Rejected - no form will be completed, signed, uploaded, or sent."
               item={item}
               returnTo={returnTo}
             />

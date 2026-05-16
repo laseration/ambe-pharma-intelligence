@@ -17,6 +17,9 @@ import {
   downloadAccountOpeningReviewedExportFile,
   exportAccountOpeningReviewedPack,
   generateAccountOpeningDraft,
+  applyAccountOpeningFieldMappingTemplate,
+  createAccountOpeningFieldMappingTemplate,
+  listAccountOpeningFieldMappingTemplates,
   getAccountOpeningFieldMappingReview,
   getAccountOpeningCaseDetail,
   saveAccountOpeningMissingInfo,
@@ -34,6 +37,9 @@ type AccountOpeningRouteDependencies = {
   generateDraft: typeof generateAccountOpeningDraft;
   getFieldMappings: typeof getAccountOpeningFieldMappingReview;
   saveFieldMappings: typeof saveAccountOpeningFieldMappings;
+  listFieldMappingTemplates: typeof listAccountOpeningFieldMappingTemplates;
+  createFieldMappingTemplate: typeof createAccountOpeningFieldMappingTemplate;
+  applyFieldMappingTemplate: typeof applyAccountOpeningFieldMappingTemplate;
   exportPack: typeof exportAccountOpeningReviewedPack;
   downloadExportFile: typeof downloadAccountOpeningReviewedExportFile;
   saveMissingInfo: typeof saveAccountOpeningMissingInfo;
@@ -98,6 +104,17 @@ const fieldMappingBodySchema = z
     mappings: z.array(fieldMappingSchema).max(120),
   })
   .merge(actorBodySchema);
+const createFieldMappingTemplateBodySchema = z
+  .object({
+    templateName: optionalTrimmedStringSchema,
+  })
+  .merge(actorBodySchema);
+const applyFieldMappingTemplateBodySchema = actorBodySchema
+  .partial()
+  .default({});
+const fieldMappingTemplateParamSchema = idParamSchema.extend({
+  templateId: z.string().trim().min(1).max(128),
+});
 const exportFileParamSchema = idParamSchema.extend({
   fileName: z.string().trim().min(1).max(128),
 });
@@ -110,6 +127,9 @@ const defaultDependencies: AccountOpeningRouteDependencies = {
   generateDraft: generateAccountOpeningDraft,
   getFieldMappings: getAccountOpeningFieldMappingReview,
   saveFieldMappings: saveAccountOpeningFieldMappings,
+  listFieldMappingTemplates: listAccountOpeningFieldMappingTemplates,
+  createFieldMappingTemplate: createAccountOpeningFieldMappingTemplate,
+  applyFieldMappingTemplate: applyAccountOpeningFieldMappingTemplate,
   exportPack: exportAccountOpeningReviewedPack,
   downloadExportFile: downloadAccountOpeningReviewedExportFile,
   saveMissingInfo: saveAccountOpeningMissingInfo,
@@ -247,6 +267,70 @@ export function createAccountOpeningRouter(
       const item = await dependencies.saveFieldMappings({
         id: params.id,
         mappings: pickFieldMappings(body),
+        ...actor,
+      });
+
+      response.json({ item });
+    }),
+  );
+
+  router.get(
+    '/:id/field-mapping-templates',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {
+        params: idParamSchema,
+      });
+
+      response.json({
+        items: await dependencies.listFieldMappingTemplates({
+          id: params.id,
+        }),
+      });
+    }),
+  );
+
+  router.post(
+    '/:id/field-mapping-templates',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { params, body } = parseRequest<
+        z.infer<typeof idParamSchema>,
+        unknown,
+        z.infer<typeof createFieldMappingTemplateBodySchema>
+      >(request, {
+        params: idParamSchema,
+        body: createFieldMappingTemplateBodySchema,
+      });
+      const actor = resolveInternalActor(request, body);
+
+      const item = await dependencies.createFieldMappingTemplate({
+        id: params.id,
+        templateName: body.templateName,
+        ...actor,
+      });
+
+      response.status(201).json({ item });
+    }),
+  );
+
+  router.post(
+    '/:id/field-mapping-templates/:templateId/apply',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { params, body } = parseRequest<
+        z.infer<typeof fieldMappingTemplateParamSchema>,
+        unknown,
+        z.infer<typeof applyFieldMappingTemplateBodySchema>
+      >(request, {
+        params: fieldMappingTemplateParamSchema,
+        body: applyFieldMappingTemplateBodySchema,
+      });
+      const actor = resolveInternalActor(request, body);
+
+      const item = await dependencies.applyFieldMappingTemplate({
+        id: params.id,
+        templateId: params.templateId,
         ...actor,
       });
 

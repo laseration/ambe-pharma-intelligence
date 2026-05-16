@@ -133,6 +133,23 @@ export type AccountOpeningFieldMappingSaveInput = {
   operatorNote?: string | null;
 };
 
+export type AccountOpeningFieldMappingTemplate = {
+  id: string;
+  supplierDomain: string | null;
+  supplierName: string | null;
+  formFingerprint: string;
+  templateName: string;
+  templateVersion: number;
+  status: string;
+  mappingCount: number;
+  safetySummary: Record<string, unknown>;
+  createdFromCaseId: string | null;
+  createdByType: string | null;
+  createdByIdentifier: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AccountOpeningSourceEvidence = {
   id: string | null;
   sourceType: string;
@@ -352,6 +369,49 @@ export async function saveAccountOpeningFieldMappings(
       method: 'PATCH',
       body: JSON.stringify({
         mappings,
+        actorType: 'OPERATOR',
+        actorIdentifier: 'web-account-opening-review',
+      }),
+    },
+  );
+  return payload.item;
+}
+
+export async function listAccountOpeningFieldMappingTemplates(
+  id: string,
+): Promise<AccountOpeningFieldMappingTemplate[]> {
+  const payload = await requestJson<{
+    items: AccountOpeningFieldMappingTemplate[];
+  }>(`/account-opening/${encodeURIComponent(id)}/field-mapping-templates`);
+  return payload.items;
+}
+
+export async function createAccountOpeningFieldMappingTemplate(
+  id: string,
+  templateName?: string | null,
+): Promise<AccountOpeningFieldMappingTemplate> {
+  const payload = await requestJson<{
+    item: AccountOpeningFieldMappingTemplate;
+  }>(`/account-opening/${encodeURIComponent(id)}/field-mapping-templates`, {
+    method: 'POST',
+    body: JSON.stringify({
+      templateName,
+      actorType: 'OPERATOR',
+      actorIdentifier: 'web-account-opening-review',
+    }),
+  });
+  return payload.item;
+}
+
+export async function applyAccountOpeningFieldMappingTemplate(
+  id: string,
+  templateId: string,
+): Promise<AccountOpeningFieldMappingReview> {
+  const payload = await requestJson<{ item: AccountOpeningFieldMappingReview }>(
+    `/account-opening/${encodeURIComponent(id)}/field-mapping-templates/${encodeURIComponent(templateId)}/apply`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
         actorType: 'OPERATOR',
         actorIdentifier: 'web-account-opening-review',
       }),

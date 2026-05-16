@@ -19,6 +19,7 @@ import {
   type AccountOpeningFieldMappingCandidate,
   type AccountOpeningFieldMappingReview,
   type AccountOpeningFieldMappingSaveInput,
+  type AccountOpeningFieldMappingStatus,
   type PersistedAccountOpeningFieldMapping,
 } from './fieldMapping';
 import {
@@ -87,6 +88,23 @@ export type AccountOpeningStatusAction =
   | 'MARKED_NEEDS_INFO'
   | 'APPROVED_FOR_COMPLETION'
   | 'REJECTED';
+
+export type AccountOpeningFieldMappingTemplateDetail = {
+  id: string;
+  supplierDomain: string | null;
+  supplierName: string | null;
+  formFingerprint: string;
+  templateName: string;
+  templateVersion: number;
+  status: string;
+  mappingCount: number;
+  safetySummary: Record<string, unknown>;
+  createdFromCaseId: string | null;
+  createdByType: string | null;
+  createdByIdentifier: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type AccountOpeningCaseDetail = {
   id: string;
@@ -234,6 +252,23 @@ export type PersistedAccountOpeningSourceEvidence = {
   storageFileUrl: string | null;
   storageDriveItemId: string | null;
   metadata?: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type PersistedAccountOpeningFieldMappingTemplate = {
+  id: string;
+  supplierDomain: string | null;
+  supplierName: string | null;
+  formFingerprint: string;
+  templateName: string;
+  templateVersion: number;
+  status: string;
+  mappingJson: unknown;
+  safetySummary: unknown;
+  createdFromCaseId: string | null;
+  createdByType: string | null;
+  createdByIdentifier: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -1021,6 +1056,27 @@ export type AccountOpeningCaseRepository = {
       >
     >;
   }) => Promise<PersistedAccountOpeningFieldMapping[]>;
+  listFieldMappingTemplates?: (
+    args: unknown,
+  ) => Promise<PersistedAccountOpeningFieldMappingTemplate[]>;
+  createFieldMappingTemplate?: (args: {
+    data: {
+      supplierDomain: string | null;
+      supplierName: string | null;
+      formFingerprint: string;
+      templateName: string;
+      templateVersion: number;
+      status: string;
+      mappingJson: Prisma.InputJsonValue;
+      safetySummary: Prisma.InputJsonValue;
+      createdFromCaseId: string | null;
+      createdByType: string | null;
+      createdByIdentifier: string | null;
+    };
+  }) => Promise<PersistedAccountOpeningFieldMappingTemplate>;
+  findFieldMappingTemplate?: (
+    args: unknown,
+  ) => Promise<PersistedAccountOpeningFieldMappingTemplate | null>;
   createEvent: (args: {
     data: AccountOpeningCaseEventInput;
   }) => Promise<unknown>;
@@ -1040,6 +1096,29 @@ function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
       findMany: (
         args: unknown,
       ) => Promise<PersistedAccountOpeningFieldMapping[]>;
+    };
+    accountOpeningFieldMappingTemplate: {
+      findMany: (
+        args: unknown,
+      ) => Promise<PersistedAccountOpeningFieldMappingTemplate[]>;
+      findUnique: (
+        args: unknown,
+      ) => Promise<PersistedAccountOpeningFieldMappingTemplate | null>;
+      create: (args: {
+        data: {
+          supplierDomain: string | null;
+          supplierName: string | null;
+          formFingerprint: string;
+          templateName: string;
+          templateVersion: number;
+          status: string;
+          mappingJson: Prisma.InputJsonValue;
+          safetySummary: Prisma.InputJsonValue;
+          createdFromCaseId: string | null;
+          createdByType: string | null;
+          createdByIdentifier: string | null;
+        };
+      }) => Promise<PersistedAccountOpeningFieldMappingTemplate>;
     };
     accountOpeningCaseEvent: {
       create: (args: {
@@ -1067,6 +1146,12 @@ function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
         orderBy: { sortOrder: 'asc' },
       });
     },
+    listFieldMappingTemplates: (args) =>
+      client.accountOpeningFieldMappingTemplate.findMany(args),
+    findFieldMappingTemplate: (args) =>
+      client.accountOpeningFieldMappingTemplate.findUnique(args),
+    createFieldMappingTemplate: (args) =>
+      client.accountOpeningFieldMappingTemplate.create(args),
     createEvent: (args) => client.accountOpeningCaseEvent.create(args),
   };
 }
@@ -1411,6 +1496,226 @@ function fieldMappingAuditMetadata(
   });
 }
 
+type AccountOpeningFieldMappingTemplateMapping = {
+  supplierFieldLabel: string;
+  supplierSectionLabel: string | null;
+  normalizedLabel: string;
+  sourceType: 'OPERATOR_CREATED';
+  suggestedDraftFieldKey: string | null;
+  mappedDraftFieldKey: string | null;
+  status: string;
+  requiresReview: boolean;
+  blockedReason: string | null;
+  reviewReason: string | null;
+  operatorNote: string | null;
+};
+const FIELD_MAPPING_TEMPLATE_STATUS_VALUES =
+  new Set<AccountOpeningFieldMappingStatus>([
+    'UNMAPPED',
+    'MAPPED_SAFE',
+    'MAPPED_REVIEW_REQUIRED',
+    'BLOCKED',
+    'IGNORED',
+    'NEEDS_OPERATOR_INPUT',
+  ]);
+
+function buildAccountOpeningFormFingerprint(
+  detail: AccountOpeningCaseDetail,
+): string {
+  const evidenceHashes = compactUnique(
+    detail.sourceEvidence.map((item) => item.extractedTextHash),
+  ).sort();
+  const attachmentNames = compactUnique(detail.sourceAttachmentNames)
+    .map(normalizeFingerprintPart)
+    .sort();
+  const fingerprintSource = JSON.stringify({
+    senderDomain: normalizeFingerprintPart(detail.senderDomain),
+    attachmentNames,
+    evidenceHashes,
+    fallbackSourceFingerprint:
+      evidenceHashes.length === 0 && attachmentNames.length === 0
+        ? detail.sourceFingerprint
+        : null,
+  });
+
+  return createHash('sha256').update(fingerprintSource).digest('hex');
+}
+
+function templateSafetySummaryFromReview(
+  review: AccountOpeningFieldMappingReview,
+): Record<string, unknown> {
+  return {
+    status: review.status,
+    summary: review.summary,
+    templateReuseControlsOnly: true,
+    rawExtractedTextIncluded: false,
+    rawBankDetailsIncluded: false,
+    pdfWordFormsFilled: false,
+    completedSupplierFormsGenerated: false,
+    signedFormsIncluded: false,
+    supplierMessageIncluded: false,
+    purchaseWorkflowTriggered: false,
+  };
+}
+
+function templateMappingsFromReview(
+  review: AccountOpeningFieldMappingReview,
+): AccountOpeningFieldMappingTemplateMapping[] {
+  return review.mappings.map((mapping) => ({
+    supplierFieldLabel: mapping.supplierFieldLabel,
+    supplierSectionLabel: mapping.supplierSectionLabel,
+    normalizedLabel: mapping.normalizedLabel,
+    sourceType: 'OPERATOR_CREATED',
+    suggestedDraftFieldKey: mapping.suggestedDraftFieldKey,
+    mappedDraftFieldKey: mapping.mappedDraftFieldKey,
+    status: mapping.status,
+    requiresReview: mapping.requiresReview,
+    blockedReason: mapping.blockedReason,
+    reviewReason: mapping.reviewReason,
+    operatorNote: mapping.operatorNote,
+  }));
+}
+
+function templateMappingJsonFromReview(
+  review: AccountOpeningFieldMappingReview,
+): Prisma.InputJsonValue {
+  return jsonObject({
+    version: 1,
+    note: 'Reusable internal account-opening field mapping template. This does not contain proposed values, raw extracted text, evidence snippets, raw bank details, completed forms, signatures, or supplier-facing messages.',
+    mappings: templateMappingsFromReview(review),
+  });
+}
+
+function safeTemplateName(input: {
+  templateName?: string | null;
+  supplierDomain: string | null;
+  formFingerprint: string;
+}): string {
+  const explicit = sanitizeDashboardText(input.templateName);
+  if (explicit) {
+    return explicit.slice(0, 160);
+  }
+
+  const supplier = input.supplierDomain ?? 'supplier';
+  return `${supplier} account-opening mapping ${input.formFingerprint.slice(0, 8)}`;
+}
+
+function isApprovedTemplateReview(review: AccountOpeningFieldMappingReview) {
+  return review.mappings.every((mapping) =>
+    ['MAPPED_SAFE', 'MAPPED_REVIEW_REQUIRED', 'BLOCKED', 'IGNORED'].includes(
+      mapping.status,
+    ),
+  );
+}
+
+function mappingCountFromTemplate(value: unknown): number {
+  const record = jsonRecordFromUnknown(value);
+  const mappings = record.mappings;
+  return Array.isArray(mappings) ? mappings.length : 0;
+}
+
+function mappingSaveInputsFromTemplate(
+  template: PersistedAccountOpeningFieldMappingTemplate,
+): AccountOpeningFieldMappingSaveInput[] {
+  const record = jsonRecordFromUnknown(template.mappingJson);
+  const mappings = Array.isArray(record.mappings) ? record.mappings : [];
+
+  return mappings
+    .map((item): AccountOpeningFieldMappingSaveInput | null => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        return null;
+      }
+
+      const mapping = item as Record<string, unknown>;
+      const supplierFieldLabel =
+        typeof mapping.supplierFieldLabel === 'string'
+          ? mapping.supplierFieldLabel
+          : null;
+
+      if (!supplierFieldLabel?.trim()) {
+        return null;
+      }
+      const status =
+        typeof mapping.status === 'string' &&
+        FIELD_MAPPING_TEMPLATE_STATUS_VALUES.has(
+          mapping.status as AccountOpeningFieldMappingStatus,
+        )
+          ? (mapping.status as AccountOpeningFieldMappingStatus)
+          : 'NEEDS_OPERATOR_INPUT';
+
+      return {
+        supplierFieldLabel,
+        supplierSectionLabel:
+          typeof mapping.supplierSectionLabel === 'string'
+            ? mapping.supplierSectionLabel
+            : null,
+        sourceType: 'OPERATOR_CREATED',
+        sourceEvidenceId: null,
+        evidenceSnippet: null,
+        suggestedDraftFieldKey:
+          typeof mapping.suggestedDraftFieldKey === 'string'
+            ? mapping.suggestedDraftFieldKey
+            : null,
+        mappedDraftFieldKey:
+          typeof mapping.mappedDraftFieldKey === 'string'
+            ? mapping.mappedDraftFieldKey
+            : null,
+        status,
+        operatorNote:
+          typeof mapping.operatorNote === 'string'
+            ? mapping.operatorNote
+            : `Applied from template ${template.templateName} v${template.templateVersion}.`,
+      };
+    })
+    .filter((item): item is AccountOpeningFieldMappingSaveInput =>
+      Boolean(item),
+    );
+}
+
+function buildTemplateDetail(
+  template: PersistedAccountOpeningFieldMappingTemplate,
+): AccountOpeningFieldMappingTemplateDetail {
+  return {
+    id: template.id,
+    supplierDomain: sanitizeDashboardText(template.supplierDomain),
+    supplierName: sanitizeDashboardText(template.supplierName),
+    formFingerprint: template.formFingerprint,
+    templateName: sanitizeDashboardText(template.templateName) ?? 'Template',
+    templateVersion: template.templateVersion,
+    status: template.status,
+    mappingCount: mappingCountFromTemplate(template.mappingJson),
+    safetySummary: jsonRecordFromUnknown(template.safetySummary),
+    createdFromCaseId: template.createdFromCaseId,
+    createdByType: template.createdByType,
+    createdByIdentifier: sanitizeDashboardText(template.createdByIdentifier),
+    createdAt: template.createdAt.toISOString(),
+    updatedAt: template.updatedAt.toISOString(),
+  };
+}
+
+function templateAuditMetadata(input: {
+  template: AccountOpeningFieldMappingTemplateDetail;
+  appliedReview?: AccountOpeningFieldMappingReview;
+}): Prisma.InputJsonValue {
+  return jsonObject({
+    templateId: input.template.id,
+    templateName: input.template.templateName,
+    templateVersion: input.template.templateVersion,
+    supplierDomain: input.template.supplierDomain,
+    formFingerprint: input.template.formFingerprint,
+    mappingCount: input.template.mappingCount,
+    appliedSummary: input.appliedReview?.summary ?? null,
+    templateReuseControlsOnly: true,
+    rawExtractedTextIncluded: false,
+    rawBankDetailsIncluded: false,
+    pdfWordFormsFilled: false,
+    completedSupplierFormsGenerated: false,
+    signedFormsIncluded: false,
+    supplierMessageIncluded: false,
+    purchaseWorkflowTriggered: false,
+  });
+}
+
 export async function getAccountOpeningFieldMappingReview(input: {
   id: string;
   repository?: AccountOpeningCaseRepository;
@@ -1478,6 +1783,235 @@ export async function saveAccountOpeningFieldMappings(input: {
       actorType: input.actorType?.trim() || 'OPERATOR',
       actorIdentifier: sanitizeDashboardText(input.actorIdentifier) ?? null,
       metadata: fieldMappingAuditMetadata(review),
+    },
+  });
+
+  return review;
+}
+
+export async function listAccountOpeningFieldMappingTemplates(input: {
+  id: string;
+  repository?: AccountOpeningCaseRepository;
+}): Promise<AccountOpeningFieldMappingTemplateDetail[]> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  const existing = await findCaseWithEvidence(input.id, repository);
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  if (!repository.listFieldMappingTemplates) {
+    throw new Error(
+      'Account-opening field mapping template repository is not readable.',
+    );
+  }
+
+  const detail = buildAccountOpeningCaseDetail(existing);
+  const formFingerprint = buildAccountOpeningFormFingerprint(detail);
+  const supplierDomain = sanitizeDashboardText(detail.senderDomain);
+  const templates = await repository.listFieldMappingTemplates({
+    where: {
+      status: 'ACTIVE',
+      formFingerprint,
+      OR: [{ supplierDomain }, { supplierDomain: null }],
+    },
+    orderBy: [{ updatedAt: 'desc' }],
+    take: 20,
+  });
+
+  return templates.map(buildTemplateDetail);
+}
+
+export async function createAccountOpeningFieldMappingTemplate(input: {
+  id: string;
+  templateName?: string | null;
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  repository?: AccountOpeningCaseRepository;
+}): Promise<AccountOpeningFieldMappingTemplateDetail> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  const existing = await findCaseWithEvidence(input.id, repository);
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  if (
+    !repository.listFieldMappingTemplates ||
+    !repository.createFieldMappingTemplate
+  ) {
+    throw new Error(
+      'Account-opening field mapping template repository is not writable.',
+    );
+  }
+
+  const detail = buildAccountOpeningCaseDetail(existing);
+  const persistedIds = new Set(
+    (existing.fieldMappings ?? []).map((mapping) => mapping.id),
+  );
+  const savedMappings = {
+    ...detail.fieldMappings,
+    mappings: detail.fieldMappings.mappings.filter((mapping) =>
+      persistedIds.has(mapping.id),
+    ),
+  };
+
+  if (savedMappings.mappings.length === 0) {
+    throw new Error(
+      'Save reviewed field mappings before creating a reusable template.',
+    );
+  }
+
+  if (!isApprovedTemplateReview(savedMappings)) {
+    throw new Error(
+      'Resolve unmapped and needs-operator-input fields before creating a reusable template.',
+    );
+  }
+
+  const supplierDomain = sanitizeDashboardText(detail.senderDomain);
+  const supplierName =
+    sanitizeDashboardText(detail.companyName) ?? supplierDomain ?? null;
+  const formFingerprint = buildAccountOpeningFormFingerprint(detail);
+  const templateName = safeTemplateName({
+    templateName: input.templateName,
+    supplierDomain,
+    formFingerprint,
+  });
+  const existingTemplates = await repository.listFieldMappingTemplates({
+    where: {
+      supplierDomain,
+      formFingerprint,
+      templateName,
+    },
+    orderBy: [{ templateVersion: 'desc' }],
+    take: 1,
+  });
+  const templateVersion = (existingTemplates[0]?.templateVersion ?? 0) + 1;
+  const safetySummary = templateSafetySummaryFromReview(savedMappings);
+  const created = await repository.createFieldMappingTemplate({
+    data: {
+      supplierDomain,
+      supplierName,
+      formFingerprint,
+      templateName,
+      templateVersion,
+      status: 'ACTIVE',
+      mappingJson: templateMappingJsonFromReview(savedMappings),
+      safetySummary: jsonObject(safetySummary),
+      createdFromCaseId: input.id,
+      createdByType: input.actorType?.trim() || 'OPERATOR',
+      createdByIdentifier: sanitizeDashboardText(input.actorIdentifier),
+    },
+  });
+  const template = buildTemplateDetail(created);
+
+  await repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.id,
+      actionType: 'FIELD_MAPPING_TEMPLATE_CREATED',
+      previousStatus: existing.status,
+      newStatus: existing.status,
+      actorType: input.actorType?.trim() || 'OPERATOR',
+      actorIdentifier: sanitizeDashboardText(input.actorIdentifier) ?? null,
+      metadata: templateAuditMetadata({ template }),
+    },
+  });
+
+  return template;
+}
+
+export async function applyAccountOpeningFieldMappingTemplate(input: {
+  id: string;
+  templateId: string;
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  repository?: AccountOpeningCaseRepository;
+}): Promise<AccountOpeningFieldMappingReview> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  const existing = await findCaseWithEvidence(input.id, repository);
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  if (
+    !repository.findFieldMappingTemplate ||
+    !repository.replaceFieldMappings
+  ) {
+    throw new Error(
+      'Account-opening field mapping template repository is not writable.',
+    );
+  }
+
+  const templateRecord = await repository.findFieldMappingTemplate({
+    where: { id: input.templateId },
+  });
+
+  if (!templateRecord || templateRecord.status !== 'ACTIVE') {
+    throw new Error('Account-opening field mapping template not found.');
+  }
+
+  const detail = buildAccountOpeningCaseDetail(existing);
+  const currentFormFingerprint = buildAccountOpeningFormFingerprint(detail);
+  const currentSupplierDomain = sanitizeDashboardText(detail.senderDomain);
+
+  if (templateRecord.formFingerprint !== currentFormFingerprint) {
+    throw new Error('Template fingerprint does not match this supplier form.');
+  }
+
+  if (
+    templateRecord.supplierDomain &&
+    templateRecord.supplierDomain !== currentSupplierDomain
+  ) {
+    throw new Error(
+      'Template supplier domain does not match this account-opening case.',
+    );
+  }
+
+  const sourceEvidence = fieldMappingSourceEvidenceFromDetails(
+    detail.sourceEvidence,
+  );
+  const templateMappings = mappingSaveInputsFromTemplate(templateRecord);
+
+  if (templateMappings.length === 0) {
+    throw new Error(
+      'Account-opening field mapping template has no reusable mappings.',
+    );
+  }
+
+  const candidates = templateMappings.map((mapping) =>
+    buildAccountOpeningFieldMappingCandidateForSave({
+      mapping,
+      completionDraft: detail.completionDraft,
+      sourceEvidence,
+    }),
+  );
+  const savedMappings = await repository.replaceFieldMappings({
+    accountOpeningCaseId: input.id,
+    mappings: fieldMappingRowsFromCandidates({
+      accountOpeningCaseId: input.id,
+      candidates,
+    }),
+  });
+  const review = buildAccountOpeningFieldMappingReview({
+    completionDraft: detail.completionDraft,
+    sourceEvidence,
+    persistedMappings: savedMappings,
+  });
+  const template = buildTemplateDetail(templateRecord);
+
+  await repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.id,
+      actionType: 'FIELD_MAPPING_TEMPLATE_APPLIED',
+      previousStatus: existing.status,
+      newStatus: existing.status,
+      actorType: input.actorType?.trim() || 'OPERATOR',
+      actorIdentifier: sanitizeDashboardText(input.actorIdentifier) ?? null,
+      metadata: templateAuditMetadata({
+        template,
+        appliedReview: review,
+      }),
     },
   });
 

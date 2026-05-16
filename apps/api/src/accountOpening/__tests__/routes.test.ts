@@ -13,6 +13,7 @@ import {
 } from '../reviewExport';
 import type {
   AccountOpeningCaseDetail,
+  AccountOpeningFieldMappingTemplateDetail,
   AccountOpeningMissingInfoResponses,
 } from '../service';
 
@@ -123,6 +124,33 @@ function buildCaseDetail(
   };
 }
 
+function buildTemplateDetail(
+  overrides: Partial<AccountOpeningFieldMappingTemplateDetail> = {},
+): AccountOpeningFieldMappingTemplateDetail {
+  return {
+    id: 'template-1',
+    supplierDomain: 'supplier.co.uk',
+    supplierName: 'Supplier',
+    formFingerprint: 'form-fingerprint-1',
+    templateName: 'Supplier account-opening template',
+    templateVersion: 1,
+    status: 'ACTIVE',
+    mappingCount: 2,
+    safetySummary: {
+      templateReuseControlsOnly: true,
+      rawBankDetailsIncluded: false,
+      pdfWordFormsFilled: false,
+      purchaseWorkflowTriggered: false,
+    },
+    createdFromCaseId: 'case-1',
+    createdByType: 'OPERATOR',
+    createdByIdentifier: 'route-template-test',
+    createdAt: '2026-05-16T10:00:00.000Z',
+    updatedAt: '2026-05-16T10:00:00.000Z',
+    ...overrides,
+  };
+}
+
 async function startServer(
   context: TestContext,
   dependencies: Partial<Parameters<typeof createAccountOpeningRouter>[0]>,
@@ -134,6 +162,9 @@ async function startServer(
     generateDraft: async () => defaultDetail,
     getFieldMappings: async () => defaultDetail.fieldMappings,
     saveFieldMappings: async () => defaultDetail.fieldMappings,
+    listFieldMappingTemplates: async () => [],
+    createFieldMappingTemplate: async () => buildTemplateDetail(),
+    applyFieldMappingTemplate: async () => defaultDetail.fieldMappings,
     exportPack: async () => buildAccountOpeningReviewExportPack(defaultDetail),
     downloadExportFile: async (input) => {
       const file = getAccountOpeningReviewExportFile(
@@ -443,6 +474,96 @@ test('account-opening field mapping routes require operator access and save mapp
   assert.equal(
     savedInputs[0]?.actorIdentifier,
     'internal-operator:route-field-mapping-test',
+  );
+});
+
+test('account-opening field mapping template routes require operator access and route safe inputs', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
+  const createdInputs: Array<{
+    id: string;
+    templateName?: string | null;
+    actorIdentifier?: string | null;
+  }> = [];
+  const appliedInputs: Array<{
+    id: string;
+    templateId: string;
+    actorIdentifier?: string | null;
+  }> = [];
+  const template = buildTemplateDetail();
+  const baseUrl = await startServer(t, {
+    listFieldMappingTemplates: async () => [template],
+    createFieldMappingTemplate: async (input) => {
+      createdInputs.push(input);
+      return buildTemplateDetail({
+        templateName: input.templateName ?? template.templateName,
+      });
+    },
+    applyFieldMappingTemplate: async (input) => {
+      appliedInputs.push(input);
+      return buildCaseDetail().fieldMappings;
+    },
+  });
+
+  const unauthorizedResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/field-mapping-templates`,
+  );
+  const listResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/field-mapping-templates`,
+    {
+      headers: {
+        'x-internal-api-key': 'test-secret',
+        'x-internal-caller-name': 'route-template-test',
+      },
+    },
+  );
+  const createResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/field-mapping-templates`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-api-key': 'test-secret',
+        'x-internal-caller-name': 'route-template-test',
+      },
+      body: JSON.stringify({
+        templateName: 'Reusable supplier template',
+      }),
+    },
+  );
+  const applyResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/field-mapping-templates/template-1/apply`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-api-key': 'test-secret',
+        'x-internal-caller-name': 'route-template-test',
+      },
+      body: JSON.stringify({}),
+    },
+  );
+  const listPayload = (await listResponse.json()) as {
+    items: AccountOpeningFieldMappingTemplateDetail[];
+  };
+
+  assert.equal(unauthorizedResponse.status, 401);
+  assert.equal(listResponse.status, 200);
+  assert.equal(listPayload.items[0]?.id, 'template-1');
+  assert.equal(createResponse.status, 201);
+  assert.equal(applyResponse.status, 200);
+  assert.equal(createdInputs[0]?.templateName, 'Reusable supplier template');
+  assert.equal(appliedInputs[0]?.templateId, 'template-1');
+  assert.equal(
+    createdInputs[0]?.actorIdentifier,
+    'internal-operator:route-template-test',
+  );
+  assert.equal(
+    appliedInputs[0]?.actorIdentifier,
+    'internal-operator:route-template-test',
   );
 });
 

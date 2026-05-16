@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import {
+  applyAccountOpeningFieldMappingTemplate,
+  createAccountOpeningFieldMappingTemplate,
   generateAccountOpeningDraft,
   saveAccountOpeningFieldMappings,
   saveAccountOpeningMissingInfo,
@@ -316,6 +318,90 @@ export async function submitAccountOpeningFieldMappingsAction(
       caseId,
       {
         message: 'Field mappings saved for review.',
+      },
+      returnTo,
+    ),
+  );
+}
+
+export async function submitCreateAccountOpeningFieldMappingTemplateAction(
+  formData: FormData,
+) {
+  const caseId = value(formData, 'caseId');
+  const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
+
+  if (!caseId) {
+    redirect('/dashboard/review?error=Missing+account-opening+case');
+  }
+
+  try {
+    await createAccountOpeningFieldMappingTemplate(
+      caseId,
+      value(formData, 'templateName') || null,
+    );
+  } catch (error) {
+    redirect(
+      buildRedirectTarget(
+        caseId,
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to save mapping template.',
+        },
+        returnTo,
+      ),
+    );
+  }
+
+  revalidatePath('/dashboard/review');
+  revalidatePath(`/dashboard/account-opening/${caseId}`);
+  redirect(
+    buildRedirectTarget(
+      caseId,
+      {
+        message: 'Mapping template saved for reviewed reuse.',
+      },
+      returnTo,
+    ),
+  );
+}
+
+export async function submitApplyAccountOpeningFieldMappingTemplateAction(
+  formData: FormData,
+) {
+  const caseId = value(formData, 'caseId');
+  const templateId = value(formData, 'templateId');
+  const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
+
+  if (!caseId || !templateId) {
+    redirect('/dashboard/review?error=Missing+mapping+template');
+  }
+
+  try {
+    await applyAccountOpeningFieldMappingTemplate(caseId, templateId);
+  } catch (error) {
+    redirect(
+      buildRedirectTarget(
+        caseId,
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to apply mapping template.',
+        },
+        returnTo,
+      ),
+    );
+  }
+
+  revalidatePath('/dashboard/review');
+  revalidatePath(`/dashboard/account-opening/${caseId}`);
+  redirect(
+    buildRedirectTarget(
+      caseId,
+      {
+        message: 'Mapping template applied for review.',
       },
       returnTo,
     ),
