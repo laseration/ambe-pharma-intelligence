@@ -7,6 +7,7 @@ import {
 } from '../../../../lib/accountOpeningApi';
 import {
   submitAccountOpeningFieldMappingsAction,
+  submitGenerateAccountOpeningFillPreviewAction,
   submitGenerateAccountOpeningDraftAction,
   submitAccountOpeningMissingInfoAction,
   submitAccountOpeningStatusAction,
@@ -125,6 +126,23 @@ function renderNullable(
   }
 
   return renderValue(value, fallback);
+}
+
+function renderSummaryValue(
+  record: Record<string, unknown> | null | undefined,
+  key: string,
+  fallback = '0',
+) {
+  const value = record?.[key];
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    return value;
+  }
+
+  return fallback;
 }
 
 function hiddenInput(name: string, value: string) {
@@ -698,6 +716,142 @@ export default async function AccountOpeningDetailPage({
             workflow records.
           </p>
           <FieldMappingForm item={item} returnTo={returnTo} />
+        </section>
+
+        <section className="panel dashboard-panel">
+          <div className="dashboard-section-header">
+            <div>
+              <h3 className="section-title">Internal fill-value preview</h3>
+              <p className="copy review-summary-copy">
+                Internal fill-value preview only. This uses the original
+                supplier/client form reference and saved reviewed mappings to
+                prepare safe values for operator review. It does not fill
+                PDF/Word supplier forms, generate a completed supplier PDF/Word
+                form, sign, send, submit, file completed forms to SharePoint, or
+                trigger purchase/order/buy workflows. Blocked and
+                review-required fields remain blank.
+              </p>
+            </div>
+            <form action={submitGenerateAccountOpeningFillPreviewAction}>
+              {hiddenInput('caseId', item.id)}
+              {hiddenInput('returnTo', returnTo)}
+              <button className="button" type="submit">
+                Generate fill-value preview
+              </button>
+            </form>
+          </div>
+
+          <dl className="duplicate-product-details">
+            <div>
+              <dt>Original form references</dt>
+              <dd>{item.originalForms.length}</dd>
+            </div>
+            <div>
+              <dt>Latest preview</dt>
+              <dd>
+                {item.latestFillPreview
+                  ? formatDateTime(item.latestFillPreview.generatedAt)
+                  : 'Not generated'}
+              </dd>
+            </div>
+            <div>
+              <dt>Preview value fields</dt>
+              <dd>
+                {renderSummaryValue(
+                  item.latestFillPreview?.summary,
+                  'filledFieldCount',
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt>Blank fields</dt>
+              <dd>
+                {renderSummaryValue(
+                  item.latestFillPreview?.summary,
+                  'blankFieldCount',
+                )}
+              </dd>
+            </div>
+          </dl>
+
+          {item.originalForms.length ? (
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Original form</th>
+                    <th>Type</th>
+                    <th>Fill support</th>
+                    <th>Storage ref</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {item.originalForms.map((form) => (
+                    <tr key={form.id}>
+                      <td>{form.fileName}</td>
+                      <td>{form.formType}</td>
+                      <td>{form.fillSupportStatus}</td>
+                      <td>
+                        {renderValue(
+                          form.storageFileUrl ?? form.storageFolderUrl,
+                          form.localBlobAvailable
+                            ? 'Local blob available'
+                            : 'Metadata only',
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="copy review-summary-copy">
+              No original supplier/client form reference has been captured yet.
+            </p>
+          )}
+
+          {item.latestFillPreview ? (
+            <div className="actions">
+              <a
+                className="button"
+                href={downloadHref(item.id, 'fill-preview.md')}
+              >
+                Download preview markdown
+              </a>
+              <a
+                className="button"
+                href={downloadHref(item.id, 'fill-preview.json')}
+              >
+                Download preview JSON
+              </a>
+              <a
+                className="button"
+                href={downloadHref(item.id, 'fill-values.json')}
+              >
+                Download fill values
+              </a>
+              <a
+                className="button"
+                href={downloadHref(item.id, 'blank-fields.json')}
+              >
+                Download blank fields
+              </a>
+              <a
+                className="button"
+                href={downloadHref(item.id, 'original-form-reference.json')}
+              >
+                Download form reference
+              </a>
+            </div>
+          ) : null}
+
+          <p className="alert alert-warning">
+            This is not a signed or submitted supplier form. Signature, Direct
+            Debit, bank authority, bank details, guarantee, indemnity,
+            director-only, and unresolved regulatory fields remain blank. This
+            does not fill PDF/Word supplier forms or generate a completed
+            supplier PDF/Word form.
+          </p>
         </section>
 
         <section className="panel dashboard-panel">

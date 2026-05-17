@@ -27,6 +27,14 @@ import {
   type AccountOpeningReviewExportFile,
   type AccountOpeningReviewExportPack,
 } from './reviewExport';
+import {
+  buildAccountOpeningFillPreviewPack,
+  buildAccountOpeningFillPreviewPackFromPayload,
+  getAccountOpeningFillPreviewFile,
+  type AccountOpeningFillPreviewFile,
+  type AccountOpeningFillPreviewPack,
+  type AccountOpeningFillPreviewPayload,
+} from './fillPreview';
 
 export type AccountOpeningStructuredFields = {
   companyName: string;
@@ -121,8 +129,10 @@ export type AccountOpeningCaseDetail = {
   draftVersion: string | null;
   draftGeneratedAt: string | null;
   sourceEvidence: AccountOpeningSourceEvidenceDetail[];
+  originalForms: AccountOpeningOriginalFormDetail[];
   completionDraft: AccountOpeningCompletionDraft;
   fieldMappings: AccountOpeningFieldMappingReview;
+  latestFillPreview: AccountOpeningFillPreviewDetail | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -147,6 +157,39 @@ export type AccountOpeningSourceEvidenceDetail = {
   storageDriveItemId: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+};
+
+export type AccountOpeningOriginalFormDetail = {
+  id: string;
+  sourceEvidenceId: string | null;
+  fileName: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  fileHash: string | null;
+  storageProvider: string | null;
+  storageFolderUrl: string | null;
+  storageFileUrl: string | null;
+  storageDriveItemId: string | null;
+  localBlobAvailable: boolean;
+  formType: string;
+  fillSupportStatus: string;
+  detectedFieldCount: number | null;
+  detectionSummary: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AccountOpeningFillPreviewDetail = {
+  id: string;
+  originalFormId: string | null;
+  status: string;
+  previewVersion: string;
+  fileNames: string[];
+  summary: Record<string, unknown>;
+  safetySummary: Record<string, unknown>;
+  generatedAt: string;
+  createdByType: string | null;
+  createdByIdentifier: string | null;
 };
 
 export type AccountOpeningCase = {
@@ -210,6 +253,8 @@ export type PersistedAccountOpeningReviewCase = {
   draftSummary: unknown;
   sourceEvidence?: PersistedAccountOpeningSourceEvidence[];
   fieldMappings?: PersistedAccountOpeningFieldMapping[];
+  originalForms?: PersistedAccountOpeningOriginalForm[];
+  fillPreviews?: PersistedAccountOpeningFillPreview[];
   createdAt: Date;
   updatedAt: Date;
 };
@@ -236,6 +281,42 @@ export type PersistedAccountOpeningSourceEvidence = {
   metadata?: unknown;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type PersistedAccountOpeningOriginalForm = {
+  id: string;
+  accountOpeningCaseId?: string;
+  sourceEvidenceId: string | null;
+  fileName: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  fileHash: string | null;
+  storageProvider: string | null;
+  storageFolderUrl: string | null;
+  storageFileUrl: string | null;
+  storageDriveItemId: string | null;
+  localBlobAvailable: boolean;
+  formType: string;
+  fillSupportStatus: string;
+  detectedFieldCount: number | null;
+  detectionSummary: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type PersistedAccountOpeningFillPreview = {
+  id: string;
+  accountOpeningCaseId?: string;
+  originalFormId: string | null;
+  status: string;
+  previewVersion: string;
+  fileNames: unknown;
+  previewJson: unknown;
+  fieldSummary: unknown;
+  safetySummary: unknown;
+  createdByType: string | null;
+  createdByIdentifier: string | null;
+  createdAt: Date;
 };
 
 export type AccountOpeningDetection = {
@@ -550,6 +631,165 @@ function buildSourceEvidenceDetailFromPersisted(
   };
 }
 
+function formTypeFromFile(input: {
+  fileName: string | null | undefined;
+  mimeType: string | null | undefined;
+}): string {
+  const value = `${input.fileName ?? ''} ${input.mimeType ?? ''}`.toLowerCase();
+
+  if (/\bpdf\b|\.pdf\b/.test(value)) {
+    return 'PDF';
+  }
+
+  if (/wordprocessingml|msword|\.docx?\b/.test(value)) {
+    return 'WORD';
+  }
+
+  if (/image\/|\.png\b|\.jpe?g\b|\.tiff?\b/.test(value)) {
+    return 'IMAGE';
+  }
+
+  return 'UNKNOWN';
+}
+
+function fillSupportStatusForFormType(formType: string): string {
+  if (formType === 'PDF' || formType === 'WORD') {
+    return 'PREVIEW_SUPPORTED';
+  }
+
+  if (formType === 'IMAGE') {
+    return 'REFERENCE_ONLY';
+  }
+
+  return 'UNSUPPORTED';
+}
+
+function originalFormRowsFromEvidence(input: {
+  accountOpeningCaseId: string;
+  sourceEvidence: PersistedAccountOpeningSourceEvidence[];
+}): Array<
+  Omit<PersistedAccountOpeningOriginalForm, 'id' | 'createdAt' | 'updatedAt'>
+> {
+  return input.sourceEvidence
+    .filter((evidence) => evidence.sourceType === 'ATTACHMENT')
+    .filter((evidence) => Boolean(evidence.fileName?.trim()))
+    .map((evidence) => {
+      const fileName =
+        sanitizeDashboardText(evidence.fileName) ?? 'account-opening-form';
+      const mimeType = sanitizeDashboardText(evidence.mimeType) ?? null;
+      const formType = formTypeFromFile({ fileName, mimeType });
+      const fileHash =
+        evidence.extractedTextHash ??
+        hashText(
+          [
+            fileName,
+            mimeType,
+            evidence.sizeBytes ? String(evidence.sizeBytes) : null,
+            evidence.storageDriveItemId,
+            evidence.storageFileUrl,
+          ]
+            .filter((item): item is string => Boolean(item))
+            .join('|'),
+        );
+
+      return {
+        accountOpeningCaseId: input.accountOpeningCaseId,
+        sourceEvidenceId: evidence.id,
+        fileName,
+        mimeType,
+        sizeBytes: evidence.sizeBytes,
+        fileHash,
+        storageProvider:
+          sanitizeDashboardText(evidence.storageProvider) ?? null,
+        storageFolderUrl:
+          sanitizeDashboardText(evidence.storageFolderUrl) ?? null,
+        storageFileUrl: sanitizeDashboardText(evidence.storageFileUrl) ?? null,
+        storageDriveItemId:
+          sanitizeDashboardText(evidence.storageDriveItemId) ?? null,
+        localBlobAvailable: false,
+        formType,
+        fillSupportStatus: fillSupportStatusForFormType(formType),
+        detectedFieldCount: null,
+        detectionSummary: jsonObject({
+          capturedFrom: 'SOURCE_EVIDENCE',
+          metadataOnly: true,
+          rawFileBytesStored: false,
+          rawExtractedTextStored: false,
+          extractedTextHash: evidence.extractedTextHash,
+          note: 'Original supplier/client form reference only. Raw file bytes are not stored in this database row.',
+        }),
+      };
+    });
+}
+
+function buildOriginalFormDetailFromPersisted(
+  form: PersistedAccountOpeningOriginalForm,
+): AccountOpeningOriginalFormDetail {
+  return {
+    id: form.id,
+    sourceEvidenceId: form.sourceEvidenceId,
+    fileName: sanitizeDashboardText(form.fileName) ?? 'account-opening-form',
+    mimeType: sanitizeDashboardText(form.mimeType) ?? null,
+    sizeBytes: form.sizeBytes,
+    fileHash: form.fileHash,
+    storageProvider: sanitizeDashboardText(form.storageProvider) ?? null,
+    storageFolderUrl: sanitizeDashboardText(form.storageFolderUrl) ?? null,
+    storageFileUrl: sanitizeDashboardText(form.storageFileUrl) ?? null,
+    storageDriveItemId: sanitizeDashboardText(form.storageDriveItemId) ?? null,
+    localBlobAvailable: Boolean(form.localBlobAvailable),
+    formType: form.formType,
+    fillSupportStatus: form.fillSupportStatus,
+    detectedFieldCount: form.detectedFieldCount,
+    detectionSummary: jsonRecordFromUnknown(form.detectionSummary),
+    createdAt: form.createdAt.toISOString(),
+    updatedAt: form.updatedAt.toISOString(),
+  };
+}
+
+function isAccountOpeningFillPreviewPayload(
+  value: unknown,
+): value is AccountOpeningFillPreviewPayload {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const preview = value as Partial<AccountOpeningFillPreviewPayload>;
+  return (
+    preview.previewVersion === 'fill-preview-v1' &&
+    typeof preview.generatedAt === 'string' &&
+    typeof preview.caseId === 'string' &&
+    Array.isArray(preview.filledFields) &&
+    Array.isArray(preview.blankFields) &&
+    Boolean(
+      preview.futureBinaryFormRequirements &&
+      typeof preview.futureBinaryFormRequirements === 'object',
+    ) &&
+    Boolean(preview.safety && typeof preview.safety === 'object')
+  );
+}
+
+function buildFillPreviewDetailFromPersisted(
+  preview: PersistedAccountOpeningFillPreview,
+): AccountOpeningFillPreviewDetail {
+  const payload = isAccountOpeningFillPreviewPayload(preview.previewJson)
+    ? preview.previewJson
+    : null;
+
+  return {
+    id: preview.id,
+    originalFormId: preview.originalFormId,
+    status: preview.status,
+    previewVersion: preview.previewVersion,
+    fileNames: safeStringArrayFromJson(preview.fileNames),
+    summary: payload?.summary ?? jsonRecordFromUnknown(preview.fieldSummary),
+    safetySummary:
+      payload?.safety ?? jsonRecordFromUnknown(preview.safetySummary),
+    generatedAt: preview.createdAt.toISOString(),
+    createdByType: preview.createdByType,
+    createdByIdentifier: sanitizeDashboardText(preview.createdByIdentifier),
+  };
+}
+
 function draftEvidenceFromDetails(
   evidence: AccountOpeningSourceEvidenceDetail[],
 ): AccountOpeningDraftSourceEvidenceInput[] {
@@ -656,6 +896,44 @@ function evidenceFingerprint(
   >,
 ): string {
   return JSON.stringify(evidence.map(evidenceComparable));
+}
+
+function originalFormComparable(
+  form:
+    | Omit<
+        PersistedAccountOpeningOriginalForm,
+        'id' | 'createdAt' | 'updatedAt'
+      >
+    | PersistedAccountOpeningOriginalForm,
+) {
+  return {
+    sourceEvidenceId: form.sourceEvidenceId ?? null,
+    fileName: form.fileName,
+    mimeType: form.mimeType ?? null,
+    sizeBytes: form.sizeBytes ?? null,
+    fileHash: form.fileHash ?? null,
+    storageProvider: form.storageProvider ?? null,
+    storageFolderUrl: form.storageFolderUrl ?? null,
+    storageFileUrl: form.storageFileUrl ?? null,
+    storageDriveItemId: form.storageDriveItemId ?? null,
+    localBlobAvailable: Boolean(form.localBlobAvailable),
+    formType: form.formType,
+    fillSupportStatus: form.fillSupportStatus,
+    detectedFieldCount: form.detectedFieldCount ?? null,
+    detectionSummary: jsonRecordFromUnknown(form.detectionSummary),
+  };
+}
+
+function originalFormFingerprint(
+  forms: Array<
+    | Omit<
+        PersistedAccountOpeningOriginalForm,
+        'id' | 'createdAt' | 'updatedAt'
+      >
+    | PersistedAccountOpeningOriginalForm
+  >,
+): string {
+  return JSON.stringify(forms.map(originalFormComparable));
 }
 
 function draftRoutingEventType(
@@ -1021,6 +1299,29 @@ export type AccountOpeningCaseRepository = {
       >
     >;
   }) => Promise<PersistedAccountOpeningFieldMapping[]>;
+  replaceOriginalForms?: (args: {
+    accountOpeningCaseId: string;
+    forms: Array<
+      Omit<
+        PersistedAccountOpeningOriginalForm,
+        'id' | 'createdAt' | 'updatedAt'
+      >
+    >;
+  }) => Promise<PersistedAccountOpeningOriginalForm[]>;
+  createFillPreview?: (args: {
+    data: {
+      accountOpeningCaseId: string;
+      originalFormId: string | null;
+      status: string;
+      previewVersion: string;
+      fileNames: Prisma.InputJsonValue;
+      previewJson: Prisma.InputJsonValue;
+      fieldSummary: Prisma.InputJsonValue;
+      safetySummary: Prisma.InputJsonValue;
+      createdByType: string | null;
+      createdByIdentifier: string | null;
+    };
+  }) => Promise<PersistedAccountOpeningFillPreview>;
   createEvent: (args: {
     data: AccountOpeningCaseEventInput;
   }) => Promise<unknown>;
@@ -1040,6 +1341,29 @@ function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
       findMany: (
         args: unknown,
       ) => Promise<PersistedAccountOpeningFieldMapping[]>;
+    };
+    accountOpeningOriginalForm: {
+      deleteMany: (args: unknown) => Promise<unknown>;
+      createMany: (args: unknown) => Promise<unknown>;
+      findMany: (
+        args: unknown,
+      ) => Promise<PersistedAccountOpeningOriginalForm[]>;
+    };
+    accountOpeningFillPreview: {
+      create: (args: {
+        data: {
+          accountOpeningCaseId: string;
+          originalFormId: string | null;
+          status: string;
+          previewVersion: string;
+          fileNames: Prisma.InputJsonValue;
+          previewJson: Prisma.InputJsonValue;
+          fieldSummary: Prisma.InputJsonValue;
+          safetySummary: Prisma.InputJsonValue;
+          createdByType: string | null;
+          createdByIdentifier: string | null;
+        };
+      }) => Promise<PersistedAccountOpeningFillPreview>;
     };
     accountOpeningCaseEvent: {
       create: (args: {
@@ -1067,6 +1391,23 @@ function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
         orderBy: { sortOrder: 'asc' },
       });
     },
+    replaceOriginalForms: async ({ accountOpeningCaseId, forms }) => {
+      await client.accountOpeningOriginalForm.deleteMany({
+        where: { accountOpeningCaseId },
+      });
+
+      if (forms.length > 0) {
+        await client.accountOpeningOriginalForm.createMany({
+          data: forms,
+        });
+      }
+
+      return client.accountOpeningOriginalForm.findMany({
+        where: { accountOpeningCaseId },
+        orderBy: { createdAt: 'asc' },
+      });
+    },
+    createFillPreview: (args) => client.accountOpeningFillPreview.create(args),
     createEvent: (args) => client.accountOpeningCaseEvent.create(args),
   };
 }
@@ -1077,6 +1418,12 @@ export function buildAccountOpeningCaseDetail(
   const sourceEvidence = (accountCase.sourceEvidence ?? []).map(
     buildSourceEvidenceDetailFromPersisted,
   );
+  const originalForms = (accountCase.originalForms ?? []).map(
+    buildOriginalFormDetailFromPersisted,
+  );
+  const latestFillPreview = accountCase.fillPreviews?.[0]
+    ? buildFillPreviewDetailFromPersisted(accountCase.fillPreviews[0])
+    : null;
   const riskFlags = stringArrayFromJson(accountCase.riskFlags);
   const detectedRoles = stringArrayFromJson(accountCase.detectedRoles);
   const detectedNames = stringArrayFromJson(accountCase.detectedNames);
@@ -1150,8 +1497,10 @@ export function buildAccountOpeningCaseDetail(
     draftVersion: accountCase.draftVersion,
     draftGeneratedAt: accountCase.draftGeneratedAt?.toISOString() ?? null,
     sourceEvidence,
+    originalForms,
     completionDraft,
     fieldMappings,
+    latestFillPreview,
     createdAt: accountCase.createdAt.toISOString(),
     updatedAt: accountCase.updatedAt.toISOString(),
   };
@@ -1169,6 +1518,13 @@ export async function getAccountOpeningCaseDetail(
       },
       fieldMappings: {
         orderBy: { sortOrder: 'asc' },
+      },
+      originalForms: {
+        orderBy: { createdAt: 'asc' },
+      },
+      fillPreviews: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
       },
     },
   });
@@ -1210,6 +1566,13 @@ export async function saveAccountOpeningMissingInfo(input: {
         },
         fieldMappings: {
           orderBy: { sortOrder: 'asc' },
+        },
+        originalForms: {
+          orderBy: { createdAt: 'asc' },
+        },
+        fillPreviews: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
         },
       },
     })) ?? updated;
@@ -1264,6 +1627,13 @@ export async function updateAccountOpeningCaseStatus(input: {
         fieldMappings: {
           orderBy: { sortOrder: 'asc' },
         },
+        originalForms: {
+          orderBy: { createdAt: 'asc' },
+        },
+        fillPreviews: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
       },
     })) ?? updated;
 
@@ -1307,6 +1677,13 @@ export async function updateAccountOpeningCaseStatus(input: {
           fieldMappings: {
             orderBy: { sortOrder: 'asc' },
           },
+          originalForms: {
+            orderBy: { createdAt: 'asc' },
+          },
+          fillPreviews: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
         },
       })) ?? updated;
 
@@ -1349,6 +1726,13 @@ async function findCaseWithEvidence(
       },
       fieldMappings: {
         orderBy: { sortOrder: 'asc' },
+      },
+      originalForms: {
+        orderBy: { createdAt: 'asc' },
+      },
+      fillPreviews: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
       },
     },
   });
@@ -1482,6 +1866,221 @@ export async function saveAccountOpeningFieldMappings(input: {
   });
 
   return review;
+}
+
+async function ensureOriginalFormReferences(input: {
+  accountCase: PersistedAccountOpeningReviewCase;
+  repository: AccountOpeningCaseRepository;
+}): Promise<PersistedAccountOpeningReviewCase> {
+  const existingForms = input.accountCase.originalForms ?? [];
+
+  if (existingForms.length > 0) {
+    return input.accountCase;
+  }
+
+  if (!input.repository.replaceOriginalForms) {
+    return input.accountCase;
+  }
+
+  const sourceEvidence = input.accountCase.sourceEvidence ?? [];
+  const formRows = originalFormRowsFromEvidence({
+    accountOpeningCaseId: input.accountCase.id,
+    sourceEvidence,
+  });
+
+  if (formRows.length === 0) {
+    return input.accountCase;
+  }
+
+  await input.repository.replaceOriginalForms({
+    accountOpeningCaseId: input.accountCase.id,
+    forms: formRows,
+  });
+
+  await input.repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.accountCase.id,
+      actionType: 'ORIGINAL_FORM_REFERENCE_CAPTURED',
+      previousStatus: input.accountCase.status,
+      newStatus: input.accountCase.status,
+      actorType: 'SYSTEM',
+      actorIdentifier: 'account-opening-original-form-reference',
+      metadata: jsonObject({
+        formCount: formRows.length,
+        rawFileBytesStored: false,
+        rawExtractedTextStored: false,
+        completedSupplierFormsGenerated: false,
+        sharePointCompletedFormFiled: false,
+      }),
+    },
+  });
+
+  return (
+    (await findCaseWithEvidence(input.accountCase.id, input.repository)) ??
+    input.accountCase
+  );
+}
+
+function assertCanGenerateFillPreview(detail: AccountOpeningCaseDetail) {
+  if (!detail.completionDraft.isStored) {
+    throw new Error(
+      'Generate and store the completion draft before creating a fill preview.',
+    );
+  }
+
+  if (detail.fieldMappings.status !== 'SAVED') {
+    throw new Error(
+      'Save reviewed field mappings before creating a fill preview.',
+    );
+  }
+
+  if (detail.originalForms.length === 0) {
+    throw new Error(
+      'No original supplier/client form reference is available for this account-opening case.',
+    );
+  }
+}
+
+function fillPreviewAuditMetadata(
+  pack: AccountOpeningFillPreviewPack,
+  fileName?: string | null,
+) {
+  return jsonObject({
+    generatedAt: pack.generatedAt,
+    fileName: fileName ?? null,
+    fileNames: pack.metadata.fileNames,
+    summary: pack.payload.summary,
+    internalPreviewOnly: true,
+    rawExtractedTextIncluded: false,
+    rawAttachmentBytesIncluded: false,
+    rawBankDetailsIncluded: false,
+    signedFormsIncluded: false,
+    supplierMessageIncluded: false,
+    supplierSubmissionTriggered: false,
+    sharePointCompletedFormFiled: false,
+    purchaseWorkflowTriggered: false,
+  });
+}
+
+export async function generateAccountOpeningFillPreview(input: {
+  id: string;
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  repository?: AccountOpeningCaseRepository;
+  now?: Date;
+}): Promise<{
+  item: AccountOpeningCaseDetail;
+  preview: AccountOpeningFillPreviewPack;
+}> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  let existing = await findCaseWithEvidence(input.id, repository);
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  existing = await ensureOriginalFormReferences({
+    accountCase: existing,
+    repository,
+  });
+
+  if (!repository.createFillPreview) {
+    throw new Error('Account-opening fill preview repository is not writable.');
+  }
+
+  const detail = buildAccountOpeningCaseDetail(existing);
+  assertCanGenerateFillPreview(detail);
+
+  const pack = buildAccountOpeningFillPreviewPack(detail, input.now);
+  await repository.createFillPreview({
+    data: {
+      accountOpeningCaseId: input.id,
+      originalFormId: pack.payload.originalForm?.id ?? null,
+      status: pack.payload.status,
+      previewVersion: pack.payload.previewVersion,
+      fileNames: jsonArray([...pack.metadata.fileNames]),
+      previewJson: jsonObject(
+        pack.payload as unknown as Record<string, unknown>,
+      ),
+      fieldSummary: jsonObject(
+        pack.payload.summary as unknown as Record<string, unknown>,
+      ),
+      safetySummary: jsonObject(
+        pack.payload.safety as unknown as Record<string, unknown>,
+      ),
+      createdByType: input.actorType?.trim() || 'OPERATOR',
+      createdByIdentifier: sanitizeDashboardText(input.actorIdentifier),
+    },
+  });
+
+  await repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.id,
+      actionType: 'FILL_PREVIEW_GENERATED',
+      previousStatus: existing.status,
+      newStatus: existing.status,
+      actorType: input.actorType?.trim() || 'OPERATOR',
+      actorIdentifier: sanitizeDashboardText(input.actorIdentifier) ?? null,
+      metadata: fillPreviewAuditMetadata(pack),
+    },
+  });
+
+  const updated =
+    (await findCaseWithEvidence(input.id, repository)) ?? existing;
+
+  return {
+    item: buildAccountOpeningCaseDetail(updated),
+    preview: pack,
+  };
+}
+
+export async function downloadAccountOpeningFillPreviewFile(input: {
+  id: string;
+  fileName: string;
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  repository?: AccountOpeningCaseRepository;
+}): Promise<AccountOpeningFillPreviewFile> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  const existing = await findCaseWithEvidence(input.id, repository);
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  const latestPreview = existing.fillPreviews?.[0] ?? null;
+
+  if (
+    !latestPreview ||
+    !isAccountOpeningFillPreviewPayload(latestPreview.previewJson)
+  ) {
+    throw new Error(
+      'Generate a fill preview before downloading preview files.',
+    );
+  }
+
+  const pack = buildAccountOpeningFillPreviewPackFromPayload(
+    latestPreview.previewJson,
+  );
+  const file = getAccountOpeningFillPreviewFile(pack, input.fileName);
+
+  if (!file) {
+    throw new Error('Account-opening fill preview file not found.');
+  }
+
+  await repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.id,
+      actionType: 'FILL_PREVIEW_FILE_DOWNLOADED',
+      previousStatus: existing.status,
+      newStatus: existing.status,
+      actorType: input.actorType?.trim() || 'OPERATOR',
+      actorIdentifier: sanitizeDashboardText(input.actorIdentifier) ?? null,
+      metadata: fillPreviewAuditMetadata(pack, file.fileName),
+    },
+  });
+
+  return file;
 }
 
 export async function writeDraftAuditEvents(input: {
@@ -1694,6 +2293,13 @@ export async function upsertAccountOpeningCase(
       deleteMany: (args: unknown) => Promise<unknown>;
       createMany: (args: unknown) => Promise<unknown>;
     };
+    accountOpeningOriginalForm: {
+      deleteMany: (args: unknown) => Promise<unknown>;
+      createMany: (args: unknown) => Promise<unknown>;
+      findMany: (
+        args: unknown,
+      ) => Promise<PersistedAccountOpeningOriginalForm[]>;
+    };
   };
 
   const accountCase = await client.accountOpeningCase.upsert(data);
@@ -1705,6 +2311,13 @@ export async function upsertAccountOpeningCase(
       },
       fieldMappings: {
         orderBy: { sortOrder: 'asc' },
+      },
+      originalForms: {
+        orderBy: { createdAt: 'asc' },
+      },
+      fillPreviews: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
       },
     },
   });
@@ -1743,7 +2356,7 @@ export async function upsertAccountOpeningCase(
     }
   }
 
-  const accountCaseWithEvidence = await client.accountOpeningCase.findUnique({
+  let accountCaseWithEvidence = await client.accountOpeningCase.findUnique({
     where: { id: accountCase.id },
     include: {
       sourceEvidence: {
@@ -1752,11 +2365,76 @@ export async function upsertAccountOpeningCase(
       fieldMappings: {
         orderBy: { sortOrder: 'asc' },
       },
+      originalForms: {
+        orderBy: { createdAt: 'asc' },
+      },
+      fillPreviews: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
     },
   });
 
   if (!accountCaseWithEvidence) {
     return null;
+  }
+
+  const originalFormRows = originalFormRowsFromEvidence({
+    accountOpeningCaseId: accountCase.id,
+    sourceEvidence: accountCaseWithEvidence.sourceEvidence ?? [],
+  });
+  const originalFormsChanged =
+    originalFormFingerprint(accountCaseWithEvidence.originalForms ?? []) !==
+    originalFormFingerprint(originalFormRows);
+
+  if (originalFormsChanged) {
+    await client.accountOpeningOriginalForm.deleteMany({
+      where: { accountOpeningCaseId: accountCase.id },
+    });
+
+    if (originalFormRows.length > 0) {
+      await client.accountOpeningOriginalForm.createMany({
+        data: originalFormRows,
+      });
+
+      await client.accountOpeningCaseEvent.create({
+        data: {
+          accountOpeningCaseId: accountCase.id,
+          actionType: 'ORIGINAL_FORM_REFERENCE_CAPTURED',
+          previousStatus: accountCase.status,
+          newStatus: accountCase.status,
+          actorType: 'SYSTEM',
+          actorIdentifier: 'email-account-opening-ingestion',
+          metadata: jsonObject({
+            formCount: originalFormRows.length,
+            rawFileBytesStored: false,
+            rawExtractedTextStored: false,
+            completedSupplierFormsGenerated: false,
+            sharePointCompletedFormFiled: false,
+          }),
+        },
+      });
+    }
+
+    accountCaseWithEvidence =
+      (await client.accountOpeningCase.findUnique({
+        where: { id: accountCase.id },
+        include: {
+          sourceEvidence: {
+            orderBy: { createdAt: 'asc' },
+          },
+          fieldMappings: {
+            orderBy: { sortOrder: 'asc' },
+          },
+          originalForms: {
+            orderBy: { createdAt: 'asc' },
+          },
+          fillPreviews: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+        },
+      })) ?? accountCaseWithEvidence;
   }
 
   const draft = buildCompletionDraftForCase({
@@ -1811,6 +2489,13 @@ export async function upsertAccountOpeningCase(
       },
       fieldMappings: {
         orderBy: { sortOrder: 'asc' },
+      },
+      originalForms: {
+        orderBy: { createdAt: 'asc' },
+      },
+      fillPreviews: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
       },
     },
   });

@@ -14,8 +14,10 @@ import {
   parseRequest,
 } from '../http/validation';
 import {
+  downloadAccountOpeningFillPreviewFile,
   downloadAccountOpeningReviewedExportFile,
   exportAccountOpeningReviewedPack,
+  generateAccountOpeningFillPreview,
   generateAccountOpeningDraft,
   getAccountOpeningFieldMappingReview,
   getAccountOpeningCaseDetail,
@@ -27,6 +29,7 @@ import {
   type AccountOpeningStatusAction,
 } from './service';
 import { ACCOUNT_OPENING_REVIEW_EXPORT_FILE_NAMES } from './reviewExport';
+import { ACCOUNT_OPENING_FILL_PREVIEW_FILE_NAMES } from './fillPreview';
 import type { AccountOpeningFieldMappingSaveInput } from './fieldMapping';
 
 type AccountOpeningRouteDependencies = {
@@ -34,6 +37,8 @@ type AccountOpeningRouteDependencies = {
   generateDraft: typeof generateAccountOpeningDraft;
   getFieldMappings: typeof getAccountOpeningFieldMappingReview;
   saveFieldMappings: typeof saveAccountOpeningFieldMappings;
+  generateFillPreview: typeof generateAccountOpeningFillPreview;
+  downloadFillPreviewFile: typeof downloadAccountOpeningFillPreviewFile;
   exportPack: typeof exportAccountOpeningReviewedPack;
   downloadExportFile: typeof downloadAccountOpeningReviewedExportFile;
   saveMissingInfo: typeof saveAccountOpeningMissingInfo;
@@ -104,12 +109,17 @@ const exportFileParamSchema = idParamSchema.extend({
 const exportFileNames = new Set<string>(
   ACCOUNT_OPENING_REVIEW_EXPORT_FILE_NAMES,
 );
+const fillPreviewFileNames = new Set<string>(
+  ACCOUNT_OPENING_FILL_PREVIEW_FILE_NAMES,
+);
 
 const defaultDependencies: AccountOpeningRouteDependencies = {
   getCaseDetail: getAccountOpeningCaseDetail,
   generateDraft: generateAccountOpeningDraft,
   getFieldMappings: getAccountOpeningFieldMappingReview,
   saveFieldMappings: saveAccountOpeningFieldMappings,
+  generateFillPreview: generateAccountOpeningFillPreview,
+  downloadFillPreviewFile: downloadAccountOpeningFillPreviewFile,
   exportPack: exportAccountOpeningReviewedPack,
   downloadExportFile: downloadAccountOpeningReviewedExportFile,
   saveMissingInfo: saveAccountOpeningMissingInfo,
@@ -254,6 +264,61 @@ export function createAccountOpeningRouter(
     }),
   );
 
+  router.post(
+    '/:id/fill-preview',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { params, body } = parseRequest<
+        z.infer<typeof idParamSchema>,
+        unknown,
+        z.infer<typeof generateDraftBodySchema>
+      >(request, {
+        params: idParamSchema,
+        body: generateDraftBodySchema,
+      });
+      const actor = resolveInternalActor(request, body);
+
+      const result = await dependencies.generateFillPreview({
+        id: params.id,
+        ...actor,
+      });
+
+      response.json(result);
+    }),
+  );
+
+  router.get(
+    '/:id/fill-preview/:fileName',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { params } = parseRequest<z.infer<typeof exportFileParamSchema>>(
+        request,
+        {
+          params: exportFileParamSchema,
+        },
+      );
+      const actor = resolveInternalActor(request, {});
+      if (!fillPreviewFileNames.has(params.fileName)) {
+        throw new NotFoundError('Account-opening fill preview file not found.');
+      }
+
+      const file = await dependencies.downloadFillPreviewFile({
+        id: params.id,
+        fileName: params.fileName,
+        ...actor,
+      });
+
+      response
+        .status(200)
+        .setHeader('content-type', file.contentType)
+        .setHeader(
+          'content-disposition',
+          `attachment; filename="${file.fileName}"`,
+        )
+        .send(file.content);
+    }),
+  );
+
   router.get(
     '/:id/export-pack',
     requireInternalOperatorAccess,
@@ -296,7 +361,7 @@ export function createAccountOpeningRouter(
 
       response
         .status(200)
-        .type(file.contentType)
+        .setHeader('content-type', file.contentType)
         .setHeader(
           'content-disposition',
           `attachment; filename="${file.fileName}"`,

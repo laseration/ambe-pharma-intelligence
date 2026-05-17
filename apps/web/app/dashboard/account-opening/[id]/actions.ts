@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import {
+  generateAccountOpeningFillPreview,
   generateAccountOpeningDraft,
   saveAccountOpeningFieldMappings,
   saveAccountOpeningMissingInfo,
@@ -276,6 +277,46 @@ export async function submitGenerateAccountOpeningDraftAction(
       caseId,
       {
         message: 'Completion draft generated for review.',
+      },
+      returnTo,
+    ),
+  );
+}
+
+export async function submitGenerateAccountOpeningFillPreviewAction(
+  formData: FormData,
+) {
+  const caseId = value(formData, 'caseId');
+  const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
+
+  if (!caseId) {
+    redirect('/dashboard/review?error=Missing+account-opening+case');
+  }
+
+  try {
+    await generateAccountOpeningFillPreview(caseId);
+  } catch (error) {
+    redirect(
+      buildRedirectTarget(
+        caseId,
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to generate fill-value preview.',
+        },
+        returnTo,
+      ),
+    );
+  }
+
+  revalidatePath('/dashboard/review');
+  revalidatePath(`/dashboard/account-opening/${caseId}`);
+  redirect(
+    buildRedirectTarget(
+      caseId,
+      {
+        message: 'Internal fill-value preview generated for review.',
       },
       returnTo,
     ),

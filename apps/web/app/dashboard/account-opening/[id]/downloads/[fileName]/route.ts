@@ -1,4 +1,7 @@
-import { downloadAccountOpeningReviewExportFile } from '../../../../../../lib/accountOpeningApi';
+import {
+  downloadAccountOpeningFillPreviewFile,
+  downloadAccountOpeningReviewExportFile,
+} from '../../../../../../lib/accountOpeningApi';
 import { requireAccountOpeningDownloadAccess } from '../../../../../../lib/accountOpeningDownloadAuth';
 
 export const runtime = 'nodejs';
@@ -15,9 +18,22 @@ const DOWNLOAD_FILE_NAMES = new Set([
   'source-evidence.json',
   'source-evidence.md',
 ]);
+const FILL_PREVIEW_FILE_NAMES = new Set([
+  'fill-preview.json',
+  'fill-preview.md',
+  'fill-values.json',
+  'blank-fields.json',
+  'original-form-reference.json',
+]);
+const ALL_DOWNLOAD_FILE_NAMES = new Set([
+  ...DOWNLOAD_FILE_NAMES,
+  ...FILL_PREVIEW_FILE_NAMES,
+]);
 
 function safeFileName(value: string): string {
-  return DOWNLOAD_FILE_NAMES.has(value) ? value : 'account-opening-review.txt';
+  return ALL_DOWNLOAD_FILE_NAMES.has(value)
+    ? value
+    : 'account-opening-review.txt';
 }
 
 export async function GET(
@@ -26,9 +42,9 @@ export async function GET(
 ) {
   const { id, fileName } = await context.params;
 
-  if (!DOWNLOAD_FILE_NAMES.has(fileName)) {
+  if (!ALL_DOWNLOAD_FILE_NAMES.has(fileName)) {
     return Response.json(
-      { error: 'Unsupported account-opening review export file.' },
+      { error: 'Unsupported account-opening review download file.' },
       { status: 404 },
     );
   }
@@ -39,7 +55,9 @@ export async function GET(
   }
 
   try {
-    const file = await downloadAccountOpeningReviewExportFile(id, fileName);
+    const file = FILL_PREVIEW_FILE_NAMES.has(fileName)
+      ? await downloadAccountOpeningFillPreviewFile(id, fileName)
+      : await downloadAccountOpeningReviewExportFile(id, fileName);
 
     return new Response(file.content, {
       status: 200,

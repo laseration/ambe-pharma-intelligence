@@ -155,6 +155,39 @@ export type AccountOpeningSourceEvidence = {
   updatedAt: string | null;
 };
 
+export type AccountOpeningOriginalForm = {
+  id: string;
+  sourceEvidenceId: string | null;
+  fileName: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  fileHash: string | null;
+  storageProvider: string | null;
+  storageFolderUrl: string | null;
+  storageFileUrl: string | null;
+  storageDriveItemId: string | null;
+  localBlobAvailable: boolean;
+  formType: string;
+  fillSupportStatus: string;
+  detectedFieldCount: number | null;
+  detectionSummary: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AccountOpeningFillPreviewDetail = {
+  id: string;
+  originalFormId: string | null;
+  status: string;
+  previewVersion: string;
+  fileNames: string[];
+  summary: Record<string, unknown>;
+  safetySummary: Record<string, unknown>;
+  generatedAt: string;
+  createdByType: string | null;
+  createdByIdentifier: string | null;
+};
+
 export type AccountOpeningStatusAction =
   | 'MARKED_NEEDS_INFO'
   | 'APPROVED_FOR_COMPLETION'
@@ -193,8 +226,10 @@ export type AccountOpeningCaseDetail = {
   draftVersion: string | null;
   draftGeneratedAt: string | null;
   sourceEvidence: AccountOpeningSourceEvidence[];
+  originalForms: AccountOpeningOriginalForm[];
   completionDraft: AccountOpeningCompletionDraft;
   fieldMappings: AccountOpeningFieldMappingReview;
+  latestFillPreview: AccountOpeningFillPreviewDetail | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -339,6 +374,30 @@ export async function downloadAccountOpeningReviewExportFile(
 ): Promise<AccountOpeningReviewExportFile> {
   return requestTextFile(
     `/account-opening/${encodeURIComponent(id)}/export-pack/${encodeURIComponent(fileName)}`,
+  );
+}
+
+export async function generateAccountOpeningFillPreview(
+  id: string,
+): Promise<AccountOpeningCaseDetail> {
+  const payload = await requestJson<{
+    item: AccountOpeningCaseDetail;
+  }>(`/account-opening/${encodeURIComponent(id)}/fill-preview`, {
+    method: 'POST',
+    body: JSON.stringify({
+      actorType: 'OPERATOR',
+      actorIdentifier: 'web-account-opening-review',
+    }),
+  });
+  return payload.item;
+}
+
+export async function downloadAccountOpeningFillPreviewFile(
+  id: string,
+  fileName: string,
+): Promise<AccountOpeningReviewExportFile> {
+  return requestTextFile(
+    `/account-opening/${encodeURIComponent(id)}/fill-preview/${encodeURIComponent(fileName)}`,
   );
 }
 
