@@ -303,7 +303,7 @@ export async function submitGenerateAccountOpeningFillPreviewAction(
           error:
             error instanceof Error
               ? error.message
-              : 'Failed to generate fill preview.',
+              : 'Failed to generate fill-value preview.',
         },
         returnTo,
       ),
@@ -316,7 +316,7 @@ export async function submitGenerateAccountOpeningFillPreviewAction(
     buildRedirectTarget(
       caseId,
       {
-        message: 'Internal completed-form fill preview generated for review.',
+        message: 'Internal fill-value preview generated for review.',
       },
       returnTo,
     ),

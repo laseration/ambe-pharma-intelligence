@@ -34,9 +34,12 @@ export type AccountOpeningFillPreviewPayload = {
     localBlobAvailable: boolean;
   } | null;
   originalForms: AccountOpeningCaseDetail['originalForms'];
-  layoutPreservation: {
-    preserveOriginalBrandingAndLayout: true;
-    generatedFromOriginalFormReference: boolean;
+  futureBinaryFormRequirements: {
+    originalBrandingPreservationRequired: true;
+    originalLayoutPreservationRequired: true;
+    originalFormReferenceAvailable: boolean;
+    binaryFormGenerated: false;
+    originalFormAltered: false;
     note: string;
   };
   summary: {
@@ -201,7 +204,7 @@ function blankReason(
   ) {
     return (
       mapping.blockedReason ??
-      'Blocked field. Leave blank in the completed-form preview.'
+      'Blocked field. Leave blank in the internal fill-value preview.'
     );
   }
 
@@ -220,7 +223,7 @@ function blankReason(
     return 'No reviewed proposed value is available. Leave blank.';
   }
 
-  return 'Not eligible for safe fill preview. Leave blank.';
+  return 'Not eligible for safe fill-value preview. Leave blank.';
 }
 
 function fieldMarkdown(
@@ -237,32 +240,34 @@ function blankFieldMarkdown(
 
 function buildMarkdown(payload: AccountOpeningFillPreviewPayload): string {
   const lines = [
-    '# Account-opening completed-form fill preview',
+    '# Account-opening internal fill-value preview',
     '',
     `Generated: ${payload.generatedAt}`,
     `Case ID: ${payload.caseId}`,
     `Original form: ${payload.originalForm?.fileName ?? 'No original form reference'}`,
     '',
     'Internal preview only.',
+    'This does not generate a completed supplier PDF/Word form.',
+    'This does not alter the original supplier/client form.',
     'This does not sign the form.',
     'This does not send anything to the supplier.',
     'This does not submit the form.',
-    'This does not file the completed preview in SharePoint.',
+    'This does not file completed forms to SharePoint.',
     'Signature fields remain blank until human approval.',
     'Direct Debit, bank authority, bank details, guarantee, indemnity, and director-only fields remain blank.',
     '',
-    '## Filled Fields',
+    '## Preview Value Fields',
     payload.filledFields.length
       ? payload.filledFields.map(fieldMarkdown).join('\n')
-      : '- No fields are eligible for safe fill preview.',
+      : '- No fields are eligible for safe fill-value preview.',
     '',
     '## Blank Fields',
     payload.blankFields.length
       ? payload.blankFields.map(blankFieldMarkdown).join('\n')
       : '- No blank fields recorded.',
     '',
-    '## Layout Preservation',
-    payload.layoutPreservation.note,
+    '## Future Binary Form Requirements',
+    payload.futureBinaryFormRequirements.note,
     '',
   ];
 
@@ -332,10 +337,13 @@ export function buildAccountOpeningFillPreviewPayload(
         }
       : null,
     originalForms: item.originalForms,
-    layoutPreservation: {
-      preserveOriginalBrandingAndLayout: true,
-      generatedFromOriginalFormReference: Boolean(originalForm),
-      note: 'The preview is a safe field-value overlay for the original supplier/client form reference. It must preserve the supplier/client branding and layout and must not create a rebranded AMBE form.',
+    futureBinaryFormRequirements: {
+      originalBrandingPreservationRequired: true,
+      originalLayoutPreservationRequired: true,
+      originalFormReferenceAvailable: Boolean(originalForm),
+      binaryFormGenerated: false,
+      originalFormAltered: false,
+      note: 'This pack contains preview values intended for the original supplier/client form. Any future binary PDF/DOCX fill process must preserve the supplier/client branding and layout and must not create a rebranded AMBE form.',
     },
     summary: {
       originalFormCount: item.originalForms.length,
@@ -373,11 +381,11 @@ export function buildAccountOpeningFillPreviewPayload(
       purchaseWorkflowTriggered: false,
     },
     notes: [
-      'Internal completed-form preview only.',
+      'Internal fill-value preview only.',
       'Only saved MAPPED_SAFE fields are included with values.',
       'Blocked and review-required fields are left blank.',
       'Signature fields remain blank until human approval.',
-      'No completed supplier PDF/Word form is filed in SharePoint in this slice.',
+      'No filled binary supplier PDF/Word form is generated or filed in SharePoint in this slice.',
     ],
   };
 
@@ -421,7 +429,7 @@ export function buildAccountOpeningFillPreviewPackFromPayload(
       content: stringifySafeJson({
         originalForm: payload.originalForm,
         originalForms: payload.originalForms,
-        layoutPreservation: payload.layoutPreservation,
+        futureBinaryFormRequirements: payload.futureBinaryFormRequirements,
         note: 'Reference metadata only. Raw original file bytes are not included in this preview pack.',
       }),
     },
@@ -442,7 +450,7 @@ export function buildAccountOpeningFillPreviewPackFromPayload(
       supplierSubmissionTriggered: false,
       sharePointCompletedFormFiled: false,
       purchaseWorkflowTriggered: false,
-      note: 'Safe internal completed-form preview only. No raw document bytes, raw extracted text, raw bank details, signatures, supplier messages, SharePoint filing, or purchase workflow actions are included.',
+      note: 'Safe internal fill-value preview only. No filled binary PDF/DOCX, raw document bytes, raw extracted text, raw bank details, signatures, supplier messages, SharePoint filing, or purchase workflow actions are included.',
     },
     payload,
     files,

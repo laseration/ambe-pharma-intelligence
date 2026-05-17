@@ -721,21 +721,22 @@ export default async function AccountOpeningDetailPage({
         <section className="panel dashboard-panel">
           <div className="dashboard-section-header">
             <div>
-              <h3 className="section-title">Completed-form fill preview</h3>
+              <h3 className="section-title">Internal fill-value preview</h3>
               <p className="copy review-summary-copy">
-                Internal preview only. This uses the original supplier/client
-                form reference and saved reviewed mappings to prepare safe field
-                values for operator review. It does not sign, send, submit, file
-                to SharePoint, fill PDF/Word supplier forms, or trigger
-                purchase/order/buy workflows. Blocked and review-required fields
-                remain blank.
+                Internal fill-value preview only. This uses the original
+                supplier/client form reference and saved reviewed mappings to
+                prepare safe values for operator review. It does not fill
+                PDF/Word supplier forms, generate a completed supplier PDF/Word
+                form, sign, send, submit, file completed forms to SharePoint, or
+                trigger purchase/order/buy workflows. Blocked and
+                review-required fields remain blank.
               </p>
             </div>
             <form action={submitGenerateAccountOpeningFillPreviewAction}>
               {hiddenInput('caseId', item.id)}
               {hiddenInput('returnTo', returnTo)}
               <button className="button" type="submit">
-                Generate fill preview
+                Generate fill-value preview
               </button>
             </form>
           </div>
@@ -754,7 +755,7 @@ export default async function AccountOpeningDetailPage({
               </dd>
             </div>
             <div>
-              <dt>Filled fields</dt>
+              <dt>Preview value fields</dt>
               <dd>
                 {renderSummaryValue(
                   item.latestFillPreview?.summary,
@@ -848,7 +849,8 @@ export default async function AccountOpeningDetailPage({
             This is not a signed or submitted supplier form. Signature, Direct
             Debit, bank authority, bank details, guarantee, indemnity,
             director-only, and unresolved regulatory fields remain blank. This
-            does not fill PDF/Word supplier forms.
+            does not fill PDF/Word supplier forms or generate a completed
+            supplier PDF/Word form.
           </p>
         </section>
 

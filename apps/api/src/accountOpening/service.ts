@@ -760,6 +760,10 @@ function isAccountOpeningFillPreviewPayload(
     typeof preview.caseId === 'string' &&
     Array.isArray(preview.filledFields) &&
     Array.isArray(preview.blankFields) &&
+    Boolean(
+      preview.futureBinaryFormRequirements &&
+      typeof preview.futureBinaryFormRequirements === 'object',
+    ) &&
     Boolean(preview.safety && typeof preview.safety === 'object')
   );
 }
