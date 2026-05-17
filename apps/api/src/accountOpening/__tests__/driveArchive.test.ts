@@ -176,6 +176,7 @@ function buildDetail(
       safetyNotes: ['Field mappings are internal review controls only.'],
     },
     latestFillPreview: null,
+    latestBinaryFillPreview: null,
     createdAt: '2026-05-12T09:00:00.000Z',
     updatedAt: '2026-05-12T09:00:00.000Z',
     ...overrides,

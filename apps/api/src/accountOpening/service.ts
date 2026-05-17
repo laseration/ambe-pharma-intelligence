@@ -4,7 +4,9 @@ import { Prisma } from '@prisma/client';
 
 import { db } from '../lib/db';
 import {
+  getAccountOpeningDriveArchiveConfig,
   uploadAccountOpeningArchivePack,
+  getMicrosoftStorageGraphAccessToken,
   type AccountOpeningDriveArchiveConfig,
   type AccountOpeningDriveArchiveUploader,
 } from './driveArchive';
@@ -35,6 +37,15 @@ import {
   type AccountOpeningFillPreviewPack,
   type AccountOpeningFillPreviewPayload,
 } from './fillPreview';
+import {
+  buildAccountOpeningBinaryFillPreview,
+  MAX_ACCOUNT_OPENING_BINARY_FILL_ORIGINAL_BYTES,
+  MAX_ACCOUNT_OPENING_BINARY_FILL_PREVIEW_BYTES,
+  type AccountOpeningBinaryFillPreviewFile,
+  type AccountOpeningBinaryFillPreviewFileName,
+  type AccountOpeningBinaryFillPreviewResult,
+  type AccountOpeningBinaryFillPreviewSizeLimits,
+} from './binaryFillPreview';
 
 export type AccountOpeningStructuredFields = {
   companyName: string;
@@ -133,6 +144,7 @@ export type AccountOpeningCaseDetail = {
   completionDraft: AccountOpeningCompletionDraft;
   fieldMappings: AccountOpeningFieldMappingReview;
   latestFillPreview: AccountOpeningFillPreviewDetail | null;
+  latestBinaryFillPreview: AccountOpeningBinaryFillPreviewDetail | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -186,6 +198,26 @@ export type AccountOpeningFillPreviewDetail = {
   previewVersion: string;
   fileNames: string[];
   summary: Record<string, unknown>;
+  safetySummary: Record<string, unknown>;
+  generatedAt: string;
+  createdByType: string | null;
+  createdByIdentifier: string | null;
+};
+
+export type AccountOpeningBinaryFillPreviewDetail = {
+  id: string;
+  originalFormId: string | null;
+  status: string;
+  previewVersion: string;
+  binaryPreviewFileName: string | null;
+  binaryPreviewContentType: string | null;
+  binaryPreviewHash: string | null;
+  binaryPreviewBytesAvailable: boolean;
+  filledFieldCount: number;
+  blankFieldCount: number;
+  unsupportedReason: string | null;
+  warnings: string[];
+  brandingPreservationCheck: Record<string, unknown>;
   safetySummary: Record<string, unknown>;
   generatedAt: string;
   createdByType: string | null;
@@ -255,6 +287,7 @@ export type PersistedAccountOpeningReviewCase = {
   fieldMappings?: PersistedAccountOpeningFieldMapping[];
   originalForms?: PersistedAccountOpeningOriginalForm[];
   fillPreviews?: PersistedAccountOpeningFillPreview[];
+  binaryFillPreviews?: PersistedAccountOpeningBinaryFillPreview[];
   createdAt: Date;
   updatedAt: Date;
 };
@@ -313,6 +346,27 @@ export type PersistedAccountOpeningFillPreview = {
   fileNames: unknown;
   previewJson: unknown;
   fieldSummary: unknown;
+  safetySummary: unknown;
+  createdByType: string | null;
+  createdByIdentifier: string | null;
+  createdAt: Date;
+};
+
+export type PersistedAccountOpeningBinaryFillPreview = {
+  id: string;
+  accountOpeningCaseId?: string;
+  originalFormId: string | null;
+  status: string;
+  previewVersion: string;
+  binaryPreviewFileName: string | null;
+  binaryPreviewContentType: string | null;
+  binaryPreviewHash: string | null;
+  binaryPreviewBytes: Uint8Array | Buffer | null;
+  filledFieldCount: number;
+  blankFieldCount: number;
+  unsupportedReason: string | null;
+  warnings: unknown;
+  brandingPreservationCheck: unknown;
   safetySummary: unknown;
   createdByType: string | null;
   createdByIdentifier: string | null;
@@ -784,6 +838,34 @@ function buildFillPreviewDetailFromPersisted(
     summary: payload?.summary ?? jsonRecordFromUnknown(preview.fieldSummary),
     safetySummary:
       payload?.safety ?? jsonRecordFromUnknown(preview.safetySummary),
+    generatedAt: preview.createdAt.toISOString(),
+    createdByType: preview.createdByType,
+    createdByIdentifier: sanitizeDashboardText(preview.createdByIdentifier),
+  };
+}
+
+function buildBinaryFillPreviewDetailFromPersisted(
+  preview: PersistedAccountOpeningBinaryFillPreview,
+): AccountOpeningBinaryFillPreviewDetail {
+  return {
+    id: preview.id,
+    originalFormId: preview.originalFormId,
+    status: preview.status,
+    previewVersion: preview.previewVersion,
+    binaryPreviewFileName:
+      sanitizeDashboardText(preview.binaryPreviewFileName) ?? null,
+    binaryPreviewContentType:
+      sanitizeDashboardText(preview.binaryPreviewContentType) ?? null,
+    binaryPreviewHash: sanitizeDashboardText(preview.binaryPreviewHash) ?? null,
+    binaryPreviewBytesAvailable: Boolean(preview.binaryPreviewBytes),
+    filledFieldCount: preview.filledFieldCount,
+    blankFieldCount: preview.blankFieldCount,
+    unsupportedReason: sanitizeDashboardText(preview.unsupportedReason) ?? null,
+    warnings: safeStringArrayFromJson(preview.warnings),
+    brandingPreservationCheck: jsonRecordFromUnknown(
+      preview.brandingPreservationCheck,
+    ),
+    safetySummary: jsonRecordFromUnknown(preview.safetySummary),
     generatedAt: preview.createdAt.toISOString(),
     createdByType: preview.createdByType,
     createdByIdentifier: sanitizeDashboardText(preview.createdByIdentifier),
@@ -1285,6 +1367,13 @@ export type AccountOpeningCaseEventInput = {
   metadata?: Prisma.InputJsonValue;
 };
 
+export type AccountOpeningOriginalFormBytesLoader = (
+  form: AccountOpeningOriginalFormDetail,
+) => Promise<
+  | { status: 'AVAILABLE'; bytes: Uint8Array }
+  | { status: 'UNAVAILABLE'; reason: string }
+>;
+
 export type AccountOpeningCaseRepository = {
   findUnique: (
     args: unknown,
@@ -1322,6 +1411,26 @@ export type AccountOpeningCaseRepository = {
       createdByIdentifier: string | null;
     };
   }) => Promise<PersistedAccountOpeningFillPreview>;
+  createBinaryFillPreview?: (args: {
+    data: {
+      accountOpeningCaseId: string;
+      originalFormId: string | null;
+      status: string;
+      previewVersion: string;
+      binaryPreviewFileName: string | null;
+      binaryPreviewContentType: string | null;
+      binaryPreviewHash: string | null;
+      binaryPreviewBytes: Uint8Array | Buffer | null;
+      filledFieldCount: number;
+      blankFieldCount: number;
+      unsupportedReason: string | null;
+      warnings: Prisma.InputJsonValue;
+      brandingPreservationCheck: Prisma.InputJsonValue;
+      safetySummary: Prisma.InputJsonValue;
+      createdByType: string | null;
+      createdByIdentifier: string | null;
+    };
+  }) => Promise<PersistedAccountOpeningBinaryFillPreview>;
   createEvent: (args: {
     data: AccountOpeningCaseEventInput;
   }) => Promise<unknown>;
@@ -1364,6 +1473,28 @@ function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
           createdByIdentifier: string | null;
         };
       }) => Promise<PersistedAccountOpeningFillPreview>;
+    };
+    accountOpeningBinaryFillPreview: {
+      create: (args: {
+        data: {
+          accountOpeningCaseId: string;
+          originalFormId: string | null;
+          status: string;
+          previewVersion: string;
+          binaryPreviewFileName: string | null;
+          binaryPreviewContentType: string | null;
+          binaryPreviewHash: string | null;
+          binaryPreviewBytes: Uint8Array | Buffer | null;
+          filledFieldCount: number;
+          blankFieldCount: number;
+          unsupportedReason: string | null;
+          warnings: Prisma.InputJsonValue;
+          brandingPreservationCheck: Prisma.InputJsonValue;
+          safetySummary: Prisma.InputJsonValue;
+          createdByType: string | null;
+          createdByIdentifier: string | null;
+        };
+      }) => Promise<PersistedAccountOpeningBinaryFillPreview>;
     };
     accountOpeningCaseEvent: {
       create: (args: {
@@ -1408,6 +1539,8 @@ function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
       });
     },
     createFillPreview: (args) => client.accountOpeningFillPreview.create(args),
+    createBinaryFillPreview: (args) =>
+      client.accountOpeningBinaryFillPreview.create(args),
     createEvent: (args) => client.accountOpeningCaseEvent.create(args),
   };
 }
@@ -1423,6 +1556,11 @@ export function buildAccountOpeningCaseDetail(
   );
   const latestFillPreview = accountCase.fillPreviews?.[0]
     ? buildFillPreviewDetailFromPersisted(accountCase.fillPreviews[0])
+    : null;
+  const latestBinaryFillPreview = accountCase.binaryFillPreviews?.[0]
+    ? buildBinaryFillPreviewDetailFromPersisted(
+        accountCase.binaryFillPreviews[0],
+      )
     : null;
   const riskFlags = stringArrayFromJson(accountCase.riskFlags);
   const detectedRoles = stringArrayFromJson(accountCase.detectedRoles);
@@ -1501,6 +1639,7 @@ export function buildAccountOpeningCaseDetail(
     completionDraft,
     fieldMappings,
     latestFillPreview,
+    latestBinaryFillPreview,
     createdAt: accountCase.createdAt.toISOString(),
     updatedAt: accountCase.updatedAt.toISOString(),
   };
@@ -1523,6 +1662,10 @@ export async function getAccountOpeningCaseDetail(
         orderBy: { createdAt: 'asc' },
       },
       fillPreviews: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+      binaryFillPreviews: {
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
@@ -1571,6 +1714,10 @@ export async function saveAccountOpeningMissingInfo(input: {
           orderBy: { createdAt: 'asc' },
         },
         fillPreviews: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+        binaryFillPreviews: {
           orderBy: { createdAt: 'desc' },
           take: 1,
         },
@@ -1634,6 +1781,10 @@ export async function updateAccountOpeningCaseStatus(input: {
           orderBy: { createdAt: 'desc' },
           take: 1,
         },
+        binaryFillPreviews: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
       },
     })) ?? updated;
 
@@ -1684,6 +1835,10 @@ export async function updateAccountOpeningCaseStatus(input: {
             orderBy: { createdAt: 'desc' },
             take: 1,
           },
+          binaryFillPreviews: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
         },
       })) ?? updated;
 
@@ -1731,6 +1886,10 @@ async function findCaseWithEvidence(
         orderBy: { createdAt: 'asc' },
       },
       fillPreviews: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+      binaryFillPreviews: {
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
@@ -2083,6 +2242,512 @@ export async function downloadAccountOpeningFillPreviewFile(input: {
   return file;
 }
 
+function primaryBinaryFillOriginalForm(
+  item: AccountOpeningCaseDetail,
+): AccountOpeningOriginalFormDetail | null {
+  return (
+    item.originalForms.find((form) => form.formType === 'PDF') ??
+    item.originalForms.find((form) => form.formType === 'WORD') ??
+    item.originalForms[0] ??
+    null
+  );
+}
+
+function microsoftDriveOriginalFormReadSkippedReason(
+  config: AccountOpeningDriveArchiveConfig,
+): string | null {
+  const label =
+    config.provider === 'ONEDRIVE'
+      ? 'OneDrive Microsoft Drive'
+      : 'SharePoint Microsoft Drive';
+
+  if (!config.enabled) {
+    return `${label} account-opening storage is disabled.`;
+  }
+
+  if (config.provider === 'SHAREPOINT' && (!config.siteId || !config.driveId)) {
+    return 'SharePoint account-opening storage is missing site or drive configuration.';
+  }
+
+  if (config.provider === 'ONEDRIVE' && !config.driveId) {
+    return 'OneDrive account-opening storage needs a configured drive ID before original form download is enabled.';
+  }
+
+  if (!config.graphAuthConfigured) {
+    return 'Missing Microsoft storage credentials. Set MICROSOFT_STORAGE_TENANT_ID, MICROSOFT_STORAGE_CLIENT_ID, MICROSOFT_STORAGE_CLIENT_SECRET.';
+  }
+
+  return null;
+}
+
+async function defaultAccountOpeningOriginalFormBytesLoader(
+  form: AccountOpeningOriginalFormDetail,
+): Promise<
+  | { status: 'AVAILABLE'; bytes: Uint8Array }
+  | { status: 'UNAVAILABLE'; reason: string }
+> {
+  if (!form.storageDriveItemId) {
+    return {
+      status: 'UNAVAILABLE',
+      reason: 'Original form bytes are not available for binary fill preview.',
+    };
+  }
+
+  const config = getAccountOpeningDriveArchiveConfig();
+  const skippedReason = microsoftDriveOriginalFormReadSkippedReason(config);
+  if (skippedReason) {
+    return {
+      status: 'UNAVAILABLE',
+      reason: `Original form bytes are stored by Microsoft Drive reference, but download is not configured: ${skippedReason}`,
+    };
+  }
+
+  if (!config.driveId) {
+    return {
+      status: 'UNAVAILABLE',
+      reason:
+        'Original form bytes are stored by Microsoft Drive reference, but a configured drive ID is required before binary fill preview generation.',
+    };
+  }
+
+  try {
+    const accessToken = await getMicrosoftStorageGraphAccessToken();
+    const response = await fetch(
+      `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(config.driveId)}/items/${encodeURIComponent(form.storageDriveItemId)}/content`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      return {
+        status: 'UNAVAILABLE',
+        reason: `Original form bytes could not be downloaded from Microsoft Drive for binary fill preview. Graph returned ${response.status}.`,
+      };
+    }
+
+    const contentLength = Number(response.headers.get('content-length') ?? 0);
+    if (contentLength > MAX_ACCOUNT_OPENING_BINARY_FILL_ORIGINAL_BYTES) {
+      return {
+        status: 'UNAVAILABLE',
+        reason:
+          'Original form bytes exceed the binary fill preview size limit.',
+      };
+    }
+
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > MAX_ACCOUNT_OPENING_BINARY_FILL_ORIGINAL_BYTES) {
+      return {
+        status: 'UNAVAILABLE',
+        reason:
+          'Original form bytes exceed the binary fill preview size limit.',
+      };
+    }
+
+    return {
+      status: 'AVAILABLE',
+      bytes,
+    };
+  } catch {
+    return {
+      status: 'UNAVAILABLE',
+      reason:
+        'Original form bytes could not be downloaded from Microsoft Drive for binary fill preview.',
+    };
+  }
+}
+
+function binaryFillPreviewAuditMetadata(input: {
+  preview: AccountOpeningBinaryFillPreviewResult;
+  originalForm: AccountOpeningOriginalFormDetail | null;
+  fileName?: string | null;
+}): Prisma.InputJsonValue {
+  return jsonObject({
+    status: input.preview.status,
+    originalFormId: input.originalForm?.id ?? null,
+    formType: input.originalForm?.formType ?? null,
+    fileName: sanitizeDashboardText(input.fileName) ?? null,
+    binaryPreviewFileName: input.preview.fileName,
+    binaryPreviewContentType: input.preview.contentType,
+    binaryPreviewHash: input.preview.outputHash,
+    filledFieldCount: input.preview.filledFieldCount,
+    blankFieldCount: input.preview.blankFieldCount,
+    unsupportedReason: input.preview.unsupportedReason,
+    warnings: input.preview.warnings,
+    brandingPreservationCheck: input.preview.brandingPreservationCheck,
+    safetySummary: input.preview.safetySummary,
+    rawFileContentsIncluded: false,
+    rawExtractedTextIncluded: false,
+    rawBankDetailsIncluded: false,
+    signedFormsIncluded: false,
+    supplierMessageIncluded: false,
+    supplierSubmissionTriggered: false,
+    sharePointCompletedFormFiled: false,
+    purchaseWorkflowTriggered: false,
+  });
+}
+
+function binaryPreviewActionType(
+  preview: AccountOpeningBinaryFillPreviewResult,
+):
+  | 'BINARY_FILL_PREVIEW_GENERATED'
+  | 'BINARY_FILL_PREVIEW_UNSUPPORTED'
+  | 'BINARY_FILL_PREVIEW_FAILED' {
+  if (preview.status === 'GENERATED_FOR_REVIEW') {
+    return 'BINARY_FILL_PREVIEW_GENERATED';
+  }
+
+  if (preview.status === 'FAILED') {
+    return 'BINARY_FILL_PREVIEW_FAILED';
+  }
+
+  return 'BINARY_FILL_PREVIEW_UNSUPPORTED';
+}
+
+function enforceBinaryPreviewPersistSizeLimit(
+  preview: AccountOpeningBinaryFillPreviewResult,
+  maxPreviewBytes: number,
+): AccountOpeningBinaryFillPreviewResult {
+  if (!preview.content || preview.content.byteLength <= maxPreviewBytes) {
+    return preview;
+  }
+
+  return {
+    ...preview,
+    status: 'FAILED',
+    fileName: null,
+    contentType: null,
+    content: null,
+    outputHash: null,
+    unsupportedReason: `Generated binary preview exceeds the storage size limit of ${maxPreviewBytes} bytes and was not persisted.`,
+    warnings: compactUnique([
+      ...preview.warnings,
+      'Generated binary preview exceeded the BYTEA persistence size guard.',
+    ]),
+    safetySummary: {
+      ...preview.safetySummary,
+      binaryPreviewGenerated: false,
+    },
+  };
+}
+
+async function persistBinaryFillPreview(input: {
+  accountCaseId: string;
+  originalForm: AccountOpeningOriginalFormDetail | null;
+  preview: AccountOpeningBinaryFillPreviewResult;
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  maxPreviewBytes?: number;
+  repository: AccountOpeningCaseRepository;
+}) {
+  if (!input.repository.createBinaryFillPreview) {
+    throw new Error(
+      'Account-opening binary fill preview repository is not writable.',
+    );
+  }
+
+  return input.repository.createBinaryFillPreview({
+    data: {
+      accountOpeningCaseId: input.accountCaseId,
+      originalFormId: input.originalForm?.id ?? null,
+      status: input.preview.status,
+      previewVersion: input.preview.previewVersion,
+      binaryPreviewFileName: input.preview.fileName,
+      binaryPreviewContentType: input.preview.contentType,
+      binaryPreviewHash: input.preview.outputHash,
+      binaryPreviewBytes:
+        input.preview.content &&
+        input.preview.content.byteLength <=
+          (input.maxPreviewBytes ??
+            MAX_ACCOUNT_OPENING_BINARY_FILL_PREVIEW_BYTES)
+          ? Buffer.from(input.preview.content)
+          : null,
+      filledFieldCount: input.preview.filledFieldCount,
+      blankFieldCount: input.preview.blankFieldCount,
+      unsupportedReason: input.preview.unsupportedReason,
+      warnings: jsonArray(input.preview.warnings),
+      brandingPreservationCheck: jsonObject(
+        input.preview.brandingPreservationCheck as unknown as Record<
+          string,
+          unknown
+        >,
+      ),
+      safetySummary: jsonObject(
+        input.preview.safetySummary as unknown as Record<string, unknown>,
+      ),
+      createdByType: input.actorType?.trim() || 'OPERATOR',
+      createdByIdentifier: sanitizeDashboardText(input.actorIdentifier),
+    },
+  });
+}
+
+function unsupportedBinaryPreviewResult(input: {
+  status?: 'UNSUPPORTED' | 'REQUIRES_MANUAL_COMPLETION';
+  reason: string;
+  warning?: string | null;
+}): AccountOpeningBinaryFillPreviewResult {
+  return {
+    status: input.status ?? 'UNSUPPORTED',
+    previewVersion: 'binary-fill-preview-v1',
+    fileName: null,
+    contentType: null,
+    content: null,
+    outputHash: null,
+    filledFieldCount: 0,
+    blankFieldCount: 0,
+    unsupportedReason: sanitizeDashboardText(input.reason) ?? input.reason,
+    warnings: compactUnique([sanitizeDashboardText(input.warning)]),
+    brandingPreservationCheck: {
+      originalBrandingPreservationRequired: true,
+      originalLayoutPreservationRequired: true,
+      originalPageCount: null,
+      outputPageCount: null,
+      pageCountPreserved: null,
+      originalAcroFieldCount: null,
+      outputAcroFieldCount: null,
+      acroFormPreserved: true,
+      formFlattened: false,
+      originalFormAlteredInPlace: false,
+    },
+    safetySummary: {
+      internalPreviewOnly: true,
+      binaryPreviewGenerated: false,
+      rawExtractedTextIncluded: false,
+      rawBankDetailsIncluded: false,
+      blockedFieldsLeftBlank: true,
+      reviewRequiredFieldsLeftBlank: true,
+      signatureFieldsLeftBlank: true,
+      directDebitBankAuthorityBankDetailsLeftBlank: true,
+      signedFormsIncluded: false,
+      supplierMessageIncluded: false,
+      supplierSubmissionTriggered: false,
+      sharePointCompletedFormFiled: false,
+      purchaseWorkflowTriggered: false,
+    },
+  };
+}
+
+function failedBinaryPreviewResult(
+  error: unknown,
+): AccountOpeningBinaryFillPreviewResult {
+  const message =
+    error instanceof Error
+      ? error.message
+      : 'Binary fill preview generation failed.';
+
+  return unsupportedBinaryPreviewResult({
+    status: 'UNSUPPORTED',
+    reason: 'Binary fill preview generation failed safely.',
+    warning: message,
+  });
+}
+
+export async function generateAccountOpeningBinaryFillPreview(input: {
+  id: string;
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  repository?: AccountOpeningCaseRepository;
+  originalFormBytesLoader?: AccountOpeningOriginalFormBytesLoader;
+  sizeLimits?: AccountOpeningBinaryFillPreviewSizeLimits;
+}): Promise<{
+  item: AccountOpeningCaseDetail;
+  preview: AccountOpeningBinaryFillPreviewDetail;
+}> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  let existing = await findCaseWithEvidence(input.id, repository);
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  existing = await ensureOriginalFormReferences({
+    accountCase: existing,
+    repository,
+  });
+
+  const detail = buildAccountOpeningCaseDetail(existing);
+  const originalForm = primaryBinaryFillOriginalForm(detail);
+  let preview: AccountOpeningBinaryFillPreviewResult;
+  let actionType:
+    | 'BINARY_FILL_PREVIEW_GENERATED'
+    | 'BINARY_FILL_PREVIEW_UNSUPPORTED'
+    | 'BINARY_FILL_PREVIEW_FAILED' = 'BINARY_FILL_PREVIEW_UNSUPPORTED';
+
+  if (!detail.completionDraft.isStored) {
+    preview = unsupportedBinaryPreviewResult({
+      status: 'REQUIRES_MANUAL_COMPLETION',
+      reason:
+        'Generate and store the completion draft before creating a binary fill preview.',
+    });
+  } else if (detail.fieldMappings.status !== 'SAVED') {
+    preview = unsupportedBinaryPreviewResult({
+      status: 'REQUIRES_MANUAL_COMPLETION',
+      reason:
+        'Save reviewed field mappings before creating a binary fill preview.',
+    });
+  } else if (!originalForm) {
+    preview = unsupportedBinaryPreviewResult({
+      reason:
+        'No original supplier/client form reference is available for binary fill preview.',
+    });
+  } else if (!['PDF', 'WORD'].includes(originalForm.formType)) {
+    preview = unsupportedBinaryPreviewResult({
+      reason: `${originalForm.formType} original forms are not supported for binary fill preview.`,
+    });
+  } else {
+    const bytesLoader =
+      input.originalFormBytesLoader ??
+      defaultAccountOpeningOriginalFormBytesLoader;
+    const loaded = await bytesLoader(originalForm);
+
+    if (loaded.status === 'UNAVAILABLE') {
+      preview = unsupportedBinaryPreviewResult({
+        reason: loaded.reason,
+      });
+    } else {
+      try {
+        preview = await buildAccountOpeningBinaryFillPreview({
+          item: detail,
+          originalForm,
+          sourceBytes: loaded.bytes,
+          sizeLimits: input.sizeLimits,
+        });
+        preview = enforceBinaryPreviewPersistSizeLimit(
+          preview,
+          input.sizeLimits?.maxGeneratedPreviewBytes ??
+            MAX_ACCOUNT_OPENING_BINARY_FILL_PREVIEW_BYTES,
+        );
+        actionType = binaryPreviewActionType(preview);
+      } catch (error) {
+        preview = failedBinaryPreviewResult(error);
+        preview.status = 'FAILED';
+        actionType = 'BINARY_FILL_PREVIEW_FAILED';
+      }
+    }
+  }
+
+  const persisted = await persistBinaryFillPreview({
+    accountCaseId: input.id,
+    originalForm,
+    preview,
+    actorType: input.actorType,
+    actorIdentifier: input.actorIdentifier,
+    maxPreviewBytes: input.sizeLimits?.maxGeneratedPreviewBytes,
+    repository,
+  });
+
+  await repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.id,
+      actionType,
+      previousStatus: existing.status,
+      newStatus: existing.status,
+      actorType: input.actorType?.trim() || 'OPERATOR',
+      actorIdentifier: sanitizeDashboardText(input.actorIdentifier) ?? null,
+      metadata: binaryFillPreviewAuditMetadata({
+        preview,
+        originalForm,
+      }),
+    },
+  });
+
+  const updated = (await findCaseWithEvidence(input.id, repository)) ?? {
+    ...existing,
+    binaryFillPreviews: [persisted],
+  };
+
+  return {
+    item: buildAccountOpeningCaseDetail(updated),
+    preview: buildBinaryFillPreviewDetailFromPersisted(persisted),
+  };
+}
+
+export async function downloadAccountOpeningBinaryFillPreviewFile(input: {
+  id: string;
+  fileName: string;
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  repository?: AccountOpeningCaseRepository;
+}): Promise<AccountOpeningBinaryFillPreviewFile> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  const existing = await findCaseWithEvidence(input.id, repository);
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  const latestPreview = existing.binaryFillPreviews?.[0] ?? null;
+
+  if (
+    !latestPreview ||
+    latestPreview.status !== 'GENERATED_FOR_REVIEW' ||
+    !latestPreview.binaryPreviewBytes ||
+    !latestPreview.binaryPreviewFileName ||
+    !latestPreview.binaryPreviewContentType
+  ) {
+    throw new Error(
+      'Generate a binary fill preview before downloading preview files.',
+    );
+  }
+
+  if (latestPreview.binaryPreviewFileName !== input.fileName) {
+    throw new Error('Account-opening binary fill preview file not found.');
+  }
+
+  const file: AccountOpeningBinaryFillPreviewFile = {
+    fileName:
+      latestPreview.binaryPreviewFileName as AccountOpeningBinaryFillPreviewFileName,
+    contentType:
+      latestPreview.binaryPreviewContentType as AccountOpeningBinaryFillPreviewFile['contentType'],
+    content: latestPreview.binaryPreviewBytes,
+  };
+  const preview = unsupportedBinaryPreviewResult({
+    reason: '',
+  });
+  preview.status = 'GENERATED_FOR_REVIEW';
+  preview.fileName = file.fileName;
+  preview.contentType = file.contentType;
+  preview.outputHash = latestPreview.binaryPreviewHash;
+  preview.filledFieldCount = latestPreview.filledFieldCount;
+  preview.blankFieldCount = latestPreview.blankFieldCount;
+  preview.unsupportedReason = null;
+  preview.warnings = safeStringArrayFromJson(latestPreview.warnings);
+  preview.brandingPreservationCheck = jsonRecordFromUnknown(
+    latestPreview.brandingPreservationCheck,
+  ) as AccountOpeningBinaryFillPreviewResult['brandingPreservationCheck'];
+  preview.safetySummary = jsonRecordFromUnknown(
+    latestPreview.safetySummary,
+  ) as AccountOpeningBinaryFillPreviewResult['safetySummary'];
+
+  await repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.id,
+      actionType: 'BINARY_FILL_PREVIEW_DOWNLOADED',
+      previousStatus: existing.status,
+      newStatus: existing.status,
+      actorType: input.actorType?.trim() || 'OPERATOR',
+      actorIdentifier: sanitizeDashboardText(input.actorIdentifier) ?? null,
+      metadata: binaryFillPreviewAuditMetadata({
+        preview,
+        originalForm: existing.originalForms?.find(
+          (form) => form.id === latestPreview.originalFormId,
+        )
+          ? buildOriginalFormDetailFromPersisted(
+              existing.originalForms.find(
+                (form) => form.id === latestPreview.originalFormId,
+              ) as PersistedAccountOpeningOriginalForm,
+            )
+          : null,
+        fileName: file.fileName,
+      }),
+    },
+  });
+
+  return file;
+}
+
 export async function writeDraftAuditEvents(input: {
   accountCaseId: string;
   previousStatus?: string | null;
@@ -2319,6 +2984,10 @@ export async function upsertAccountOpeningCase(
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
+      binaryFillPreviews: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
     },
   });
   const existingEvidence = existingWithEvidence?.sourceEvidence ?? [];
@@ -2369,6 +3038,10 @@ export async function upsertAccountOpeningCase(
         orderBy: { createdAt: 'asc' },
       },
       fillPreviews: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+      binaryFillPreviews: {
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
@@ -2433,6 +3106,10 @@ export async function upsertAccountOpeningCase(
             orderBy: { createdAt: 'desc' },
             take: 1,
           },
+          binaryFillPreviews: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
         },
       })) ?? accountCaseWithEvidence;
   }
@@ -2494,6 +3171,10 @@ export async function upsertAccountOpeningCase(
         orderBy: { createdAt: 'asc' },
       },
       fillPreviews: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+      binaryFillPreviews: {
         orderBy: { createdAt: 'desc' },
         take: 1,
       },

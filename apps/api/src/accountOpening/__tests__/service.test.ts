@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { PDFDocument } from 'pdf-lib';
+
 import {
   buildAccountOpeningCase,
   buildAccountOpeningCasePersistenceData,
@@ -8,10 +10,12 @@ import {
   buildAccountOpeningSigningNotes,
   buildAccountOpeningSigningSummary,
   buildAccountOpeningSourceFingerprint,
+  downloadAccountOpeningBinaryFillPreviewFile,
   detectAccountOpeningEmail,
   downloadAccountOpeningFillPreviewFile,
   downloadAccountOpeningReviewedExportFile,
   exportAccountOpeningReviewedPack,
+  generateAccountOpeningBinaryFillPreview,
   generateAccountOpeningFillPreview,
   generateAccountOpeningDraft,
   saveAccountOpeningFieldMappings,
@@ -21,11 +25,16 @@ import {
   writeDraftAuditEvents,
   type AccountOpeningCaseRepository,
   type AccountOpeningCaseEventInput,
+  type PersistedAccountOpeningBinaryFillPreview,
   type PersistedAccountOpeningFillPreview,
   type PersistedAccountOpeningOriginalForm,
   type PersistedAccountOpeningReviewCase,
 } from '../service';
 import type { AccountOpeningCompletionDraft } from '../draft';
+import {
+  MAX_ACCOUNT_OPENING_BINARY_FILL_ORIGINAL_BYTES,
+  MAX_ACCOUNT_OPENING_BINARY_FILL_PREVIEW_BYTES,
+} from '../binaryFillPreview';
 
 test('detectAccountOpeningEmail detects account-opening body and attachment names', () => {
   const result = detectAccountOpeningEmail({
@@ -379,6 +388,7 @@ function buildPersistedAccountOpeningCase(
     fieldMappings: [],
     originalForms: [],
     fillPreviews: [],
+    binaryFillPreviews: [],
     createdAt: new Date('2026-05-12T09:00:00.000Z'),
     updatedAt: new Date('2026-05-12T09:00:00.000Z'),
     ...overrides,
@@ -421,6 +431,7 @@ function createAccountOpeningRepository(
   let fieldMappings = initial.fieldMappings ?? [];
   let originalForms = initial.originalForms ?? [];
   let fillPreviews = initial.fillPreviews ?? [];
+  let binaryFillPreviews = initial.binaryFillPreviews ?? [];
   const events: AccountOpeningCaseEventInput[] = [];
   const repository: AccountOpeningCaseRepository = {
     findUnique: async () => ({
@@ -428,6 +439,11 @@ function createAccountOpeningRepository(
       fieldMappings,
       originalForms,
       fillPreviews: fillPreviews
+        .slice()
+        .sort(
+          (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
+        ),
+      binaryFillPreviews: binaryFillPreviews
         .slice()
         .sort(
           (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
@@ -443,6 +459,7 @@ function createAccountOpeningRepository(
         fieldMappings,
         originalForms,
         fillPreviews,
+        binaryFillPreviews,
         updatedAt: new Date('2026-05-12T10:00:00.000Z'),
       };
       return current;
@@ -487,6 +504,19 @@ function createAccountOpeningRepository(
       };
       return created;
     },
+    createBinaryFillPreview: async ({ data }) => {
+      const created: PersistedAccountOpeningBinaryFillPreview = {
+        ...data,
+        id: `binary-fill-preview-${binaryFillPreviews.length + 1}`,
+        createdAt: new Date('2026-05-12T11:30:00.000Z'),
+      };
+      binaryFillPreviews = [created, ...binaryFillPreviews];
+      current = {
+        ...current,
+        binaryFillPreviews,
+      };
+      return created;
+    },
     createEvent: async (args) => {
       events.push(args.data);
       return args.data;
@@ -499,6 +529,7 @@ function createAccountOpeningRepository(
     getCurrent: () => current,
     getOriginalForms: () => originalForms,
     getFillPreviews: () => fillPreviews,
+    getBinaryFillPreviews: () => binaryFillPreviews,
   };
 }
 
@@ -809,6 +840,30 @@ function buildStoredFillPreviewDraft(): AccountOpeningCompletionDraft {
   };
 }
 
+async function buildFillableAccountOpeningPdfBytes(): Promise<Uint8Array> {
+  const pdfDocument = await PDFDocument.create();
+  const page = pdfDocument.addPage([500, 700]);
+  const form = pdfDocument.getForm();
+  const fields = [
+    { name: 'Company Name', y: 620 },
+    { name: 'Bank Account Number', y: 580 },
+    { name: 'Director Signature', y: 540 },
+    { name: 'GPhC Premises Number', y: 500 },
+  ];
+
+  for (const field of fields) {
+    const textField = form.createTextField(field.name);
+    textField.addToPage(page, {
+      x: 50,
+      y: field.y,
+      width: 260,
+      height: 24,
+    });
+  }
+
+  return pdfDocument.save();
+}
+
 test('fill preview uses original form reference and fills only saved safe mapped values', async () => {
   const draft = buildStoredFillPreviewDraft();
   const { repository, events, getFillPreviews } =
@@ -1084,6 +1139,393 @@ test('fill preview download returns persisted safe files and records audit event
   assert.doesNotMatch(file.content, /12-34-56/);
   assert.equal(event?.actionType, 'FILL_PREVIEW_FILE_DOWNLOADED');
   assert.doesNotMatch(JSON.stringify(event?.metadata), /AMBE LTD/);
+});
+
+test('binary fill preview fills only reviewed low-risk PDF fields and leaves blocked fields blank', async () => {
+  const draft = buildStoredFillPreviewDraft();
+  const pdfBytes = await buildFillableAccountOpeningPdfBytes();
+  const { repository, events, getBinaryFillPreviews } =
+    createAccountOpeningRepository(
+      buildPersistedAccountOpeningCase({
+        draftStatus: draft.status,
+        draftVersion: draft.profileVersion,
+        draftGeneratedAt: new Date(draft.generatedAt),
+        draftJson: draft,
+        draftSummary: draft.summary,
+        originalForms: [
+          buildPersistedOriginalForm({
+            localBlobAvailable: true,
+            detectedFieldCount: 4,
+          }),
+        ],
+      }),
+    );
+
+  await saveAccountOpeningFieldMappings({
+    id: 'account-case-1',
+    mappings: [
+      {
+        supplierFieldLabel: 'Company Name',
+        sourceType: 'OPERATOR_CREATED',
+        mappedDraftFieldKey: 'legalCompanyName',
+        status: 'MAPPED_SAFE',
+      },
+      {
+        supplierFieldLabel: 'Bank Account Number',
+        sourceType: 'OPERATOR_CREATED',
+        mappedDraftFieldKey: 'bankDetails',
+        status: 'MAPPED_SAFE',
+      },
+      {
+        supplierFieldLabel: 'Director Signature',
+        sourceType: 'OPERATOR_CREATED',
+        mappedDraftFieldKey: 'signature',
+        status: 'MAPPED_SAFE',
+      },
+      {
+        supplierFieldLabel: 'GPhC Premises Number',
+        sourceType: 'OPERATOR_CREATED',
+        mappedDraftFieldKey: 'gphcPremisesNumber',
+        status: 'MAPPED_SAFE',
+      },
+    ],
+    repository,
+  });
+
+  const result = await generateAccountOpeningBinaryFillPreview({
+    id: 'account-case-1',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+    originalFormBytesLoader: async () => ({
+      status: 'AVAILABLE',
+      bytes: pdfBytes,
+    }),
+  });
+  const generatedEvent = events.find(
+    (item) => item.actionType === 'BINARY_FILL_PREVIEW_GENERATED',
+  );
+
+  assert.equal(result.preview.status, 'GENERATED_FOR_REVIEW');
+  assert.equal(result.preview.binaryPreviewFileName, 'binary-fill-preview.pdf');
+  assert.equal(result.preview.binaryPreviewContentType, 'application/pdf');
+  assert.equal(result.preview.binaryPreviewBytesAvailable, true);
+  assert.equal(result.preview.filledFieldCount, 1);
+  assert.equal(result.preview.blankFieldCount, 3);
+  assert.equal(getBinaryFillPreviews().length, 1);
+  assert.equal(
+    result.item.latestBinaryFillPreview?.status,
+    'GENERATED_FOR_REVIEW',
+  );
+  assert.equal(generatedEvent?.actionType, 'BINARY_FILL_PREVIEW_GENERATED');
+  assert.doesNotMatch(JSON.stringify(generatedEvent?.metadata), /12345678/);
+  assert.doesNotMatch(JSON.stringify(generatedEvent?.metadata), /12-34-56/);
+  assert.match(
+    JSON.stringify(generatedEvent?.metadata),
+    /sharePointCompletedFormFiled":false/,
+  );
+  assert.match(
+    JSON.stringify(generatedEvent?.metadata),
+    /purchaseWorkflowTriggered":false/,
+  );
+
+  const file = await downloadAccountOpeningBinaryFillPreviewFile({
+    id: 'account-case-1',
+    fileName: 'binary-fill-preview.pdf',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+  });
+  const outputDocument = await PDFDocument.load(file.content);
+  const outputForm = outputDocument.getForm();
+  const downloadedEvent = events.find(
+    (item) => item.actionType === 'BINARY_FILL_PREVIEW_DOWNLOADED',
+  );
+
+  assert.equal(file.contentType, 'application/pdf');
+  assert.equal(outputForm.getTextField('Company Name').getText(), 'AMBE LTD');
+  assert.equal(
+    outputForm.getTextField('Bank Account Number').getText() ?? '',
+    '',
+  );
+  assert.equal(
+    outputForm.getTextField('Director Signature').getText() ?? '',
+    '',
+  );
+  assert.equal(
+    outputForm.getTextField('GPhC Premises Number').getText() ?? '',
+    '',
+  );
+  assert.equal(downloadedEvent?.actionType, 'BINARY_FILL_PREVIEW_DOWNLOADED');
+  assert.doesNotMatch(JSON.stringify(downloadedEvent?.metadata), /12345678/);
+});
+
+test('binary fill preview returns unsupported when original bytes are unavailable', async () => {
+  const draft = buildStoredFillPreviewDraft();
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      draftStatus: draft.status,
+      draftVersion: draft.profileVersion,
+      draftGeneratedAt: new Date(draft.generatedAt),
+      draftJson: draft,
+      draftSummary: draft.summary,
+      originalForms: [buildPersistedOriginalForm()],
+    }),
+  );
+
+  await saveAccountOpeningFieldMappings({
+    id: 'account-case-1',
+    mappings: [
+      {
+        supplierFieldLabel: 'Company Name',
+        sourceType: 'OPERATOR_CREATED',
+        mappedDraftFieldKey: 'legalCompanyName',
+        status: 'MAPPED_SAFE',
+      },
+    ],
+    repository,
+  });
+
+  const result = await generateAccountOpeningBinaryFillPreview({
+    id: 'account-case-1',
+    repository,
+    originalFormBytesLoader: async () => ({
+      status: 'UNAVAILABLE',
+      reason: 'No reviewed original form byte loader is configured.',
+    }),
+  });
+  const event = events.find(
+    (item) => item.actionType === 'BINARY_FILL_PREVIEW_UNSUPPORTED',
+  );
+
+  assert.equal(result.preview.status, 'UNSUPPORTED');
+  assert.equal(result.preview.binaryPreviewBytesAvailable, false);
+  assert.match(
+    result.preview.unsupportedReason ?? '',
+    /No reviewed original form byte loader/,
+  );
+  assert.equal(event?.actionType, 'BINARY_FILL_PREVIEW_UNSUPPORTED');
+  assert.doesNotMatch(JSON.stringify(event?.metadata), /raw file/i);
+});
+
+test('binary fill preview rejects oversized original bytes before PDF loading', async () => {
+  assert.ok(MAX_ACCOUNT_OPENING_BINARY_FILL_ORIGINAL_BYTES > 0);
+  assert.ok(MAX_ACCOUNT_OPENING_BINARY_FILL_PREVIEW_BYTES > 0);
+
+  const draft = buildStoredFillPreviewDraft();
+  const pdfBytes = await buildFillableAccountOpeningPdfBytes();
+  const { repository, events, getBinaryFillPreviews } =
+    createAccountOpeningRepository(
+      buildPersistedAccountOpeningCase({
+        draftStatus: draft.status,
+        draftVersion: draft.profileVersion,
+        draftGeneratedAt: new Date(draft.generatedAt),
+        draftJson: draft,
+        draftSummary: draft.summary,
+        originalForms: [
+          buildPersistedOriginalForm({
+            localBlobAvailable: true,
+            detectedFieldCount: 4,
+          }),
+        ],
+      }),
+    );
+
+  await saveAccountOpeningFieldMappings({
+    id: 'account-case-1',
+    mappings: [
+      {
+        supplierFieldLabel: 'Company Name',
+        sourceType: 'OPERATOR_CREATED',
+        mappedDraftFieldKey: 'legalCompanyName',
+        status: 'MAPPED_SAFE',
+      },
+    ],
+    repository,
+  });
+
+  const result = await generateAccountOpeningBinaryFillPreview({
+    id: 'account-case-1',
+    repository,
+    originalFormBytesLoader: async () => ({
+      status: 'AVAILABLE',
+      bytes: pdfBytes,
+    }),
+    sizeLimits: {
+      maxOriginalBytes: pdfBytes.byteLength - 1,
+    },
+  });
+  const event = events.find(
+    (item) => item.actionType === 'BINARY_FILL_PREVIEW_UNSUPPORTED',
+  );
+
+  assert.equal(result.preview.status, 'UNSUPPORTED');
+  assert.equal(result.preview.binaryPreviewBytesAvailable, false);
+  assert.match(result.preview.unsupportedReason ?? '', /size limit/);
+  assert.equal(getBinaryFillPreviews()[0]?.binaryPreviewBytes, null);
+  assert.equal(event?.actionType, 'BINARY_FILL_PREVIEW_UNSUPPORTED');
+  assert.doesNotMatch(JSON.stringify(event?.metadata), /binaryPreviewBytes/);
+  assert.doesNotMatch(JSON.stringify(event?.metadata), /%PDF/);
+});
+
+test('binary fill preview does not persist oversized generated preview bytes', async () => {
+  const draft = buildStoredFillPreviewDraft();
+  const pdfBytes = await buildFillableAccountOpeningPdfBytes();
+  const { repository, events, getBinaryFillPreviews } =
+    createAccountOpeningRepository(
+      buildPersistedAccountOpeningCase({
+        draftStatus: draft.status,
+        draftVersion: draft.profileVersion,
+        draftGeneratedAt: new Date(draft.generatedAt),
+        draftJson: draft,
+        draftSummary: draft.summary,
+        originalForms: [
+          buildPersistedOriginalForm({
+            localBlobAvailable: true,
+            detectedFieldCount: 4,
+          }),
+        ],
+      }),
+    );
+
+  await saveAccountOpeningFieldMappings({
+    id: 'account-case-1',
+    mappings: [
+      {
+        supplierFieldLabel: 'Company Name',
+        sourceType: 'OPERATOR_CREATED',
+        mappedDraftFieldKey: 'legalCompanyName',
+        status: 'MAPPED_SAFE',
+      },
+    ],
+    repository,
+  });
+
+  const result = await generateAccountOpeningBinaryFillPreview({
+    id: 'account-case-1',
+    repository,
+    originalFormBytesLoader: async () => ({
+      status: 'AVAILABLE',
+      bytes: pdfBytes,
+    }),
+    sizeLimits: {
+      maxGeneratedPreviewBytes: 1,
+    },
+  });
+  const previewRows = getBinaryFillPreviews();
+  const event = events.find(
+    (item) => item.actionType === 'BINARY_FILL_PREVIEW_FAILED',
+  );
+
+  assert.equal(result.preview.status, 'FAILED');
+  assert.equal(result.preview.binaryPreviewBytesAvailable, false);
+  assert.equal(previewRows[0]?.binaryPreviewBytes, null);
+  assert.match(result.preview.unsupportedReason ?? '', /storage size limit/);
+  assert.equal(event?.actionType, 'BINARY_FILL_PREVIEW_FAILED');
+  assert.doesNotMatch(JSON.stringify(event?.metadata), /binaryPreviewBytes/);
+  assert.doesNotMatch(JSON.stringify(event?.metadata), /%PDF/);
+  assert.match(
+    JSON.stringify(event?.metadata),
+    /rawFileContentsIncluded":false/,
+  );
+});
+
+test('binary fill preview requires manual completion for flat PDFs without AcroForm fields', async () => {
+  const draft = buildStoredFillPreviewDraft();
+  const flatPdf = await PDFDocument.create();
+  flatPdf.addPage([400, 400]);
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      draftStatus: draft.status,
+      draftVersion: draft.profileVersion,
+      draftGeneratedAt: new Date(draft.generatedAt),
+      draftJson: draft,
+      draftSummary: draft.summary,
+      originalForms: [buildPersistedOriginalForm({ localBlobAvailable: true })],
+    }),
+  );
+
+  await saveAccountOpeningFieldMappings({
+    id: 'account-case-1',
+    mappings: [
+      {
+        supplierFieldLabel: 'Company Name',
+        sourceType: 'OPERATOR_CREATED',
+        mappedDraftFieldKey: 'legalCompanyName',
+        status: 'MAPPED_SAFE',
+      },
+    ],
+    repository,
+  });
+
+  const result = await generateAccountOpeningBinaryFillPreview({
+    id: 'account-case-1',
+    repository,
+    originalFormBytesLoader: async () => ({
+      status: 'AVAILABLE',
+      bytes: await flatPdf.save(),
+    }),
+  });
+  const event = events.find(
+    (item) => item.actionType === 'BINARY_FILL_PREVIEW_UNSUPPORTED',
+  );
+
+  assert.equal(result.preview.status, 'REQUIRES_MANUAL_COMPLETION');
+  assert.equal(result.preview.binaryPreviewBytesAvailable, false);
+  assert.match(result.preview.unsupportedReason ?? '', /no AcroForm fields/i);
+  assert.equal(event?.actionType, 'BINARY_FILL_PREVIEW_UNSUPPORTED');
+});
+
+test('binary fill preview keeps DOCX unsupported until layout-safe filling exists', async () => {
+  const draft = buildStoredFillPreviewDraft();
+  const { repository } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      draftStatus: draft.status,
+      draftVersion: draft.profileVersion,
+      draftGeneratedAt: new Date(draft.generatedAt),
+      draftJson: draft,
+      draftSummary: draft.summary,
+      originalForms: [
+        buildPersistedOriginalForm({
+          fileName: 'supplier-account-opening-form.docx',
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          formType: 'WORD',
+          fillSupportStatus: 'UNSUPPORTED',
+          localBlobAvailable: true,
+        }),
+      ],
+    }),
+  );
+
+  await saveAccountOpeningFieldMappings({
+    id: 'account-case-1',
+    mappings: [
+      {
+        supplierFieldLabel: 'Company Name',
+        sourceType: 'OPERATOR_CREATED',
+        mappedDraftFieldKey: 'legalCompanyName',
+        status: 'MAPPED_SAFE',
+      },
+    ],
+    repository,
+  });
+
+  const result = await generateAccountOpeningBinaryFillPreview({
+    id: 'account-case-1',
+    repository,
+    originalFormBytesLoader: async () => ({
+      status: 'AVAILABLE',
+      bytes: new Uint8Array([80, 75, 3, 4]),
+    }),
+  });
+
+  assert.equal(result.preview.status, 'UNSUPPORTED');
+  assert.match(
+    result.preview.unsupportedReason ?? '',
+    /DOCX binary fill preview is not enabled/,
+  );
+  assert.equal(result.preview.binaryPreviewBytesAvailable, false);
 });
 
 test('generate draft stores safe draft metadata and records blocked audit route only', async () => {
