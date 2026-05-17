@@ -1717,6 +1717,39 @@ test('completed unsigned form approval rejects unsupported or failed previews', 
   );
 });
 
+test('rejected account-opening case cannot be approved for completed unsigned form filing', async () => {
+  const { repository, events, getCompletedFormFilings } =
+    createAccountOpeningRepository(
+      buildPersistedAccountOpeningCase({
+        status: 'REJECTED',
+        binaryFillPreviews: [buildPersistedBinaryFillPreview()],
+      }),
+    );
+
+  await assert.rejects(
+    () =>
+      approveAccountOpeningCompletedFormFiling({
+        id: 'account-case-1',
+        binaryFillPreviewId: 'binary-fill-preview-1',
+        approvalNote:
+          'Rejected case note with account number 12345678 and sort code 12-34-56.',
+        repository,
+      }),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.equal(
+        error.message,
+        'Rejected account-opening cases cannot be approved or filed.',
+      );
+      assert.doesNotMatch(error.message, /12345678/);
+      assert.doesNotMatch(error.message, /12-34-56/);
+      return true;
+    },
+  );
+  assert.equal(getCompletedFormFilings().length, 0);
+  assert.equal(events.length, 0);
+});
+
 test('completed unsigned form approval records safe approval metadata', async () => {
   const { repository, events, getCompletedFormFilings } =
     createAccountOpeningRepository(
@@ -1752,6 +1785,51 @@ test('completed unsigned form approval records safe approval metadata', async ()
   assert.match(eventText, /purchaseWorkflowTriggered":false/);
   assert.doesNotMatch(eventText, /%PDF/);
   assert.doesNotMatch(eventText, /12345678/);
+});
+
+test('rejected account-opening case cannot be filed to SharePoint', async () => {
+  let uploadCalled = false;
+  const { repository, events, getCompletedFormFilings } =
+    createAccountOpeningRepository(
+      buildPersistedAccountOpeningCase({
+        status: 'REJECTED',
+        binaryFillPreviews: [buildPersistedBinaryFillPreview()],
+      }),
+    );
+
+  await assert.rejects(
+    () =>
+      fileAccountOpeningCompletedFormToSharePoint({
+        id: 'account-case-1',
+        binaryFillPreviewId: 'binary-fill-preview-1',
+        filingNote:
+          'Rejected case note with account number 12345678 and sort code 12-34-56.',
+        repository,
+        storageUploader: {
+          uploadCompletedForm: async () => {
+            uploadCalled = true;
+            return {
+              folderUrl: 'https://sharepoint.example/folder',
+              fileUrl: 'https://sharepoint.example/file.pdf',
+              driveItemId: 'drive-item-1',
+            };
+          },
+        },
+      }),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.equal(
+        error.message,
+        'Rejected account-opening cases cannot be approved or filed.',
+      );
+      assert.doesNotMatch(error.message, /12345678/);
+      assert.doesNotMatch(error.message, /12-34-56/);
+      return true;
+    },
+  );
+  assert.equal(uploadCalled, false);
+  assert.equal(getCompletedFormFilings().length, 0);
+  assert.equal(events.length, 0);
 });
 
 test('completed unsigned form filing skips when approval is missing', async () => {

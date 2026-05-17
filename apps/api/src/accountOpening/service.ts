@@ -604,6 +604,8 @@ const REQUIRED_FIELD_LABELS: Array<keyof AccountOpeningStructuredFields> = [
   'accountsContact',
   'paymentMethodRequested',
 ];
+const REJECTED_ACCOUNT_OPENING_COMPLETED_FORM_FILING_MESSAGE =
+  'Rejected account-opening cases cannot be approved or filed.';
 
 function compactUnique(values: Array<string | null | undefined>): string[] {
   return Array.from(
@@ -3132,6 +3134,10 @@ export async function approveAccountOpeningCompletedFormFiling(input: {
     throw new Error('Account-opening case not found.');
   }
 
+  if (existing.status === 'REJECTED') {
+    throw new Error(REJECTED_ACCOUNT_OPENING_COMPLETED_FORM_FILING_MESSAGE);
+  }
+
   const preview = await findBinaryPreviewForCompletedFormFiling({
     id: input.id,
     binaryFillPreviewId: input.binaryFillPreviewId,
@@ -3328,6 +3334,10 @@ export async function fileAccountOpeningCompletedFormToSharePoint(input: {
 
   if (!existing) {
     throw new Error('Account-opening case not found.');
+  }
+
+  if (existing.status === 'REJECTED') {
+    throw new Error(REJECTED_ACCOUNT_OPENING_COMPLETED_FORM_FILING_MESSAGE);
   }
 
   const preview = await findBinaryPreviewForCompletedFormFiling({
