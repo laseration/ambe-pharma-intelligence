@@ -10,6 +10,7 @@ import {
   buildAccountOpeningSigningNotes,
   buildAccountOpeningSigningSummary,
   buildAccountOpeningSourceFingerprint,
+  approveAccountOpeningCompletedFormFiling,
   downloadAccountOpeningBinaryFillPreviewFile,
   detectAccountOpeningEmail,
   downloadAccountOpeningFillPreviewFile,
@@ -18,6 +19,7 @@ import {
   generateAccountOpeningBinaryFillPreview,
   generateAccountOpeningFillPreview,
   generateAccountOpeningDraft,
+  fileAccountOpeningCompletedFormToSharePoint,
   saveAccountOpeningFieldMappings,
   sanitizeAccountOpeningMissingInfoResponses,
   saveAccountOpeningMissingInfo,
@@ -26,6 +28,7 @@ import {
   type AccountOpeningCaseRepository,
   type AccountOpeningCaseEventInput,
   type PersistedAccountOpeningBinaryFillPreview,
+  type PersistedAccountOpeningCompletedFormFiling,
   type PersistedAccountOpeningFillPreview,
   type PersistedAccountOpeningOriginalForm,
   type PersistedAccountOpeningReviewCase,
@@ -389,6 +392,7 @@ function buildPersistedAccountOpeningCase(
     originalForms: [],
     fillPreviews: [],
     binaryFillPreviews: [],
+    completedFormFilings: [],
     createdAt: new Date('2026-05-12T09:00:00.000Z'),
     updatedAt: new Date('2026-05-12T09:00:00.000Z'),
     ...overrides,
@@ -424,6 +428,45 @@ function buildPersistedOriginalForm(
   };
 }
 
+function buildPersistedBinaryFillPreview(
+  overrides: Partial<PersistedAccountOpeningBinaryFillPreview> = {},
+): PersistedAccountOpeningBinaryFillPreview {
+  return {
+    id: 'binary-fill-preview-1',
+    accountOpeningCaseId: 'account-case-1',
+    originalFormId: 'original-form-1',
+    status: 'GENERATED_FOR_REVIEW',
+    previewVersion: 'binary-fill-preview-v1',
+    binaryPreviewFileName: 'binary-fill-preview.pdf',
+    binaryPreviewContentType: 'application/pdf',
+    binaryPreviewHash: 'binary-preview-hash-1',
+    binaryPreviewBytes: new Uint8Array([37, 80, 68, 70, 45]),
+    filledFieldCount: 1,
+    blankFieldCount: 3,
+    unsupportedReason: null,
+    warnings: [],
+    brandingPreservationCheck: {
+      originalBrandingPreservationRequired: true,
+      originalLayoutPreservationRequired: true,
+      formFlattened: false,
+    },
+    safetySummary: {
+      internalPreviewOnly: true,
+      binaryPreviewGenerated: true,
+      blockedFieldsLeftBlank: true,
+      reviewRequiredFieldsLeftBlank: true,
+      signedFormsIncluded: false,
+      supplierSubmissionTriggered: false,
+      sharePointCompletedFormFiled: false,
+      purchaseWorkflowTriggered: false,
+    },
+    createdByType: 'OPERATOR',
+    createdByIdentifier: 'test-reviewer',
+    createdAt: new Date('2026-05-12T11:30:00.000Z'),
+    ...overrides,
+  };
+}
+
 function createAccountOpeningRepository(
   initial: PersistedAccountOpeningReviewCase,
 ) {
@@ -432,6 +475,7 @@ function createAccountOpeningRepository(
   let originalForms = initial.originalForms ?? [];
   let fillPreviews = initial.fillPreviews ?? [];
   let binaryFillPreviews = initial.binaryFillPreviews ?? [];
+  let completedFormFilings = initial.completedFormFilings ?? [];
   const events: AccountOpeningCaseEventInput[] = [];
   const repository: AccountOpeningCaseRepository = {
     findUnique: async () => ({
@@ -448,6 +492,11 @@ function createAccountOpeningRepository(
         .sort(
           (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
         ),
+      completedFormFilings: completedFormFilings
+        .slice()
+        .sort(
+          (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
+        ),
     }),
     update: async (args: unknown) => {
       const data =
@@ -460,6 +509,7 @@ function createAccountOpeningRepository(
         originalForms,
         fillPreviews,
         binaryFillPreviews,
+        completedFormFilings,
         updatedAt: new Date('2026-05-12T10:00:00.000Z'),
       };
       return current;
@@ -517,6 +567,73 @@ function createAccountOpeningRepository(
       };
       return created;
     },
+    findBinaryFillPreview: async ({ where }) =>
+      binaryFillPreviews.find((preview) => preview.id === where.id) ?? null,
+    findCompletedFormFiling: async ({ where }) => {
+      const matches = completedFormFilings.filter((filing) => {
+        if (where?.id && filing.id !== where.id) {
+          return false;
+        }
+        if (
+          where?.accountOpeningCaseId &&
+          filing.accountOpeningCaseId !== where.accountOpeningCaseId
+        ) {
+          return false;
+        }
+        if (
+          where?.binaryFillPreviewId &&
+          filing.binaryFillPreviewId !== where.binaryFillPreviewId
+        ) {
+          return false;
+        }
+        return true;
+      });
+
+      return (
+        matches.sort(
+          (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
+        )[0] ?? null
+      );
+    },
+    createCompletedFormFiling: async ({ data }) => {
+      const created: PersistedAccountOpeningCompletedFormFiling = {
+        ...data,
+        id: `completed-form-filing-${completedFormFilings.length + 1}`,
+        createdAt: new Date('2026-05-12T12:00:00.000Z'),
+        updatedAt: new Date('2026-05-12T12:00:00.000Z'),
+      };
+      completedFormFilings = [created, ...completedFormFilings];
+      current = {
+        ...current,
+        completedFormFilings,
+      };
+      return created;
+    },
+    updateCompletedFormFiling: async ({ where, data }) => {
+      let updated: PersistedAccountOpeningCompletedFormFiling | null = null;
+      completedFormFilings = completedFormFilings.map((filing) => {
+        if (filing.id !== where.id) {
+          return filing;
+        }
+
+        updated = {
+          ...filing,
+          ...data,
+          updatedAt: new Date('2026-05-12T12:30:00.000Z'),
+        };
+        return updated;
+      });
+
+      if (!updated) {
+        throw new Error('Account-opening completed form filing not found.');
+      }
+
+      current = {
+        ...current,
+        completedFormFilings,
+      };
+      return updated;
+    },
     createEvent: async (args) => {
       events.push(args.data);
       return args.data;
@@ -530,6 +647,7 @@ function createAccountOpeningRepository(
     getOriginalForms: () => originalForms,
     getFillPreviews: () => fillPreviews,
     getBinaryFillPreviews: () => binaryFillPreviews,
+    getCompletedFormFilings: () => completedFormFilings,
   };
 }
 
@@ -1526,6 +1644,272 @@ test('binary fill preview keeps DOCX unsupported until layout-safe filling exist
     /DOCX binary fill preview is not enabled/,
   );
   assert.equal(result.preview.binaryPreviewBytesAvailable, false);
+});
+
+test('completed unsigned form approval requires an existing generated preview', async () => {
+  const { repository } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase(),
+  );
+
+  await assert.rejects(
+    () =>
+      approveAccountOpeningCompletedFormFiling({
+        id: 'account-case-1',
+        repository,
+      }),
+    /Generate a binary fill preview/,
+  );
+  await assert.rejects(
+    () =>
+      approveAccountOpeningCompletedFormFiling({
+        id: 'account-case-1',
+        binaryFillPreviewId: 'missing-preview',
+        repository,
+      }),
+    /binary fill preview not found/i,
+  );
+});
+
+test('completed unsigned form approval rejects previews from another case', async () => {
+  const { repository } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      binaryFillPreviews: [
+        buildPersistedBinaryFillPreview({
+          accountOpeningCaseId: 'other-account-case',
+        }),
+      ],
+    }),
+  );
+
+  await assert.rejects(
+    () =>
+      approveAccountOpeningCompletedFormFiling({
+        id: 'account-case-1',
+        binaryFillPreviewId: 'binary-fill-preview-1',
+        repository,
+      }),
+    /does not belong to this case/,
+  );
+});
+
+test('completed unsigned form approval rejects unsupported or failed previews', async () => {
+  const { repository } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      binaryFillPreviews: [
+        buildPersistedBinaryFillPreview({
+          status: 'FAILED',
+          binaryPreviewBytes: null,
+          binaryPreviewFileName: null,
+          binaryPreviewContentType: null,
+        }),
+      ],
+    }),
+  );
+
+  await assert.rejects(
+    () =>
+      approveAccountOpeningCompletedFormFiling({
+        id: 'account-case-1',
+        binaryFillPreviewId: 'binary-fill-preview-1',
+        repository,
+      }),
+    /Only generated supported binary PDF AcroForm previews/,
+  );
+});
+
+test('completed unsigned form approval records safe approval metadata', async () => {
+  const { repository, events, getCompletedFormFilings } =
+    createAccountOpeningRepository(
+      buildPersistedAccountOpeningCase({
+        originalForms: [buildPersistedOriginalForm()],
+        binaryFillPreviews: [buildPersistedBinaryFillPreview()],
+      }),
+    );
+
+  const result = await approveAccountOpeningCompletedFormFiling({
+    id: 'account-case-1',
+    binaryFillPreviewId: 'binary-fill-preview-1',
+    approvalNote:
+      'Operator verified completed unsigned form values for SharePoint only.',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+    now: new Date('2026-05-17T10:00:00.000Z'),
+  });
+  const event = events.find(
+    (item) => item.actionType === 'COMPLETED_UNSIGNED_FORM_APPROVED_FOR_FILING',
+  );
+  const eventText = JSON.stringify(event?.metadata);
+
+  assert.equal(result.filing.status, 'APPROVED_FOR_FILING');
+  assert.equal(
+    result.item.latestCompletedFormFiling?.status,
+    'APPROVED_FOR_FILING',
+  );
+  assert.equal(getCompletedFormFilings().length, 1);
+  assert.equal(event?.actorIdentifier, 'test-reviewer');
+  assert.match(eventText, /supplierSubmissionTriggered":false/);
+  assert.match(eventText, /purchaseWorkflowTriggered":false/);
+  assert.doesNotMatch(eventText, /%PDF/);
+  assert.doesNotMatch(eventText, /12345678/);
+});
+
+test('completed unsigned form filing skips when approval is missing', async () => {
+  let uploadCalled = false;
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      originalForms: [buildPersistedOriginalForm()],
+      binaryFillPreviews: [buildPersistedBinaryFillPreview()],
+    }),
+  );
+
+  const result = await fileAccountOpeningCompletedFormToSharePoint({
+    id: 'account-case-1',
+    binaryFillPreviewId: 'binary-fill-preview-1',
+    repository,
+    storageUploader: {
+      uploadCompletedForm: async () => {
+        uploadCalled = true;
+        return {
+          folderUrl: 'https://sharepoint.example/folder',
+          fileUrl: 'https://sharepoint.example/file.pdf',
+          driveItemId: 'drive-item-1',
+        };
+      },
+    },
+  });
+  const event = events.find(
+    (item) => item.actionType === 'COMPLETED_UNSIGNED_FORM_FILING_SKIPPED',
+  );
+
+  assert.equal(uploadCalled, false);
+  assert.equal(result.filing.status, 'FILING_SKIPPED');
+  assert.match(result.filing.skippedReason ?? '', /Approve/);
+  assert.equal(event?.actionType, 'COMPLETED_UNSIGNED_FORM_FILING_SKIPPED');
+});
+
+test('completed unsigned form filing skips safely when storage is unavailable', async () => {
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      originalForms: [buildPersistedOriginalForm()],
+      binaryFillPreviews: [buildPersistedBinaryFillPreview()],
+    }),
+  );
+
+  await approveAccountOpeningCompletedFormFiling({
+    id: 'account-case-1',
+    binaryFillPreviewId: 'binary-fill-preview-1',
+    repository,
+  });
+
+  const result = await fileAccountOpeningCompletedFormToSharePoint({
+    id: 'account-case-1',
+    binaryFillPreviewId: 'binary-fill-preview-1',
+    repository,
+    storageConfig: {
+      provider: 'SHAREPOINT',
+      enabled: false,
+      siteId: '',
+      driveId: '',
+      baseFolder: 'Account Opening',
+      graphAuthConfigured: false,
+    },
+  });
+  const event = events
+    .slice()
+    .reverse()
+    .find(
+      (item) => item.actionType === 'COMPLETED_UNSIGNED_FORM_FILING_SKIPPED',
+    );
+
+  assert.equal(result.filing.status, 'FILING_SKIPPED');
+  assert.match(result.filing.skippedReason ?? '', /disabled/);
+  assert.equal(result.filing.storageFileUrl, null);
+  assert.equal(event?.actionType, 'COMPLETED_UNSIGNED_FORM_FILING_SKIPPED');
+  assert.doesNotMatch(JSON.stringify(event?.metadata), /%PDF/);
+});
+
+test('completed unsigned form filing uploads approved preview and is idempotent once filed', async () => {
+  let uploadCalls = 0;
+  let uploadedFileName = '';
+  const { repository, events } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      originalForms: [buildPersistedOriginalForm()],
+      binaryFillPreviews: [buildPersistedBinaryFillPreview()],
+    }),
+  );
+
+  await approveAccountOpeningCompletedFormFiling({
+    id: 'account-case-1',
+    binaryFillPreviewId: 'binary-fill-preview-1',
+    approvalNote: 'Approved completed unsigned form for filing.',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+    now: new Date('2026-05-17T10:00:00.000Z'),
+  });
+
+  const firstResult = await fileAccountOpeningCompletedFormToSharePoint({
+    id: 'account-case-1',
+    binaryFillPreviewId: 'binary-fill-preview-1',
+    filingNote: 'Internal SharePoint filing only.',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'test-reviewer',
+    repository,
+    storageConfig: {
+      provider: 'SHAREPOINT',
+      enabled: true,
+      siteId: 'site-1',
+      driveId: 'drive-1',
+      baseFolder: 'Account Opening',
+      graphAuthConfigured: true,
+    },
+    storageUploader: {
+      uploadCompletedForm: async (pack) => {
+        uploadCalls += 1;
+        uploadedFileName = pack.file.fileName;
+        return {
+          folderUrl: 'https://sharepoint.example/folder',
+          fileUrl: 'https://sharepoint.example/file.pdf',
+          driveItemId: 'drive-item-1',
+        };
+      },
+    },
+    now: new Date('2026-05-17T10:01:00.000Z'),
+  });
+  const secondResult = await fileAccountOpeningCompletedFormToSharePoint({
+    id: 'account-case-1',
+    binaryFillPreviewId: 'binary-fill-preview-1',
+    repository,
+    storageUploader: {
+      uploadCompletedForm: async () => {
+        uploadCalls += 1;
+        return {
+          folderUrl: 'https://sharepoint.example/duplicate',
+          fileUrl: 'https://sharepoint.example/duplicate.pdf',
+          driveItemId: 'duplicate-drive-item',
+        };
+      },
+    },
+  });
+  const event = events.find(
+    (item) => item.actionType === 'COMPLETED_UNSIGNED_FORM_FILING_COMPLETED',
+  );
+  const eventText = JSON.stringify(event?.metadata);
+
+  assert.equal(uploadCalls, 1);
+  assert.equal(firstResult.filing.status, 'FILED');
+  assert.equal(secondResult.filing.status, 'FILED');
+  assert.match(uploadedFileName, /completed-unsigned/);
+  assert.equal(firstResult.filing.storageProvider, 'SHAREPOINT');
+  assert.equal(
+    firstResult.filing.storageFileUrl,
+    'https://sharepoint.example/file.pdf',
+  );
+  assert.match(eventText, /supplierSubmissionTriggered":false/);
+  assert.match(eventText, /purchaseWorkflowTriggered":false/);
+  assert.doesNotMatch(eventText, /binaryPreviewBytes/);
+  assert.doesNotMatch(eventText, /%PDF/);
 });
 
 test('generate draft stores safe draft metadata and records blocked audit route only', async () => {

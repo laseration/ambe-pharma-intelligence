@@ -208,6 +208,33 @@ export type AccountOpeningBinaryFillPreviewDetail = {
   createdByIdentifier: string | null;
 };
 
+export type AccountOpeningCompletedFormFilingDetail = {
+  id: string;
+  binaryFillPreviewId: string;
+  status: string;
+  fileName: string;
+  contentType: string;
+  fileHash: string | null;
+  fileSizeBytes: number | null;
+  storageProvider: string | null;
+  storageFolderUrl: string | null;
+  storageFileUrl: string | null;
+  storageDriveItemId: string | null;
+  approvedByType: string | null;
+  approvedByIdentifier: string | null;
+  approvedAt: string | null;
+  approvalNote: string | null;
+  filedByType: string | null;
+  filedByIdentifier: string | null;
+  filedAt: string | null;
+  filingNote: string | null;
+  skippedReason: string | null;
+  safetySummary: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AccountOpeningStatusAction =
   | 'MARKED_NEEDS_INFO'
   | 'APPROVED_FOR_COMPLETION'
@@ -251,6 +278,7 @@ export type AccountOpeningCaseDetail = {
   fieldMappings: AccountOpeningFieldMappingReview;
   latestFillPreview: AccountOpeningFillPreviewDetail | null;
   latestBinaryFillPreview: AccountOpeningBinaryFillPreviewDetail | null;
+  latestCompletedFormFiling: AccountOpeningCompletedFormFilingDetail | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -488,6 +516,51 @@ export async function downloadAccountOpeningBinaryFillPreviewFile(
   return requestBinaryFile(
     `/account-opening/${encodeURIComponent(id)}/binary-fill-preview/${encodeURIComponent(fileName)}`,
   );
+}
+
+export async function approveAccountOpeningCompletedFormFiling(
+  id: string,
+  body: {
+    binaryFillPreviewId?: string | null;
+    approvalNote?: string | null;
+  },
+): Promise<AccountOpeningCaseDetail> {
+  const payload = await requestJson<{
+    item: AccountOpeningCaseDetail;
+    filing: AccountOpeningCompletedFormFilingDetail;
+  }>(
+    `/account-opening/${encodeURIComponent(id)}/completed-form-filing/approve`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        ...body,
+        actorType: 'OPERATOR',
+        actorIdentifier: 'web-account-opening-review',
+      }),
+    },
+  );
+  return payload.item;
+}
+
+export async function fileAccountOpeningCompletedFormToSharePoint(
+  id: string,
+  body: {
+    binaryFillPreviewId?: string | null;
+    filingNote?: string | null;
+  },
+): Promise<AccountOpeningCaseDetail> {
+  const payload = await requestJson<{
+    item: AccountOpeningCaseDetail;
+    filing: AccountOpeningCompletedFormFilingDetail;
+  }>(`/account-opening/${encodeURIComponent(id)}/completed-form-filing/file`, {
+    method: 'POST',
+    body: JSON.stringify({
+      ...body,
+      actorType: 'OPERATOR',
+      actorIdentifier: 'web-account-opening-review',
+    }),
+  });
+  return payload.item;
 }
 
 export async function saveAccountOpeningFieldMappings(

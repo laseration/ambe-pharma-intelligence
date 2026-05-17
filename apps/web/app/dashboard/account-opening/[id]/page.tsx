@@ -6,6 +6,8 @@ import {
   type AccountOpeningMissingInfoResponses,
 } from '../../../../lib/accountOpeningApi';
 import {
+  submitApproveAccountOpeningCompletedFormFilingAction,
+  submitFileAccountOpeningCompletedFormToSharePointAction,
   submitAccountOpeningFieldMappingsAction,
   submitGenerateAccountOpeningBinaryFillPreviewAction,
   submitGenerateAccountOpeningFillPreviewAction,
@@ -402,6 +404,19 @@ export default async function AccountOpeningDetailPage({
   try {
     const item = await getAccountOpeningCase(id);
     const signingNotes = item.signingNotes;
+    const latestBinaryPreview = item.latestBinaryFillPreview;
+    const latestCompletedFormFiling = item.latestCompletedFormFiling;
+    const filingMatchesLatestBinaryPreview =
+      Boolean(latestBinaryPreview && latestCompletedFormFiling) &&
+      latestCompletedFormFiling?.binaryFillPreviewId ===
+        latestBinaryPreview?.id;
+    const canApproveCompletedUnsignedForm = Boolean(
+      latestBinaryPreview?.status === 'GENERATED_FOR_REVIEW' &&
+      latestBinaryPreview.binaryPreviewBytesAvailable,
+    );
+    const canFileCompletedUnsignedForm =
+      filingMatchesLatestBinaryPreview &&
+      latestCompletedFormFiling?.status === 'APPROVED_FOR_FILING';
 
     return (
       <section className="dashboard-layout">
@@ -944,6 +959,152 @@ export default async function AccountOpeningDetailPage({
             Debit, bank authority, bank details, guarantee, indemnity,
             director-only, RP/GDP/WDA, GPhC/CQC, credit terms, and returns-risk
             fields are not filled. The preview is not flattened or signed.
+          </p>
+        </section>
+
+        <section className="panel dashboard-panel">
+          <div className="dashboard-section-header">
+            <div>
+              <h3 className="section-title">Completed unsigned form filing</h3>
+              <p className="copy review-summary-copy">
+                Completed unsigned form filing is internal SharePoint filing
+                only. It files the approved binary PDF AcroForm preview after
+                operator approval. It is not signed, not sent, and not
+                submitted. Blocked and review-required fields remain blank.
+              </p>
+            </div>
+          </div>
+
+          <dl className="duplicate-product-details">
+            <div>
+              <dt>Approval status</dt>
+              <dd>
+                {filingMatchesLatestBinaryPreview &&
+                latestCompletedFormFiling?.approvedAt
+                  ? 'Approved for filing'
+                  : 'Not approved'}
+              </dd>
+            </div>
+            <div>
+              <dt>Filing status</dt>
+              <dd>
+                {filingMatchesLatestBinaryPreview && latestCompletedFormFiling
+                  ? humanizeStatus(latestCompletedFormFiling.status)
+                  : 'Not approved'}
+              </dd>
+            </div>
+            <div>
+              <dt>Approved at</dt>
+              <dd>
+                {filingMatchesLatestBinaryPreview
+                  ? formatDateTime(latestCompletedFormFiling?.approvedAt)
+                  : 'Not available'}
+              </dd>
+            </div>
+            <div>
+              <dt>Filed at</dt>
+              <dd>
+                {filingMatchesLatestBinaryPreview
+                  ? formatDateTime(latestCompletedFormFiling?.filedAt)
+                  : 'Not available'}
+              </dd>
+            </div>
+            <div>
+              <dt>Filed file</dt>
+              <dd>
+                {filingMatchesLatestBinaryPreview
+                  ? renderNullable(latestCompletedFormFiling?.fileName)
+                  : 'Not available'}
+              </dd>
+            </div>
+            <div>
+              <dt>Skipped reason</dt>
+              <dd>
+                {filingMatchesLatestBinaryPreview
+                  ? renderNullable(latestCompletedFormFiling?.skippedReason)
+                  : 'Not available'}
+              </dd>
+            </div>
+            <div>
+              <dt>SharePoint/Drive link</dt>
+              <dd>
+                {filingMatchesLatestBinaryPreview &&
+                latestCompletedFormFiling?.storageFileUrl ? (
+                  <a href={latestCompletedFormFiling.storageFileUrl}>
+                    {latestCompletedFormFiling.storageFileUrl}
+                  </a>
+                ) : filingMatchesLatestBinaryPreview &&
+                  latestCompletedFormFiling?.storageFolderUrl ? (
+                  <a href={latestCompletedFormFiling.storageFolderUrl}>
+                    {latestCompletedFormFiling.storageFolderUrl}
+                  </a>
+                ) : (
+                  'No filed SharePoint/Drive link stored'
+                )}
+              </dd>
+            </div>
+          </dl>
+
+          <div className="actions">
+            <form
+              action={submitApproveAccountOpeningCompletedFormFilingAction}
+              className="action-form"
+            >
+              {hiddenInput('caseId', item.id)}
+              {hiddenInput('returnTo', returnTo)}
+              {latestBinaryPreview
+                ? hiddenInput('binaryFillPreviewId', latestBinaryPreview.id)
+                : null}
+              <label>
+                Approval note
+                <textarea
+                  name="approvalNote"
+                  placeholder="Operator verified the completed unsigned form values for internal SharePoint filing only."
+                  rows={3}
+                />
+              </label>
+              <button
+                className="button"
+                disabled={!canApproveCompletedUnsignedForm}
+                type="submit"
+              >
+                Approve completed unsigned form for filing
+              </button>
+            </form>
+
+            <form
+              action={submitFileAccountOpeningCompletedFormToSharePointAction}
+              className="action-form"
+            >
+              {hiddenInput('caseId', item.id)}
+              {hiddenInput('returnTo', returnTo)}
+              {latestBinaryPreview
+                ? hiddenInput('binaryFillPreviewId', latestBinaryPreview.id)
+                : null}
+              <label>
+                Filing note
+                <textarea
+                  name="filingNote"
+                  placeholder="File the approved completed unsigned form to SharePoint only."
+                  rows={3}
+                />
+              </label>
+              <button
+                className="button"
+                disabled={!canFileCompletedUnsignedForm}
+                type="submit"
+              >
+                File approved completed unsigned form to SharePoint
+              </button>
+            </form>
+          </div>
+
+          <p className="alert alert-warning">
+            Internal SharePoint filing only. This does not sign, send, submit,
+            approve supplier terms, complete Direct Debit mandates, complete
+            payment authority, guarantee, indemnity, director-only, RP/GDP/WDA,
+            GPhC/CQC, credit, or returns-risk sections, or create
+            purchase/order/buy workflow side effects.
           </p>
         </section>
 

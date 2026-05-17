@@ -4,8 +4,13 @@ import test from 'node:test';
 import {
   buildAccountOpeningArchivePack,
   buildAccountOpeningArchiveFolderPath,
+  buildAccountOpeningCompletedFormFilingPack,
+  buildAccountOpeningCompletedFormFileName,
+  buildAccountOpeningCompletedFormFolderPath,
   createGraphDriveArchiveUploader,
+  createGraphCompletedFormFilingUploader,
   getDriveArchiveSkippedReason,
+  uploadAccountOpeningCompletedFormFiling,
   uploadAccountOpeningArchivePack,
   type AccountOpeningDriveArchiveConfig,
 } from '../driveArchive';
@@ -177,6 +182,7 @@ function buildDetail(
     },
     latestFillPreview: null,
     latestBinaryFillPreview: null,
+    latestCompletedFormFiling: null,
     createdAt: '2026-05-12T09:00:00.000Z',
     updatedAt: '2026-05-12T09:00:00.000Z',
     ...overrides,
@@ -316,6 +322,215 @@ test('enabled Microsoft Drive archive path calls adapter with safe payload', asy
   assert.doesNotMatch(uploadedPackText, /Raw form text said/);
   assert.doesNotMatch(uploadedPackText, /12345678/);
   assert.doesNotMatch(uploadedPackText, /12-34-56/);
+});
+
+test('completed unsigned form filing path and filename are deterministic and safe', () => {
+  const detail = buildDetail({
+    originalForms: [
+      {
+        id: 'original-form-1',
+        sourceEvidenceId: 'evidence-1',
+        fileName: 'Supplier Account Form 12345678.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1200,
+        fileHash: 'form-hash-1',
+        storageProvider: 'MICROSOFT_DRIVE',
+        storageFolderUrl: 'https://sharepoint.example/source',
+        storageFileUrl: 'https://sharepoint.example/source/form.pdf',
+        storageDriveItemId: 'source-drive-item-1',
+        localBlobAvailable: false,
+        formType: 'PDF',
+        fillSupportStatus: 'PREVIEW_SUPPORTED',
+        detectedFieldCount: 4,
+        detectionSummary: {},
+        createdAt: '2026-05-12T09:00:00.000Z',
+        updatedAt: '2026-05-12T09:00:00.000Z',
+      },
+    ],
+  });
+  const folderPath = buildAccountOpeningCompletedFormFolderPath(
+    detail,
+    enabledConfig,
+    new Date('2026-05-17T10:00:00.000Z'),
+  );
+  const fileName = buildAccountOpeningCompletedFormFileName({
+    originalFileName: 'Supplier Account Form 12345678.pdf',
+    fileHash: 'abcdef1234567890',
+    now: new Date('2026-05-17T10:00:00.000Z'),
+  });
+
+  assert.equal(
+    folderPath,
+    'Account Opening/Completed unsigned forms/Supplier Ltd - 2026-05-12 - account-',
+  );
+  assert.match(fileName, /completed-unsigned-20260517T100000Z-abcdef123456/);
+  assert.doesNotMatch(fileName, /12345678/);
+});
+
+test('completed unsigned form filing pack includes one PDF and safe metadata only', () => {
+  const detail = buildDetail({
+    latestBinaryFillPreview: {
+      id: 'binary-fill-preview-1',
+      originalFormId: null,
+      status: 'GENERATED_FOR_REVIEW',
+      previewVersion: 'binary-fill-preview-v1',
+      binaryPreviewFileName: 'binary-fill-preview.pdf',
+      binaryPreviewContentType: 'application/pdf',
+      binaryPreviewHash: 'binary-preview-hash-1',
+      binaryPreviewBytesAvailable: true,
+      filledFieldCount: 1,
+      blankFieldCount: 3,
+      unsupportedReason: null,
+      warnings: [],
+      brandingPreservationCheck: {},
+      safetySummary: {
+        signedFormsIncluded: false,
+        supplierSubmissionTriggered: false,
+      },
+      generatedAt: '2026-05-17T09:00:00.000Z',
+      createdByType: 'OPERATOR',
+      createdByIdentifier: 'test-reviewer',
+    },
+  });
+  const pack = buildAccountOpeningCompletedFormFilingPack({
+    item: detail,
+    preview: detail.latestBinaryFillPreview!,
+    content: new Uint8Array([37, 80, 68, 70, 45]),
+    fileHash: 'binary-preview-hash-1',
+    config: enabledConfig,
+    now: new Date('2026-05-17T10:00:00.000Z'),
+  });
+  const packText = JSON.stringify(pack.metadata);
+
+  assert.equal(pack.file.contentType, 'application/pdf');
+  assert.equal(pack.metadata.completedUnsignedForm, true);
+  assert.equal(pack.metadata.internalSharePointFilingOnly, true);
+  assert.equal(pack.metadata.notSigned, true);
+  assert.equal(pack.metadata.notSent, true);
+  assert.equal(pack.metadata.notSubmitted, true);
+  assert.equal(pack.metadata.supplierSubmissionTriggered, false);
+  assert.equal(pack.metadata.purchaseWorkflowTriggered, false);
+  assert.doesNotMatch(packText, /12345678/);
+  assert.doesNotMatch(packText, /12-34-56/);
+});
+
+test('completed unsigned form filing skips disabled storage without uploading', async () => {
+  let called = false;
+  const detail = buildDetail({
+    latestBinaryFillPreview: {
+      id: 'binary-fill-preview-1',
+      originalFormId: null,
+      status: 'GENERATED_FOR_REVIEW',
+      previewVersion: 'binary-fill-preview-v1',
+      binaryPreviewFileName: 'binary-fill-preview.pdf',
+      binaryPreviewContentType: 'application/pdf',
+      binaryPreviewHash: 'binary-preview-hash-1',
+      binaryPreviewBytesAvailable: true,
+      filledFieldCount: 1,
+      blankFieldCount: 3,
+      unsupportedReason: null,
+      warnings: [],
+      brandingPreservationCheck: {},
+      safetySummary: {},
+      generatedAt: '2026-05-17T09:00:00.000Z',
+      createdByType: 'OPERATOR',
+      createdByIdentifier: 'test-reviewer',
+    },
+  });
+  const result = await uploadAccountOpeningCompletedFormFiling({
+    item: detail,
+    preview: detail.latestBinaryFillPreview!,
+    content: new Uint8Array([37, 80, 68, 70, 45]),
+    fileHash: 'binary-preview-hash-1',
+    config: disabledConfig,
+    uploader: {
+      uploadCompletedForm: async () => {
+        called = true;
+        return {
+          folderUrl: 'https://sharepoint.example/folder',
+          fileUrl: 'https://sharepoint.example/file.pdf',
+          driveItemId: 'drive-item-1',
+        };
+      },
+    },
+    now: new Date('2026-05-17T10:00:00.000Z'),
+  });
+
+  assert.equal(called, false);
+  assert.equal(result.status, 'SKIPPED_DISABLED');
+  assert.match(result.skippedReason ?? '', /disabled/i);
+  assert.equal(result.fileSizeBytes, 5);
+});
+
+test('completed unsigned form Graph uploader writes a unique PDF path', async () => {
+  const requestedUrls: string[] = [];
+  const uploader = createGraphCompletedFormFilingUploader(enabledConfig, {
+    accessTokenProvider: async () => 'token',
+    fetchImpl: async (url, init) => {
+      requestedUrls.push(String(url));
+      if (init?.method === 'PUT') {
+        return new Response(
+          JSON.stringify({
+            id: 'completed-drive-item-1',
+            webUrl: 'https://sharepoint.example/completed-form.pdf',
+          }),
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          id: 'folder-1',
+          webUrl: 'https://sharepoint.example/folder',
+        }),
+      );
+    },
+  });
+  const result = await uploader.uploadCompletedForm({
+    folderPath: 'Account Opening/Completed unsigned forms/Test',
+    file: {
+      fileName:
+        'supplier-form-completed-unsigned-20260517T100000Z-abcdef123456.pdf',
+      contentType: 'application/pdf',
+      content: new Uint8Array([37, 80, 68, 70, 45]),
+    },
+    metadata: {
+      caseId: 'case-1',
+      binaryFillPreviewId: 'binary-fill-preview-1',
+      sourceFingerprint: 'fingerprint-1',
+      fileName:
+        'supplier-form-completed-unsigned-20260517T100000Z-abcdef123456.pdf',
+      contentType: 'application/pdf',
+      fileHash: 'abcdef1234567890',
+      fileSizeBytes: 5,
+      completedUnsignedForm: true,
+      approvedForFilingRequired: true,
+      internalSharePointFilingOnly: true,
+      notSigned: true,
+      notSent: true,
+      notSubmitted: true,
+      blockedReviewRequiredFieldsRemainBlank: true,
+      rawExtractedTextIncluded: false,
+      rawBankDetailsIncluded: false,
+      signedFormsIncluded: false,
+      paymentAuthorityCompleted: false,
+      directDebitMandateCompleted: false,
+      guaranteeIndemnityCompleted: false,
+      supplierMessageIncluded: false,
+      supplierSubmissionTriggered: false,
+      purchaseWorkflowTriggered: false,
+    },
+  });
+
+  assert.equal(result.driveItemId, 'completed-drive-item-1');
+  assert.equal(result.fileUrl, 'https://sharepoint.example/completed-form.pdf');
+  assert.equal(
+    requestedUrls.some((url) =>
+      url.includes(
+        'supplier-form-completed-unsigned-20260517T100000Z-abcdef123456.pdf',
+      ),
+    ),
+    true,
+  );
 });
 
 test('OneDrive archive uploader uses configured drive ID directly', async () => {
