@@ -6,9 +6,11 @@ import { db } from '../lib/db';
 import {
   getAccountOpeningDriveArchiveConfig,
   uploadAccountOpeningArchivePack,
+  uploadAccountOpeningCompletedFormFiling,
   getMicrosoftStorageGraphAccessToken,
   type AccountOpeningDriveArchiveConfig,
   type AccountOpeningDriveArchiveUploader,
+  type AccountOpeningCompletedFormFilingUploader,
 } from './driveArchive';
 import {
   buildAccountOpeningCompletionDraft,
@@ -145,6 +147,7 @@ export type AccountOpeningCaseDetail = {
   fieldMappings: AccountOpeningFieldMappingReview;
   latestFillPreview: AccountOpeningFillPreviewDetail | null;
   latestBinaryFillPreview: AccountOpeningBinaryFillPreviewDetail | null;
+  latestCompletedFormFiling: AccountOpeningCompletedFormFilingDetail | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -224,6 +227,33 @@ export type AccountOpeningBinaryFillPreviewDetail = {
   createdByIdentifier: string | null;
 };
 
+export type AccountOpeningCompletedFormFilingDetail = {
+  id: string;
+  binaryFillPreviewId: string;
+  status: string;
+  fileName: string;
+  contentType: string;
+  fileHash: string | null;
+  fileSizeBytes: number | null;
+  storageProvider: string | null;
+  storageFolderUrl: string | null;
+  storageFileUrl: string | null;
+  storageDriveItemId: string | null;
+  approvedByType: string | null;
+  approvedByIdentifier: string | null;
+  approvedAt: string | null;
+  approvalNote: string | null;
+  filedByType: string | null;
+  filedByIdentifier: string | null;
+  filedAt: string | null;
+  filingNote: string | null;
+  skippedReason: string | null;
+  safetySummary: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AccountOpeningCase = {
   sourceFingerprint: string;
   status: 'pending_review' | 'approved' | 'rejected';
@@ -288,6 +318,7 @@ export type PersistedAccountOpeningReviewCase = {
   originalForms?: PersistedAccountOpeningOriginalForm[];
   fillPreviews?: PersistedAccountOpeningFillPreview[];
   binaryFillPreviews?: PersistedAccountOpeningBinaryFillPreview[];
+  completedFormFilings?: PersistedAccountOpeningCompletedFormFiling[];
   createdAt: Date;
   updatedAt: Date;
 };
@@ -371,6 +402,34 @@ export type PersistedAccountOpeningBinaryFillPreview = {
   createdByType: string | null;
   createdByIdentifier: string | null;
   createdAt: Date;
+};
+
+export type PersistedAccountOpeningCompletedFormFiling = {
+  id: string;
+  accountOpeningCaseId?: string;
+  binaryFillPreviewId: string;
+  status: string;
+  fileName: string;
+  contentType: string;
+  fileHash: string | null;
+  fileSizeBytes: number | null;
+  storageProvider: string | null;
+  storageFolderUrl: string | null;
+  storageFileUrl: string | null;
+  storageDriveItemId: string | null;
+  approvedByType: string | null;
+  approvedByIdentifier: string | null;
+  approvedAt: Date | null;
+  approvalNote: string | null;
+  filedByType: string | null;
+  filedByIdentifier: string | null;
+  filedAt: Date | null;
+  filingNote: string | null;
+  skippedReason: string | null;
+  safetySummary: unknown;
+  metadata: unknown;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 export type AccountOpeningDetection = {
@@ -545,6 +604,8 @@ const REQUIRED_FIELD_LABELS: Array<keyof AccountOpeningStructuredFields> = [
   'accountsContact',
   'paymentMethodRequested',
 ];
+const REJECTED_ACCOUNT_OPENING_COMPLETED_FORM_FILING_MESSAGE =
+  'Rejected account-opening cases cannot be approved or filed.';
 
 function compactUnique(values: Array<string | null | undefined>): string[] {
   return Array.from(
@@ -869,6 +930,39 @@ function buildBinaryFillPreviewDetailFromPersisted(
     generatedAt: preview.createdAt.toISOString(),
     createdByType: preview.createdByType,
     createdByIdentifier: sanitizeDashboardText(preview.createdByIdentifier),
+  };
+}
+
+function buildCompletedFormFilingDetailFromPersisted(
+  filing: PersistedAccountOpeningCompletedFormFiling,
+): AccountOpeningCompletedFormFilingDetail {
+  return {
+    id: filing.id,
+    binaryFillPreviewId: filing.binaryFillPreviewId,
+    status: filing.status,
+    fileName: sanitizeDashboardText(filing.fileName) ?? 'completed-form.pdf',
+    contentType: sanitizeDashboardText(filing.contentType) ?? 'application/pdf',
+    fileHash: sanitizeDashboardText(filing.fileHash) ?? null,
+    fileSizeBytes: filing.fileSizeBytes,
+    storageProvider: sanitizeDashboardText(filing.storageProvider) ?? null,
+    storageFolderUrl: sanitizeDashboardText(filing.storageFolderUrl) ?? null,
+    storageFileUrl: sanitizeDashboardText(filing.storageFileUrl) ?? null,
+    storageDriveItemId:
+      sanitizeDashboardText(filing.storageDriveItemId) ?? null,
+    approvedByType: sanitizeDashboardText(filing.approvedByType) ?? null,
+    approvedByIdentifier:
+      sanitizeDashboardText(filing.approvedByIdentifier) ?? null,
+    approvedAt: filing.approvedAt?.toISOString() ?? null,
+    approvalNote: sanitizeDashboardText(filing.approvalNote) ?? null,
+    filedByType: sanitizeDashboardText(filing.filedByType) ?? null,
+    filedByIdentifier: sanitizeDashboardText(filing.filedByIdentifier) ?? null,
+    filedAt: filing.filedAt?.toISOString() ?? null,
+    filingNote: sanitizeDashboardText(filing.filingNote) ?? null,
+    skippedReason: sanitizeDashboardText(filing.skippedReason) ?? null,
+    safetySummary: jsonRecordFromUnknown(filing.safetySummary),
+    metadata: jsonRecordFromUnknown(filing.metadata),
+    createdAt: filing.createdAt.toISOString(),
+    updatedAt: filing.updatedAt.toISOString(),
   };
 }
 
@@ -1431,6 +1525,32 @@ export type AccountOpeningCaseRepository = {
       createdByIdentifier: string | null;
     };
   }) => Promise<PersistedAccountOpeningBinaryFillPreview>;
+  findBinaryFillPreview?: (args: {
+    where: { id: string };
+  }) => Promise<PersistedAccountOpeningBinaryFillPreview | null>;
+  findCompletedFormFiling?: (args: {
+    where?: {
+      id?: string;
+      accountOpeningCaseId?: string;
+      binaryFillPreviewId?: string;
+    };
+    orderBy?: { createdAt: 'asc' | 'desc' };
+  }) => Promise<PersistedAccountOpeningCompletedFormFiling | null>;
+  createCompletedFormFiling?: (args: {
+    data: Omit<
+      PersistedAccountOpeningCompletedFormFiling,
+      'id' | 'createdAt' | 'updatedAt'
+    >;
+  }) => Promise<PersistedAccountOpeningCompletedFormFiling>;
+  updateCompletedFormFiling?: (args: {
+    where: { id: string };
+    data: Partial<
+      Omit<
+        PersistedAccountOpeningCompletedFormFiling,
+        'id' | 'createdAt' | 'updatedAt'
+      >
+    >;
+  }) => Promise<PersistedAccountOpeningCompletedFormFiling>;
   createEvent: (args: {
     data: AccountOpeningCaseEventInput;
   }) => Promise<unknown>;
@@ -1475,6 +1595,9 @@ function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
       }) => Promise<PersistedAccountOpeningFillPreview>;
     };
     accountOpeningBinaryFillPreview: {
+      findUnique: (args: {
+        where: { id: string };
+      }) => Promise<PersistedAccountOpeningBinaryFillPreview | null>;
       create: (args: {
         data: {
           accountOpeningCaseId: string;
@@ -1495,6 +1618,26 @@ function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
           createdByIdentifier: string | null;
         };
       }) => Promise<PersistedAccountOpeningBinaryFillPreview>;
+    };
+    accountOpeningCompletedFormFiling: {
+      findFirst: (
+        args: unknown,
+      ) => Promise<PersistedAccountOpeningCompletedFormFiling | null>;
+      create: (args: {
+        data: Omit<
+          PersistedAccountOpeningCompletedFormFiling,
+          'id' | 'createdAt' | 'updatedAt'
+        >;
+      }) => Promise<PersistedAccountOpeningCompletedFormFiling>;
+      update: (args: {
+        where: { id: string };
+        data: Partial<
+          Omit<
+            PersistedAccountOpeningCompletedFormFiling,
+            'id' | 'createdAt' | 'updatedAt'
+          >
+        >;
+      }) => Promise<PersistedAccountOpeningCompletedFormFiling>;
     };
     accountOpeningCaseEvent: {
       create: (args: {
@@ -1541,6 +1684,14 @@ function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
     createFillPreview: (args) => client.accountOpeningFillPreview.create(args),
     createBinaryFillPreview: (args) =>
       client.accountOpeningBinaryFillPreview.create(args),
+    findBinaryFillPreview: (args) =>
+      client.accountOpeningBinaryFillPreview.findUnique(args),
+    findCompletedFormFiling: (args) =>
+      client.accountOpeningCompletedFormFiling.findFirst(args),
+    createCompletedFormFiling: (args) =>
+      client.accountOpeningCompletedFormFiling.create(args),
+    updateCompletedFormFiling: (args) =>
+      client.accountOpeningCompletedFormFiling.update(args),
     createEvent: (args) => client.accountOpeningCaseEvent.create(args),
   };
 }
@@ -1560,6 +1711,11 @@ export function buildAccountOpeningCaseDetail(
   const latestBinaryFillPreview = accountCase.binaryFillPreviews?.[0]
     ? buildBinaryFillPreviewDetailFromPersisted(
         accountCase.binaryFillPreviews[0],
+      )
+    : null;
+  const latestCompletedFormFiling = accountCase.completedFormFilings?.[0]
+    ? buildCompletedFormFilingDetailFromPersisted(
+        accountCase.completedFormFilings[0],
       )
     : null;
   const riskFlags = stringArrayFromJson(accountCase.riskFlags);
@@ -1640,6 +1796,7 @@ export function buildAccountOpeningCaseDetail(
     fieldMappings,
     latestFillPreview,
     latestBinaryFillPreview,
+    latestCompletedFormFiling,
     createdAt: accountCase.createdAt.toISOString(),
     updatedAt: accountCase.updatedAt.toISOString(),
   };
@@ -1666,6 +1823,10 @@ export async function getAccountOpeningCaseDetail(
         take: 1,
       },
       binaryFillPreviews: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+      completedFormFilings: {
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
@@ -1718,6 +1879,10 @@ export async function saveAccountOpeningMissingInfo(input: {
           take: 1,
         },
         binaryFillPreviews: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+        completedFormFilings: {
           orderBy: { createdAt: 'desc' },
           take: 1,
         },
@@ -1785,6 +1950,10 @@ export async function updateAccountOpeningCaseStatus(input: {
           orderBy: { createdAt: 'desc' },
           take: 1,
         },
+        completedFormFilings: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
       },
     })) ?? updated;
 
@@ -1839,6 +2008,10 @@ export async function updateAccountOpeningCaseStatus(input: {
             orderBy: { createdAt: 'desc' },
             take: 1,
           },
+          completedFormFilings: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
         },
       })) ?? updated;
 
@@ -1890,6 +2063,10 @@ async function findCaseWithEvidence(
         take: 1,
       },
       binaryFillPreviews: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+      completedFormFilings: {
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
@@ -2748,6 +2925,571 @@ export async function downloadAccountOpeningBinaryFillPreviewFile(input: {
   return file;
 }
 
+function binaryPreviewBytes(
+  preview: PersistedAccountOpeningBinaryFillPreview,
+): Uint8Array | null {
+  return preview.binaryPreviewBytes
+    ? new Uint8Array(preview.binaryPreviewBytes)
+    : null;
+}
+
+function hashBytes(bytes: Uint8Array): string {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+async function findBinaryPreviewForCompletedFormFiling(input: {
+  id: string;
+  binaryFillPreviewId?: string | null;
+  accountCase: PersistedAccountOpeningReviewCase;
+  repository: AccountOpeningCaseRepository;
+}): Promise<PersistedAccountOpeningBinaryFillPreview> {
+  const previewId =
+    sanitizeDashboardText(input.binaryFillPreviewId) ??
+    input.accountCase.binaryFillPreviews?.[0]?.id ??
+    null;
+
+  if (!previewId) {
+    throw new Error(
+      'Generate a binary fill preview before approving a completed unsigned form for filing.',
+    );
+  }
+
+  const includedPreview = input.accountCase.binaryFillPreviews?.find(
+    (preview) => preview.id === previewId,
+  );
+  const preview =
+    includedPreview ??
+    (input.repository.findBinaryFillPreview
+      ? await input.repository.findBinaryFillPreview({
+          where: { id: previewId },
+        })
+      : null);
+
+  if (!preview) {
+    throw new Error('Account-opening binary fill preview not found.');
+  }
+
+  if (
+    preview.accountOpeningCaseId &&
+    preview.accountOpeningCaseId !== input.id
+  ) {
+    throw new Error(
+      'Account-opening binary fill preview does not belong to this case.',
+    );
+  }
+
+  return preview;
+}
+
+function validateCompletedUnsignedPreview(
+  preview: PersistedAccountOpeningBinaryFillPreview,
+): Uint8Array {
+  const bytes = binaryPreviewBytes(preview);
+
+  if (
+    preview.status !== 'GENERATED_FOR_REVIEW' ||
+    !bytes ||
+    !preview.binaryPreviewFileName ||
+    !preview.binaryPreviewContentType
+  ) {
+    throw new Error(
+      'Only generated supported binary PDF AcroForm previews with stored bytes can be approved for completed unsigned form filing.',
+    );
+  }
+
+  if (preview.binaryPreviewContentType !== 'application/pdf') {
+    throw new Error(
+      'Only generated PDF AcroForm previews can be approved for completed unsigned form filing.',
+    );
+  }
+
+  return bytes;
+}
+
+function completedFormFilingSafetySummary(input: {
+  preview: PersistedAccountOpeningBinaryFillPreview;
+}): Prisma.InputJsonValue {
+  return jsonObject({
+    completedUnsignedForm: true,
+    approvedForFilingRequired: true,
+    internalSharePointFilingOnly: true,
+    notSigned: true,
+    notSent: true,
+    notSubmitted: true,
+    blockedReviewRequiredFieldsRemainBlank: true,
+    rawExtractedTextIncluded: false,
+    rawBankDetailsIncluded: false,
+    signedFormsIncluded: false,
+    paymentAuthorityCompleted: false,
+    directDebitMandateCompleted: false,
+    guaranteeIndemnityCompleted: false,
+    supplierMessageIncluded: false,
+    supplierSubmissionTriggered: false,
+    purchaseWorkflowTriggered: false,
+    previewSafetySummary: jsonRecordFromUnknown(input.preview.safetySummary),
+  });
+}
+
+function completedFormFilingMetadata(input: {
+  preview: PersistedAccountOpeningBinaryFillPreview;
+  fileHash: string;
+  fileSizeBytes: number;
+  storage?: {
+    status: string;
+    storageProvider: string | null;
+    folderUrl: string | null;
+    fileUrl: string | null;
+    driveItemId: string | null;
+    skippedReason: string | null;
+  };
+}): Prisma.InputJsonValue {
+  return jsonObject({
+    binaryFillPreviewId: input.preview.id,
+    originalFormId: input.preview.originalFormId,
+    previewVersion: input.preview.previewVersion,
+    previewStatus: input.preview.status,
+    binaryPreviewHash: input.preview.binaryPreviewHash,
+    fileHash: input.fileHash,
+    fileSizeBytes: input.fileSizeBytes,
+    filledFieldCount: input.preview.filledFieldCount,
+    blankFieldCount: input.preview.blankFieldCount,
+    warnings: safeStringArrayFromJson(input.preview.warnings),
+    storage: input.storage ?? null,
+    rawFileBytesIncludedInAudit: false,
+    rawExtractedTextIncluded: false,
+    rawBankDetailsIncluded: false,
+    signedFormsIncluded: false,
+    supplierMessageIncluded: false,
+    supplierSubmissionTriggered: false,
+    purchaseWorkflowTriggered: false,
+  });
+}
+
+async function findCompletedFormFilingForPreview(input: {
+  accountOpeningCaseId: string;
+  binaryFillPreviewId: string;
+  repository: AccountOpeningCaseRepository;
+}) {
+  if (!input.repository.findCompletedFormFiling) {
+    return null;
+  }
+
+  return input.repository.findCompletedFormFiling({
+    where: {
+      accountOpeningCaseId: input.accountOpeningCaseId,
+      binaryFillPreviewId: input.binaryFillPreviewId,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
+async function upsertCompletedFormFiling(input: {
+  existing: PersistedAccountOpeningCompletedFormFiling | null;
+  data: Omit<
+    PersistedAccountOpeningCompletedFormFiling,
+    'id' | 'createdAt' | 'updatedAt'
+  >;
+  repository: AccountOpeningCaseRepository;
+}): Promise<PersistedAccountOpeningCompletedFormFiling> {
+  if (input.existing) {
+    if (!input.repository.updateCompletedFormFiling) {
+      throw new Error(
+        'Account-opening completed form filing repository is not writable.',
+      );
+    }
+
+    return input.repository.updateCompletedFormFiling({
+      where: { id: input.existing.id },
+      data: input.data,
+    });
+  }
+
+  if (!input.repository.createCompletedFormFiling) {
+    throw new Error(
+      'Account-opening completed form filing repository is not writable.',
+    );
+  }
+
+  return input.repository.createCompletedFormFiling({
+    data: input.data,
+  });
+}
+
+export async function approveAccountOpeningCompletedFormFiling(input: {
+  id: string;
+  binaryFillPreviewId?: string | null;
+  approvalNote?: string | null;
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  repository?: AccountOpeningCaseRepository;
+  now?: Date;
+}): Promise<{
+  item: AccountOpeningCaseDetail;
+  filing: AccountOpeningCompletedFormFilingDetail;
+}> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  const existing = await findCaseWithEvidence(input.id, repository);
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  if (existing.status === 'REJECTED') {
+    throw new Error(REJECTED_ACCOUNT_OPENING_COMPLETED_FORM_FILING_MESSAGE);
+  }
+
+  const preview = await findBinaryPreviewForCompletedFormFiling({
+    id: input.id,
+    binaryFillPreviewId: input.binaryFillPreviewId,
+    accountCase: existing,
+    repository,
+  });
+  const bytes = validateCompletedUnsignedPreview(preview);
+  const fileHash = preview.binaryPreviewHash ?? hashBytes(bytes);
+  const existingFiling = await findCompletedFormFilingForPreview({
+    accountOpeningCaseId: input.id,
+    binaryFillPreviewId: preview.id,
+    repository,
+  });
+  const now = input.now ?? new Date();
+  const actorType = input.actorType?.trim() || 'OPERATOR';
+  const actorIdentifier = sanitizeDashboardText(input.actorIdentifier) ?? null;
+  const approvalNote = sanitizeDashboardText(input.approvalNote) ?? null;
+  const filing = await upsertCompletedFormFiling({
+    existing: existingFiling,
+    repository,
+    data: {
+      accountOpeningCaseId: input.id,
+      binaryFillPreviewId: preview.id,
+      status:
+        existingFiling?.status === 'FILED' ? 'FILED' : 'APPROVED_FOR_FILING',
+      fileName:
+        sanitizeDashboardText(preview.binaryPreviewFileName) ??
+        'completed-unsigned-form.pdf',
+      contentType:
+        sanitizeDashboardText(preview.binaryPreviewContentType) ??
+        'application/pdf',
+      fileHash,
+      fileSizeBytes: bytes.byteLength,
+      storageProvider: existingFiling?.storageProvider ?? null,
+      storageFolderUrl: existingFiling?.storageFolderUrl ?? null,
+      storageFileUrl: existingFiling?.storageFileUrl ?? null,
+      storageDriveItemId: existingFiling?.storageDriveItemId ?? null,
+      approvedByType: actorType,
+      approvedByIdentifier: actorIdentifier,
+      approvedAt: now,
+      approvalNote,
+      filedByType: existingFiling?.filedByType ?? null,
+      filedByIdentifier: existingFiling?.filedByIdentifier ?? null,
+      filedAt: existingFiling?.filedAt ?? null,
+      filingNote: existingFiling?.filingNote ?? null,
+      skippedReason: existingFiling?.skippedReason ?? null,
+      safetySummary: completedFormFilingSafetySummary({ preview }),
+      metadata: completedFormFilingMetadata({
+        preview,
+        fileHash,
+        fileSizeBytes: bytes.byteLength,
+      }),
+    },
+  });
+
+  await repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.id,
+      actionType: 'COMPLETED_UNSIGNED_FORM_APPROVED_FOR_FILING',
+      previousStatus: existing.status,
+      newStatus: existing.status,
+      actorType,
+      actorIdentifier,
+      note: approvalNote,
+      metadata: completedFormFilingMetadata({
+        preview,
+        fileHash,
+        fileSizeBytes: bytes.byteLength,
+      }),
+    },
+  });
+
+  const updated = (await findCaseWithEvidence(input.id, repository)) ?? {
+    ...existing,
+    completedFormFilings: [filing],
+  };
+
+  return {
+    item: buildAccountOpeningCaseDetail(updated),
+    filing: buildCompletedFormFilingDetailFromPersisted(filing),
+  };
+}
+
+async function persistCompletedFormFilingSkipped(input: {
+  accountCase: PersistedAccountOpeningReviewCase;
+  preview: PersistedAccountOpeningBinaryFillPreview;
+  reason: string;
+  actorType: string;
+  actorIdentifier: string | null;
+  filingNote: string | null;
+  repository: AccountOpeningCaseRepository;
+  now: Date;
+}) {
+  const bytes = binaryPreviewBytes(input.preview);
+  const fileHash =
+    input.preview.binaryPreviewHash ?? (bytes ? hashBytes(bytes) : null);
+  const fileSizeBytes = bytes?.byteLength ?? null;
+  const existingFiling = await findCompletedFormFilingForPreview({
+    accountOpeningCaseId: input.accountCase.id,
+    binaryFillPreviewId: input.preview.id,
+    repository: input.repository,
+  });
+  const filing = await upsertCompletedFormFiling({
+    existing: existingFiling,
+    repository: input.repository,
+    data: {
+      accountOpeningCaseId: input.accountCase.id,
+      binaryFillPreviewId: input.preview.id,
+      status: 'FILING_SKIPPED',
+      fileName:
+        sanitizeDashboardText(input.preview.binaryPreviewFileName) ??
+        'completed-unsigned-form.pdf',
+      contentType:
+        sanitizeDashboardText(input.preview.binaryPreviewContentType) ??
+        'application/pdf',
+      fileHash,
+      fileSizeBytes,
+      storageProvider: existingFiling?.storageProvider ?? null,
+      storageFolderUrl: existingFiling?.storageFolderUrl ?? null,
+      storageFileUrl: existingFiling?.storageFileUrl ?? null,
+      storageDriveItemId: existingFiling?.storageDriveItemId ?? null,
+      approvedByType: existingFiling?.approvedByType ?? null,
+      approvedByIdentifier: existingFiling?.approvedByIdentifier ?? null,
+      approvedAt: existingFiling?.approvedAt ?? null,
+      approvalNote: existingFiling?.approvalNote ?? null,
+      filedByType: null,
+      filedByIdentifier: null,
+      filedAt: null,
+      filingNote: input.filingNote,
+      skippedReason: input.reason,
+      safetySummary: completedFormFilingSafetySummary({
+        preview: input.preview,
+      }),
+      metadata: completedFormFilingMetadata({
+        preview: input.preview,
+        fileHash: fileHash ?? '',
+        fileSizeBytes: fileSizeBytes ?? 0,
+        storage: {
+          status: 'FILING_SKIPPED',
+          storageProvider: null,
+          folderUrl: null,
+          fileUrl: null,
+          driveItemId: null,
+          skippedReason: input.reason,
+        },
+      }),
+    },
+  });
+
+  await input.repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.accountCase.id,
+      actionType: 'COMPLETED_UNSIGNED_FORM_FILING_SKIPPED',
+      previousStatus: input.accountCase.status,
+      newStatus: input.accountCase.status,
+      actorType: input.actorType,
+      actorIdentifier: input.actorIdentifier,
+      note: input.reason,
+      metadata: completedFormFilingMetadata({
+        preview: input.preview,
+        fileHash: fileHash ?? '',
+        fileSizeBytes: fileSizeBytes ?? 0,
+        storage: {
+          status: 'FILING_SKIPPED',
+          storageProvider: null,
+          folderUrl: null,
+          fileUrl: null,
+          driveItemId: null,
+          skippedReason: input.reason,
+        },
+      }),
+    },
+  });
+
+  return filing;
+}
+
+export async function fileAccountOpeningCompletedFormToSharePoint(input: {
+  id: string;
+  binaryFillPreviewId?: string | null;
+  filingNote?: string | null;
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  repository?: AccountOpeningCaseRepository;
+  storageConfig?: AccountOpeningDriveArchiveConfig;
+  storageUploader?: AccountOpeningCompletedFormFilingUploader;
+  now?: Date;
+}): Promise<{
+  item: AccountOpeningCaseDetail;
+  filing: AccountOpeningCompletedFormFilingDetail;
+}> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  const existing = await findCaseWithEvidence(input.id, repository);
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  if (existing.status === 'REJECTED') {
+    throw new Error(REJECTED_ACCOUNT_OPENING_COMPLETED_FORM_FILING_MESSAGE);
+  }
+
+  const preview = await findBinaryPreviewForCompletedFormFiling({
+    id: input.id,
+    binaryFillPreviewId: input.binaryFillPreviewId,
+    accountCase: existing,
+    repository,
+  });
+  const bytes = validateCompletedUnsignedPreview(preview);
+  const existingFiling = await findCompletedFormFilingForPreview({
+    accountOpeningCaseId: input.id,
+    binaryFillPreviewId: preview.id,
+    repository,
+  });
+  const now = input.now ?? new Date();
+  const actorType = input.actorType?.trim() || 'OPERATOR';
+  const actorIdentifier = sanitizeDashboardText(input.actorIdentifier) ?? null;
+  const filingNote = sanitizeDashboardText(input.filingNote) ?? null;
+
+  if (existingFiling?.status === 'FILED') {
+    return {
+      item: buildAccountOpeningCaseDetail(existing),
+      filing: buildCompletedFormFilingDetailFromPersisted(existingFiling),
+    };
+  }
+
+  if (existingFiling?.status !== 'APPROVED_FOR_FILING') {
+    const filing = await persistCompletedFormFilingSkipped({
+      accountCase: existing,
+      preview,
+      reason:
+        'Approve the completed unsigned form for filing before internal SharePoint filing.',
+      actorType,
+      actorIdentifier,
+      filingNote,
+      repository,
+      now,
+    });
+    const updated = (await findCaseWithEvidence(input.id, repository)) ?? {
+      ...existing,
+      completedFormFilings: [filing],
+    };
+
+    return {
+      item: buildAccountOpeningCaseDetail(updated),
+      filing: buildCompletedFormFilingDetailFromPersisted(filing),
+    };
+  }
+
+  const fileHash = preview.binaryPreviewHash ?? hashBytes(bytes);
+  const uploadResult = await uploadAccountOpeningCompletedFormFiling({
+    item: buildAccountOpeningCaseDetail(existing),
+    preview: buildBinaryFillPreviewDetailFromPersisted(preview),
+    content: bytes,
+    fileHash,
+    config: input.storageConfig,
+    uploader: input.storageUploader,
+    now,
+  });
+  const nextStatus =
+    uploadResult.status === 'UPLOADED'
+      ? 'FILED'
+      : uploadResult.status === 'UPLOAD_FAILED'
+        ? 'FILING_FAILED'
+        : 'FILING_SKIPPED';
+
+  if (!repository.updateCompletedFormFiling) {
+    throw new Error(
+      'Account-opening completed form filing repository is not writable.',
+    );
+  }
+
+  const filing = await repository.updateCompletedFormFiling({
+    where: { id: existingFiling.id },
+    data: {
+      status: nextStatus,
+      fileName: uploadResult.fileName,
+      contentType: 'application/pdf',
+      fileHash: uploadResult.fileHash,
+      fileSizeBytes: uploadResult.fileSizeBytes,
+      storageProvider: uploadResult.storageProvider,
+      storageFolderUrl: uploadResult.folderUrl,
+      storageFileUrl: uploadResult.fileUrl,
+      storageDriveItemId: uploadResult.driveItemId,
+      approvedByType: existingFiling.approvedByType,
+      approvedByIdentifier: existingFiling.approvedByIdentifier,
+      approvedAt: existingFiling.approvedAt,
+      approvalNote: existingFiling.approvalNote,
+      filedByType: nextStatus === 'FILED' ? actorType : null,
+      filedByIdentifier: nextStatus === 'FILED' ? actorIdentifier : null,
+      filedAt: nextStatus === 'FILED' ? uploadResult.attemptedAt : null,
+      filingNote,
+      skippedReason: uploadResult.skippedReason,
+      safetySummary: completedFormFilingSafetySummary({ preview }),
+      metadata: completedFormFilingMetadata({
+        preview,
+        fileHash: uploadResult.fileHash,
+        fileSizeBytes: uploadResult.fileSizeBytes,
+        storage: {
+          status: nextStatus,
+          storageProvider: uploadResult.storageProvider,
+          folderUrl: uploadResult.folderUrl,
+          fileUrl: uploadResult.fileUrl,
+          driveItemId: uploadResult.driveItemId,
+          skippedReason: uploadResult.skippedReason,
+        },
+      }),
+    },
+  });
+  const actionType =
+    nextStatus === 'FILED'
+      ? 'COMPLETED_UNSIGNED_FORM_FILING_COMPLETED'
+      : nextStatus === 'FILING_FAILED'
+        ? 'COMPLETED_UNSIGNED_FORM_FILING_FAILED'
+        : 'COMPLETED_UNSIGNED_FORM_FILING_SKIPPED';
+
+  await repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.id,
+      actionType,
+      previousStatus: existing.status,
+      newStatus: existing.status,
+      actorType,
+      actorIdentifier,
+      note: sanitizeDashboardText(uploadResult.note),
+      metadata: completedFormFilingMetadata({
+        preview,
+        fileHash: uploadResult.fileHash,
+        fileSizeBytes: uploadResult.fileSizeBytes,
+        storage: {
+          status: nextStatus,
+          storageProvider: uploadResult.storageProvider,
+          folderUrl: uploadResult.folderUrl,
+          fileUrl: uploadResult.fileUrl,
+          driveItemId: uploadResult.driveItemId,
+          skippedReason: uploadResult.skippedReason,
+        },
+      }),
+    },
+  });
+
+  const updated = (await findCaseWithEvidence(input.id, repository)) ?? {
+    ...existing,
+    completedFormFilings: [filing],
+  };
+
+  return {
+    item: buildAccountOpeningCaseDetail(updated),
+    filing: buildCompletedFormFilingDetailFromPersisted(filing),
+  };
+}
+
 export async function writeDraftAuditEvents(input: {
   accountCaseId: string;
   previousStatus?: string | null;
@@ -2988,6 +3730,10 @@ export async function upsertAccountOpeningCase(
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
+      completedFormFilings: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
     },
   });
   const existingEvidence = existingWithEvidence?.sourceEvidence ?? [];
@@ -3042,6 +3788,10 @@ export async function upsertAccountOpeningCase(
         take: 1,
       },
       binaryFillPreviews: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+      completedFormFilings: {
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
@@ -3110,6 +3860,10 @@ export async function upsertAccountOpeningCase(
             orderBy: { createdAt: 'desc' },
             take: 1,
           },
+          completedFormFilings: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
         },
       })) ?? accountCaseWithEvidence;
   }
@@ -3175,6 +3929,10 @@ export async function upsertAccountOpeningCase(
         take: 1,
       },
       binaryFillPreviews: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+      completedFormFilings: {
         orderBy: { createdAt: 'desc' },
         take: 1,
       },

@@ -639,6 +639,7 @@ model AccountOpeningCase {
   originalForms         AccountOpeningOriginalForm[]
   fillPreviews          AccountOpeningFillPreview[]
   binaryFillPreviews    AccountOpeningBinaryFillPreview[]
+  completedFormFilings  AccountOpeningCompletedFormFiling[]
   createdAt             DateTime                       @default(now())
   updatedAt             DateTime                       @updatedAt
 
@@ -797,6 +798,40 @@ model AccountOpeningBinaryFillPreview {
 
   @@index([accountOpeningCaseId, createdAt])
   @@index([originalFormId, createdAt])
+  @@index([status, createdAt])
+}
+
+model AccountOpeningCompletedFormFiling {
+  id                   String    @id @default(cuid())
+  accountOpeningCaseId String
+  binaryFillPreviewId  String
+  status               String
+  fileName             String
+  contentType          String
+  fileHash             String?
+  fileSizeBytes        Int?
+  storageProvider      String?
+  storageFolderUrl     String?
+  storageFileUrl       String?
+  storageDriveItemId   String?
+  approvedByType       String?
+  approvedByIdentifier String?
+  approvedAt           DateTime?
+  approvalNote         String?
+  filedByType          String?
+  filedByIdentifier    String?
+  filedAt              DateTime?
+  filingNote           String?
+  skippedReason        String?
+  safetySummary        Json?
+  metadata             Json?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  accountOpeningCase AccountOpeningCase @relation(fields: [accountOpeningCaseId], references: [id], onDelete: Cascade)
+
+  @@index([accountOpeningCaseId, createdAt])
+  @@index([binaryFillPreviewId])
   @@index([status, createdAt])
 }
 

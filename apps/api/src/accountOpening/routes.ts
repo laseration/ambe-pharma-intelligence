@@ -14,10 +14,12 @@ import {
   parseRequest,
 } from '../http/validation';
 import {
+  approveAccountOpeningCompletedFormFiling,
   downloadAccountOpeningBinaryFillPreviewFile,
   downloadAccountOpeningFillPreviewFile,
   downloadAccountOpeningReviewedExportFile,
   exportAccountOpeningReviewedPack,
+  fileAccountOpeningCompletedFormToSharePoint,
   generateAccountOpeningBinaryFillPreview,
   generateAccountOpeningFillPreview,
   generateAccountOpeningDraft,
@@ -44,6 +46,8 @@ type AccountOpeningRouteDependencies = {
   downloadFillPreviewFile: typeof downloadAccountOpeningFillPreviewFile;
   generateBinaryFillPreview: typeof generateAccountOpeningBinaryFillPreview;
   downloadBinaryFillPreviewFile: typeof downloadAccountOpeningBinaryFillPreviewFile;
+  approveCompletedFormFiling: typeof approveAccountOpeningCompletedFormFiling;
+  fileCompletedFormToSharePoint: typeof fileAccountOpeningCompletedFormToSharePoint;
   exportPack: typeof exportAccountOpeningReviewedPack;
   downloadExportFile: typeof downloadAccountOpeningReviewedExportFile;
   saveMissingInfo: typeof saveAccountOpeningMissingInfo;
@@ -77,6 +81,18 @@ const statusBodySchema = z
   .merge(actorBodySchema);
 
 const generateDraftBodySchema = actorBodySchema.partial().default({});
+const completedFormFilingApprovalBodySchema = z
+  .object({
+    binaryFillPreviewId: optionalTrimmedStringSchema,
+    approvalNote: optionalTrimmedStringSchema,
+  })
+  .merge(actorBodySchema);
+const completedFormFilingBodySchema = z
+  .object({
+    binaryFillPreviewId: optionalTrimmedStringSchema,
+    filingNote: optionalTrimmedStringSchema,
+  })
+  .merge(actorBodySchema);
 const fieldMappingStatusSchema = z.enum([
   'UNMAPPED',
   'MAPPED_SAFE',
@@ -130,6 +146,8 @@ const defaultDependencies: AccountOpeningRouteDependencies = {
   downloadFillPreviewFile: downloadAccountOpeningFillPreviewFile,
   generateBinaryFillPreview: generateAccountOpeningBinaryFillPreview,
   downloadBinaryFillPreviewFile: downloadAccountOpeningBinaryFillPreviewFile,
+  approveCompletedFormFiling: approveAccountOpeningCompletedFormFiling,
+  fileCompletedFormToSharePoint: fileAccountOpeningCompletedFormToSharePoint,
   exportPack: exportAccountOpeningReviewedPack,
   downloadExportFile: downloadAccountOpeningReviewedExportFile,
   saveMissingInfo: saveAccountOpeningMissingInfo,
@@ -384,6 +402,56 @@ export function createAccountOpeningRouter(
         )
         .setHeader('cache-control', 'no-store')
         .send(Buffer.from(file.content));
+    }),
+  );
+
+  router.post(
+    '/:id/completed-form-filing/approve',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { params, body } = parseRequest<
+        z.infer<typeof idParamSchema>,
+        unknown,
+        z.infer<typeof completedFormFilingApprovalBodySchema>
+      >(request, {
+        params: idParamSchema,
+        body: completedFormFilingApprovalBodySchema,
+      });
+      const actor = resolveInternalActor(request, body);
+
+      const result = await dependencies.approveCompletedFormFiling({
+        id: params.id,
+        binaryFillPreviewId: body.binaryFillPreviewId ?? null,
+        approvalNote: body.approvalNote ?? null,
+        ...actor,
+      });
+
+      response.json(result);
+    }),
+  );
+
+  router.post(
+    '/:id/completed-form-filing/file',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { params, body } = parseRequest<
+        z.infer<typeof idParamSchema>,
+        unknown,
+        z.infer<typeof completedFormFilingBodySchema>
+      >(request, {
+        params: idParamSchema,
+        body: completedFormFilingBodySchema,
+      });
+      const actor = resolveInternalActor(request, body);
+
+      const result = await dependencies.fileCompletedFormToSharePoint({
+        id: params.id,
+        binaryFillPreviewId: body.binaryFillPreviewId ?? null,
+        filingNote: body.filingNote ?? null,
+        ...actor,
+      });
+
+      response.json(result);
     }),
   );
 

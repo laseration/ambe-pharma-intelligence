@@ -124,6 +124,7 @@ function buildCaseDetail(
     },
     latestFillPreview: null,
     latestBinaryFillPreview: null,
+    latestCompletedFormFiling: null,
     createdAt: '2026-05-12T09:00:00.000Z',
     updatedAt: '2026-05-12T09:05:00.000Z',
     ...overrides,
@@ -222,6 +223,154 @@ async function startServer(
       fileName: 'binary-fill-preview.pdf',
       contentType: 'application/pdf',
       content: new Uint8Array([37, 80, 68, 70, 45]),
+    }),
+    approveCompletedFormFiling: async () => ({
+      item: {
+        ...defaultDetail,
+        latestCompletedFormFiling: {
+          id: 'completed-form-filing-1',
+          binaryFillPreviewId: 'binary-fill-preview-1',
+          status: 'APPROVED_FOR_FILING',
+          fileName: 'binary-fill-preview.pdf',
+          contentType: 'application/pdf',
+          fileHash: 'binary-preview-hash-1',
+          fileSizeBytes: 5,
+          storageProvider: null,
+          storageFolderUrl: null,
+          storageFileUrl: null,
+          storageDriveItemId: null,
+          approvedByType: 'OPERATOR',
+          approvedByIdentifier: 'route-completed-form-filing-test',
+          approvedAt: '2026-05-17T10:00:00.000Z',
+          approvalNote: 'Reviewed for internal SharePoint filing only.',
+          filedByType: null,
+          filedByIdentifier: null,
+          filedAt: null,
+          filingNote: null,
+          skippedReason: null,
+          safetySummary: {
+            internalSharePointFilingOnly: true,
+            notSigned: true,
+            notSent: true,
+            notSubmitted: true,
+          },
+          metadata: {
+            rawFileBytesIncludedInAudit: false,
+            supplierSubmissionTriggered: false,
+          },
+          createdAt: '2026-05-17T10:00:00.000Z',
+          updatedAt: '2026-05-17T10:00:00.000Z',
+        },
+      },
+      filing: {
+        id: 'completed-form-filing-1',
+        binaryFillPreviewId: 'binary-fill-preview-1',
+        status: 'APPROVED_FOR_FILING',
+        fileName: 'binary-fill-preview.pdf',
+        contentType: 'application/pdf',
+        fileHash: 'binary-preview-hash-1',
+        fileSizeBytes: 5,
+        storageProvider: null,
+        storageFolderUrl: null,
+        storageFileUrl: null,
+        storageDriveItemId: null,
+        approvedByType: 'OPERATOR',
+        approvedByIdentifier: 'route-completed-form-filing-test',
+        approvedAt: '2026-05-17T10:00:00.000Z',
+        approvalNote: 'Reviewed for internal SharePoint filing only.',
+        filedByType: null,
+        filedByIdentifier: null,
+        filedAt: null,
+        filingNote: null,
+        skippedReason: null,
+        safetySummary: {
+          internalSharePointFilingOnly: true,
+          notSigned: true,
+          notSent: true,
+          notSubmitted: true,
+        },
+        metadata: {
+          rawFileBytesIncludedInAudit: false,
+          supplierSubmissionTriggered: false,
+        },
+        createdAt: '2026-05-17T10:00:00.000Z',
+        updatedAt: '2026-05-17T10:00:00.000Z',
+      },
+    }),
+    fileCompletedFormToSharePoint: async () => ({
+      item: {
+        ...defaultDetail,
+        latestCompletedFormFiling: {
+          id: 'completed-form-filing-1',
+          binaryFillPreviewId: 'binary-fill-preview-1',
+          status: 'FILED',
+          fileName:
+            'supplier-account-opening-form-completed-unsigned-20260517T100000Z-binary-previ.pdf',
+          contentType: 'application/pdf',
+          fileHash: 'binary-preview-hash-1',
+          fileSizeBytes: 5,
+          storageProvider: 'SHAREPOINT',
+          storageFolderUrl: 'https://sharepoint.example/folder',
+          storageFileUrl: 'https://sharepoint.example/file.pdf',
+          storageDriveItemId: 'drive-item-1',
+          approvedByType: 'OPERATOR',
+          approvedByIdentifier: 'route-completed-form-filing-test',
+          approvedAt: '2026-05-17T10:00:00.000Z',
+          approvalNote: 'Reviewed for internal SharePoint filing only.',
+          filedByType: 'OPERATOR',
+          filedByIdentifier: 'route-completed-form-filing-test',
+          filedAt: '2026-05-17T10:01:00.000Z',
+          filingNote: 'Filed internally only.',
+          skippedReason: null,
+          safetySummary: {
+            internalSharePointFilingOnly: true,
+            notSigned: true,
+            notSent: true,
+            notSubmitted: true,
+          },
+          metadata: {
+            rawFileBytesIncludedInAudit: false,
+            supplierSubmissionTriggered: false,
+          },
+          createdAt: '2026-05-17T10:00:00.000Z',
+          updatedAt: '2026-05-17T10:01:00.000Z',
+        },
+      },
+      filing: {
+        id: 'completed-form-filing-1',
+        binaryFillPreviewId: 'binary-fill-preview-1',
+        status: 'FILED',
+        fileName:
+          'supplier-account-opening-form-completed-unsigned-20260517T100000Z-binary-previ.pdf',
+        contentType: 'application/pdf',
+        fileHash: 'binary-preview-hash-1',
+        fileSizeBytes: 5,
+        storageProvider: 'SHAREPOINT',
+        storageFolderUrl: 'https://sharepoint.example/folder',
+        storageFileUrl: 'https://sharepoint.example/file.pdf',
+        storageDriveItemId: 'drive-item-1',
+        approvedByType: 'OPERATOR',
+        approvedByIdentifier: 'route-completed-form-filing-test',
+        approvedAt: '2026-05-17T10:00:00.000Z',
+        approvalNote: 'Reviewed for internal SharePoint filing only.',
+        filedByType: 'OPERATOR',
+        filedByIdentifier: 'route-completed-form-filing-test',
+        filedAt: '2026-05-17T10:01:00.000Z',
+        filingNote: 'Filed internally only.',
+        skippedReason: null,
+        safetySummary: {
+          internalSharePointFilingOnly: true,
+          notSigned: true,
+          notSent: true,
+          notSubmitted: true,
+        },
+        metadata: {
+          rawFileBytesIncludedInAudit: false,
+          supplierSubmissionTriggered: false,
+        },
+        createdAt: '2026-05-17T10:00:00.000Z',
+        updatedAt: '2026-05-17T10:01:00.000Z',
+      },
     }),
     exportPack: async () => buildAccountOpeningReviewExportPack(defaultDetail),
     downloadExportFile: async (input) => {
@@ -856,6 +1005,178 @@ test('account-opening binary fill preview routes require operator access and all
   );
   assert.equal(downloadedInputs.length, 1);
   assert.equal(downloadedInputs[0]?.fileName, 'binary-fill-preview.pdf');
+});
+
+test('account-opening completed form filing routes require operator access and return safe status', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
+  const approvedInputs: Array<{
+    id: string;
+    binaryFillPreviewId?: string | null;
+    approvalNote?: string | null;
+    actorIdentifier?: string | null;
+  }> = [];
+  const filedInputs: Array<{
+    id: string;
+    binaryFillPreviewId?: string | null;
+    filingNote?: string | null;
+    actorIdentifier?: string | null;
+  }> = [];
+  const baseUrl = await startServer(t, {
+    approveCompletedFormFiling: async (input) => {
+      approvedInputs.push(input);
+      const detail = buildCaseDetail({
+        latestCompletedFormFiling: {
+          id: 'completed-form-filing-1',
+          binaryFillPreviewId: input.binaryFillPreviewId ?? '',
+          status: 'APPROVED_FOR_FILING',
+          fileName: 'binary-fill-preview.pdf',
+          contentType: 'application/pdf',
+          fileHash: 'binary-preview-hash-1',
+          fileSizeBytes: 5,
+          storageProvider: null,
+          storageFolderUrl: null,
+          storageFileUrl: null,
+          storageDriveItemId: null,
+          approvedByType: 'OPERATOR',
+          approvedByIdentifier: input.actorIdentifier ?? null,
+          approvedAt: '2026-05-17T10:00:00.000Z',
+          approvalNote: input.approvalNote ?? null,
+          filedByType: null,
+          filedByIdentifier: null,
+          filedAt: null,
+          filingNote: null,
+          skippedReason: null,
+          safetySummary: {
+            internalSharePointFilingOnly: true,
+            notSigned: true,
+            notSent: true,
+            notSubmitted: true,
+          },
+          metadata: {
+            rawFileBytesIncludedInAudit: false,
+            supplierSubmissionTriggered: false,
+            purchaseWorkflowTriggered: false,
+          },
+          createdAt: '2026-05-17T10:00:00.000Z',
+          updatedAt: '2026-05-17T10:00:00.000Z',
+        },
+      });
+      return {
+        item: detail,
+        filing: detail.latestCompletedFormFiling!,
+      };
+    },
+    fileCompletedFormToSharePoint: async (input) => {
+      filedInputs.push(input);
+      const detail = buildCaseDetail({
+        latestCompletedFormFiling: {
+          id: 'completed-form-filing-1',
+          binaryFillPreviewId: input.binaryFillPreviewId ?? '',
+          status: 'FILED',
+          fileName: 'completed-unsigned-form.pdf',
+          contentType: 'application/pdf',
+          fileHash: 'binary-preview-hash-1',
+          fileSizeBytes: 5,
+          storageProvider: 'SHAREPOINT',
+          storageFolderUrl: 'https://sharepoint.example/folder',
+          storageFileUrl: 'https://sharepoint.example/file.pdf',
+          storageDriveItemId: 'drive-item-1',
+          approvedByType: 'OPERATOR',
+          approvedByIdentifier: 'route-completed-form-filing-test',
+          approvedAt: '2026-05-17T10:00:00.000Z',
+          approvalNote: 'Approved after manual review.',
+          filedByType: 'OPERATOR',
+          filedByIdentifier: input.actorIdentifier ?? null,
+          filedAt: '2026-05-17T10:01:00.000Z',
+          filingNote: input.filingNote ?? null,
+          skippedReason: null,
+          safetySummary: {
+            internalSharePointFilingOnly: true,
+            notSigned: true,
+            notSent: true,
+            notSubmitted: true,
+          },
+          metadata: {
+            rawFileBytesIncludedInAudit: false,
+            supplierSubmissionTriggered: false,
+            purchaseWorkflowTriggered: false,
+          },
+          createdAt: '2026-05-17T10:00:00.000Z',
+          updatedAt: '2026-05-17T10:01:00.000Z',
+        },
+      });
+      return {
+        item: detail,
+        filing: detail.latestCompletedFormFiling!,
+      };
+    },
+  });
+
+  const unauthorizedResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/completed-form-filing/approve`,
+    { method: 'POST' },
+  );
+  const approveResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/completed-form-filing/approve`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-api-key': 'test-secret',
+        'x-internal-caller-name': 'route-completed-form-filing-test',
+      },
+      body: JSON.stringify({
+        binaryFillPreviewId: 'binary-fill-preview-1',
+        approvalNote:
+          'Reviewed completed unsigned form for internal SharePoint filing only.',
+      }),
+    },
+  );
+  const fileResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/completed-form-filing/file`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-api-key': 'test-secret',
+        'x-internal-caller-name': 'route-completed-form-filing-test',
+      },
+      body: JSON.stringify({
+        binaryFillPreviewId: 'binary-fill-preview-1',
+        filingNote: 'Internal SharePoint filing only.',
+      }),
+    },
+  );
+  const approvePayload = (await approveResponse.json()) as {
+    filing: { status: string; metadata: Record<string, unknown> };
+  };
+  const filePayload = (await fileResponse.json()) as {
+    filing: { status: string; storageFileUrl: string | null };
+  };
+
+  assert.equal(unauthorizedResponse.status, 401);
+  assert.equal(approveResponse.status, 200);
+  assert.equal(fileResponse.status, 200);
+  assert.equal(approvePayload.filing.status, 'APPROVED_FOR_FILING');
+  assert.equal(
+    approvePayload.filing.metadata.supplierSubmissionTriggered,
+    false,
+  );
+  assert.equal(filePayload.filing.status, 'FILED');
+  assert.equal(
+    filePayload.filing.storageFileUrl,
+    'https://sharepoint.example/file.pdf',
+  );
+  assert.equal(approvedInputs[0]?.binaryFillPreviewId, 'binary-fill-preview-1');
+  assert.equal(filedInputs[0]?.binaryFillPreviewId, 'binary-fill-preview-1');
+  assert.equal(
+    approvedInputs[0]?.actorIdentifier,
+    'internal-operator:route-completed-form-filing-test',
+  );
 });
 
 test('account-opening review export routes return safe pack and downloadable files', async (t) => {

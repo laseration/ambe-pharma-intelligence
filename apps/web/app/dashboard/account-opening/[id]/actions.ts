@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import {
+  approveAccountOpeningCompletedFormFiling,
+  fileAccountOpeningCompletedFormToSharePoint,
   generateAccountOpeningBinaryFillPreview,
   generateAccountOpeningFillPreview,
   generateAccountOpeningDraft,
@@ -358,6 +360,96 @@ export async function submitGenerateAccountOpeningBinaryFillPreviewAction(
       caseId,
       {
         message: 'Binary fill preview generated for review.',
+      },
+      returnTo,
+    ),
+  );
+}
+
+export async function submitApproveAccountOpeningCompletedFormFilingAction(
+  formData: FormData,
+) {
+  const caseId = value(formData, 'caseId');
+  const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
+  const binaryFillPreviewId = value(formData, 'binaryFillPreviewId') || null;
+
+  if (!caseId) {
+    redirect('/dashboard/review?error=Missing+account-opening+case');
+  }
+
+  try {
+    await approveAccountOpeningCompletedFormFiling(caseId, {
+      binaryFillPreviewId,
+      approvalNote: value(formData, 'approvalNote') || null,
+    });
+  } catch (error) {
+    redirect(
+      buildRedirectTarget(
+        caseId,
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to approve completed unsigned form for filing.',
+        },
+        returnTo,
+      ),
+    );
+  }
+
+  revalidatePath('/dashboard/review');
+  revalidatePath(`/dashboard/account-opening/${caseId}`);
+  redirect(
+    buildRedirectTarget(
+      caseId,
+      {
+        message:
+          'Completed unsigned form approved for internal SharePoint filing only.',
+      },
+      returnTo,
+    ),
+  );
+}
+
+export async function submitFileAccountOpeningCompletedFormToSharePointAction(
+  formData: FormData,
+) {
+  const caseId = value(formData, 'caseId');
+  const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
+  const binaryFillPreviewId = value(formData, 'binaryFillPreviewId') || null;
+
+  if (!caseId) {
+    redirect('/dashboard/review?error=Missing+account-opening+case');
+  }
+
+  try {
+    await fileAccountOpeningCompletedFormToSharePoint(caseId, {
+      binaryFillPreviewId,
+      filingNote: value(formData, 'filingNote') || null,
+    });
+  } catch (error) {
+    redirect(
+      buildRedirectTarget(
+        caseId,
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to file completed unsigned form to SharePoint.',
+        },
+        returnTo,
+      ),
+    );
+  }
+
+  revalidatePath('/dashboard/review');
+  revalidatePath(`/dashboard/account-opening/${caseId}`);
+  redirect(
+    buildRedirectTarget(
+      caseId,
+      {
+        message:
+          'Completed unsigned form filing status updated for internal SharePoint filing only.',
       },
       returnTo,
     ),

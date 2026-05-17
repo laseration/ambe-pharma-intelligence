@@ -1,5 +1,8 @@
 import { env } from '../config/env';
-import type { AccountOpeningCaseDetail } from './service';
+import type {
+  AccountOpeningBinaryFillPreviewDetail,
+  AccountOpeningCaseDetail,
+} from './service';
 
 export type AccountOpeningDriveArchiveConfig = {
   provider: 'SHAREPOINT' | 'ONEDRIVE';
@@ -46,6 +49,67 @@ export type AccountOpeningDriveArchiveUploader = {
   uploadArchivePack: (pack: AccountOpeningArchivePack) => Promise<{
     folderUrl: string | null;
     uploadedFileNames: string[];
+  }>;
+};
+
+export type AccountOpeningCompletedFormFile = {
+  fileName: string;
+  contentType: 'application/pdf';
+  content: Uint8Array;
+};
+
+export type AccountOpeningCompletedFormFilingPack = {
+  folderPath: string;
+  file: AccountOpeningCompletedFormFile;
+  metadata: {
+    caseId: string;
+    binaryFillPreviewId: string;
+    sourceFingerprint: string;
+    fileName: string;
+    contentType: 'application/pdf';
+    fileHash: string;
+    fileSizeBytes: number;
+    completedUnsignedForm: true;
+    approvedForFilingRequired: true;
+    internalSharePointFilingOnly: true;
+    notSigned: true;
+    notSent: true;
+    notSubmitted: true;
+    blockedReviewRequiredFieldsRemainBlank: true;
+    rawExtractedTextIncluded: false;
+    rawBankDetailsIncluded: false;
+    signedFormsIncluded: false;
+    paymentAuthorityCompleted: false;
+    directDebitMandateCompleted: false;
+    guaranteeIndemnityCompleted: false;
+    supplierMessageIncluded: false;
+    supplierSubmissionTriggered: false;
+    purchaseWorkflowTriggered: false;
+  };
+};
+
+export type AccountOpeningCompletedFormFilingUploadResult = {
+  status: 'UPLOADED' | 'SKIPPED_DISABLED' | 'UPLOAD_FAILED';
+  note: string;
+  storageProvider: 'SHAREPOINT' | 'ONEDRIVE';
+  folderUrl: string | null;
+  fileUrl: string | null;
+  driveItemId: string | null;
+  fileName: string;
+  fileHash: string;
+  fileSizeBytes: number;
+  skippedReason: string | null;
+  attemptedAt: Date;
+  metadata: AccountOpeningCompletedFormFilingPack['metadata'];
+};
+
+export type AccountOpeningCompletedFormFilingUploader = {
+  uploadCompletedForm: (
+    pack: AccountOpeningCompletedFormFilingPack,
+  ) => Promise<{
+    folderUrl: string | null;
+    fileUrl: string | null;
+    driveItemId: string | null;
   }>;
 };
 
@@ -386,6 +450,112 @@ export function buildAccountOpeningArchivePack(
   return pack;
 }
 
+function safeFileBaseName(value: string | null | undefined): string {
+  const sanitized = folderSegment(value?.replace(/\.pdf$/i, ''), 'form')
+    .replace(/\s+/g, '-')
+    .replace(/[^A-Za-z0-9._-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[.-]+|[.-]+$/g, '');
+
+  return sanitized.slice(0, 80) || 'form';
+}
+
+function timestampPart(value: Date): string {
+  return value
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}Z$/, 'Z');
+}
+
+export function buildAccountOpeningCompletedFormFolderPath(
+  item: AccountOpeningCaseDetail,
+  config: AccountOpeningDriveArchiveConfig,
+  now = new Date(),
+): string {
+  const supplierOrSender = folderSegment(
+    item.companyName || item.senderDomain || item.senderEmail,
+    'Unknown sender',
+  );
+  const shortId = folderSegment(item.id.slice(0, 8), 'case');
+
+  return [
+    folderPath(config.baseFolder, 'Account Opening'),
+    'Completed unsigned forms',
+    `${supplierOrSender} - ${datePart(item.receivedAt, now)} - ${shortId}`,
+  ].join('/');
+}
+
+export function buildAccountOpeningCompletedFormFileName(input: {
+  originalFileName?: string | null;
+  previewFileName?: string | null;
+  fileHash: string;
+  now?: Date;
+}): string {
+  const now = input.now ?? new Date();
+  const sourceName = input.originalFileName || input.previewFileName;
+  const shortHash = input.fileHash.slice(0, 12) || 'nohash';
+
+  return `${safeFileBaseName(sourceName)}-completed-unsigned-${timestampPart(now)}-${shortHash}.pdf`;
+}
+
+export function buildAccountOpeningCompletedFormFilingPack(input: {
+  item: AccountOpeningCaseDetail;
+  preview: AccountOpeningBinaryFillPreviewDetail;
+  content: Uint8Array;
+  fileHash: string;
+  config: AccountOpeningDriveArchiveConfig;
+  now?: Date;
+}): AccountOpeningCompletedFormFilingPack {
+  const now = input.now ?? new Date();
+  const originalForm = input.item.originalForms.find(
+    (form) => form.id === input.preview.originalFormId,
+  );
+  const fileName = buildAccountOpeningCompletedFormFileName({
+    originalFileName: originalForm?.fileName,
+    previewFileName: input.preview.binaryPreviewFileName,
+    fileHash: input.fileHash,
+    now,
+  });
+
+  return {
+    folderPath: buildAccountOpeningCompletedFormFolderPath(
+      input.item,
+      input.config,
+      now,
+    ),
+    file: {
+      fileName,
+      contentType: 'application/pdf',
+      content: input.content,
+    },
+    metadata: {
+      caseId: input.item.id,
+      binaryFillPreviewId: input.preview.id,
+      sourceFingerprint: input.item.sourceFingerprint,
+      fileName,
+      contentType: 'application/pdf',
+      fileHash: input.fileHash,
+      fileSizeBytes: input.content.byteLength,
+      completedUnsignedForm: true,
+      approvedForFilingRequired: true,
+      internalSharePointFilingOnly: true,
+      notSigned: true,
+      notSent: true,
+      notSubmitted: true,
+      blockedReviewRequiredFieldsRemainBlank: true,
+      rawExtractedTextIncluded: false,
+      rawBankDetailsIncluded: false,
+      signedFormsIncluded: false,
+      paymentAuthorityCompleted: false,
+      directDebitMandateCompleted: false,
+      guaranteeIndemnityCompleted: false,
+      supplierMessageIncluded: false,
+      supplierSubmissionTriggered: false,
+      purchaseWorkflowTriggered: false,
+    },
+  };
+}
+
 async function graphJsonRequest<T>(
   accessToken: string,
   path: string,
@@ -557,6 +727,54 @@ export function createGraphDriveArchiveUploader(
   };
 }
 
+export function createGraphCompletedFormFilingUploader(
+  config: AccountOpeningDriveArchiveConfig,
+  dependencies: GraphRequestDependencies = {},
+): AccountOpeningCompletedFormFilingUploader {
+  return {
+    uploadCompletedForm: async (pack) => {
+      const accessToken = await (
+        dependencies.accessTokenProvider ?? getMicrosoftStorageGraphAccessToken
+      )();
+      const fetchImpl = dependencies.fetchImpl ?? fetch;
+      const driveId = await resolveDriveId(accessToken, config, fetchImpl);
+      const configWithDrive = { ...config, driveId };
+      const folderUrl = await ensureDriveFolderPath(
+        accessToken,
+        configWithDrive,
+        pack.folderPath,
+        fetchImpl,
+      );
+      const driveBasePath = driveApiBasePath(configWithDrive, driveId);
+      const uploadResult = await graphJsonRequest<{
+        id?: string;
+        webUrl?: string;
+      }>(
+        accessToken,
+        `${driveBasePath}/root:/${encodeDrivePath(`${pack.folderPath}/${pack.file.fileName}`)}:/content`,
+        fetchImpl,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': pack.file.contentType },
+          body: Buffer.from(pack.file.content),
+        },
+      );
+
+      if (!uploadResult.ok) {
+        throw new Error(
+          `${storageTargetLabel(config)} completed unsigned form upload failed for ${pack.file.fileName} with status ${uploadResult.status}.`,
+        );
+      }
+
+      return {
+        folderUrl,
+        fileUrl: uploadResult.payload?.webUrl ?? null,
+        driveItemId: uploadResult.payload?.id ?? null,
+      };
+    },
+  };
+}
+
 export async function uploadAccountOpeningArchivePack(input: {
   item: AccountOpeningCaseDetail;
   config?: AccountOpeningDriveArchiveConfig;
@@ -602,6 +820,84 @@ export async function uploadAccountOpeningArchivePack(input: {
       skippedReason: null,
       attemptedAt,
       packMetadata: pack.metadata,
+    };
+  }
+}
+
+export async function uploadAccountOpeningCompletedFormFiling(input: {
+  item: AccountOpeningCaseDetail;
+  preview: AccountOpeningBinaryFillPreviewDetail;
+  content: Uint8Array;
+  fileHash: string;
+  config?: AccountOpeningDriveArchiveConfig;
+  uploader?: AccountOpeningCompletedFormFilingUploader;
+  now?: Date;
+}): Promise<AccountOpeningCompletedFormFilingUploadResult> {
+  const attemptedAt = input.now ?? new Date();
+  const config = input.config ?? getAccountOpeningDriveArchiveConfig();
+  const pack = buildAccountOpeningCompletedFormFilingPack({
+    item: input.item,
+    preview: input.preview,
+    content: input.content,
+    fileHash: input.fileHash,
+    config,
+    now: attemptedAt,
+  });
+  const skippedReason = getDriveArchiveSkippedReason(config);
+
+  if (skippedReason) {
+    return {
+      status: 'SKIPPED_DISABLED',
+      note: `Microsoft Drive completed unsigned form filing skipped: ${skippedReason}`,
+      storageProvider: config.provider,
+      folderUrl: null,
+      fileUrl: null,
+      driveItemId: null,
+      fileName: pack.file.fileName,
+      fileHash: input.fileHash,
+      fileSizeBytes: input.content.byteLength,
+      skippedReason,
+      attemptedAt,
+      metadata: pack.metadata,
+    };
+  }
+
+  try {
+    const result = await (
+      input.uploader ?? createGraphCompletedFormFilingUploader(config)
+    ).uploadCompletedForm(pack);
+
+    return {
+      status: 'UPLOADED',
+      note: `${microsoftDriveLabel(config)} completed unsigned form filed for internal SharePoint filing only: ${pack.file.fileName}.`,
+      storageProvider: config.provider,
+      folderUrl: result.folderUrl,
+      fileUrl: result.fileUrl,
+      driveItemId: result.driveItemId,
+      fileName: pack.file.fileName,
+      fileHash: input.fileHash,
+      fileSizeBytes: input.content.byteLength,
+      skippedReason: null,
+      attemptedAt,
+      metadata: pack.metadata,
+    };
+  } catch (error) {
+    return {
+      status: 'UPLOAD_FAILED',
+      note:
+        error instanceof Error
+          ? error.message
+          : 'Microsoft Drive completed unsigned form filing failed.',
+      storageProvider: config.provider,
+      folderUrl: null,
+      fileUrl: null,
+      driveItemId: null,
+      fileName: pack.file.fileName,
+      fileHash: input.fileHash,
+      fileSizeBytes: input.content.byteLength,
+      skippedReason: null,
+      attemptedAt,
+      metadata: pack.metadata,
     };
   }
 }
