@@ -7,6 +7,7 @@ import {
 } from '../../../../lib/accountOpeningApi';
 import {
   submitAccountOpeningFieldMappingsAction,
+  submitGenerateAccountOpeningBinaryFillPreviewAction,
   submitGenerateAccountOpeningFillPreviewAction,
   submitGenerateAccountOpeningDraftAction,
   submitAccountOpeningMissingInfoAction,
@@ -851,6 +852,98 @@ export default async function AccountOpeningDetailPage({
             director-only, and unresolved regulatory fields remain blank. This
             does not fill PDF/Word supplier forms or generate a completed
             supplier PDF/Word form.
+          </p>
+        </section>
+
+        <section className="panel dashboard-panel">
+          <div className="dashboard-section-header">
+            <div>
+              <h3 className="section-title">Binary PDF/DOCX preview</h3>
+              <p className="copy review-summary-copy">
+                Internal binary preview only. Fillable PDF AcroForms can be
+                filled with saved reviewed low-risk mappings when original bytes
+                are available. DOCX, flat/scanned PDFs, unknown forms, and
+                missing-byte references remain unsupported or manual. This does
+                not sign, send, submit, file completed forms to SharePoint, or
+                trigger purchase/order/buy workflows.
+              </p>
+            </div>
+            <form action={submitGenerateAccountOpeningBinaryFillPreviewAction}>
+              {hiddenInput('caseId', item.id)}
+              {hiddenInput('returnTo', returnTo)}
+              <button className="button" type="submit">
+                Generate binary preview
+              </button>
+            </form>
+          </div>
+
+          <dl className="duplicate-product-details">
+            <div>
+              <dt>Status</dt>
+              <dd>{renderNullable(item.latestBinaryFillPreview?.status)}</dd>
+            </div>
+            <div>
+              <dt>Generated</dt>
+              <dd>
+                {item.latestBinaryFillPreview
+                  ? formatDateTime(item.latestBinaryFillPreview.generatedAt)
+                  : 'Not generated'}
+              </dd>
+            </div>
+            <div>
+              <dt>Preview value fields</dt>
+              <dd>{item.latestBinaryFillPreview?.filledFieldCount ?? 0}</dd>
+            </div>
+            <div>
+              <dt>Blank fields</dt>
+              <dd>{item.latestBinaryFillPreview?.blankFieldCount ?? 0}</dd>
+            </div>
+            <div>
+              <dt>Output hash</dt>
+              <dd>
+                {renderNullable(
+                  item.latestBinaryFillPreview?.binaryPreviewHash,
+                )}
+              </dd>
+            </div>
+          </dl>
+
+          {item.latestBinaryFillPreview?.unsupportedReason ? (
+            <p className="alert alert-warning">
+              {item.latestBinaryFillPreview.unsupportedReason}
+            </p>
+          ) : null}
+
+          {item.latestBinaryFillPreview?.warnings.length ? (
+            <div>
+              <h4 className="section-subtitle">Preview warnings</h4>
+              {renderList(
+                item.latestBinaryFillPreview.warnings,
+                'No binary preview warnings recorded.',
+              )}
+            </div>
+          ) : null}
+
+          {item.latestBinaryFillPreview?.status === 'GENERATED_FOR_REVIEW' &&
+          item.latestBinaryFillPreview.binaryPreviewFileName ? (
+            <div className="actions">
+              <a
+                className="button"
+                href={downloadHref(
+                  item.id,
+                  item.latestBinaryFillPreview.binaryPreviewFileName,
+                )}
+              >
+                Download binary preview
+              </a>
+            </div>
+          ) : null}
+
+          <p className="alert alert-warning">
+            Blocked and review-required fields stay blank. Signature, Direct
+            Debit, bank authority, bank details, guarantee, indemnity,
+            director-only, RP/GDP/WDA, GPhC/CQC, credit terms, and returns-risk
+            fields are not filled. The preview is not flattened or signed.
           </p>
         </section>
 

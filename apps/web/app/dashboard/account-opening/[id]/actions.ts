@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import {
+  generateAccountOpeningBinaryFillPreview,
   generateAccountOpeningFillPreview,
   generateAccountOpeningDraft,
   saveAccountOpeningFieldMappings,
@@ -317,6 +318,46 @@ export async function submitGenerateAccountOpeningFillPreviewAction(
       caseId,
       {
         message: 'Internal fill-value preview generated for review.',
+      },
+      returnTo,
+    ),
+  );
+}
+
+export async function submitGenerateAccountOpeningBinaryFillPreviewAction(
+  formData: FormData,
+) {
+  const caseId = value(formData, 'caseId');
+  const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
+
+  if (!caseId) {
+    redirect('/dashboard/review?error=Missing+account-opening+case');
+  }
+
+  try {
+    await generateAccountOpeningBinaryFillPreview(caseId);
+  } catch (error) {
+    redirect(
+      buildRedirectTarget(
+        caseId,
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to generate binary fill preview.',
+        },
+        returnTo,
+      ),
+    );
+  }
+
+  revalidatePath('/dashboard/review');
+  revalidatePath(`/dashboard/account-opening/${caseId}`);
+  redirect(
+    buildRedirectTarget(
+      caseId,
+      {
+        message: 'Binary fill preview generated for review.',
       },
       returnTo,
     ),

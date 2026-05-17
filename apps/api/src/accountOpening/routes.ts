@@ -14,9 +14,11 @@ import {
   parseRequest,
 } from '../http/validation';
 import {
+  downloadAccountOpeningBinaryFillPreviewFile,
   downloadAccountOpeningFillPreviewFile,
   downloadAccountOpeningReviewedExportFile,
   exportAccountOpeningReviewedPack,
+  generateAccountOpeningBinaryFillPreview,
   generateAccountOpeningFillPreview,
   generateAccountOpeningDraft,
   getAccountOpeningFieldMappingReview,
@@ -30,6 +32,7 @@ import {
 } from './service';
 import { ACCOUNT_OPENING_REVIEW_EXPORT_FILE_NAMES } from './reviewExport';
 import { ACCOUNT_OPENING_FILL_PREVIEW_FILE_NAMES } from './fillPreview';
+import { ACCOUNT_OPENING_BINARY_FILL_PREVIEW_FILE_NAMES } from './binaryFillPreview';
 import type { AccountOpeningFieldMappingSaveInput } from './fieldMapping';
 
 type AccountOpeningRouteDependencies = {
@@ -39,6 +42,8 @@ type AccountOpeningRouteDependencies = {
   saveFieldMappings: typeof saveAccountOpeningFieldMappings;
   generateFillPreview: typeof generateAccountOpeningFillPreview;
   downloadFillPreviewFile: typeof downloadAccountOpeningFillPreviewFile;
+  generateBinaryFillPreview: typeof generateAccountOpeningBinaryFillPreview;
+  downloadBinaryFillPreviewFile: typeof downloadAccountOpeningBinaryFillPreviewFile;
   exportPack: typeof exportAccountOpeningReviewedPack;
   downloadExportFile: typeof downloadAccountOpeningReviewedExportFile;
   saveMissingInfo: typeof saveAccountOpeningMissingInfo;
@@ -112,6 +117,9 @@ const exportFileNames = new Set<string>(
 const fillPreviewFileNames = new Set<string>(
   ACCOUNT_OPENING_FILL_PREVIEW_FILE_NAMES,
 );
+const binaryFillPreviewFileNames = new Set<string>(
+  ACCOUNT_OPENING_BINARY_FILL_PREVIEW_FILE_NAMES,
+);
 
 const defaultDependencies: AccountOpeningRouteDependencies = {
   getCaseDetail: getAccountOpeningCaseDetail,
@@ -120,6 +128,8 @@ const defaultDependencies: AccountOpeningRouteDependencies = {
   saveFieldMappings: saveAccountOpeningFieldMappings,
   generateFillPreview: generateAccountOpeningFillPreview,
   downloadFillPreviewFile: downloadAccountOpeningFillPreviewFile,
+  generateBinaryFillPreview: generateAccountOpeningBinaryFillPreview,
+  downloadBinaryFillPreviewFile: downloadAccountOpeningBinaryFillPreviewFile,
   exportPack: exportAccountOpeningReviewedPack,
   downloadExportFile: downloadAccountOpeningReviewedExportFile,
   saveMissingInfo: saveAccountOpeningMissingInfo,
@@ -316,6 +326,64 @@ export function createAccountOpeningRouter(
           `attachment; filename="${file.fileName}"`,
         )
         .send(file.content);
+    }),
+  );
+
+  router.post(
+    '/:id/binary-fill-preview',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { params, body } = parseRequest<
+        z.infer<typeof idParamSchema>,
+        unknown,
+        z.infer<typeof generateDraftBodySchema>
+      >(request, {
+        params: idParamSchema,
+        body: generateDraftBodySchema,
+      });
+      const actor = resolveInternalActor(request, body);
+
+      const result = await dependencies.generateBinaryFillPreview({
+        id: params.id,
+        ...actor,
+      });
+
+      response.json(result);
+    }),
+  );
+
+  router.get(
+    '/:id/binary-fill-preview/:fileName',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { params } = parseRequest<z.infer<typeof exportFileParamSchema>>(
+        request,
+        {
+          params: exportFileParamSchema,
+        },
+      );
+      const actor = resolveInternalActor(request, {});
+      if (!binaryFillPreviewFileNames.has(params.fileName)) {
+        throw new NotFoundError(
+          'Account-opening binary fill preview file not found.',
+        );
+      }
+
+      const file = await dependencies.downloadBinaryFillPreviewFile({
+        id: params.id,
+        fileName: params.fileName,
+        ...actor,
+      });
+
+      response
+        .status(200)
+        .setHeader('content-type', file.contentType)
+        .setHeader(
+          'content-disposition',
+          `attachment; filename="${file.fileName}"`,
+        )
+        .setHeader('cache-control', 'no-store')
+        .send(Buffer.from(file.content));
     }),
   );
 

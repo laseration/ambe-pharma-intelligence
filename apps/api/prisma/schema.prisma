@@ -638,6 +638,7 @@ model AccountOpeningCase {
   fieldMappings         AccountOpeningFieldMapping[]
   originalForms         AccountOpeningOriginalForm[]
   fillPreviews          AccountOpeningFillPreview[]
+  binaryFillPreviews    AccountOpeningBinaryFillPreview[]
   createdAt             DateTime                       @default(now())
   updatedAt             DateTime                       @updatedAt
 
@@ -743,6 +744,7 @@ model AccountOpeningOriginalForm {
   accountOpeningCase   AccountOpeningCase           @relation(fields: [accountOpeningCaseId], references: [id], onDelete: Cascade)
   sourceEvidence       AccountOpeningSourceEvidence? @relation(fields: [sourceEvidenceId], references: [id], onDelete: SetNull)
   fillPreviews         AccountOpeningFillPreview[]
+  binaryFillPreviews   AccountOpeningBinaryFillPreview[]
   createdAt            DateTime                     @default(now())
   updatedAt            DateTime                     @updatedAt
 
@@ -769,6 +771,33 @@ model AccountOpeningFillPreview {
 
   @@index([accountOpeningCaseId, createdAt])
   @@index([originalFormId, createdAt])
+}
+
+model AccountOpeningBinaryFillPreview {
+  id                       String                      @id @default(cuid())
+  accountOpeningCaseId     String
+  originalFormId           String?
+  status                   String                      @default("UNSUPPORTED")
+  previewVersion           String                      @default("binary-fill-preview-v1")
+  binaryPreviewFileName    String?
+  binaryPreviewContentType String?
+  binaryPreviewHash        String?
+  binaryPreviewBytes       Bytes?
+  filledFieldCount         Int                         @default(0)
+  blankFieldCount          Int                         @default(0)
+  unsupportedReason        String?
+  warnings                 Json?
+  brandingPreservationCheck Json?
+  safetySummary            Json?
+  createdByType            String?
+  createdByIdentifier      String?
+  accountOpeningCase       AccountOpeningCase          @relation(fields: [accountOpeningCaseId], references: [id], onDelete: Cascade)
+  originalForm             AccountOpeningOriginalForm? @relation(fields: [originalFormId], references: [id], onDelete: SetNull)
+  createdAt                DateTime                    @default(now())
+
+  @@index([accountOpeningCaseId, createdAt])
+  @@index([originalFormId, createdAt])
+  @@index([status, createdAt])
 }
 
 model InboundEmailDocument {

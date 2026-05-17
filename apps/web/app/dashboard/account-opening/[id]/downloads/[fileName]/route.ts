@@ -1,4 +1,5 @@
 import {
+  downloadAccountOpeningBinaryFillPreviewFile,
   downloadAccountOpeningFillPreviewFile,
   downloadAccountOpeningReviewExportFile,
 } from '../../../../../../lib/accountOpeningApi';
@@ -25,9 +26,11 @@ const FILL_PREVIEW_FILE_NAMES = new Set([
   'blank-fields.json',
   'original-form-reference.json',
 ]);
+const BINARY_FILL_PREVIEW_FILE_NAMES = new Set(['binary-fill-preview.pdf']);
 const ALL_DOWNLOAD_FILE_NAMES = new Set([
   ...DOWNLOAD_FILE_NAMES,
   ...FILL_PREVIEW_FILE_NAMES,
+  ...BINARY_FILL_PREVIEW_FILE_NAMES,
 ]);
 
 function safeFileName(value: string): string {
@@ -55,9 +58,11 @@ export async function GET(
   }
 
   try {
-    const file = FILL_PREVIEW_FILE_NAMES.has(fileName)
-      ? await downloadAccountOpeningFillPreviewFile(id, fileName)
-      : await downloadAccountOpeningReviewExportFile(id, fileName);
+    const file = BINARY_FILL_PREVIEW_FILE_NAMES.has(fileName)
+      ? await downloadAccountOpeningBinaryFillPreviewFile(id, fileName)
+      : FILL_PREVIEW_FILE_NAMES.has(fileName)
+        ? await downloadAccountOpeningFillPreviewFile(id, fileName)
+        : await downloadAccountOpeningReviewExportFile(id, fileName);
 
     return new Response(file.content, {
       status: 200,

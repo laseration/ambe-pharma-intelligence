@@ -123,6 +123,7 @@ function buildCaseDetail(
       safetyNotes: [],
     },
     latestFillPreview: null,
+    latestBinaryFillPreview: null,
     createdAt: '2026-05-12T09:00:00.000Z',
     updatedAt: '2026-05-12T09:05:00.000Z',
     ...overrides,
@@ -156,6 +157,72 @@ async function startServer(
 
       return file;
     },
+    generateBinaryFillPreview: async () => ({
+      item: {
+        ...defaultDetail,
+        latestBinaryFillPreview: {
+          id: 'binary-fill-preview-1',
+          originalFormId: 'original-form-1',
+          status: 'GENERATED_FOR_REVIEW',
+          previewVersion: 'binary-fill-preview-v1',
+          binaryPreviewFileName: 'binary-fill-preview.pdf',
+          binaryPreviewContentType: 'application/pdf',
+          binaryPreviewHash: 'binary-preview-hash-1',
+          binaryPreviewBytesAvailable: true,
+          filledFieldCount: 1,
+          blankFieldCount: 3,
+          unsupportedReason: null,
+          warnings: [],
+          brandingPreservationCheck: {
+            originalBrandingPreservationRequired: true,
+            originalLayoutPreservationRequired: true,
+            formFlattened: false,
+          },
+          safetySummary: {
+            internalPreviewOnly: true,
+            binaryPreviewGenerated: true,
+            signedFormsIncluded: false,
+            supplierSubmissionTriggered: false,
+          },
+          generatedAt: '2026-05-16T11:00:00.000Z',
+          createdByType: 'OPERATOR',
+          createdByIdentifier: 'route-binary-fill-preview-test',
+        },
+      },
+      preview: {
+        id: 'binary-fill-preview-1',
+        originalFormId: 'original-form-1',
+        status: 'GENERATED_FOR_REVIEW',
+        previewVersion: 'binary-fill-preview-v1',
+        binaryPreviewFileName: 'binary-fill-preview.pdf',
+        binaryPreviewContentType: 'application/pdf',
+        binaryPreviewHash: 'binary-preview-hash-1',
+        binaryPreviewBytesAvailable: true,
+        filledFieldCount: 1,
+        blankFieldCount: 3,
+        unsupportedReason: null,
+        warnings: [],
+        brandingPreservationCheck: {
+          originalBrandingPreservationRequired: true,
+          originalLayoutPreservationRequired: true,
+          formFlattened: false,
+        },
+        safetySummary: {
+          internalPreviewOnly: true,
+          binaryPreviewGenerated: true,
+          signedFormsIncluded: false,
+          supplierSubmissionTriggered: false,
+        },
+        generatedAt: '2026-05-16T11:00:00.000Z',
+        createdByType: 'OPERATOR',
+        createdByIdentifier: 'route-binary-fill-preview-test',
+      },
+    }),
+    downloadBinaryFillPreviewFile: async () => ({
+      fileName: 'binary-fill-preview.pdf',
+      contentType: 'application/pdf',
+      content: new Uint8Array([37, 80, 68, 70, 45]),
+    }),
     exportPack: async () => buildAccountOpeningReviewExportPack(defaultDetail),
     downloadExportFile: async (input) => {
       const file = getAccountOpeningReviewExportFile(
@@ -651,6 +718,144 @@ test('account-opening fill preview routes require operator access and allowliste
   assert.equal(generatedInputs[0]?.actorIdentifier, 'route-fill-preview-test');
   assert.equal(downloadedInputs.length, 1);
   assert.equal(downloadedInputs[0]?.fileName, 'fill-preview.md');
+});
+
+test('account-opening binary fill preview routes require operator access and allowlisted downloads', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
+  const generatedInputs: Array<{
+    id: string;
+    actorIdentifier?: string | null;
+  }> = [];
+  const downloadedInputs: Array<{
+    id: string;
+    fileName: string;
+    actorIdentifier?: string | null;
+  }> = [];
+  const detail = buildCaseDetail({
+    latestBinaryFillPreview: {
+      id: 'binary-fill-preview-1',
+      originalFormId: 'original-form-1',
+      status: 'GENERATED_FOR_REVIEW',
+      previewVersion: 'binary-fill-preview-v1',
+      binaryPreviewFileName: 'binary-fill-preview.pdf',
+      binaryPreviewContentType: 'application/pdf',
+      binaryPreviewHash: 'binary-preview-hash-1',
+      binaryPreviewBytesAvailable: true,
+      filledFieldCount: 1,
+      blankFieldCount: 3,
+      unsupportedReason: null,
+      warnings: [],
+      brandingPreservationCheck: {
+        originalBrandingPreservationRequired: true,
+        originalLayoutPreservationRequired: true,
+        formFlattened: false,
+      },
+      safetySummary: {
+        internalPreviewOnly: true,
+        binaryPreviewGenerated: true,
+        blockedFieldsLeftBlank: true,
+        reviewRequiredFieldsLeftBlank: true,
+        signedFormsIncluded: false,
+        supplierSubmissionTriggered: false,
+        sharePointCompletedFormFiled: false,
+        purchaseWorkflowTriggered: false,
+      },
+      generatedAt: '2026-05-16T11:00:00.000Z',
+      createdByType: 'OPERATOR',
+      createdByIdentifier: 'route-binary-fill-preview-test',
+    },
+  });
+  const baseUrl = await startServer(t, {
+    generateBinaryFillPreview: async (input) => {
+      generatedInputs.push(input);
+      return {
+        item: detail,
+        preview: detail.latestBinaryFillPreview!,
+      };
+    },
+    downloadBinaryFillPreviewFile: async (input) => {
+      downloadedInputs.push(input);
+      return {
+        fileName: 'binary-fill-preview.pdf',
+        contentType: 'application/pdf',
+        content: new Uint8Array([37, 80, 68, 70, 45]),
+      };
+    },
+  });
+
+  const unauthorizedGenerateResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/binary-fill-preview`,
+    { method: 'POST' },
+  );
+  const generateResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/binary-fill-preview`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-api-key': 'test-secret',
+        'x-internal-caller-name': 'route-binary-fill-preview-test',
+      },
+      body: JSON.stringify({
+        actorType: 'OPERATOR',
+        actorIdentifier: 'route-binary-fill-preview-test',
+      }),
+    },
+  );
+  const fileResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/binary-fill-preview/binary-fill-preview.pdf`,
+    {
+      headers: {
+        'x-internal-api-key': 'test-secret',
+        'x-internal-caller-name': 'route-binary-fill-preview-test',
+      },
+    },
+  );
+  const unknownResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/binary-fill-preview/unknown.pdf`,
+    {
+      headers: {
+        'x-internal-api-key': 'test-secret',
+        'x-internal-caller-name': 'route-binary-fill-preview-test',
+      },
+    },
+  );
+  const traversalResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/binary-fill-preview/${encodeURIComponent('../secret.pdf')}`,
+    {
+      headers: {
+        'x-internal-api-key': 'test-secret',
+        'x-internal-caller-name': 'route-binary-fill-preview-test',
+      },
+    },
+  );
+  const fileBytes = new Uint8Array(await fileResponse.arrayBuffer());
+
+  assert.equal(unauthorizedGenerateResponse.status, 401);
+  assert.equal(generateResponse.status, 200);
+  assert.equal(fileResponse.status, 200);
+  assert.match(
+    fileResponse.headers.get('content-type') ?? '',
+    /application\/pdf/,
+  );
+  assert.match(
+    fileResponse.headers.get('content-disposition') ?? '',
+    /binary-fill-preview\.pdf/,
+  );
+  assert.deepEqual(Array.from(fileBytes), [37, 80, 68, 70, 45]);
+  assert.equal(unknownResponse.status, 404);
+  assert.equal(traversalResponse.status, 404);
+  assert.equal(generatedInputs[0]?.id, 'case-1');
+  assert.equal(
+    generatedInputs[0]?.actorIdentifier,
+    'route-binary-fill-preview-test',
+  );
+  assert.equal(downloadedInputs.length, 1);
+  assert.equal(downloadedInputs[0]?.fileName, 'binary-fill-preview.pdf');
 });
 
 test('account-opening review export routes return safe pack and downloadable files', async (t) => {

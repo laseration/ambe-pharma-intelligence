@@ -188,6 +188,26 @@ export type AccountOpeningFillPreviewDetail = {
   createdByIdentifier: string | null;
 };
 
+export type AccountOpeningBinaryFillPreviewDetail = {
+  id: string;
+  originalFormId: string | null;
+  status: string;
+  previewVersion: string;
+  binaryPreviewFileName: string | null;
+  binaryPreviewContentType: string | null;
+  binaryPreviewHash: string | null;
+  binaryPreviewBytesAvailable: boolean;
+  filledFieldCount: number;
+  blankFieldCount: number;
+  unsupportedReason: string | null;
+  warnings: string[];
+  brandingPreservationCheck: Record<string, unknown>;
+  safetySummary: Record<string, unknown>;
+  generatedAt: string;
+  createdByType: string | null;
+  createdByIdentifier: string | null;
+};
+
 export type AccountOpeningStatusAction =
   | 'MARKED_NEEDS_INFO'
   | 'APPROVED_FOR_COMPLETION'
@@ -230,6 +250,7 @@ export type AccountOpeningCaseDetail = {
   completionDraft: AccountOpeningCompletionDraft;
   fieldMappings: AccountOpeningFieldMappingReview;
   latestFillPreview: AccountOpeningFillPreviewDetail | null;
+  latestBinaryFillPreview: AccountOpeningBinaryFillPreviewDetail | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -238,6 +259,12 @@ export type AccountOpeningReviewExportFile = {
   fileName: string;
   contentType: string;
   content: string;
+};
+
+export type AccountOpeningBinaryPreviewFile = {
+  fileName: string;
+  contentType: string;
+  content: ArrayBuffer;
 };
 
 function getInternalApiBaseUrl(): string {
@@ -334,6 +361,44 @@ async function requestTextFile(
   };
 }
 
+async function requestBinaryFile(
+  path: string,
+  init?: RequestInit,
+): Promise<AccountOpeningBinaryPreviewFile> {
+  const response = await fetch(`${getInternalApiBaseUrl()}${path}`, {
+    ...init,
+    cache: 'no-store',
+    headers: {
+      ...buildHeaders(false),
+      ...(init?.headers ?? {}),
+    },
+  });
+
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}.`;
+
+    try {
+      const payload = (await response.json()) as { error?: string };
+      if (payload.error) {
+        message = payload.error;
+      }
+    } catch {
+      // Keep the generic status-based message.
+    }
+
+    throw new Error(message);
+  }
+
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const fileNameMatch = /filename="([^"]+)"/i.exec(disposition);
+
+  return {
+    fileName: fileNameMatch?.[1] ?? 'binary-fill-preview.pdf',
+    contentType: response.headers.get('content-type') ?? 'application/pdf',
+    content: await response.arrayBuffer(),
+  };
+}
+
 export async function getAccountOpeningCase(
   id: string,
 ): Promise<AccountOpeningCaseDetail> {
@@ -398,6 +463,30 @@ export async function downloadAccountOpeningFillPreviewFile(
 ): Promise<AccountOpeningReviewExportFile> {
   return requestTextFile(
     `/account-opening/${encodeURIComponent(id)}/fill-preview/${encodeURIComponent(fileName)}`,
+  );
+}
+
+export async function generateAccountOpeningBinaryFillPreview(
+  id: string,
+): Promise<AccountOpeningCaseDetail> {
+  const payload = await requestJson<{
+    item: AccountOpeningCaseDetail;
+  }>(`/account-opening/${encodeURIComponent(id)}/binary-fill-preview`, {
+    method: 'POST',
+    body: JSON.stringify({
+      actorType: 'OPERATOR',
+      actorIdentifier: 'web-account-opening-review',
+    }),
+  });
+  return payload.item;
+}
+
+export async function downloadAccountOpeningBinaryFillPreviewFile(
+  id: string,
+  fileName: string,
+): Promise<AccountOpeningBinaryPreviewFile> {
+  return requestBinaryFile(
+    `/account-opening/${encodeURIComponent(id)}/binary-fill-preview/${encodeURIComponent(fileName)}`,
   );
 }
 
