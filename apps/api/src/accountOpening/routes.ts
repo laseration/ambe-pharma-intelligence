@@ -25,6 +25,7 @@ import {
   generateAccountOpeningDraft,
   getAccountOpeningFieldMappingReview,
   getAccountOpeningCaseDetail,
+  getAccountOpeningReadinessReport,
   saveAccountOpeningMissingInfo,
   saveAccountOpeningFieldMappings,
   updateAccountOpeningCaseStatus,
@@ -40,6 +41,7 @@ import type { AccountOpeningFieldMappingSaveInput } from './fieldMapping';
 type AccountOpeningRouteDependencies = {
   getCaseDetail: typeof getAccountOpeningCaseDetail;
   generateDraft: typeof generateAccountOpeningDraft;
+  getReadiness: typeof getAccountOpeningReadinessReport;
   getFieldMappings: typeof getAccountOpeningFieldMappingReview;
   saveFieldMappings: typeof saveAccountOpeningFieldMappings;
   generateFillPreview: typeof generateAccountOpeningFillPreview;
@@ -140,6 +142,7 @@ const binaryFillPreviewFileNames = new Set<string>(
 const defaultDependencies: AccountOpeningRouteDependencies = {
   getCaseDetail: getAccountOpeningCaseDetail,
   generateDraft: generateAccountOpeningDraft,
+  getReadiness: getAccountOpeningReadinessReport,
   getFieldMappings: getAccountOpeningFieldMappingReview,
   saveFieldMappings: saveAccountOpeningFieldMappings,
   generateFillPreview: generateAccountOpeningFillPreview,
@@ -222,6 +225,23 @@ export function createAccountOpeningRouter(
 
       response.json({
         item: item.completionDraft,
+      });
+    }),
+  );
+
+  router.get(
+    '/:id/readiness',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {
+        params: idParamSchema,
+      });
+
+      response.json({
+        item: requireFound(
+          await dependencies.getReadiness({ id: params.id }),
+          'Account-opening case not found.',
+        ),
       });
     }),
   );
