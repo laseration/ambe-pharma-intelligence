@@ -19,6 +19,7 @@ import {
   generateAccountOpeningBinaryFillPreview,
   generateAccountOpeningFillPreview,
   generateAccountOpeningDraft,
+  getAccountOpeningReadinessReport,
   fileAccountOpeningCompletedFormToSharePoint,
   saveAccountOpeningFieldMappings,
   sanitizeAccountOpeningMissingInfoResponses,
@@ -34,6 +35,8 @@ import {
   type PersistedAccountOpeningReviewCase,
 } from '../service';
 import type { AccountOpeningCompletionDraft } from '../draft';
+import type { AccountOpeningDriveArchiveConfig } from '../driveArchive';
+import type { PersistedAccountOpeningFieldMapping } from '../fieldMapping';
 import {
   MAX_ACCOUNT_OPENING_BINARY_FILL_ORIGINAL_BYTES,
   MAX_ACCOUNT_OPENING_BINARY_FILL_PREVIEW_BYTES,
@@ -428,6 +431,36 @@ function buildPersistedOriginalForm(
   };
 }
 
+function buildPersistedFieldMapping(
+  overrides: Partial<PersistedAccountOpeningFieldMapping> = {},
+): PersistedAccountOpeningFieldMapping {
+  return {
+    id: 'field-mapping-1',
+    accountOpeningCaseId: 'account-case-1',
+    supplierFieldLabel: 'Company Name',
+    supplierSectionLabel: null,
+    normalizedLabel: 'company name',
+    sourceType: 'SOURCE_EVIDENCE',
+    sourceEvidenceId: 'evidence-1',
+    evidenceSnippet: 'Company Name',
+    suggestedDraftFieldKey: 'legalCompanyName',
+    mappedDraftFieldKey: 'legalCompanyName',
+    proposedValue: 'AMBE LTD',
+    valueSource: 'AMBE_MASTER_PROFILE',
+    confidence: 'HIGH',
+    riskLevel: 'LOW',
+    status: 'MAPPED_SAFE',
+    requiresReview: false,
+    blockedReason: null,
+    reviewReason: null,
+    operatorNote: null,
+    sortOrder: 0,
+    createdAt: new Date('2026-05-12T10:00:00.000Z'),
+    updatedAt: new Date('2026-05-12T10:00:00.000Z'),
+    ...overrides,
+  };
+}
+
 function buildPersistedBinaryFillPreview(
   overrides: Partial<PersistedAccountOpeningBinaryFillPreview> = {},
 ): PersistedAccountOpeningBinaryFillPreview {
@@ -466,6 +499,63 @@ function buildPersistedBinaryFillPreview(
     ...overrides,
   };
 }
+
+function buildPersistedCompletedFormFiling(
+  overrides: Partial<PersistedAccountOpeningCompletedFormFiling> = {},
+): PersistedAccountOpeningCompletedFormFiling {
+  return {
+    id: 'completed-form-filing-1',
+    accountOpeningCaseId: 'account-case-1',
+    binaryFillPreviewId: 'binary-fill-preview-1',
+    status: 'FILED',
+    fileName:
+      'supplier-account-opening-form-completed-unsigned-20260517T100000Z.pdf',
+    contentType: 'application/pdf',
+    fileHash: 'binary-preview-hash-1',
+    fileSizeBytes: 5,
+    storageProvider: 'SHAREPOINT',
+    storageFolderUrl: 'https://sharepoint.example/folder',
+    storageFileUrl: 'https://sharepoint.example/file.pdf',
+    storageDriveItemId: 'file-drive-item-1',
+    approvedByType: 'OPERATOR',
+    approvedByIdentifier: 'test-reviewer',
+    approvedAt: new Date('2026-05-17T10:00:00.000Z'),
+    approvalNote: 'Operator approved internal filing only.',
+    filedByType: 'OPERATOR',
+    filedByIdentifier: 'test-reviewer',
+    filedAt: new Date('2026-05-17T10:01:00.000Z'),
+    filingNote: 'Filed internally only.',
+    skippedReason: null,
+    safetySummary: {
+      internalSharePointFilingOnly: true,
+      notSigned: true,
+      notSent: true,
+      notSubmitted: true,
+    },
+    metadata: {
+      rawFileBytesIncludedInAudit: false,
+      supplierSubmissionTriggered: false,
+    },
+    createdAt: new Date('2026-05-17T10:00:00.000Z'),
+    updatedAt: new Date('2026-05-17T10:01:00.000Z'),
+    ...overrides,
+  };
+}
+
+const enabledStorageConfig: AccountOpeningDriveArchiveConfig = {
+  provider: 'SHAREPOINT',
+  enabled: true,
+  siteId: 'site-1',
+  driveId: 'drive-1',
+  rootFolder: 'AMBE',
+  baseFolder: 'Account Opening',
+  graphAuthConfigured: true,
+};
+
+const disabledStorageConfig: AccountOpeningDriveArchiveConfig = {
+  ...enabledStorageConfig,
+  enabled: false,
+};
 
 function createAccountOpeningRepository(
   initial: PersistedAccountOpeningReviewCase,
@@ -634,6 +724,33 @@ function createAccountOpeningRepository(
       };
       return updated;
     },
+    findEvents: async ({ where }) =>
+      events
+        .filter((event) => {
+          if (event.accountOpeningCaseId !== where.accountOpeningCaseId) {
+            return false;
+          }
+
+          if (where.actionType && event.actionType !== where.actionType) {
+            return false;
+          }
+
+          return true;
+        })
+        .map((event, index) => ({
+          id: `event-${index + 1}`,
+          accountOpeningCaseId: event.accountOpeningCaseId,
+          actionType: event.actionType,
+          previousStatus: event.previousStatus ?? null,
+          newStatus: event.newStatus ?? null,
+          actorType: event.actorType ?? 'SYSTEM',
+          actorIdentifier: event.actorIdentifier ?? null,
+          note: event.note ?? null,
+          metadata: event.metadata ?? null,
+          createdAt: new Date(
+            Date.parse('2026-05-12T12:00:00.000Z') + index * 1000,
+          ),
+        })),
     createEvent: async (args) => {
       events.push(args.data);
       return args.data;
@@ -1644,6 +1761,181 @@ test('binary fill preview keeps DOCX unsupported until layout-safe filling exist
     /DOCX binary fill preview is not enabled/,
   );
   assert.equal(result.preview.binaryPreviewBytesAvailable, false);
+});
+
+test('readiness blocks when no original form is available', async () => {
+  const { repository } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      draftJson: buildDraftFixture({ status: 'READY_FOR_REVIEW' }),
+      fieldMappings: [buildPersistedFieldMapping()],
+      originalForms: [],
+    }),
+  );
+
+  const readiness = await getAccountOpeningReadinessReport({
+    id: 'account-case-1',
+    repository,
+    storageConfig: enabledStorageConfig,
+  });
+
+  assert.equal(readiness?.status, 'RED');
+  assert.ok(
+    readiness?.blockerTexts.includes('No original form reference is present.'),
+  );
+});
+
+test('readiness blocks when reviewed field mappings are not saved', async () => {
+  const { repository } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      draftJson: buildDraftFixture({ status: 'READY_FOR_REVIEW' }),
+      fieldMappings: [],
+      originalForms: [buildPersistedOriginalForm({ detectedFieldCount: 4 })],
+    }),
+  );
+
+  const readiness = await getAccountOpeningReadinessReport({
+    id: 'account-case-1',
+    repository,
+    storageConfig: enabledStorageConfig,
+  });
+
+  assert.equal(readiness?.status, 'RED');
+  assert.ok(
+    readiness?.blockerTexts.includes(
+      'Reviewed field mappings have not been saved.',
+    ),
+  );
+  assert.equal(readiness?.counts.safeMappedFields, 0);
+});
+
+test('readiness blocks when original form type is unsupported', async () => {
+  const { repository } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      draftJson: buildDraftFixture({ status: 'READY_FOR_REVIEW' }),
+      fieldMappings: [buildPersistedFieldMapping()],
+      originalForms: [
+        buildPersistedOriginalForm({
+          formType: 'WORD',
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          fileName: 'supplier-account-opening-form.docx',
+          detectedFieldCount: null,
+        }),
+      ],
+    }),
+  );
+
+  const readiness = await getAccountOpeningReadinessReport({
+    id: 'account-case-1',
+    repository,
+    storageConfig: enabledStorageConfig,
+  });
+
+  assert.equal(readiness?.status, 'RED');
+  assert.ok(
+    readiness?.blockerTexts.includes(
+      'Only fillable PDF AcroForms are supported for binary preview.',
+    ),
+  );
+});
+
+test('readiness blocks when SharePoint or Microsoft Drive storage is disabled', async () => {
+  const { repository } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      draftJson: buildDraftFixture({ status: 'READY_FOR_REVIEW' }),
+      fieldMappings: [buildPersistedFieldMapping()],
+      originalForms: [buildPersistedOriginalForm({ detectedFieldCount: 4 })],
+      binaryFillPreviews: [buildPersistedBinaryFillPreview()],
+      completedFormFilings: [
+        buildPersistedCompletedFormFiling({
+          status: 'APPROVED_FOR_FILING',
+          filedAt: null,
+          filedByType: null,
+          filedByIdentifier: null,
+          storageProvider: null,
+          storageFolderUrl: null,
+          storageFileUrl: null,
+          storageDriveItemId: null,
+        }),
+      ],
+    }),
+  );
+
+  const readiness = await getAccountOpeningReadinessReport({
+    id: 'account-case-1',
+    repository,
+    storageConfig: disabledStorageConfig,
+  });
+
+  assert.equal(readiness?.status, 'RED');
+  assert.ok(
+    readiness?.blockerTexts.some((blocker) =>
+      blocker.includes('account-opening upload is disabled'),
+    ),
+  );
+});
+
+test('readiness passes when binary preview is approved and filed', async () => {
+  const { repository } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      draftJson: buildDraftFixture({ status: 'READY_FOR_REVIEW' }),
+      fieldMappings: [buildPersistedFieldMapping()],
+      originalForms: [buildPersistedOriginalForm({ detectedFieldCount: 4 })],
+      binaryFillPreviews: [buildPersistedBinaryFillPreview()],
+      completedFormFilings: [buildPersistedCompletedFormFiling()],
+    }),
+  );
+
+  const readiness = await getAccountOpeningReadinessReport({
+    id: 'account-case-1',
+    repository,
+    storageConfig: enabledStorageConfig,
+  });
+
+  assert.equal(readiness?.status, 'GREEN');
+  assert.equal(readiness?.readyForEndToEndFillingAndFiling, true);
+  assert.deepEqual(readiness?.blockerTexts, []);
+});
+
+test('readiness response excludes sensitive account-opening data', async () => {
+  const { repository } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      subject:
+        'Account number 12345678 sort code 12-34-56 account-opening form',
+      extractedTextSummary:
+        'Supplier form includes account number 12345678 and sort code 12-34-56.',
+      draftJson: buildDraftFixture({ status: 'READY_FOR_REVIEW' }),
+      fieldMappings: [
+        buildPersistedFieldMapping({
+          operatorNote: 'Bank account number 12345678 and sort code 12-34-56.',
+        }),
+      ],
+      originalForms: [buildPersistedOriginalForm({ detectedFieldCount: 4 })],
+      binaryFillPreviews: [buildPersistedBinaryFillPreview()],
+      completedFormFilings: [
+        buildPersistedCompletedFormFiling({
+          approvalNote:
+            'Approved despite account number 12345678 and sort code 12-34-56 being present elsewhere.',
+          filingNote:
+            'Filed with bank account number 12345678 and sort code 12-34-56 redacted from diagnostics.',
+        }),
+      ],
+    }),
+  );
+
+  const readiness = await getAccountOpeningReadinessReport({
+    id: 'account-case-1',
+    repository,
+    storageConfig: enabledStorageConfig,
+  });
+  const readinessText = JSON.stringify(readiness);
+
+  assert.doesNotMatch(readinessText, /12345678/);
+  assert.doesNotMatch(readinessText, /12-34-56/);
+  assert.equal(readiness?.safety.binaryBytesIncluded, false);
+  assert.equal(readiness?.safety.rawExtractedTextIncluded, false);
+  assert.equal(readiness?.safety.bankDetailsIncluded, false);
+  assert.equal(readiness?.safety.sortCodesIncluded, false);
 });
 
 test('completed unsigned form approval requires an existing generated preview', async () => {

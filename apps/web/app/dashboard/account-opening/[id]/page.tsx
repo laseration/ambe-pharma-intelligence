@@ -2,8 +2,11 @@ import Link from 'next/link';
 
 import {
   getAccountOpeningCase,
+  getAccountOpeningReadiness,
   type AccountOpeningCaseDetail,
   type AccountOpeningMissingInfoResponses,
+  type AccountOpeningReadinessReport,
+  type AccountOpeningReadinessStatus,
 } from '../../../../lib/accountOpeningApi';
 import {
   submitApproveAccountOpeningCompletedFormFilingAction,
@@ -154,6 +157,127 @@ function hiddenInput(name: string, value: string) {
 
 function downloadHref(caseId: string, fileName: string) {
   return `/dashboard/account-opening/${encodeURIComponent(caseId)}/downloads/${encodeURIComponent(fileName)}`;
+}
+
+function readinessPillClass(status: AccountOpeningReadinessStatus) {
+  if (status === 'GREEN') {
+    return 'pill pill-low';
+  }
+
+  if (status === 'AMBER') {
+    return 'pill pill-medium';
+  }
+
+  return 'pill pill-high';
+}
+
+function readinessLabel(status: AccountOpeningReadinessStatus) {
+  if (status === 'GREEN') {
+    return 'Green';
+  }
+
+  if (status === 'AMBER') {
+    return 'Amber';
+  }
+
+  return 'Red';
+}
+
+function ReadinessSection({
+  readiness,
+}: {
+  readiness: AccountOpeningReadinessReport;
+}) {
+  return (
+    <section className="panel dashboard-panel">
+      <div className="dashboard-section-header">
+        <div>
+          <h3 className="section-title">Account-opening readiness</h3>
+          <p className="copy review-summary-copy">
+            Diagnostic checklist for end-to-end form filling and internal
+            SharePoint/Microsoft Drive filing. This does not sign, send, submit,
+            complete Direct Debit or guarantee sections, or create
+            purchase/order/buy side effects.
+          </p>
+        </div>
+        <span className={readinessPillClass(readiness.status)}>
+          {readinessLabel(readiness.status)}
+        </span>
+      </div>
+
+      <dl className="duplicate-product-details">
+        <div>
+          <dt>Overall status</dt>
+          <dd>
+            {readiness.readyForEndToEndFillingAndFiling
+              ? 'Ready and filed'
+              : 'Not ready'}
+          </dd>
+        </div>
+        <div>
+          <dt>Next action</dt>
+          <dd>{readiness.nextAction}</dd>
+        </div>
+        <div>
+          <dt>PDF AcroForm fields</dt>
+          <dd>{renderNullable(readiness.counts.pdfAcroFormFieldCount)}</dd>
+        </div>
+        <div>
+          <dt>Safe mapped fields</dt>
+          <dd>{readiness.counts.safeMappedFields}</dd>
+        </div>
+        <div>
+          <dt>Blocked fields</dt>
+          <dd>{readiness.counts.blockedFields}</dd>
+        </div>
+      </dl>
+
+      <div className="table-wrapper">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Check</th>
+              <th>Status</th>
+              <th>Value</th>
+              <th>Blocker</th>
+              <th>Next action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {readiness.checks.map((check) => (
+              <tr key={check.key}>
+                <td>{check.label}</td>
+                <td>
+                  <span className={readinessPillClass(check.status)}>
+                    {readinessLabel(check.status)}
+                  </span>
+                </td>
+                <td>{check.value}</td>
+                <td>{check.blocker ?? 'None'}</td>
+                <td>{check.nextAction}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {readiness.blockerTexts.length ? (
+        <div>
+          <h4 className="section-subtitle">Blockers</h4>
+          {renderList(readiness.blockerTexts, 'No blockers recorded.')}
+        </div>
+      ) : (
+        <p className="alert alert-success">
+          No readiness blockers are currently recorded.
+        </p>
+      )}
+
+      <p className="alert alert-warning">
+        Readiness output excludes binary bytes, raw extracted text, bank
+        details, sort codes, signatures, and payment mandate content.
+      </p>
+    </section>
+  );
 }
 
 function MissingInfoForm({
@@ -402,7 +526,10 @@ export default async function AccountOpeningDetailPage({
   const returnTo = sanitizeReturnTo(query?.returnTo);
 
   try {
-    const item = await getAccountOpeningCase(id);
+    const [item, readiness] = await Promise.all([
+      getAccountOpeningCase(id),
+      getAccountOpeningReadiness(id),
+    ]);
     const signingNotes = item.signingNotes;
     const latestBinaryPreview = item.latestBinaryFillPreview;
     const latestCompletedFormFiling = item.latestCompletedFormFiling;
@@ -454,6 +581,8 @@ export default async function AccountOpeningDetailPage({
             <p className="alert alert-success">{query.message}</p>
           ) : null}
         </section>
+
+        <ReadinessSection readiness={readiness} />
 
         <section className="panel dashboard-panel">
           <div className="dashboard-section-header">

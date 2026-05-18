@@ -18,6 +18,7 @@ import {
 import type {
   AccountOpeningCaseDetail,
   AccountOpeningMissingInfoResponses,
+  AccountOpeningReadinessReport,
 } from '../service';
 
 function overrideEnv(context: TestContext, overrides: Partial<typeof env>) {
@@ -131,6 +132,48 @@ function buildCaseDetail(
   };
 }
 
+function buildReadinessReport(
+  overrides: Partial<AccountOpeningReadinessReport> = {},
+): AccountOpeningReadinessReport {
+  return {
+    caseId: 'case-1',
+    status: 'RED',
+    readyForEndToEndFillingAndFiling: false,
+    nextAction: 'Review supplier fields and save field mappings.',
+    checks: [
+      {
+        key: 'REVIEWED_FIELD_MAPPINGS_SAVED',
+        label: 'Reviewed field mappings saved',
+        status: 'RED',
+        value: 'PREVIEW',
+        blocker: 'Reviewed field mappings have not been saved.',
+        nextAction: 'Review supplier fields and save field mappings.',
+      },
+    ],
+    blockerTexts: ['Reviewed field mappings have not been saved.'],
+    counts: {
+      pdfAcroFormFieldCount: null,
+      safeMappedFields: 0,
+      blockedFields: 0,
+    },
+    safety: {
+      diagnosticOnly: true,
+      internalSharePointFilingOnly: true,
+      notSigned: true,
+      notSent: true,
+      notSubmitted: true,
+      directDebitBankAuthorityNotCompleted: true,
+      guaranteeIndemnityDirectorOnlyNotCompleted: true,
+      purchaseWorkflowTriggered: false,
+      rawExtractedTextIncluded: false,
+      binaryBytesIncluded: false,
+      bankDetailsIncluded: false,
+      sortCodesIncluded: false,
+    },
+    ...overrides,
+  };
+}
+
 async function startServer(
   context: TestContext,
   dependencies: Partial<Parameters<typeof createAccountOpeningRouter>[0]>,
@@ -140,6 +183,7 @@ async function startServer(
   const routerDependencies: Parameters<typeof createAccountOpeningRouter>[0] = {
     getCaseDetail: async () => defaultDetail,
     generateDraft: async () => defaultDetail,
+    getReadiness: async () => buildReadinessReport(),
     getFieldMappings: async () => defaultDetail.fieldMappings,
     saveFieldMappings: async () => defaultDetail.fieldMappings,
     generateFillPreview: async () => ({
@@ -428,6 +472,42 @@ test('account-opening routes read a case without exposing raw form text fields',
     'Aman Dhillon can sign this account-opening form by default.',
   );
   assert.equal('rawExtractedText' in payload.item, false);
+});
+
+test('account-opening readiness route requires operator access and returns safe diagnostics', async (t) => {
+  overrideEnv(t, {
+    internalApiKey: 'test-internal-key',
+  });
+  const baseUrl = await startServer(t, {
+    getReadiness: async () =>
+      buildReadinessReport({
+        status: 'RED',
+        nextAction: 'Capture the supplier original form reference.',
+        blockerTexts: ['No original form reference is present.'],
+      }),
+  });
+
+  const unauthorizedResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/readiness`,
+  );
+  const response = await fetch(`${baseUrl}/account-opening/case-1/readiness`, {
+    headers: {
+      'x-internal-api-key': 'test-internal-key',
+      'x-internal-caller-name': 'route-readiness-test',
+    },
+  });
+  const payload = (await response.json()) as {
+    item: AccountOpeningReadinessReport;
+  };
+  const responseText = JSON.stringify(payload);
+
+  assert.equal(unauthorizedResponse.status, 401);
+  assert.equal(response.status, 200);
+  assert.equal(payload.item.status, 'RED');
+  assert.equal(payload.item.safety.binaryBytesIncluded, false);
+  assert.equal(payload.item.safety.rawExtractedTextIncluded, false);
+  assert.doesNotMatch(responseText, /12345678/);
+  assert.doesNotMatch(responseText, /12-34-56/);
 });
 
 test('account-opening missing-info route saves sanitized review fields with audit actor', async (t) => {

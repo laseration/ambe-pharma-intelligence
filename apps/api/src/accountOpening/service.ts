@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { db } from '../lib/db';
 import {
   getAccountOpeningDriveArchiveConfig,
+  getDriveArchiveSkippedReason,
   uploadAccountOpeningArchivePack,
   uploadAccountOpeningCompletedFormFiling,
   getMicrosoftStorageGraphAccessToken,
@@ -254,6 +255,61 @@ export type AccountOpeningCompletedFormFilingDetail = {
   updatedAt: string;
 };
 
+export type AccountOpeningReadinessStatus = 'GREEN' | 'AMBER' | 'RED';
+
+export type AccountOpeningReadinessCheckKey =
+  | 'COMPLETION_DRAFT_STORED'
+  | 'REVIEWED_FIELD_MAPPINGS_SAVED'
+  | 'ORIGINAL_FORM_REFERENCE_PRESENT'
+  | 'ORIGINAL_BYTES_RETRIEVABLE'
+  | 'FORM_TYPE_SUPPORTED'
+  | 'PDF_ACROFORM_FIELD_COUNT'
+  | 'SAFE_MAPPED_FIELDS_COUNT'
+  | 'BLOCKED_FIELDS_COUNT'
+  | 'BINARY_PREVIEW_GENERATED'
+  | 'BINARY_PREVIEW_DOWNLOADED'
+  | 'BINARY_PREVIEW_APPROVED'
+  | 'SHAREPOINT_DRIVE_CONFIGURED'
+  | 'COMPLETED_UNSIGNED_FORM_FILED'
+  | 'MISSING_BLOCKERS';
+
+export type AccountOpeningReadinessCheck = {
+  key: AccountOpeningReadinessCheckKey;
+  label: string;
+  status: AccountOpeningReadinessStatus;
+  value: string;
+  blocker: string | null;
+  nextAction: string;
+};
+
+export type AccountOpeningReadinessReport = {
+  caseId: string;
+  status: AccountOpeningReadinessStatus;
+  readyForEndToEndFillingAndFiling: boolean;
+  nextAction: string;
+  checks: AccountOpeningReadinessCheck[];
+  blockerTexts: string[];
+  counts: {
+    pdfAcroFormFieldCount: number | null;
+    safeMappedFields: number;
+    blockedFields: number;
+  };
+  safety: {
+    diagnosticOnly: true;
+    internalSharePointFilingOnly: true;
+    notSigned: true;
+    notSent: true;
+    notSubmitted: true;
+    directDebitBankAuthorityNotCompleted: true;
+    guaranteeIndemnityDirectorOnlyNotCompleted: true;
+    purchaseWorkflowTriggered: false;
+    rawExtractedTextIncluded: false;
+    binaryBytesIncluded: false;
+    bankDetailsIncluded: false;
+    sortCodesIncluded: false;
+  };
+};
+
 export type AccountOpeningCase = {
   sourceFingerprint: string;
   status: 'pending_review' | 'approved' | 'rejected';
@@ -430,6 +486,19 @@ export type PersistedAccountOpeningCompletedFormFiling = {
   metadata: unknown;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type PersistedAccountOpeningCaseEvent = {
+  id: string;
+  accountOpeningCaseId: string;
+  actionType: string;
+  previousStatus: string | null;
+  newStatus: string | null;
+  actorType: string;
+  actorIdentifier: string | null;
+  note: string | null;
+  metadata: unknown;
+  createdAt: Date;
 };
 
 export type AccountOpeningDetection = {
@@ -1551,6 +1620,10 @@ export type AccountOpeningCaseRepository = {
       >
     >;
   }) => Promise<PersistedAccountOpeningCompletedFormFiling>;
+  findEvents?: (args: {
+    where: { accountOpeningCaseId: string; actionType?: string };
+    orderBy?: { createdAt: 'asc' | 'desc' };
+  }) => Promise<PersistedAccountOpeningCaseEvent[]>;
   createEvent: (args: {
     data: AccountOpeningCaseEventInput;
   }) => Promise<unknown>;
@@ -1640,6 +1713,10 @@ function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
       }) => Promise<PersistedAccountOpeningCompletedFormFiling>;
     };
     accountOpeningCaseEvent: {
+      findMany: (args: {
+        where: { accountOpeningCaseId: string; actionType?: string };
+        orderBy?: { createdAt: 'asc' | 'desc' };
+      }) => Promise<PersistedAccountOpeningCaseEvent[]>;
       create: (args: {
         data: AccountOpeningCaseEventInput;
       }) => Promise<unknown>;
@@ -1692,6 +1769,7 @@ function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
       client.accountOpeningCompletedFormFiling.create(args),
     updateCompletedFormFiling: (args) =>
       client.accountOpeningCompletedFormFiling.update(args),
+    findEvents: (args) => client.accountOpeningCaseEvent.findMany(args),
     createEvent: (args) => client.accountOpeningCaseEvent.create(args),
   };
 }
@@ -1834,6 +1912,306 @@ export async function getAccountOpeningCaseDetail(
   });
 
   return accountCase ? buildAccountOpeningCaseDetail(accountCase) : null;
+}
+
+function readinessCheck(input: {
+  key: AccountOpeningReadinessCheckKey;
+  label: string;
+  passed: boolean;
+  value: string | number | boolean | null | undefined;
+  blocker: string;
+  nextAction: string;
+  warning?: boolean;
+}): AccountOpeningReadinessCheck {
+  const hasValue =
+    input.value !== null &&
+    input.value !== undefined &&
+    String(input.value).trim() !== '';
+
+  return {
+    key: input.key,
+    label: input.label,
+    status: input.passed ? 'GREEN' : input.warning ? 'AMBER' : 'RED',
+    value: hasValue ? String(input.value) : 'Not available',
+    blocker: input.passed || input.warning ? null : input.blocker,
+    nextAction: input.passed ? 'No action required.' : input.nextAction,
+  };
+}
+
+function numberFromRecord(
+  record: Record<string, unknown>,
+  key: string,
+): number | null {
+  const value = record[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function originalBytesRetrievalBlocker(input: {
+  originalForm: AccountOpeningOriginalFormDetail | null;
+  storageConfig: AccountOpeningDriveArchiveConfig;
+}): string | null {
+  if (!input.originalForm) {
+    return 'Capture an original supplier PDF AcroForm reference before binary preview generation.';
+  }
+
+  if (input.originalForm.localBlobAvailable) {
+    return null;
+  }
+
+  if (!input.originalForm.storageDriveItemId) {
+    return 'Original form bytes are not retrievable. Capture a Microsoft Drive item reference for the original form.';
+  }
+
+  const skippedReason = microsoftDriveOriginalFormReadSkippedReason(
+    input.storageConfig,
+  );
+
+  return skippedReason
+    ? `Original form bytes are referenced in Microsoft Drive but cannot be read: ${skippedReason}`
+    : null;
+}
+
+function readinessOverallStatus(
+  checks: AccountOpeningReadinessCheck[],
+): AccountOpeningReadinessStatus {
+  if (checks.some((check) => check.status === 'RED')) {
+    return 'RED';
+  }
+
+  if (checks.some((check) => check.status === 'AMBER')) {
+    return 'AMBER';
+  }
+
+  return 'GREEN';
+}
+
+export async function getAccountOpeningReadinessReport(input: {
+  id: string;
+  repository?: AccountOpeningCaseRepository;
+  storageConfig?: AccountOpeningDriveArchiveConfig;
+}): Promise<AccountOpeningReadinessReport | null> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  const accountCase = await findCaseWithEvidence(input.id, repository);
+
+  if (!accountCase) {
+    return null;
+  }
+
+  const item = buildAccountOpeningCaseDetail(accountCase);
+  const storageConfig =
+    input.storageConfig ?? getAccountOpeningDriveArchiveConfig();
+  const originalForm = primaryBinaryFillOriginalForm(item);
+  const latestBinaryPreview = item.latestBinaryFillPreview;
+  const latestFiling = item.latestCompletedFormFiling;
+  const filingMatchesLatestPreview =
+    Boolean(latestBinaryPreview && latestFiling) &&
+    latestFiling?.binaryFillPreviewId === latestBinaryPreview?.id;
+  const filingStatus = filingMatchesLatestPreview ? latestFiling?.status : null;
+  const approvalStored =
+    filingMatchesLatestPreview &&
+    Boolean(
+      latestFiling?.approvedAt &&
+      (filingStatus === 'APPROVED_FOR_FILING' || filingStatus === 'FILED'),
+    );
+  const filed = filingMatchesLatestPreview && filingStatus === 'FILED';
+  const binaryPreviewGenerated =
+    latestBinaryPreview?.status === 'GENERATED_FOR_REVIEW' &&
+    latestBinaryPreview.binaryPreviewBytesAvailable;
+  const binaryPreviewDownloaded =
+    filed ||
+    approvalStored ||
+    Boolean(
+      (
+        await repository.findEvents?.({
+          where: {
+            accountOpeningCaseId: input.id,
+            actionType: 'BINARY_FILL_PREVIEW_DOWNLOADED',
+          },
+          orderBy: { createdAt: 'desc' },
+        })
+      )?.some((event) => event.actionType === 'BINARY_FILL_PREVIEW_DOWNLOADED'),
+    );
+  const safeMappedFields = item.fieldMappings.summary.mappedSafe;
+  const blockedFields = item.fieldMappings.summary.blocked;
+  const pdfAcroFormFieldCount =
+    originalForm?.detectedFieldCount ??
+    (latestBinaryPreview
+      ? numberFromRecord(
+          latestBinaryPreview.brandingPreservationCheck,
+          'originalAcroFieldCount',
+        )
+      : null);
+  const bytesBlocker = originalBytesRetrievalBlocker({
+    originalForm,
+    storageConfig,
+  });
+  const storageBlocker = getDriveArchiveSkippedReason(storageConfig);
+  const checksWithoutMissingBlockers: AccountOpeningReadinessCheck[] = [
+    readinessCheck({
+      key: 'COMPLETION_DRAFT_STORED',
+      label: 'Completion draft stored',
+      passed: item.completionDraft.isStored,
+      value: item.completionDraft.isStored,
+      blocker: 'Completion draft has not been stored.',
+      nextAction: 'Generate and review the completion draft.',
+    }),
+    readinessCheck({
+      key: 'REVIEWED_FIELD_MAPPINGS_SAVED',
+      label: 'Reviewed field mappings saved',
+      passed: item.fieldMappings.status === 'SAVED',
+      value: item.fieldMappings.status,
+      blocker: 'Reviewed field mappings have not been saved.',
+      nextAction: 'Review supplier fields and save field mappings.',
+    }),
+    readinessCheck({
+      key: 'ORIGINAL_FORM_REFERENCE_PRESENT',
+      label: 'Original form reference present',
+      passed: Boolean(originalForm),
+      value: originalForm?.formType ?? null,
+      blocker: 'No original form reference is present.',
+      nextAction: 'Capture the supplier original form reference.',
+    }),
+    readinessCheck({
+      key: 'ORIGINAL_BYTES_RETRIEVABLE',
+      label: 'Original bytes retrievable',
+      passed: !bytesBlocker,
+      value: bytesBlocker ? 'Not retrievable' : 'Retrievable',
+      blocker: bytesBlocker ?? 'Original form bytes are not retrievable.',
+      nextAction:
+        'Check Microsoft Drive storage configuration and original Drive item reference.',
+    }),
+    readinessCheck({
+      key: 'FORM_TYPE_SUPPORTED',
+      label: 'Form type supported',
+      passed: originalForm?.formType === 'PDF',
+      value: originalForm?.formType ?? null,
+      blocker: 'Only fillable PDF AcroForms are supported for binary preview.',
+      nextAction:
+        'Use a fillable PDF AcroForm or keep this case on the manual completion path.',
+    }),
+    readinessCheck({
+      key: 'PDF_ACROFORM_FIELD_COUNT',
+      label: 'PDF AcroForm field count',
+      passed:
+        typeof pdfAcroFormFieldCount === 'number' && pdfAcroFormFieldCount > 0,
+      value: pdfAcroFormFieldCount,
+      blocker: 'No PDF AcroForm fields are recorded.',
+      nextAction:
+        'Use a fillable PDF AcroForm; flat or scanned PDFs remain manual.',
+    }),
+    readinessCheck({
+      key: 'SAFE_MAPPED_FIELDS_COUNT',
+      label: 'Safe mapped fields count',
+      passed: safeMappedFields > 0,
+      value: safeMappedFields,
+      blocker: 'No reviewed low-risk mapped fields are saved.',
+      nextAction:
+        'Save at least one reviewed low-risk field mapping before binary preview generation.',
+    }),
+    readinessCheck({
+      key: 'BLOCKED_FIELDS_COUNT',
+      label: 'Blocked fields count',
+      passed: blockedFields === 0,
+      value: blockedFields,
+      blocker: 'Blocked fields are present and must remain blank.',
+      nextAction: 'Confirm blocked and review-required fields remain blank.',
+      warning: blockedFields > 0,
+    }),
+    readinessCheck({
+      key: 'BINARY_PREVIEW_GENERATED',
+      label: 'Binary preview generated',
+      passed: binaryPreviewGenerated,
+      value: latestBinaryPreview?.status ?? null,
+      blocker: 'Binary PDF AcroForm preview has not been generated for review.',
+      nextAction:
+        'Generate the binary preview after draft, mappings, and original bytes are ready.',
+    }),
+    readinessCheck({
+      key: 'BINARY_PREVIEW_DOWNLOADED',
+      label: 'Binary preview downloaded',
+      passed: binaryPreviewDownloaded,
+      value: binaryPreviewDownloaded,
+      blocker:
+        'Binary preview has not been downloaded or otherwise evidenced as operator-reviewed.',
+      nextAction:
+        'Download and verify the binary preview before approving filing.',
+    }),
+    readinessCheck({
+      key: 'BINARY_PREVIEW_APPROVED',
+      label: 'Binary preview approved',
+      passed: approvalStored,
+      value: latestFiling?.status ?? null,
+      blocker: 'Binary preview has not been approved for internal filing.',
+      nextAction:
+        'Approve the completed unsigned form for internal SharePoint filing after operator verification.',
+    }),
+    readinessCheck({
+      key: 'SHAREPOINT_DRIVE_CONFIGURED',
+      label: 'SharePoint/Microsoft Drive configured',
+      passed: !storageBlocker,
+      value: storageBlocker ? 'Not configured' : storageConfig.provider,
+      blocker:
+        storageBlocker ??
+        'SharePoint/Microsoft Drive filing is not configured.',
+      nextAction: 'Enable and configure Microsoft Drive storage before filing.',
+    }),
+    readinessCheck({
+      key: 'COMPLETED_UNSIGNED_FORM_FILED',
+      label: 'Completed unsigned form filed',
+      passed: filed,
+      value: latestFiling?.status ?? null,
+      blocker:
+        'Approved completed unsigned form has not been filed to SharePoint/Microsoft Drive.',
+      nextAction:
+        'File the approved completed unsigned form to SharePoint/Microsoft Drive.',
+    }),
+  ];
+  const blockerTexts = checksWithoutMissingBlockers
+    .map((check) => check.blocker)
+    .filter((blocker): blocker is string => Boolean(blocker));
+  const checks = [
+    ...checksWithoutMissingBlockers,
+    readinessCheck({
+      key: 'MISSING_BLOCKERS',
+      label: 'Missing blockers',
+      passed: blockerTexts.length === 0,
+      value: blockerTexts.length,
+      blocker: blockerTexts.join(' '),
+      nextAction: blockerTexts[0] ?? 'No action required.',
+    }),
+  ];
+  const status = readinessOverallStatus(checks);
+
+  return {
+    caseId: item.id,
+    status,
+    readyForEndToEndFillingAndFiling: status !== 'RED' && filed,
+    nextAction:
+      checks.find((check) => check.status === 'RED')?.nextAction ??
+      checks.find((check) => check.status === 'AMBER')?.nextAction ??
+      'Pilot readiness checks are clear. Continue monitoring filed output.',
+    checks,
+    blockerTexts,
+    counts: {
+      pdfAcroFormFieldCount,
+      safeMappedFields,
+      blockedFields,
+    },
+    safety: {
+      diagnosticOnly: true,
+      internalSharePointFilingOnly: true,
+      notSigned: true,
+      notSent: true,
+      notSubmitted: true,
+      directDebitBankAuthorityNotCompleted: true,
+      guaranteeIndemnityDirectorOnlyNotCompleted: true,
+      purchaseWorkflowTriggered: false,
+      rawExtractedTextIncluded: false,
+      binaryBytesIncluded: false,
+      bankDetailsIncluded: false,
+      sortCodesIncluded: false,
+    },
+  };
 }
 
 export async function saveAccountOpeningMissingInfo(input: {

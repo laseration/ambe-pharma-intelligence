@@ -235,6 +235,45 @@ export type AccountOpeningCompletedFormFilingDetail = {
   updatedAt: string;
 };
 
+export type AccountOpeningReadinessStatus = 'GREEN' | 'AMBER' | 'RED';
+
+export type AccountOpeningReadinessCheck = {
+  key: string;
+  label: string;
+  status: AccountOpeningReadinessStatus;
+  value: string;
+  blocker: string | null;
+  nextAction: string;
+};
+
+export type AccountOpeningReadinessReport = {
+  caseId: string;
+  status: AccountOpeningReadinessStatus;
+  readyForEndToEndFillingAndFiling: boolean;
+  nextAction: string;
+  checks: AccountOpeningReadinessCheck[];
+  blockerTexts: string[];
+  counts: {
+    pdfAcroFormFieldCount: number | null;
+    safeMappedFields: number;
+    blockedFields: number;
+  };
+  safety: {
+    diagnosticOnly: true;
+    internalSharePointFilingOnly: true;
+    notSigned: true;
+    notSent: true;
+    notSubmitted: true;
+    directDebitBankAuthorityNotCompleted: true;
+    guaranteeIndemnityDirectorOnlyNotCompleted: true;
+    purchaseWorkflowTriggered: false;
+    rawExtractedTextIncluded: false;
+    binaryBytesIncluded: false;
+    bankDetailsIncluded: false;
+    sortCodesIncluded: false;
+  };
+};
+
 export type AccountOpeningStatusAction =
   | 'MARKED_NEEDS_INFO'
   | 'APPROVED_FOR_COMPLETION'
@@ -441,6 +480,15 @@ export async function getAccountOpeningDraft(
 ): Promise<AccountOpeningCompletionDraft> {
   const payload = await requestJson<{ item: AccountOpeningCompletionDraft }>(
     `/account-opening/${encodeURIComponent(id)}/draft`,
+  );
+  return payload.item;
+}
+
+export async function getAccountOpeningReadiness(
+  id: string,
+): Promise<AccountOpeningReadinessReport> {
+  const payload = await requestJson<{ item: AccountOpeningReadinessReport }>(
+    `/account-opening/${encodeURIComponent(id)}/readiness`,
   );
   return payload.item;
 }
