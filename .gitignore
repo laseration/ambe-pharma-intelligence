@@ -11,3 +11,4 @@ coverage
 .env.production.local
 *.log
 .codex-run/
+apps/api/tmp/
