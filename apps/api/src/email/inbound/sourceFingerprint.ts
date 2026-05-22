@@ -4,14 +4,15 @@ function toHash(value: string): string {
   return createHash('sha1').update(value).digest('hex');
 }
 
-export function normalizeFingerprintText(value: string | null | undefined): string {
-  return (value ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
+export function normalizeFingerprintText(
+  value: string | null | undefined,
+): string {
+  return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-export function extractSenderDomain(senderEmail: string | null | undefined): string | null {
+export function extractSenderDomain(
+  senderEmail: string | null | undefined,
+): string | null {
   const normalized = normalizeFingerprintText(senderEmail);
   const atIndex = normalized.lastIndexOf('@');
 
@@ -40,7 +41,11 @@ function normalizeAttachmentTypes(attachmentSummary: unknown): string[] {
 
   return attachmentSummary
     .map((attachment) => {
-      if (!attachment || typeof attachment !== 'object' || Array.isArray(attachment)) {
+      if (
+        !attachment ||
+        typeof attachment !== 'object' ||
+        Array.isArray(attachment)
+      ) {
         return null;
       }
 
@@ -89,10 +94,14 @@ export function buildSourceTemplateFingerprint(input: {
   attachmentSummary?: unknown;
   bodyText?: string | null | undefined;
 }): string {
-  const sourceSystem = normalizeFingerprintText(input.sourceSystem) || 'microsoft_graph';
-  const senderDomain = extractSenderDomain(input.senderEmail) ?? 'unknown-domain';
+  const sourceSystem =
+    normalizeFingerprintText(input.sourceSystem) || 'microsoft_graph';
+  const senderDomain =
+    extractSenderDomain(input.senderEmail) ?? 'unknown-domain';
   const subjectShape = shapeSubject(input.subject);
-  const documentKinds = Array.from(new Set((input.documentKinds ?? []).map(normalizeFingerprintText)))
+  const documentKinds = Array.from(
+    new Set((input.documentKinds ?? []).map(normalizeFingerprintText)),
+  )
     .filter(Boolean)
     .sort();
   const attachmentTypes = normalizeAttachmentTypes(input.attachmentSummary);

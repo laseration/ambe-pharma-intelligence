@@ -31,7 +31,9 @@ export function buildRegulatorySuggestedAction(severity: string): string {
   return 'Recommended review. Check source evidence and product match before taking operational action.';
 }
 
-export function buildRegulatoryAlertMessage(input: RegulatoryMessageInput): string {
+export function buildRegulatoryAlertMessage(
+  input: RegulatoryMessageInput,
+): string {
   const evidence = input.evidenceSnippets?.length
     ? `\nEvidence:\n${input.evidenceSnippets.map((snippet) => `- ${snippet}`).join('\n')}`
     : '';

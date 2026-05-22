@@ -14,7 +14,8 @@ function createHarness() {
     events,
     service: createSupplierQualificationService({
       async findBySupplierId(supplierId) {
-        return (qualifications.find((item) => item.supplierId === supplierId) ?? null) as never;
+        return (qualifications.find((item) => item.supplierId === supplierId) ??
+          null) as never;
       },
       async create(data) {
         const created = {
@@ -58,7 +59,9 @@ function createHarness() {
         return qualifications as never;
       },
       async listEvents(supplierQualificationId) {
-        return events.filter((item) => item.supplierQualificationId === supplierQualificationId) as never;
+        return events.filter(
+          (item) => item.supplierQualificationId === supplierQualificationId,
+        ) as never;
       },
     }),
   };
@@ -97,7 +100,8 @@ test('supplier qualification upsert creates and logs events', async () => {
 test('missing qualification defaults to conservative unknown state', async () => {
   const harness = createHarness();
 
-  const item = await harness.service.getQualificationForSupplier('supplier-unknown');
+  const item =
+    await harness.service.getQualificationForSupplier('supplier-unknown');
 
   assert.equal(item?.qualificationStatus, 'UNKNOWN');
   assert.equal(item?.requiresManualApproval, true);

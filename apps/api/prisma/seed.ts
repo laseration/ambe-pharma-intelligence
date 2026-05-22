@@ -204,7 +204,8 @@ async function main() {
       type: 'PUSH',
       status: 'OPEN',
       title: 'Push Paracetamol 500mg into City Care Pharmacy',
-      description: 'Healthy stock, active customer, and margin support a sales push.',
+      description:
+        'Healthy stock, active customer, and margin support a sales push.',
       score: 82,
       customerId: customer.id,
       productId: product.id,
@@ -219,7 +220,8 @@ async function main() {
       type: 'OPPORTUNITY',
       status: 'OPEN',
       title: 'New push opportunity ready for review',
-      message: 'Paracetamol 500mg has available stock and a qualified customer target.',
+      message:
+        'Paracetamol 500mg has available stock and a qualified customer target.',
       userId: adminUser.id,
       opportunityId: opportunity.id,
     },

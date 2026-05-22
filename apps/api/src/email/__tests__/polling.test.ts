@@ -7,7 +7,10 @@ import { createEmailInboundPollingWorker } from '../polling';
 
 function createLogger() {
   return {
-    errorCalls: [] as Array<{ message: string; meta?: Record<string, unknown> }>,
+    errorCalls: [] as Array<{
+      message: string;
+      meta?: Record<string, unknown>;
+    }>,
     infoCalls: [] as Array<{ message: string; meta?: Record<string, unknown> }>,
     warnCalls: [] as Array<{ message: string; meta?: Record<string, unknown> }>,
     error(message: string, meta?: Record<string, unknown>) {
@@ -82,6 +85,13 @@ test('allowed sender accepted through Graph polling and structured body reaches 
   assert.equal(result.items[0]?.email.from, 'supplier@example.com');
   assert.equal(result.items[0]?.triageStatus, 'AUTO_PROCESSED');
   assert.deepEqual(markReadCalls, ['graph-1']);
+  assert.ok(
+    logger.infoCalls.some(
+      (call) =>
+        call.message === 'Email inbox polling handled message' &&
+        call.meta?.correlationId === 'MICROSOFT_GRAPH:graph-1',
+    ),
+  );
 });
 
 test('unapproved sender is ignored safely through Graph polling', async () => {
@@ -196,7 +206,9 @@ test('attachment email reaches import path through Graph polling', async () => {
         '@odata.type': '#microsoft.graph.fileAttachment',
         name: 'supplier-price-list.csv',
         contentType: 'text/csv',
-        contentBytes: Buffer.from('supplierName,productName,unitPrice\nAcme Labs,Aspirin,1.20').toString('base64'),
+        contentBytes: Buffer.from(
+          'supplierName,productName,unitPrice\nAcme Labs,Aspirin,1.20',
+        ).toString('base64'),
       },
     ],
     logger,

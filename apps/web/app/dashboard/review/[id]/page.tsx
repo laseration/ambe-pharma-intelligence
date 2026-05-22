@@ -35,8 +35,9 @@ type OperatorSummary = {
   }>;
 };
 
-type ResolutionCandidate =
-  NonNullable<NonNullable<ReviewWorkflowDetail['emailDerivedOffer']>['resolutionCandidates']>[number];
+type ResolutionCandidate = NonNullable<
+  NonNullable<ReviewWorkflowDetail['emailDerivedOffer']>['resolutionCandidates']
+>[number];
 
 type SupplierEvidence = {
   displayName: string | null;
@@ -61,7 +62,9 @@ type SupplierDetailsDefaults = {
 };
 
 function renderValue(value: string | number | null | undefined) {
-  return value === null || value === undefined || value === '' ? 'Not found' : String(value);
+  return value === null || value === undefined || value === ''
+    ? 'Not found'
+    : String(value);
 }
 
 function titleCase(value: string): string {
@@ -102,7 +105,10 @@ function normalizeForComparison(value: string): string {
 function looksLikeNonProductLabel(value: string): boolean {
   const normalized = normalizeForComparison(value).replace(/[:\s]+$/g, '');
   return NON_PRODUCT_PREFIXES.some(
-    (prefix) => normalized === prefix || normalized.startsWith(`${prefix}:`) || normalized.startsWith(`${prefix} `),
+    (prefix) =>
+      normalized === prefix ||
+      normalized.startsWith(`${prefix}:`) ||
+      normalized.startsWith(`${prefix} `),
   );
 }
 
@@ -117,12 +123,19 @@ function looksLikeCodeHeavyValue(value: string | null | undefined): boolean {
   const alphaCount = (compact.match(/[A-Za-z]/g) ?? []).length;
   const digitCount = (compact.match(/\d/g) ?? []).length;
 
-  return compact.length <= 14 && alphaCount > 0 && digitCount > 0 && /^[A-Za-z0-9]+$/.test(compact);
+  return (
+    compact.length <= 14 &&
+    alphaCount > 0 &&
+    digitCount > 0 &&
+    /^[A-Za-z0-9]+$/.test(compact)
+  );
 }
 
 function extractDisplayProductName(item: ReviewWorkflowListItem): string {
   const rawProductText = item.emailDerivedOffer?.rawProductText?.trim();
-  const normalizedName = item.emailDerivedOffer?.normalizedProductNameCandidate?.split('|')[0]?.trim();
+  const normalizedName = item.emailDerivedOffer?.normalizedProductNameCandidate
+    ?.split('|')[0]
+    ?.trim();
 
   if (rawProductText) {
     const productNameMatch = rawProductText.match(/productname:\s*([^|]+)/i);
@@ -142,7 +155,11 @@ function extractDisplayProductName(item: ReviewWorkflowListItem): string {
   }
 
   if (normalizedName) {
-    return titleCase(normalizedName.replace(/^description:\s*/i, '').replace(/productname:\s*/i, ''));
+    return titleCase(
+      normalizedName
+        .replace(/^description:\s*/i, '')
+        .replace(/productname:\s*/i, ''),
+    );
   }
 
   return 'Unknown product';
@@ -170,7 +187,8 @@ function isLikelyDisplayableOffer(item: ReviewWorkflowListItem): boolean {
   if (
     !hasStructuredProductSignal &&
     item.sourceReviewReason === 'deterministic_row_low_confidence' &&
-    (looksLikeCodeHeavyValue(title) || (priceText !== '' && Number(priceText) <= 5 && !hasCurrency))
+    (looksLikeCodeHeavyValue(title) ||
+      (priceText !== '' && Number(priceText) <= 5 && !hasCurrency))
   ) {
     return false;
   }
@@ -178,7 +196,11 @@ function isLikelyDisplayableOffer(item: ReviewWorkflowListItem): boolean {
   return true;
 }
 
-function renderDocumentTitle(document: NonNullable<ReviewWorkflowDetail['inboundEmail']>['documents'][number]) {
+function renderDocumentTitle(
+  document: NonNullable<
+    ReviewWorkflowDetail['inboundEmail']
+  >['documents'][number],
+) {
   return document.label || `${document.kind} #${document.documentIndex}`;
 }
 
@@ -242,7 +264,9 @@ function formatOperatorReason(reason: string | null | undefined): string {
   }
 }
 
-function formatSupplierSourceLabel(reason: string | null | undefined): string | null {
+function formatSupplierSourceLabel(
+  reason: string | null | undefined,
+): string | null {
   switch ((reason ?? '').trim().toLowerCase()) {
     case 'attachment_filename_company_cue':
       return 'Possible supplier found from attachment filename';
@@ -275,7 +299,9 @@ function sanitizeReturnTo(value: string | null | undefined): string {
 }
 
 function getSupplierEvidence(item: ReviewWorkflowDetail): SupplierEvidence {
-  const supplierCandidates = (item.emailDerivedOffer?.resolutionCandidates ?? [])
+  const supplierCandidates = (
+    item.emailDerivedOffer?.resolutionCandidates ?? []
+  )
     .filter((candidate) => candidate.entityType === 'SUPPLIER')
     .sort(
       (left, right) =>
@@ -286,17 +312,30 @@ function getSupplierEvidence(item: ReviewWorkflowDetail): SupplierEvidence {
   const selectedSupplier = supplierCandidates.find(
     (candidate) => candidate.selected && candidate.candidateId,
   );
-  const topSupplierCandidate = selectedSupplier ?? supplierCandidates[0] ?? null;
-  const displayName = item.emailDerivedOffer?.supplierCandidate ?? topSupplierCandidate?.candidateName ?? null;
+  const topSupplierCandidate =
+    selectedSupplier ?? supplierCandidates[0] ?? null;
+  const displayName =
+    item.emailDerivedOffer?.supplierCandidate ??
+    topSupplierCandidate?.candidateName ??
+    null;
   const aliases =
     topSupplierCandidate &&
     topSupplierCandidate.metadata &&
     typeof topSupplierCandidate.metadata === 'object' &&
     !Array.isArray(topSupplierCandidate.metadata) &&
-    Array.isArray((topSupplierCandidate.metadata as { aliases?: unknown[] }).aliases)
+    Array.isArray(
+      (topSupplierCandidate.metadata as { aliases?: unknown[] }).aliases,
+    )
       ? (topSupplierCandidate.metadata as { aliases: unknown[] }).aliases
-          .filter((alias): alias is string => typeof alias === 'string' && alias.trim().length > 0)
-          .filter((alias) => normalizeForComparison(alias) !== normalizeForComparison(displayName ?? ''))
+          .filter(
+            (alias): alias is string =>
+              typeof alias === 'string' && alias.trim().length > 0,
+          )
+          .filter(
+            (alias) =>
+              normalizeForComparison(alias) !==
+              normalizeForComparison(displayName ?? ''),
+          )
       : [];
 
   return {
@@ -307,16 +346,18 @@ function getSupplierEvidence(item: ReviewWorkflowDetail): SupplierEvidence {
   };
 }
 
-function getResolutionEvidenceGroups(
-  item: ReviewWorkflowDetail,
-): Array<{
+function getResolutionEvidenceGroups(item: ReviewWorkflowDetail): Array<{
   entityType: ResolutionCandidate['entityType'];
   label: string;
   selectedCandidate: ResolutionCandidate | null;
   candidates: ResolutionCandidate[];
 }> {
   const candidates = item.emailDerivedOffer?.resolutionCandidates ?? [];
-  const entityOrder: ResolutionCandidate['entityType'][] = ['PRODUCT', 'SUPPLIER', 'MANUFACTURER'];
+  const entityOrder: ResolutionCandidate['entityType'][] = [
+    'PRODUCT',
+    'SUPPLIER',
+    'MANUFACTURER',
+  ];
 
   return entityOrder
     .map((entityType) => {
@@ -336,7 +377,8 @@ function getResolutionEvidenceGroups(
       return {
         entityType,
         label: titleCase(entityType.toLowerCase()),
-        selectedCandidate: entityCandidates.find((candidate) => candidate.selected) ?? null,
+        selectedCandidate:
+          entityCandidates.find((candidate) => candidate.selected) ?? null,
         candidates: entityCandidates,
       };
     })
@@ -360,7 +402,11 @@ function buildRecognizedOfferText(item: ReviewWorkflowDetail): string {
     !item.emailDerivedOffer?.currencyCandidate &&
     looksLikeCodeHeavyValue(rawProductText);
 
-  if (isLikelyNoisyRow || (item.sourceReviewReason ?? item.emailDerivedOffer?.reviewReason) === 'deterministic_row_low_confidence') {
+  if (
+    isLikelyNoisyRow ||
+    (item.sourceReviewReason ?? item.emailDerivedOffer?.reviewReason) ===
+      'deterministic_row_low_confidence'
+  ) {
     return 'Possible supplier offer found. Product details need checking.';
   }
 
@@ -371,7 +417,9 @@ function buildRecognizedOfferText(item: ReviewWorkflowDetail): string {
     item.emailDerivedOffer?.packSizeCandidate
       ? `pack ${item.emailDerivedOffer.packSizeCandidate}`
       : null,
-  ].filter((part): part is string => Boolean(part) && part !== 'Unknown product');
+  ].filter(
+    (part): part is string => Boolean(part) && part !== 'Unknown product',
+  );
   const priceText = item.emailDerivedOffer?.priceCandidate
     ? `${item.emailDerivedOffer.priceCandidate}${item.emailDerivedOffer.currencyCandidate ? ` ${item.emailDerivedOffer.currencyCandidate}` : ''}`
     : null;
@@ -383,7 +431,9 @@ function buildRecognizedOfferText(item: ReviewWorkflowDetail): string {
     : null;
 
   return [
-    parts.length > 0 ? `${parts.join(' ')}.` : 'A possible supplier offer was found.',
+    parts.length > 0
+      ? `${parts.join(' ')}.`
+      : 'A possible supplier offer was found.',
     priceText ? `Price found: ${priceText}.` : null,
     supplierText,
     manufacturerText,
@@ -393,7 +443,13 @@ function buildRecognizedOfferText(item: ReviewWorkflowDetail): string {
 }
 
 function buildSuggestedAction(item: ReviewWorkflowDetail): string {
-  const reason = (item.sourceReviewReason ?? item.emailDerivedOffer?.reviewReason ?? '').trim().toLowerCase();
+  const reason = (
+    item.sourceReviewReason ??
+    item.emailDerivedOffer?.reviewReason ??
+    ''
+  )
+    .trim()
+    .toLowerCase();
 
   if (item.hasBlockedSupplier) {
     return 'Do not approve this offer. Resolve the supplier issue first.';
@@ -415,11 +471,17 @@ function buildSuggestedAction(item: ReviewWorkflowDetail): string {
     return 'Check the product details. Approve only if the offer looks correct.';
   }
 
-  if (reason === 'unresolved_supplier' || reason === 'conflicting_supplier_cues') {
+  if (
+    reason === 'unresolved_supplier' ||
+    reason === 'conflicting_supplier_cues'
+  ) {
     return 'Check the supplier and product details. Approve only if the offer looks correct.';
   }
 
-  if (reason === 'ai_candidate_review_only' || reason === 'ai_extracted_candidate_requires_review') {
+  if (
+    reason === 'ai_candidate_review_only' ||
+    reason === 'ai_extracted_candidate_requires_review'
+  ) {
     return 'Check the offer against the original email before approving.';
   }
 
@@ -429,7 +491,9 @@ function buildSuggestedAction(item: ReviewWorkflowDetail): string {
 function buildConfidenceLimits(item: ReviewWorkflowDetail): string[] {
   const limits: string[] = [];
   const detail = item.emailDerivedOffer;
-  const reason = (item.sourceReviewReason ?? detail?.reviewReason ?? '').trim().toLowerCase();
+  const reason = (item.sourceReviewReason ?? detail?.reviewReason ?? '')
+    .trim()
+    .toLowerCase();
   const supplierEvidence = getSupplierEvidence(item);
 
   if (supplierEvidence.needsSupplierCheck) {
@@ -440,7 +504,11 @@ function buildConfidenceLimits(item: ReviewWorkflowDetail): string[] {
     limits.push('Product details may be incomplete');
   }
 
-  if (reason === 'missing_price' || reason === 'missing_currency' || reason === 'promotion_threshold_missing_or_weak_fields') {
+  if (
+    reason === 'missing_price' ||
+    reason === 'missing_currency' ||
+    reason === 'promotion_threshold_missing_or_weak_fields'
+  ) {
     limits.push('Price or pack size may need confirming');
   }
 
@@ -452,14 +520,20 @@ function buildConfidenceLimits(item: ReviewWorkflowDetail): string[] {
     limits.push('Source needs checking');
   }
 
-  if (item.hasBlockedSupplier || item.hasRestrictedSupplier || item.hasUnknownSupplierQualification) {
+  if (
+    item.hasBlockedSupplier ||
+    item.hasRestrictedSupplier ||
+    item.hasUnknownSupplierQualification
+  ) {
     limits.push(item.qualificationRiskNote ?? 'Supplier needs checking');
   }
 
   return Array.from(new Set(limits));
 }
 
-function buildTechnicalDetails(item: ReviewWorkflowDetail): Array<{ label: string; value: string }> {
+function buildTechnicalDetails(
+  item: ReviewWorkflowDetail,
+): Array<{ label: string; value: string }> {
   const detail = item.emailDerivedOffer;
   const metrics: Array<{ label: string; value: string | null }> = [
     {
@@ -485,7 +559,9 @@ function buildTechnicalDetails(item: ReviewWorkflowDetail): Array<{ label: strin
   ];
 
   return metrics
-    .filter((metric): metric is { label: string; value: string } => Boolean(metric.value))
+    .filter((metric): metric is { label: string; value: string } =>
+      Boolean(metric.value),
+    )
     .map((metric) => ({
       label: metric.label,
       value: metric.value,
@@ -493,7 +569,11 @@ function buildTechnicalDetails(item: ReviewWorkflowDetail): Array<{ label: strin
 }
 
 function buildOperatorSummary(item: ReviewWorkflowDetail): OperatorSummary {
-  const reason = item.sourceReviewReason ?? item.qualificationRiskNote ?? item.latestNote ?? 'Needs review.';
+  const reason =
+    item.sourceReviewReason ??
+    item.qualificationRiskNote ??
+    item.latestNote ??
+    'Needs review.';
   const confidenceLimits = buildConfidenceLimits(item);
 
   return {
@@ -501,23 +581,33 @@ function buildOperatorSummary(item: ReviewWorkflowDetail): OperatorSummary {
     unclear: formatOperatorReason(reason),
     action: buildSuggestedAction(item),
     confidenceLimits:
-      confidenceLimits.length > 0 ? confidenceLimits : ['The row still needs operator confirmation before any buy action.'],
+      confidenceLimits.length > 0
+        ? confidenceLimits
+        : ['The row still needs operator confirmation before any buy action.'],
     technicalDetails: buildTechnicalDetails(item),
   };
 }
 
-function getSupplierContact(detail: ReviewWorkflowDetail): SupplierContact | null {
+function getSupplierContact(
+  detail: ReviewWorkflowDetail,
+): SupplierContact | null {
   const contact = detail.supplierContact;
 
   if (!contact) {
     return null;
   }
 
-  return Object.values(contact).some((value) => Boolean(value)) ? contact : null;
+  return Object.values(contact).some((value) => Boolean(value))
+    ? contact
+    : null;
 }
 
-function buildApprovalGuidance(items: Array<{ detail: ReviewWorkflowDetail }>): ApprovalGuidance | null {
-  const hasBlockedSupplier = items.some(({ detail }) => detail.hasBlockedSupplier);
+function buildApprovalGuidance(
+  items: Array<{ detail: ReviewWorkflowDetail }>,
+): ApprovalGuidance | null {
+  const hasBlockedSupplier = items.some(
+    ({ detail }) => detail.hasBlockedSupplier,
+  );
 
   if (hasBlockedSupplier) {
     return {
@@ -557,7 +647,8 @@ function buildSupplierDetailsDefaults(
   const supplierEvidence = getSupplierEvidence(detail);
 
   return {
-    supplierName: supplierContact?.companyName ?? supplierEvidence.displayName ?? '',
+    supplierName:
+      supplierContact?.companyName ?? supplierEvidence.displayName ?? '',
     contactName: supplierContact?.contactName ?? '',
     email: supplierContact?.email ?? '',
     phone: supplierContact?.phone ?? '',
@@ -570,27 +661,44 @@ function renderSupplierDetailsFields(defaults: SupplierDetailsDefaults) {
       <legend>Supplier details</legend>
       <label>
         Supplier name
-        <input name="supplierName" type="text" defaultValue={defaults.supplierName} />
+        <input
+          name="supplierName"
+          type="text"
+          defaultValue={defaults.supplierName}
+        />
       </label>
       <details className="supplier-review-more">
         <summary>More supplier details</summary>
         <div className="form-grid form-grid-two">
           <label>
             Contact name
-            <input name="supplierContactName" type="text" defaultValue={defaults.contactName} />
+            <input
+              name="supplierContactName"
+              type="text"
+              defaultValue={defaults.contactName}
+            />
           </label>
           <label>
             Email
-            <input name="supplierEmail" type="email" defaultValue={defaults.email} />
+            <input
+              name="supplierEmail"
+              type="email"
+              defaultValue={defaults.email}
+            />
           </label>
           <label>
             Phone
-            <input name="supplierPhone" type="tel" defaultValue={defaults.phone} />
+            <input
+              name="supplierPhone"
+              type="tel"
+              defaultValue={defaults.phone}
+            />
           </label>
         </div>
       </details>
       <p className="form-helper">
-        Enter or confirm the supplier name before approving incomplete supplier checks.
+        Enter or confirm the supplier name before approving incomplete supplier
+        checks.
       </p>
     </fieldset>
   );
@@ -600,15 +708,23 @@ function renderReturnToInput(returnTo: string) {
   return <input name="returnTo" type="hidden" value={returnTo} />;
 }
 
-function getApproveButtonLabel(approvalGuidance: ApprovalGuidance | null, supplierName: string): string {
+function getApproveButtonLabel(
+  approvalGuidance: ApprovalGuidance | null,
+  supplierName: string,
+): string {
   if (!approvalGuidance) {
     return 'Approve all';
   }
 
-  return supplierName.trim() ? 'Save supplier name and approve' : 'Approve anyway';
+  return supplierName.trim()
+    ? 'Save supplier name and approve'
+    : 'Approve anyway';
 }
 
-export default async function ReviewInboundEmailPage({ params, searchParams }: PageProps) {
+export default async function ReviewInboundEmailPage({
+  params,
+  searchParams,
+}: PageProps) {
   const { id: inboundEmailId } = await params;
   const query = searchParams ? await searchParams : undefined;
   const returnTo = sanitizeReturnTo(query?.returnTo);
@@ -632,19 +748,26 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
         };
       }),
     );
-    const firstDetailForSummary = detailedVisibleItems[0]?.detail ?? (await getReviewWorkflowItem(items[0]!.id));
+    const firstDetailForSummary =
+      detailedVisibleItems[0]?.detail ??
+      (await getReviewWorkflowItem(items[0]!.id));
     const emailSummary = buildOperatorSummary(firstDetailForSummary);
     const inboundEmail = firstDetailForSummary.inboundEmail;
     const supplierContact = getSupplierContact(firstDetailForSummary);
     const approvalGuidance = buildApprovalGuidance(detailedVisibleItems);
-    const supplierDetailsDefaults = buildSupplierDetailsDefaults(firstDetailForSummary, supplierContact);
+    const supplierDetailsDefaults = buildSupplierDetailsDefaults(
+      firstDetailForSummary,
+      supplierContact,
+    );
 
     return (
       <section className="review-layout">
         <div className="review-header review-header-inline">
-            <div>
+          <div>
             <p className="eyebrow">Supplier Email</p>
-            <h2 className="title">{inboundEmail?.subject ?? 'Supplier email'}</h2>
+            <h2 className="title">
+              {inboundEmail?.subject ?? 'Supplier email'}
+            </h2>
             <p className="copy">
               Check the offers found in this email and choose what to do next.
             </p>
@@ -654,7 +777,9 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
           </Link>
         </div>
 
-        {query?.error ? <p className="alert alert-error">{query.error}</p> : null}
+        {query?.error ? (
+          <p className="alert alert-error">{query.error}</p>
+        ) : null}
         {query?.message ? (
           <p className="alert alert-success">
             {query.message}
@@ -665,7 +790,9 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
               </>
             ) : null}
           </p>
-        ) : query?.updated ? <p className="alert alert-success">Saved with {query.updated}.</p> : null}
+        ) : query?.updated ? (
+          <p className="alert alert-success">Saved with {query.updated}.</p>
+        ) : null}
 
         <section className="panel review-section">
           <h3 className="section-title">Quick summary</h3>
@@ -749,9 +876,10 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
         <section className="panel review-section" id="decision">
           <h3 className="section-title">Decision</h3>
           <p className="copy review-summary-copy">
-            {visibleItems.length} {visibleItems.length === 1 ? 'offer' : 'offers'} from {inboundEmail?.fromEmail ?? 'Not found'}.
-            {' '}
-            Why this needs checking: {summarizeReason(items)}
+            {visibleItems.length}{' '}
+            {visibleItems.length === 1 ? 'offer' : 'offers'} from{' '}
+            {inboundEmail?.fromEmail ?? 'Not found'}. Why this needs checking:{' '}
+            {summarizeReason(items)}
           </p>
           {approvalGuidance ? (
             <div
@@ -762,48 +890,83 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
               }`}
             >
               <p className="review-guidance-title">{approvalGuidance.title}</p>
-              <p className="copy review-guidance-copy">{approvalGuidance.copy}</p>
+              <p className="copy review-guidance-copy">
+                {approvalGuidance.copy}
+              </p>
             </div>
           ) : null}
           {hiddenItemCount > 0 ? (
             <p className="copy review-summary-copy review-summary-note">
-              {hiddenItemCount} low-confidence rows were hidden because they looked like forwarded headers,
-              phone numbers, or signature text rather than real offers.
+              {hiddenItemCount} low-confidence rows were hidden because they
+              looked like forwarded headers, phone numbers, or signature text
+              rather than real offers.
             </p>
           ) : null}
-          {query?.error ? <p className="alert alert-error review-inline-alert">{query.error}</p> : null}
+          {query?.error ? (
+            <p className="alert alert-error review-inline-alert">
+              {query.error}
+            </p>
+          ) : null}
 
           <div className="action-row action-row-stacked-mobile">
-            <form action={submitInboundEmailReviewAction} className="action-form">
-              <input name="inboundEmailId" type="hidden" value={inboundEmailId} />
+            <form
+              action={submitInboundEmailReviewAction}
+              className="action-form"
+            >
+              <input
+                name="inboundEmailId"
+                type="hidden"
+                value={inboundEmailId}
+              />
               <input name="action" type="hidden" value="APPROVE_TO_BUY" />
               {renderReturnToInput(returnTo)}
-              {approvalGuidance ? renderSupplierDetailsFields(supplierDetailsDefaults) : null}
+              {approvalGuidance
+                ? renderSupplierDetailsFields(supplierDetailsDefaults)
+                : null}
               <label>
                 Note
-                <textarea name="note" placeholder="Add a note if needed" rows={3} />
+                <textarea
+                  name="note"
+                  placeholder="Add a note if needed"
+                  rows={3}
+                />
               </label>
               <label className="checkbox-row">
                 <input name="allowQualificationRisk" type="checkbox" />
                 Approve despite incomplete supplier checks
               </label>
               <p className="form-helper">
-                Use this only if you intentionally want to continue even though the supplier still needs checking.
+                Use this only if you intentionally want to continue even though
+                the supplier still needs checking.
               </p>
               <SubmitButton
                 className="button button-primary button-large"
-                idleLabel={getApproveButtonLabel(approvalGuidance, supplierDetailsDefaults.supplierName)}
+                idleLabel={getApproveButtonLabel(
+                  approvalGuidance,
+                  supplierDetailsDefaults.supplierName,
+                )}
                 pendingLabel="Approving..."
               />
             </form>
 
-            <form action={submitInboundEmailReviewAction} className="action-form">
-              <input name="inboundEmailId" type="hidden" value={inboundEmailId} />
+            <form
+              action={submitInboundEmailReviewAction}
+              className="action-form"
+            >
+              <input
+                name="inboundEmailId"
+                type="hidden"
+                value={inboundEmailId}
+              />
               <input name="action" type="hidden" value="REJECT" />
               {renderReturnToInput(returnTo)}
               <label>
                 Reason
-                <textarea name="note" placeholder="Add a short reason" rows={3} />
+                <textarea
+                  name="note"
+                  placeholder="Add a short reason"
+                  rows={3}
+                />
               </label>
               <SubmitButton
                 className="button button-large"
@@ -818,181 +981,246 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
           <h3 className="section-title">Offers found</h3>
           <div className="offer-row-list">
             {detailedVisibleItems.map(({ item, detail, summary }) => {
-              const resolutionEvidenceGroups = getResolutionEvidenceGroups(detail);
+              const resolutionEvidenceGroups =
+                getResolutionEvidenceGroups(detail);
               const supplierEvidence = getSupplierEvidence(detail);
 
               return (
                 <article className="offer-row-card" key={item.id}>
-                <div className="offer-row-header">
-                  <p className="offer-row-title">{extractDisplayProductName(item)}</p>
-                  <p className="offer-row-price">
-                    {renderValue(item.emailDerivedOffer?.priceCandidate)}{' '}
-                    {item.emailDerivedOffer?.currencyCandidate ?? ''}
-                  </p>
-                </div>
-
-                <dl className="offer-row-fields">
-                  <div>
-                    <dt>Strength</dt>
-                    <dd>{renderValue(item.emailDerivedOffer?.strengthCandidate)}</dd>
-                  </div>
-                  <div>
-                    <dt>Form</dt>
-                    <dd>{renderValue(item.emailDerivedOffer?.dosageFormCandidate)}</dd>
-                  </div>
-                  <div>
-                    <dt>Pack</dt>
-                    <dd>{renderValue(item.emailDerivedOffer?.packSizeCandidate)}</dd>
-                  </div>
-                  <div>
-                    <dt>Supplier</dt>
-                    <dd className="offer-field-stack">
-                      <span>{renderValue(supplierEvidence.displayName)}</span>
-                      {supplierEvidence.needsSupplierCheck ? (
-                        <span className="pill pill-neutral">Needs supplier check</span>
-                      ) : null}
-                      {supplierEvidence.sourceLabel ? (
-                        <span className="offer-field-note">{supplierEvidence.sourceLabel}</span>
-                      ) : null}
-                      {supplierEvidence.aliases.length > 0 ? (
-                        <span className="offer-field-note">
-                          Also seen as: {supplierEvidence.aliases.join(', ')}
-                        </span>
-                      ) : null}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Manufacturer</dt>
-                    <dd>{renderValue(item.emailDerivedOffer?.manufacturerCandidate)}</dd>
-                  </div>
-                  <div>
-                    <dt>MOQ</dt>
-                    <dd>{renderValue(item.emailDerivedOffer?.minimumOrderQuantityCandidate)}</dd>
-                  </div>
-                </dl>
-
-                <p className="offer-row-copy">
-                  Needs checking because {formatOperatorReason(
-                    item.sourceReviewReason ?? item.qualificationRiskNote ?? item.latestNote ?? 'this offer still needs review.',
-                  )}
-                </p>
-                <dl className="offer-row-summary">
-                  <div>
-                    <dt>What the bot found</dt>
-                    <dd>{summary.recognized}</dd>
-                  </div>
-                  <div>
-                    <dt>Needs checking</dt>
-                    <dd>{summary.unclear}</dd>
-                  </div>
-                  <div>
-                    <dt>Recommended next step</dt>
-                    <dd>{summary.action}</dd>
-                  </div>
-                  <div>
-                    <dt>Why this needs review</dt>
-                    <dd>
-                      <ul className="simple-list compact-list">
-                        {summary.confidenceLimits.map((limit) => (
-                          <li key={`${detail.id}-${limit}`}>{limit}</li>
-                        ))}
-                      </ul>
-                    </dd>
-                  </div>
-                </dl>
-                {summary.technicalDetails.length > 0 ? (
-                  <details className="document-card technical-details-card">
-                    <summary>Technical details</summary>
-                    <dl className="duplicate-product-details technical-details-grid">
-                      {summary.technicalDetails.map((technicalDetail) => (
-                        <div key={`${detail.id}-${technicalDetail.label}`}>
-                          <dt>{technicalDetail.label}</dt>
-                          <dd>{technicalDetail.value}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </details>
-                ) : null}
-                <section className="resolution-evidence">
-                  <div className="resolution-evidence-header">
-                    <div>
-                      <h4 className="subsection-title">Resolution Evidence</h4>
-                      <p className="copy resolution-evidence-copy">
-                        Candidate matches stored for this offer&apos;s supplier, product, and manufacturer checks.
-                      </p>
-                    </div>
-                  </div>
-                  {resolutionEvidenceGroups.length > 0 ? (
-                    <div className="resolution-evidence-groups">
-                      {resolutionEvidenceGroups.map((group) => (
-                        <section className="resolution-evidence-group" key={`${detail.id}-${group.entityType}`}>
-                          <div className="resolution-evidence-group-header">
-                            <p className="resolution-evidence-group-title">{group.label}</p>
-                            <p className="resolution-evidence-group-copy">
-                              {group.selectedCandidate
-                                ? `Selected candidate: ${group.selectedCandidate.candidateName}`
-                                : 'No candidate was selected automatically.'}
-                            </p>
-                          </div>
-                          <div className="resolution-candidate-list">
-                            {group.candidates.map((candidate) => (
-                              <article
-                                className={`resolution-candidate-card${candidate.selected ? ' resolution-candidate-card-selected' : ''}`}
-                                key={`${detail.id}-${group.entityType}-${candidate.candidateId ?? candidate.candidateName}-${candidate.reason}`}
-                              >
-                                <div className="resolution-candidate-top">
-                                  <p className="resolution-candidate-title">{candidate.candidateName}</p>
-                                  <div className="resolution-candidate-pills">
-                                    {candidate.selected ? <span className="pill pill-high">Selected</span> : null}
-                                    <span className="pill pill-neutral">
-                                      {formatPctFromScore(candidate.confidence) ?? 'Unknown confidence'}
-                                    </span>
-                                  </div>
-                                </div>
-                                <p className="resolution-candidate-copy">
-                                  Why this looks like a match: {formatReasonLabel(candidate.reason)}.
-                                </p>
-                                <p className="resolution-candidate-copy resolution-candidate-copy-secondary">
-                                  {candidate.candidateId
-                                    ? 'Linked to an existing canonical record.'
-                                    : 'Stored as a text cue only, without a canonical record link.'}
-                                </p>
-                              </article>
-                            ))}
-                          </div>
-                        </section>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="copy resolution-evidence-copy">
-                      No candidate supplier, product, or manufacturer evidence was stored for this row.
+                  <div className="offer-row-header">
+                    <p className="offer-row-title">
+                      {extractDisplayProductName(item)}
                     </p>
-                  )}
-                </section>
-                <div className="offer-row-actions">
-                  <form action={submitInboundEmailReviewAction}>
-                    <input name="inboundEmailId" type="hidden" value={inboundEmailId} />
-                    <input name="workflowItemId" type="hidden" value={item.id} />
-                    <input name="action" type="hidden" value="APPROVE_TO_BUY" />
-                    {renderReturnToInput(returnTo)}
-                    <SubmitButton
-                      className="button button-primary"
-                      idleLabel="Approve"
-                      pendingLabel="Approving..."
-                    />
-                  </form>
-                  <form action={submitInboundEmailReviewAction}>
-                    <input name="inboundEmailId" type="hidden" value={inboundEmailId} />
-                    <input name="workflowItemId" type="hidden" value={item.id} />
-                    <input name="action" type="hidden" value="REJECT" />
-                    {renderReturnToInput(returnTo)}
-                    <SubmitButton
-                      className="button"
-                      idleLabel="Reject"
-                      pendingLabel="Rejecting..."
-                    />
-                  </form>
-                </div>
+                    <p className="offer-row-price">
+                      {renderValue(item.emailDerivedOffer?.priceCandidate)}{' '}
+                      {item.emailDerivedOffer?.currencyCandidate ?? ''}
+                    </p>
+                  </div>
+
+                  <dl className="offer-row-fields">
+                    <div>
+                      <dt>Strength</dt>
+                      <dd>
+                        {renderValue(item.emailDerivedOffer?.strengthCandidate)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Form</dt>
+                      <dd>
+                        {renderValue(
+                          item.emailDerivedOffer?.dosageFormCandidate,
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Pack</dt>
+                      <dd>
+                        {renderValue(item.emailDerivedOffer?.packSizeCandidate)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Supplier</dt>
+                      <dd className="offer-field-stack">
+                        <span>{renderValue(supplierEvidence.displayName)}</span>
+                        {supplierEvidence.needsSupplierCheck ? (
+                          <span className="pill pill-neutral">
+                            Needs supplier check
+                          </span>
+                        ) : null}
+                        {supplierEvidence.sourceLabel ? (
+                          <span className="offer-field-note">
+                            {supplierEvidence.sourceLabel}
+                          </span>
+                        ) : null}
+                        {supplierEvidence.aliases.length > 0 ? (
+                          <span className="offer-field-note">
+                            Also seen as: {supplierEvidence.aliases.join(', ')}
+                          </span>
+                        ) : null}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Manufacturer</dt>
+                      <dd>
+                        {renderValue(
+                          item.emailDerivedOffer?.manufacturerCandidate,
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>MOQ</dt>
+                      <dd>
+                        {renderValue(
+                          item.emailDerivedOffer?.minimumOrderQuantityCandidate,
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <p className="offer-row-copy">
+                    Needs checking because{' '}
+                    {formatOperatorReason(
+                      item.sourceReviewReason ??
+                        item.qualificationRiskNote ??
+                        item.latestNote ??
+                        'this offer still needs review.',
+                    )}
+                  </p>
+                  <dl className="offer-row-summary">
+                    <div>
+                      <dt>What the bot found</dt>
+                      <dd>{summary.recognized}</dd>
+                    </div>
+                    <div>
+                      <dt>Needs checking</dt>
+                      <dd>{summary.unclear}</dd>
+                    </div>
+                    <div>
+                      <dt>Recommended next step</dt>
+                      <dd>{summary.action}</dd>
+                    </div>
+                    <div>
+                      <dt>Why this needs review</dt>
+                      <dd>
+                        <ul className="simple-list compact-list">
+                          {summary.confidenceLimits.map((limit) => (
+                            <li key={`${detail.id}-${limit}`}>{limit}</li>
+                          ))}
+                        </ul>
+                      </dd>
+                    </div>
+                  </dl>
+                  {summary.technicalDetails.length > 0 ? (
+                    <details className="document-card technical-details-card">
+                      <summary>Technical details</summary>
+                      <dl className="duplicate-product-details technical-details-grid">
+                        {summary.technicalDetails.map((technicalDetail) => (
+                          <div key={`${detail.id}-${technicalDetail.label}`}>
+                            <dt>{technicalDetail.label}</dt>
+                            <dd>{technicalDetail.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </details>
+                  ) : null}
+                  <section className="resolution-evidence">
+                    <div className="resolution-evidence-header">
+                      <div>
+                        <h4 className="subsection-title">
+                          Resolution Evidence
+                        </h4>
+                        <p className="copy resolution-evidence-copy">
+                          Candidate matches stored for this offer&apos;s
+                          supplier, product, and manufacturer checks.
+                        </p>
+                      </div>
+                    </div>
+                    {resolutionEvidenceGroups.length > 0 ? (
+                      <div className="resolution-evidence-groups">
+                        {resolutionEvidenceGroups.map((group) => (
+                          <section
+                            className="resolution-evidence-group"
+                            key={`${detail.id}-${group.entityType}`}
+                          >
+                            <div className="resolution-evidence-group-header">
+                              <p className="resolution-evidence-group-title">
+                                {group.label}
+                              </p>
+                              <p className="resolution-evidence-group-copy">
+                                {group.selectedCandidate
+                                  ? `Selected candidate: ${group.selectedCandidate.candidateName}`
+                                  : 'No candidate was selected automatically.'}
+                              </p>
+                            </div>
+                            <div className="resolution-candidate-list">
+                              {group.candidates.map((candidate) => (
+                                <article
+                                  className={`resolution-candidate-card${candidate.selected ? ' resolution-candidate-card-selected' : ''}`}
+                                  key={`${detail.id}-${group.entityType}-${candidate.candidateId ?? candidate.candidateName}-${candidate.reason}`}
+                                >
+                                  <div className="resolution-candidate-top">
+                                    <p className="resolution-candidate-title">
+                                      {candidate.candidateName}
+                                    </p>
+                                    <div className="resolution-candidate-pills">
+                                      {candidate.selected ? (
+                                        <span className="pill pill-high">
+                                          Selected
+                                        </span>
+                                      ) : null}
+                                      <span className="pill pill-neutral">
+                                        {formatPctFromScore(
+                                          candidate.confidence,
+                                        ) ?? 'Unknown confidence'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <p className="resolution-candidate-copy">
+                                    Why this looks like a match:{' '}
+                                    {formatReasonLabel(candidate.reason)}.
+                                  </p>
+                                  <p className="resolution-candidate-copy resolution-candidate-copy-secondary">
+                                    {candidate.candidateId
+                                      ? 'Linked to an existing canonical record.'
+                                      : 'Stored as a text cue only, without a canonical record link.'}
+                                  </p>
+                                </article>
+                              ))}
+                            </div>
+                          </section>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="copy resolution-evidence-copy">
+                        No candidate supplier, product, or manufacturer evidence
+                        was stored for this row.
+                      </p>
+                    )}
+                  </section>
+                  <div className="offer-row-actions">
+                    <form action={submitInboundEmailReviewAction}>
+                      <input
+                        name="inboundEmailId"
+                        type="hidden"
+                        value={inboundEmailId}
+                      />
+                      <input
+                        name="workflowItemId"
+                        type="hidden"
+                        value={item.id}
+                      />
+                      <input
+                        name="action"
+                        type="hidden"
+                        value="APPROVE_TO_BUY"
+                      />
+                      {renderReturnToInput(returnTo)}
+                      <SubmitButton
+                        className="button button-primary"
+                        idleLabel="Approve"
+                        pendingLabel="Approving..."
+                      />
+                    </form>
+                    <form action={submitInboundEmailReviewAction}>
+                      <input
+                        name="inboundEmailId"
+                        type="hidden"
+                        value={inboundEmailId}
+                      />
+                      <input
+                        name="workflowItemId"
+                        type="hidden"
+                        value={item.id}
+                      />
+                      <input name="action" type="hidden" value="REJECT" />
+                      {renderReturnToInput(returnTo)}
+                      <SubmitButton
+                        className="button"
+                        idleLabel="Reject"
+                        pendingLabel="Rejecting..."
+                      />
+                    </form>
+                  </div>
                 </article>
               );
             })}
@@ -1029,20 +1257,25 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
               </div>
 
               <div className="source-block">
-                <h4 className="subsection-title">Parsed attachments and documents</h4>
+                <h4 className="subsection-title">
+                  Parsed attachments and documents
+                </h4>
                 {inboundEmail?.documents.length ? (
                   <div className="document-list">
                     {inboundEmail.documents.map((document) => (
                       <details className="document-card" key={document.id}>
                         <summary>
-                          {renderDocumentTitle(document)} <span>{document.kind}</span>
+                          {renderDocumentTitle(document)}{' '}
+                          <span>{document.kind}</span>
                         </summary>
                         <pre>{document.textContent}</pre>
                       </details>
                     ))}
                   </div>
                 ) : (
-                  <p className="copy">No parsed documents were stored for this email.</p>
+                  <p className="copy">
+                    No parsed documents were stored for this email.
+                  </p>
                 )}
               </div>
             </div>
@@ -1055,7 +1288,11 @@ export default async function ReviewInboundEmailPage({ params, searchParams }: P
       <section className="panel">
         <p className="eyebrow">Supplier Email</p>
         <h2 className="title">Couldn&apos;t load this review</h2>
-        <p className="copy">{error instanceof Error ? error.message : 'Failed to load review email.'}</p>
+        <p className="copy">
+          {error instanceof Error
+            ? error.message
+            : 'Failed to load review email.'}
+        </p>
         <div className="actions">
           <Link className="button" href={sanitizeReturnTo(query?.returnTo)}>
             Back

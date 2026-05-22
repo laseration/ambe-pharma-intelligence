@@ -33,19 +33,42 @@ const EVENT_RULES: Array<{
 }> = [
   {
     eventType: 'RECALL',
-    terms: ['recall', 'drug alert', 'class 1 medicines recall', 'class 2 medicines recall', 'class 3 medicines recall'],
+    terms: [
+      'recall',
+      'drug alert',
+      'class 1 medicines recall',
+      'class 2 medicines recall',
+      'class 3 medicines recall',
+    ],
   },
   {
     eventType: 'MEDICINE_DEFECT',
-    terms: ['medicine defect', 'defective medicine', 'company led medicines recall', 'defect'],
+    terms: [
+      'medicine defect',
+      'defective medicine',
+      'company led medicines recall',
+      'defect',
+    ],
   },
   {
     eventType: 'SAFETY_ALERT',
-    terms: ['safety alert', 'patient safety', 'serious safety concern', 'risk of'],
+    terms: [
+      'safety alert',
+      'patient safety',
+      'serious safety concern',
+      'risk of',
+    ],
   },
   {
     eventType: 'LICENCE_CHANGE',
-    terms: ['licence change', 'license change', 'marketing authorisation', 'marketing authorization', 'suspended licence', 'licence suspended'],
+    terms: [
+      'licence change',
+      'license change',
+      'marketing authorisation',
+      'marketing authorization',
+      'suspended licence',
+      'licence suspended',
+    ],
   },
   {
     eventType: 'PRODUCT_WITHDRAWAL',
@@ -57,8 +80,20 @@ const EVENT_RULES: Array<{
   },
 ];
 
-const CRITICAL_TERMS = ['class 1', 'serious risk', 'life-threatening', 'immediate action', 'stop supplying'];
-const HIGH_TERMS = ['class 2', 'recall', 'medicine defect', 'safety alert', 'quarantine'];
+const CRITICAL_TERMS = [
+  'class 1',
+  'serious risk',
+  'life-threatening',
+  'immediate action',
+  'stop supplying',
+];
+const HIGH_TERMS = [
+  'class 2',
+  'recall',
+  'medicine defect',
+  'safety alert',
+  'quarantine',
+];
 const LOW_TERMS = ['class 4', 'caution in use', 'information only'];
 
 function normalize(value: string): string {
@@ -72,11 +107,17 @@ function splitLines(value: string): string[] {
     .filter(Boolean);
 }
 
-function collectMatchedTerms(normalizedText: string, terms: string[]): string[] {
+function collectMatchedTerms(
+  normalizedText: string,
+  terms: string[],
+): string[] {
   return terms.filter((term) => normalizedText.includes(term));
 }
 
-function detectEventType(text: string): { eventType: RegulatoryEventType; matchedTerms: string[] } {
+function detectEventType(text: string): {
+  eventType: RegulatoryEventType;
+  matchedTerms: string[];
+} {
   for (const rule of EVENT_RULES) {
     const matchedTerms = collectMatchedTerms(text, rule.terms);
     if (matchedTerms.length > 0) {
@@ -93,7 +134,10 @@ function detectEventType(text: string): { eventType: RegulatoryEventType; matche
   };
 }
 
-function detectSeverity(text: string, eventType: RegulatoryEventType): RegulatorySeverity {
+function detectSeverity(
+  text: string,
+  eventType: RegulatoryEventType,
+): RegulatorySeverity {
   if (collectMatchedTerms(text, CRITICAL_TERMS).length > 0) {
     return 'CRITICAL';
   }
@@ -106,7 +150,10 @@ function detectSeverity(text: string, eventType: RegulatoryEventType): Regulator
     return 'LOW';
   }
 
-  if (eventType === 'OTHER_REGULATORY_UPDATE' || eventType === 'LICENCE_CHANGE') {
+  if (
+    eventType === 'OTHER_REGULATORY_UPDATE' ||
+    eventType === 'LICENCE_CHANGE'
+  ) {
     return 'MEDIUM';
   }
 
@@ -130,7 +177,10 @@ function findLabeledValue(lines: string[], labels: string[]): string | null {
 function cleanProductCandidate(value: string): string {
   return value
     .replace(/\b(class|type)\s+\d+\b/gi, ' ')
-    .replace(/\b(medicines?|medical device|recall|notification|alert|drug alert)\b/gi, ' ')
+    .replace(
+      /\b(medicines?|medical device|recall|notification|alert|drug alert)\b/gi,
+      ' ',
+    )
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/^[-:]+|[-:]+$/g, '')
@@ -140,9 +190,14 @@ function cleanProductCandidate(value: string): string {
 function inferProductFromTitle(title: string): string | null {
   const withoutPrefix = title
     .replace(/^mhra\s+/i, '')
-    .replace(/^(drug alert|medicine recall|medicines recall|safety alert)\s*[:-]\s*/i, '')
+    .replace(
+      /^(drug alert|medicine recall|medicines recall|safety alert)\s*[:-]\s*/i,
+      '',
+    )
     .trim();
-  const candidate = cleanProductCandidate(withoutPrefix.split(/(?::|\s-\s)/)[0] ?? withoutPrefix);
+  const candidate = cleanProductCandidate(
+    withoutPrefix.split(/(?::|\s-\s)/)[0] ?? withoutPrefix,
+  );
 
   if (candidate.length < 3 || /^(mhra|gov\.uk)$/i.test(candidate)) {
     return null;
@@ -151,7 +206,10 @@ function inferProductFromTitle(title: string): string | null {
   return candidate;
 }
 
-function collectEvidenceSnippets(lines: string[], matchedTerms: string[]): string[] {
+function collectEvidenceSnippets(
+  lines: string[],
+  matchedTerms: string[],
+): string[] {
   const snippets = lines.filter((line) => {
     const normalizedLine = normalize(line);
     return matchedTerms.some((term) => normalizedLine.includes(term));
@@ -195,19 +253,44 @@ function scoreConfidence(input: {
   return Math.min(score, 95);
 }
 
-export function parseRegulatoryUpdate(input: RegulatoryParseInput): RegulatoryParsedSignal {
-  const lines = splitLines(`${input.title}\n${input.category ?? ''}\n${input.rawText}`);
+export function parseRegulatoryUpdate(
+  input: RegulatoryParseInput,
+): RegulatoryParsedSignal {
+  const lines = splitLines(
+    `${input.title}\n${input.category ?? ''}\n${input.rawText}`,
+  );
   const normalizedText = normalize(lines.join('\n'));
   const eventDetection = detectEventType(normalizedText);
   const severity = detectSeverity(normalizedText, eventDetection.eventType);
   const affectedProductText =
-    findLabeledValue(lines, ['product', 'product name', 'medicine', 'affected product', 'name']) ??
-    inferProductFromTitle(input.title);
-  const activeSubstance = findLabeledValue(lines, ['active substance', 'substance', 'generic name']);
-  const manufacturer = findLabeledValue(lines, ['manufacturer', 'company', 'marketing authorisation holder']);
-  const licenceNumber = findLabeledValue(lines, ['pl number', 'licence number', 'license number', 'marketing authorisation']);
+    findLabeledValue(lines, [
+      'product',
+      'product name',
+      'medicine',
+      'affected product',
+      'name',
+    ]) ?? inferProductFromTitle(input.title);
+  const activeSubstance = findLabeledValue(lines, [
+    'active substance',
+    'substance',
+    'generic name',
+  ]);
+  const manufacturer = findLabeledValue(lines, [
+    'manufacturer',
+    'company',
+    'marketing authorisation holder',
+  ]);
+  const licenceNumber = findLabeledValue(lines, [
+    'pl number',
+    'licence number',
+    'license number',
+    'marketing authorisation',
+  ]);
   const batchNumber = findLabeledValue(lines, ['batch', 'batch number', 'lot']);
-  const evidenceSnippets = collectEvidenceSnippets(lines, eventDetection.matchedTerms);
+  const evidenceSnippets = collectEvidenceSnippets(
+    lines,
+    eventDetection.matchedTerms,
+  );
   const confidence = scoreConfidence({
     eventType: eventDetection.eventType,
     affectedProductText,
@@ -234,7 +317,8 @@ export function parseRegulatoryUpdate(input: RegulatoryParseInput): RegulatoryPa
       parserVersion: REGULATORY_PARSER_VERSION,
       matchedTerms: eventDetection.matchedTerms,
       evidenceSnippets,
-      safetyWording: 'Requires compliance review. This system does not claim legal certainty.',
+      safetyWording:
+        'Requires compliance review. This system does not claim legal certainty.',
     },
   };
 }

@@ -31,31 +31,35 @@ export type AccountOpeningMasterProfile = {
 export const AMBE_ACCOUNT_OPENING_MASTER_PROFILE: AccountOpeningMasterProfile =
   {
     profileId: 'ambe-master-profile',
-    version: '2026-05-15',
+    version: '2026-05-19',
     approvedBy: 'internal-operations',
     approvedAt: '2026-05-15T00:00:00.000Z',
     values: {
       legalCompanyName: 'AMBE LTD',
       tradingName: 'AMBE MEDICAL GROUP',
-      companyNumber: 'To be confirmed',
-      vatNumber: 'To be confirmed',
-      registeredAddress: 'To be confirmed',
-      tradingAddress: 'To be confirmed',
-      mainContactName: 'To be confirmed',
+      companyNumber: '03809178',
+      vatNumber: 'GB743707428',
+      registeredAddress:
+        'Unit 4 Green Lane Business Park, 238 Green Lane, London, SE9 3TL',
+      tradingAddress:
+        'Unit 4 Green Lane Business Park, 238 Green Lane, London, SE9 3TL',
+      mainContactName: 'Aman Dhillon',
       mainContactEmail: 'To be confirmed',
       mainContactPhone: 'To be confirmed',
       accountsContact: 'To be confirmed',
       website: 'To be confirmed',
       businessHours: 'To be confirmed',
-      companyType: 'UK pharmaceutical wholesale business',
+      companyType: 'Private Limited Company',
       businessDescription:
-        'Pharmaceutical wholesale and supply operations for licensed healthcare customers.',
-      gphcPremisesNumber: 'To be confirmed in secure review',
-      responsiblePerson: 'To be confirmed in secure review',
-      wholesaleDealerAuthorisation: 'To be confirmed in secure review',
-      cqcRegistration: 'To be confirmed in secure review',
+        'Pharmaceutical wholesaler / distributor / manufacturer',
+      gphcPremisesNumber:
+        'N/A for wholesale accounts; use WDA/MHRA number 19460 where WDA is requested',
+      responsiblePerson: 'Dilshad Moulana',
+      wholesaleDealerAuthorisation:
+        'WDA Authorisation Number 19460; holder AMBE LTD; issuing authority MHRA; licensed site 1 Ascot Road, Bedfont, Feltham, TW14 8QH',
+      cqcRegistration: 'N/A unless specifically requested',
       standardPaymentPreference:
-        'Standard payment terms to be confirmed by an authorised AMBE reviewer before submission.',
+        'BACS unless a supplier specifically requires another method',
       directDebitPlaceholder:
         'To be confirmed in secure review. Do not complete Direct Debit or bank authority fields automatically.',
       bankDetailsPlaceholder:

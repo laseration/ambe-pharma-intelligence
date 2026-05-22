@@ -1,6 +1,10 @@
 import Link from 'next/link';
 
-import { listInboundEmails, type InboundEmailInboxFilter, type InboundEmailInboxListItem } from '../../../lib/inboxApi';
+import {
+  listInboundEmails,
+  type InboundEmailInboxFilter,
+  type InboundEmailInboxListItem,
+} from '../../../lib/inboxApi';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +24,9 @@ const FILTER_OPTIONS: Array<{
   { label: 'Received only', value: 'RECEIVED_ONLY' },
 ];
 
-function normalizeInboxFilter(value: string | undefined): InboundEmailInboxFilter | null {
+function normalizeInboxFilter(
+  value: string | undefined,
+): InboundEmailInboxFilter | null {
   switch (value) {
     case 'REVIEW_REQUIRED':
     case 'FAILED':
@@ -31,8 +37,12 @@ function normalizeInboxFilter(value: string | undefined): InboundEmailInboxFilte
   }
 }
 
-function buildInboxReturnTo(activeFilter: InboundEmailInboxFilter | null): string {
-  return activeFilter ? `/dashboard/inbox?status=${encodeURIComponent(activeFilter)}` : '/dashboard/inbox';
+function buildInboxReturnTo(
+  activeFilter: InboundEmailInboxFilter | null,
+): string {
+  return activeFilter
+    ? `/dashboard/inbox?status=${encodeURIComponent(activeFilter)}`
+    : '/dashboard/inbox';
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -116,12 +126,22 @@ function deriveInboxStatus(item: InboundEmailInboxListItem): {
   };
 }
 
-function buildConfidenceSummary(item: InboundEmailInboxListItem): string | null {
+function buildConfidenceSummary(
+  item: InboundEmailInboxListItem,
+): string | null {
   const parts = [
-    item.parserConfidence ? `Parser ${item.parserConfidence.toLowerCase()}` : null,
-    item.sourceTrustScore !== null ? `Source trust ${formatPctScore(item.sourceTrustScore)}` : null,
-    item.structureConfidence !== null ? `Structure ${formatPctScore(item.structureConfidence)}` : null,
-    item.businessWorthinessScore !== null ? `Business value ${formatPctScore(item.businessWorthinessScore)}` : null,
+    item.parserConfidence
+      ? `Parser ${item.parserConfidence.toLowerCase()}`
+      : null,
+    item.sourceTrustScore !== null
+      ? `Source trust ${formatPctScore(item.sourceTrustScore)}`
+      : null,
+    item.structureConfidence !== null
+      ? `Structure ${formatPctScore(item.structureConfidence)}`
+      : null,
+    item.businessWorthinessScore !== null
+      ? `Business value ${formatPctScore(item.businessWorthinessScore)}`
+      : null,
   ].filter((part): part is string => Boolean(part));
 
   return parts.length > 0 ? parts.join(' | ') : null;
@@ -176,7 +196,9 @@ export default async function BotInboxPage({ searchParams }: PageProps) {
         {emails.length === 0 ? (
           <section className="panel dashboard-panel">
             <h3 className="section-title">No emails yet</h3>
-            <p className="copy">When the bot receives emails, they will appear here.</p>
+            <p className="copy">
+              When the bot receives emails, they will appear here.
+            </p>
           </section>
         ) : (
           <section className="panel dashboard-panel">
@@ -184,7 +206,8 @@ export default async function BotInboxPage({ searchParams }: PageProps) {
               <div>
                 <h3 className="section-title">Recent inbound emails</h3>
                 <p className="copy">
-                  {emails.length} recent {emails.length === 1 ? 'email' : 'emails'} recorded.
+                  {emails.length} recent{' '}
+                  {emails.length === 1 ? 'email' : 'emails'} recorded.
                 </p>
               </div>
               <span className="pill pill-neutral">{emails.length} shown</span>
@@ -199,31 +222,51 @@ export default async function BotInboxPage({ searchParams }: PageProps) {
                 const confidenceSummary = buildConfidenceSummary(email);
 
                 return (
-                  <article className="dashboard-opportunity-card" key={email.id}>
+                  <article
+                    className="dashboard-opportunity-card"
+                    key={email.id}
+                  >
                     <div className="dashboard-opportunity-top">
                       <div>
-                        <p className="dashboard-opportunity-title">{email.subject?.trim() || 'No subject'}</p>
-                        <p className="dashboard-opportunity-meta">{senderLabel}</p>
+                        <p className="dashboard-opportunity-title">
+                          {email.subject?.trim() || 'No subject'}
+                        </p>
+                        <p className="dashboard-opportunity-meta">
+                          {senderLabel}
+                        </p>
                       </div>
                       <div className="dashboard-opportunity-badges">
-                        <span className={`pill ${status.pillClassName}`}>{status.label}</span>
+                        <span className={`pill ${status.pillClassName}`}>
+                          {status.label}
+                        </span>
                         {email.triageStatus ? (
-                          <span className="pill pill-neutral">{humanizeStatus(email.triageStatus)}</span>
+                          <span className="pill pill-neutral">
+                            {humanizeStatus(email.triageStatus)}
+                          </span>
                         ) : null}
                       </div>
                     </div>
 
                     <p className="dashboard-triage-meta">
-                      Received {formatDateTime(email.receivedAt) ?? formatDateTime(email.createdAt) ?? 'recently'}
-                      {email.processedAt ? ` | Processed ${formatDateTime(email.processedAt)}` : ''}
+                      Received{' '}
+                      {formatDateTime(email.receivedAt) ??
+                        formatDateTime(email.createdAt) ??
+                        'recently'}
+                      {email.processedAt
+                        ? ` | Processed ${formatDateTime(email.processedAt)}`
+                        : ''}
                     </p>
 
                     {email.reviewReason ? (
-                      <p className="dashboard-opportunity-copy">Review reason: {email.reviewReason}</p>
+                      <p className="dashboard-opportunity-copy">
+                        Review reason: {email.reviewReason}
+                      </p>
                     ) : null}
 
                     {confidenceSummary ? (
-                      <p className="dashboard-triage-meta">{confidenceSummary}</p>
+                      <p className="dashboard-triage-meta">
+                        {confidenceSummary}
+                      </p>
                     ) : null}
 
                     <dl className="duplicate-product-details">
@@ -269,7 +312,9 @@ export default async function BotInboxPage({ searchParams }: PageProps) {
         <p className="eyebrow">Inbox</p>
         <h2 className="title">Inbox unavailable</h2>
         <p className="copy">
-          {error instanceof Error ? error.message : 'Failed to load inbound bot emails.'}
+          {error instanceof Error
+            ? error.message
+            : 'Failed to load inbound bot emails.'}
         </p>
       </section>
     );

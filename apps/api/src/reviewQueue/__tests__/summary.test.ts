@@ -45,7 +45,8 @@ test('buildReviewSummary maps explicit review reason codes into operator-friendl
       reason: 'ai_candidate_review_only',
       expectedReviewReason: 'AI candidate kept review-only',
       missingOrUnclear: /ai found a possible commercial offer/i,
-      suggestedAction: /check the extracted fields against the original message/i,
+      suggestedAction:
+        /check the extracted fields against the original message/i,
     },
     {
       reason: 'promotion_threshold_missing_or_weak_fields',
@@ -57,7 +58,8 @@ test('buildReviewSummary maps explicit review reason codes into operator-friendl
       reason: 'no_viable_offer_candidates_extracted',
       expectedReviewReason: 'No safe offer candidates found',
       missingOrUnclear: /no safe offer lines could be extracted/i,
-      suggestedAction: /confirm supplier, product, price, currency, and moq manually/i,
+      suggestedAction:
+        /confirm supplier, product, price, currency, and moq manually/i,
     },
   ];
 

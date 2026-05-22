@@ -68,7 +68,9 @@ function formatRawRowSnippet(value: unknown): string | null {
 
   try {
     const serialized = JSON.stringify(value);
-    return serialized.length > 400 ? `${serialized.slice(0, 400)}...` : serialized;
+    return serialized.length > 400
+      ? `${serialized.slice(0, 400)}...`
+      : serialized;
   } catch {
     return null;
   }
@@ -88,7 +90,8 @@ export default async function ImportBatchDetailPage({ params }: PageProps) {
               <p className="eyebrow">Imports</p>
               <h2 className="title">Import Batch Detail</h2>
               <p className="copy">
-                A bounded read-only view of one import batch and the first few stored errors.
+                A bounded read-only view of one import batch and the first few
+                stored errors.
               </p>
             </div>
             <Link className="button" href="/dashboard/imports">
@@ -102,7 +105,9 @@ export default async function ImportBatchDetailPage({ params }: PageProps) {
                 <p className="dashboard-opportunity-title">{batch.fileName}</p>
                 <p className="dashboard-opportunity-meta">
                   {formatImportKind(batch.kind)}
-                  {formatFileSize(batch.fileSizeBytes) ? ` | ${formatFileSize(batch.fileSizeBytes)}` : ''}
+                  {formatFileSize(batch.fileSizeBytes)
+                    ? ` | ${formatFileSize(batch.fileSizeBytes)}`
+                    : ''}
                 </p>
               </div>
               <div className="dashboard-opportunity-badges">
@@ -162,7 +167,9 @@ export default async function ImportBatchDetailPage({ params }: PageProps) {
                   {batch.warnings.length === 1 ? '' : 's'} for this batch.
                 </p>
               </div>
-              <span className="pill pill-neutral">{batch.warningCount} total</span>
+              <span className="pill pill-neutral">
+                {batch.warningCount} total
+              </span>
             </div>
 
             <div className="dashboard-opportunity-list">
@@ -198,7 +205,9 @@ export default async function ImportBatchDetailPage({ params }: PageProps) {
                   {batch.errors.length === 1 ? '' : 's'} for this batch.
                 </p>
               </div>
-              <span className="pill pill-neutral">{batch.errorCount} total</span>
+              <span className="pill pill-neutral">
+                {batch.errorCount} total
+              </span>
             </div>
 
             <div className="dashboard-opportunity-list">
@@ -206,7 +215,10 @@ export default async function ImportBatchDetailPage({ params }: PageProps) {
                 const rawRowSnippet = formatRawRowSnippet(error.rawRow);
 
                 return (
-                  <article className="dashboard-opportunity-card" key={error.id}>
+                  <article
+                    className="dashboard-opportunity-card"
+                    key={error.id}
+                  >
                     <div className="dashboard-opportunity-top">
                       <div>
                         <p className="dashboard-opportunity-title">
@@ -219,11 +231,15 @@ export default async function ImportBatchDetailPage({ params }: PageProps) {
                       </div>
                     </div>
 
-                    <p className="dashboard-opportunity-copy">{error.message}</p>
+                    <p className="dashboard-opportunity-copy">
+                      {error.message}
+                    </p>
 
                     {rawRowSnippet ? (
                       <div className="source-block">
-                        <h4 className="subsection-title">Stored Row Snapshot</h4>
+                        <h4 className="subsection-title">
+                          Stored Row Snapshot
+                        </h4>
                         <pre>{rawRowSnippet}</pre>
                       </div>
                     ) : null}
@@ -241,7 +257,9 @@ export default async function ImportBatchDetailPage({ params }: PageProps) {
         <p className="eyebrow">Imports</p>
         <h2 className="title">Import Batch Unavailable</h2>
         <p className="copy">
-          {error instanceof Error ? error.message : 'Failed to load the import batch.'}
+          {error instanceof Error
+            ? error.message
+            : 'Failed to load the import batch.'}
         </p>
         <div className="actions">
           <Link className="button" href="/dashboard/imports">

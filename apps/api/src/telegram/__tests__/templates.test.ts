@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildDailySummaryMessage, buildOpportunityMessage } from '../templates';
+import {
+  buildDailySummaryMessage,
+  buildOpportunityMessage,
+} from '../templates';
 
 test('formats buy opportunity Telegram message', () => {
   const message = buildOpportunityMessage({

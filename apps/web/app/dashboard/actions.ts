@@ -22,7 +22,11 @@ function normalizeRedirectTarget(value: string): string {
   return '/dashboard';
 }
 
-function appendDashboardQuery(target: string, key: string, value: string): string {
+function appendDashboardQuery(
+  target: string,
+  key: string,
+  value: string,
+): string {
   const [pathnameWithQuery = '/dashboard', hash = ''] = target.split('#');
   const [pathname, query = ''] = pathnameWithQuery.split('?');
   const searchParams = new URLSearchParams(query);
@@ -32,7 +36,9 @@ function appendDashboardQuery(target: string, key: string, value: string): strin
   return `${pathname}${nextQuery ? `?${nextQuery}` : ''}${hash ? `#${hash}` : ''}`;
 }
 
-function normalizeDashboardStatus(value: string): OpportunityTriageStatus | null {
+function normalizeDashboardStatus(
+  value: string,
+): OpportunityTriageStatus | null {
   switch (value) {
     case 'REVIEWED':
     case 'ACTIONED':
@@ -46,10 +52,18 @@ function normalizeDashboardStatus(value: string): OpportunityTriageStatus | null
 export async function submitOpportunityTriageAction(formData: FormData) {
   const opportunityId = value(formData, 'opportunityId');
   const status = normalizeDashboardStatus(value(formData, 'status'));
-  const redirectTarget = normalizeRedirectTarget(value(formData, 'redirectTo') || '/dashboard');
+  const redirectTarget = normalizeRedirectTarget(
+    value(formData, 'redirectTo') || '/dashboard',
+  );
 
   if (!opportunityId || !status) {
-    redirect(appendDashboardQuery(redirectTarget, 'error', 'Missing opportunity triage input'));
+    redirect(
+      appendDashboardQuery(
+        redirectTarget,
+        'error',
+        'Missing opportunity triage input',
+      ),
+    );
   }
 
   try {
@@ -59,22 +73,28 @@ export async function submitOpportunityTriageAction(formData: FormData) {
       actorIdentifier: 'web-dashboard',
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Opportunity triage failed.';
+    const message =
+      error instanceof Error ? error.message : 'Opportunity triage failed.';
     redirect(appendDashboardQuery(redirectTarget, 'error', message));
   }
 
   revalidatePath('/dashboard');
   revalidatePath('/dashboard/opportunities');
-  redirect(appendDashboardQuery(redirectTarget, 'updated', status.toLowerCase()));
+  redirect(
+    appendDashboardQuery(redirectTarget, 'updated', status.toLowerCase()),
+  );
 }
 
 export async function submitOpportunityRefreshAction() {
   try {
     const result = await regenerateOpportunities();
     revalidatePath('/dashboard');
-    redirect(`/dashboard?refreshed=${encodeURIComponent(String(result.generatedCount))}`);
+    redirect(
+      `/dashboard?refreshed=${encodeURIComponent(String(result.generatedCount))}`,
+    );
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Opportunity refresh failed.';
+    const message =
+      error instanceof Error ? error.message : 'Opportunity refresh failed.';
     redirect(`/dashboard?error=${encodeURIComponent(message)}`);
   }
 }

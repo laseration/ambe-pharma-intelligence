@@ -19,11 +19,15 @@ export function createApp() {
   });
 
   if (env.enableDebugRoutes) {
-    app.get('/api/debug/env', requireInternalAdminAccess, (_request, response) => {
-      response.json({
-        databaseUrlDetected: Boolean(env.databaseUrl),
-      });
-    });
+    app.get(
+      '/api/debug/env',
+      requireInternalAdminAccess,
+      (_request, response) => {
+        response.json({
+          databaseUrlDetected: Boolean(env.databaseUrl),
+        });
+      },
+    );
     app.use('/api/debug', requireInternalAdminAccess, importsDebugRouter);
   }
 

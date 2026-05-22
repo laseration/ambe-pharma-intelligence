@@ -1,4 +1,8 @@
-import type { OpportunityStatus, OpportunityType, Prisma } from '@prisma/client';
+import type {
+  OpportunityStatus,
+  OpportunityType,
+  Prisma,
+} from '@prisma/client';
 
 export type OpportunityMetrics = {
   currentStockQty: number | null;

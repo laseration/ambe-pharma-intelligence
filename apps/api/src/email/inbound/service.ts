@@ -3,10 +3,10 @@ import { Prisma } from '@prisma/client';
 import {
   buildAccountOpeningSourceFingerprint,
   buildAccountOpeningCase,
-  detectAccountOpeningEmail,
   upsertAccountOpeningCase,
 } from '../../accountOpening/service';
 import { env } from '../../config/env';
+import { classifyEmailRoute } from '../classification';
 import { extractAttachmentText } from '../attachmentTextExtraction';
 import {
   parseStructuredPriceEmailBody,
@@ -21,6 +21,7 @@ import {
 import type { ImportResponse, UploadFile } from '../../imports/types';
 import { db } from '../../lib/db';
 import { logger } from '../../lib/logger';
+import { buildCorrelationId } from '../../observability/correlation';
 import {
   extractManualSupplierOverride,
   filterIgnorableEmailAttachments,
@@ -164,6 +165,7 @@ function buildAccountOpeningReviewItem(input: {
   }>;
   supplierName?: string;
   matchedTerms: string[];
+  correlationId: string | null;
 }): EmailInboundItemResult {
   const firstAttachment = input.attachments[0] ?? null;
   const firstExtractedAttachment =
@@ -179,6 +181,8 @@ function buildAccountOpeningReviewItem(input: {
     ),
     matchedTerms: input.matchedTerms,
   });
+  const accountOpeningCorrelationId =
+    input.correlationId ?? buildCorrelationId({ sourceFingerprint });
   const sourceEvidence = [
     ...(input.bodyText.trim()
       ? [
@@ -188,6 +192,9 @@ function buildAccountOpeningReviewItem(input: {
             text: input.bodyText,
             rawFileAvailable: false,
             metadata: {
+              ...(accountOpeningCorrelationId
+                ? { correlationId: accountOpeningCorrelationId }
+                : {}),
               messageId:
                 input.message.messageId ??
                 input.message.externalMessageId ??
@@ -213,6 +220,9 @@ function buildAccountOpeningReviewItem(input: {
         text: extracted?.text ?? null,
         rawFileAvailable: false,
         metadata: {
+          ...(accountOpeningCorrelationId
+            ? { correlationId: accountOpeningCorrelationId }
+            : {}),
           rawBytesAvailableAtIngestion: Boolean(attachment.buffer),
           extractionWarnings: extracted?.warnings ?? [],
         },
@@ -376,6 +386,11 @@ export function createEmailInboundService(
         dependencies.isTrustedSender?.(senderEmail) ?? false;
       const subject = message.subject?.trim() || '';
       const bodyText = message.bodyText ?? '';
+      const correlationId = buildCorrelationId({
+        sourceSystem: message.sourceSystem,
+        externalMessageId: message.externalMessageId,
+        messageId: message.messageId,
+      });
       const payloadSupplierName = message.supplierName?.trim() || undefined;
       const extractedSupplierName =
         extractManualSupplierOverride({
@@ -397,6 +412,7 @@ export function createEmailInboundService(
         dependencies.logger.warn(
           'Ignored inbound email from unapproved sender',
           {
+            ...(correlationId ? { correlationId } : {}),
             senderEmail,
             subject,
           },
@@ -433,7 +449,7 @@ export function createEmailInboundService(
         });
       }
 
-      const accountOpeningDetection = detectAccountOpeningEmail({
+      const routeClassification = classifyEmailRoute({
         subject,
         bodyText,
         attachmentFileNames: normalizedAttachments.map(
@@ -442,7 +458,7 @@ export function createEmailInboundService(
         attachmentTexts: accountOpeningAttachmentTexts.map((item) => item.text),
       });
 
-      if (accountOpeningDetection.detected) {
+      if (routeClassification.accountOpeningDetected) {
         const accountOpeningItem = buildAccountOpeningReviewItem({
           message,
           senderEmail,
@@ -451,21 +467,38 @@ export function createEmailInboundService(
           attachments: normalizedAttachments,
           attachmentTexts: accountOpeningAttachmentTexts,
           supplierName: payloadSupplierName ?? extractedSupplierName,
-          matchedTerms: accountOpeningDetection.matchedTerms,
+          matchedTerms: routeClassification.matchedTerms,
+          correlationId,
         });
+        const accountOpeningCorrelationId =
+          correlationId ??
+          buildCorrelationId({
+            sourceFingerprint:
+              accountOpeningItem.accountOpeningCase?.sourceFingerprint,
+          });
 
         await dependencies.persistAccountOpeningCase?.({
           accountCase: accountOpeningItem.accountOpeningCase!,
           messageId: message.messageId ?? message.externalMessageId ?? null,
-          detectedFormType: accountOpeningDetection.matchedTerms[0] ?? null,
+          detectedFormType: routeClassification.matchedTerms[0] ?? null,
+          correlationId: accountOpeningCorrelationId,
         });
         recordEmailReviewItems([accountOpeningItem]);
         dependencies.logger.info(
           'Inbound account opening form queued for review',
           {
+            ...(accountOpeningCorrelationId
+              ? { correlationId: accountOpeningCorrelationId }
+              : {}),
             senderEmail,
             subject,
-            matchedTerms: accountOpeningDetection.matchedTerms,
+            classifierVersion: routeClassification.classifierVersion,
+            route: routeClassification.route,
+            confidence: routeClassification.confidence,
+            evidenceUsed: routeClassification.evidenceUsed,
+            matchedTerms: routeClassification.matchedTerms,
+            matchedAttachmentNames: routeClassification.matchedAttachmentNames,
+            classificationReason: routeClassification.classificationReason,
             attachmentCount: normalizedAttachments.length,
           },
         );
@@ -536,6 +569,7 @@ export function createEmailInboundService(
         });
 
         dependencies.logger.info('Inbound email triage evaluated', {
+          ...(correlationId ? { correlationId } : {}),
           fromEmail: senderEmail,
           subject,
           status: triage.status,
@@ -750,6 +784,7 @@ export function createEmailInboundService(
         };
 
         dependencies.logger.info('Inbound email triage evaluated', {
+          ...(correlationId ? { correlationId } : {}),
           fromEmail: senderEmail,
           subject,
           status: triage.status,
@@ -864,6 +899,7 @@ export function createEmailInboundService(
           });
 
           dependencies.logger.info('Imported inbound email attachment', {
+            ...(correlationId ? { correlationId } : {}),
             senderEmail,
             subject,
             fileName: attachment.fileName,
@@ -886,6 +922,7 @@ export function createEmailInboundService(
           dependencies.logger.error(
             'Failed to process inbound email attachment',
             {
+              ...(correlationId ? { correlationId } : {}),
               error: messageText,
               senderEmail,
               subject,

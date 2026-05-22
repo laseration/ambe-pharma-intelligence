@@ -19,7 +19,8 @@ function createRepositoryHarness() {
   let idCounter = 0;
   const nextId = (prefix: string) => `${prefix}-${++idCounter}`;
 
-  const cloneArray = (items: Array<Record<string, any>>) => items.map((item) => structuredClone(item));
+  const cloneArray = (items: Array<Record<string, any>>) =>
+    items.map((item) => structuredClone(item));
 
   const cloneState = () => ({
     offers: cloneArray(offers),
@@ -35,7 +36,11 @@ function createRepositoryHarness() {
   const restoreState = (snapshot: ReturnType<typeof cloneState>) => {
     offers.splice(0, offers.length, ...snapshot.offers);
     corrections.splice(0, corrections.length, ...snapshot.corrections);
-    correctionEvents.splice(0, correctionEvents.length, ...snapshot.correctionEvents);
+    correctionEvents.splice(
+      0,
+      correctionEvents.length,
+      ...snapshot.correctionEvents,
+    );
     sourceProfiles.splice(0, sourceProfiles.length, ...snapshot.sourceProfiles);
     feedbacks.splice(0, feedbacks.length, ...snapshot.feedbacks);
     productAliases.splice(0, productAliases.length, ...snapshot.productAliases);
@@ -66,10 +71,13 @@ function createRepositoryHarness() {
         }
       },
       async findOfferById(emailDerivedOfferId: string) {
-        return (offers.find((offer) => offer.id === emailDerivedOfferId) ?? null) as never;
+        return (offers.find((offer) => offer.id === emailDerivedOfferId) ??
+          null) as never;
       },
       async listOffersByIds(emailDerivedOfferIds: string[]) {
-        return offers.filter((offer) => emailDerivedOfferIds.includes(offer.id)) as never;
+        return offers.filter((offer) =>
+          emailDerivedOfferIds.includes(offer.id),
+        ) as never;
       },
       async listOffersForSourceProfile(input: Record<string, any>) {
         return offers.filter(
@@ -77,24 +85,36 @@ function createRepositoryHarness() {
             offer.inboundEmail?.sourceSystem === input.sourceSystem &&
             offer.inboundEmail?.fromEmail === input.senderEmail &&
             offer.inboundEmail?.senderDomain === input.senderDomain &&
-            offer.inboundEmail?.sourceTemplateFingerprint === input.templateFingerprint,
+            offer.inboundEmail?.sourceTemplateFingerprint ===
+              input.templateFingerprint,
         ) as never;
       },
       async listCorrections(filters: Record<string, any>) {
         return corrections
           .filter((correction) => {
-            if (filters.emailDerivedOfferId && correction.emailDerivedOfferId !== filters.emailDerivedOfferId) {
+            if (
+              filters.emailDerivedOfferId &&
+              correction.emailDerivedOfferId !== filters.emailDerivedOfferId
+            ) {
               return false;
             }
-            if (filters.status && correction.correctionStatus !== filters.status) {
+            if (
+              filters.status &&
+              correction.correctionStatus !== filters.status
+            ) {
               return false;
             }
             return true;
           })
-          .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime()) as never;
+          .sort(
+            (left, right) =>
+              right.createdAt.getTime() - left.createdAt.getTime(),
+          ) as never;
       },
       async findCorrectionById(correctionId: string) {
-        return (corrections.find((correction) => correction.id === correctionId) ?? null) as never;
+        return (corrections.find(
+          (correction) => correction.id === correctionId,
+        ) ?? null) as never;
       },
       async findEquivalentActiveCorrection() {
         return null as never;
@@ -102,20 +122,31 @@ function createRepositoryHarness() {
       async createCorrection(data: Record<string, unknown>) {
         const created = {
           id: nextId('correction'),
-          createdAt: new Date(`2026-04-21T12:00:${String(corrections.length).padStart(2, '0')}.000Z`),
-          updatedAt: new Date(`2026-04-21T12:00:${String(corrections.length).padStart(2, '0')}.000Z`),
+          createdAt: new Date(
+            `2026-04-21T12:00:${String(corrections.length).padStart(2, '0')}.000Z`,
+          ),
+          updatedAt: new Date(
+            `2026-04-21T12:00:${String(corrections.length).padStart(2, '0')}.000Z`,
+          ),
           ...data,
         };
         corrections.push(created);
         return created as never;
       },
-      async updateCorrection(correctionId: string, data: Record<string, unknown>) {
-        const existing = corrections.find((correction) => correction.id === correctionId);
+      async updateCorrection(
+        correctionId: string,
+        data: Record<string, unknown>,
+      ) {
+        const existing = corrections.find(
+          (correction) => correction.id === correctionId,
+        );
         if (!existing) {
           throw new Error('Correction not found.');
         }
 
-        Object.assign(existing, data, { updatedAt: new Date('2026-04-21T12:30:00.000Z') });
+        Object.assign(existing, data, {
+          updatedAt: new Date('2026-04-21T12:30:00.000Z'),
+        });
         return existing as never;
       },
       async createCorrectionEvent(data: Record<string, unknown>) {
@@ -129,14 +160,25 @@ function createRepositoryHarness() {
       },
       async listFeedbackByOfferIds(emailDerivedOfferIds: string[]) {
         return feedbacks
-          .filter((feedback) => feedback.emailDerivedOfferId && emailDerivedOfferIds.includes(feedback.emailDerivedOfferId))
-          .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime()) as never;
+          .filter(
+            (feedback) =>
+              feedback.emailDerivedOfferId &&
+              emailDerivedOfferIds.includes(feedback.emailDerivedOfferId),
+          )
+          .sort(
+            (left, right) =>
+              right.createdAt.getTime() - left.createdAt.getTime(),
+          ) as never;
       },
       async findSourceProfileByKey(profileKey: string) {
-        return (sourceProfiles.find((profile) => profile.profileKey === profileKey) ?? null) as never;
+        return (sourceProfiles.find(
+          (profile) => profile.profileKey === profileKey,
+        ) ?? null) as never;
       },
       async findSourceProfileById(sourceProfileId: string) {
-        return (sourceProfiles.find((profile) => profile.id === sourceProfileId) ?? null) as never;
+        return (sourceProfiles.find(
+          (profile) => profile.id === sourceProfileId,
+        ) ?? null) as never;
       },
       async listSourceProfiles() {
         return sourceProfiles as never;
@@ -148,7 +190,7 @@ function createRepositoryHarness() {
 
         const supplier =
           typeof data.supplierId === 'string'
-            ? suppliers.find((item) => item.id === data.supplierId) ?? null
+            ? (suppliers.find((item) => item.id === data.supplierId) ?? null)
             : null;
         const created = {
           id: nextId('source-profile'),
@@ -160,21 +202,29 @@ function createRepositoryHarness() {
         sourceProfiles.push(created);
         return created as never;
       },
-      async updateSourceProfile(sourceProfileId: string, data: Record<string, unknown>) {
+      async updateSourceProfile(
+        sourceProfileId: string,
+        data: Record<string, unknown>,
+      ) {
         if (failOnSourceProfileWrite) {
           throw new Error('Simulated source profile write failure.');
         }
 
-        const existing = sourceProfiles.find((profile) => profile.id === sourceProfileId);
+        const existing = sourceProfiles.find(
+          (profile) => profile.id === sourceProfileId,
+        );
         if (!existing) {
           throw new Error('Source profile not found.');
         }
 
         const supplier =
           typeof data.supplierId === 'string'
-            ? suppliers.find((item) => item.id === data.supplierId) ?? null
+            ? (suppliers.find((item) => item.id === data.supplierId) ?? null)
             : null;
-        Object.assign(existing, data, { supplier, updatedAt: new Date('2026-04-21T12:10:00.000Z') });
+        Object.assign(existing, data, {
+          supplier,
+          updatedAt: new Date('2026-04-21T12:10:00.000Z'),
+        });
         return existing as never;
       },
       async listSourceProfilesForLookup(input: Record<string, any>) {
@@ -183,26 +233,34 @@ function createRepositoryHarness() {
             profile.sourceSystem === input.sourceSystem &&
             (profile.senderEmail === input.senderEmail ||
               profile.senderDomain === input.senderDomain ||
-              (profile.templateFingerprint && profile.templateFingerprint === input.templateFingerprint)),
+              (profile.templateFingerprint &&
+                profile.templateFingerprint === input.templateFingerprint)),
         ) as never;
       },
       async findSupplierById(supplierId: string) {
-        return (suppliers.find((supplier) => supplier.id === supplierId) ?? null) as never;
+        return (suppliers.find((supplier) => supplier.id === supplierId) ??
+          null) as never;
       },
       async findProductById(productId: string) {
-        return (products.find((product) => product.id === productId) ?? null) as never;
+        return (products.find((product) => product.id === productId) ??
+          null) as never;
       },
       async findAliasByRawName(rawProductText: string) {
-        const alias = productAliases.find((item) => item.aliasName === rawProductText) ?? null;
+        const alias =
+          productAliases.find((item) => item.aliasName === rawProductText) ??
+          null;
         if (!alias) {
           return null;
         }
 
-        const product = products.find((item) => item.id === alias.productId) ?? null;
+        const product =
+          products.find((item) => item.id === alias.productId) ?? null;
         return product ? ({ ...alias, product } as never) : null;
       },
       async listAliasesForProduct(productId: string) {
-        return productAliases.filter((alias) => alias.productId === productId) as never;
+        return productAliases.filter(
+          (alias) => alias.productId === productId,
+        ) as never;
       },
       async createProductAlias(data: Record<string, unknown>) {
         const created = {
@@ -325,8 +383,14 @@ test('repeated applied corrections supersede the prior active correction safely'
   });
 
   assert.equal(first.id !== second.id, true);
-  assert.equal(harness.corrections.find((item) => item.id === first.id)?.correctionStatus, 'SUPERSEDED');
-  assert.equal(harness.corrections.find((item) => item.id === second.id)?.correctionStatus, 'APPLIED');
+  assert.equal(
+    harness.corrections.find((item) => item.id === first.id)?.correctionStatus,
+    'SUPERSEDED',
+  );
+  assert.equal(
+    harness.corrections.find((item) => item.id === second.id)?.correctionStatus,
+    'APPLIED',
+  );
 });
 
 test('corrections strengthen future supplier suggestion conservatively without bypassing review', async () => {
@@ -363,14 +427,17 @@ test('corrections strengthen future supplier suggestion conservatively without b
     actorIdentifier: 'ops-1',
   });
 
-  const hints = await getLearnedResolutionHintsWithRepository(harness.repository as never, {
-    sourceSystem: 'MICROSOFT_GRAPH',
-    senderEmail: 'pricing@supplier-one.test',
-    senderDomain: 'supplier-one.test',
-    templateFingerprint: 'fingerprint-1',
-    rawProductText: 'Amlodipine 5mg tabs 28',
-    normalizedProductNameCandidate: 'amlodipine 5mg tabs 28',
-  });
+  const hints = await getLearnedResolutionHintsWithRepository(
+    harness.repository as never,
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      senderEmail: 'pricing@supplier-one.test',
+      senderDomain: 'supplier-one.test',
+      templateFingerprint: 'fingerprint-1',
+      rawProductText: 'Amlodipine 5mg tabs 28',
+      normalizedProductNameCandidate: 'amlodipine 5mg tabs 28',
+    },
+  );
 
   assert.equal(hints.supplierSuggestion?.supplierId, 'supplier-1');
   assert.equal((hints.supplierSuggestion?.confidence ?? 0) < 80, true);
@@ -406,7 +473,9 @@ test('corrections strengthen future product alias matching safely', async () => 
     actorIdentifier: 'ops-1',
   });
 
-  const summaries = await service.getOfferLearningSummariesForOfferIds(['offer-2']);
+  const summaries = await service.getOfferLearningSummariesForOfferIds([
+    'offer-2',
+  ]);
 
   assert.equal(harness.productAliases.length, 1);
   assert.equal(summaries['offer-2']?.hasLearnedProductSuggestion, true);
@@ -496,7 +565,9 @@ test('risky and trusted source tiers surface in learned summaries', async () => 
     senderDomain: 'risk.test',
     templateFingerprint: 'fingerprint-risk',
   });
-  const riskyService = createOfferCorrectionService(riskyHarness.repository as never);
+  const riskyService = createOfferCorrectionService(
+    riskyHarness.repository as never,
+  );
   await riskyService.createCorrection({
     emailDerivedOfferId: 'offer-risky-1',
     correctedSupplierId: 'supplier-1',
@@ -520,9 +591,14 @@ test('risky and trusted source tiers surface in learned summaries', async () => 
       createdAt: new Date('2026-04-21T13:05:00.000Z'),
     },
   );
-  const riskySummary = await riskyService.getOfferLearningSummariesForOfferIds(['offer-risky-2']);
+  const riskySummary = await riskyService.getOfferLearningSummariesForOfferIds([
+    'offer-risky-2',
+  ]);
   assert.equal(riskySummary['offer-risky-2']?.sourceReliabilityTier, 'RISKY');
-  assert.equal(riskySummary['offer-risky-2']?.recommendedNextAction, 'downgrade source');
+  assert.equal(
+    riskySummary['offer-risky-2']?.recommendedNextAction,
+    'downgrade source',
+  );
 
   const trustedHarness = createRepositoryHarness();
   trustedHarness.suppliers.push({ id: 'supplier-1', name: 'Supplier One' });
@@ -547,7 +623,9 @@ test('risky and trusted source tiers surface in learned summaries', async () => 
     templateFingerprint: 'fingerprint-trusted',
     status: 'STAGED',
   });
-  const trustedService = createOfferCorrectionService(trustedHarness.repository as never);
+  const trustedService = createOfferCorrectionService(
+    trustedHarness.repository as never,
+  );
   await trustedService.createCorrection({
     emailDerivedOfferId: 'offer-trusted-1',
     correctedSupplierId: 'supplier-1',
@@ -578,11 +656,18 @@ test('risky and trusted source tiers surface in learned summaries', async () => 
       createdAt: new Date('2026-04-21T13:02:00.000Z'),
     },
   );
-  const trustedSummary = await trustedService.getOfferLearningSummariesForOfferIds([
-    'offer-trusted-3',
-  ]);
-  assert.equal(trustedSummary['offer-trusted-3']?.sourceReliabilityTier, 'TRUSTED');
-  assert.equal(trustedSummary['offer-trusted-3']?.recommendedNextAction, 'apply learned mapping');
+  const trustedSummary =
+    await trustedService.getOfferLearningSummariesForOfferIds([
+      'offer-trusted-3',
+    ]);
+  assert.equal(
+    trustedSummary['offer-trusted-3']?.sourceReliabilityTier,
+    'TRUSTED',
+  );
+  assert.equal(
+    trustedSummary['offer-trusted-3']?.recommendedNextAction,
+    'apply learned mapping',
+  );
 });
 
 test('correction and source-profile writes roll back together on failure', async () => {

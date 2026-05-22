@@ -17,8 +17,12 @@ function createRepositoryHarness() {
   const clone = (items: Array<Record<string, any>>) =>
     items.map((item) => ({
       ...item,
-      emailDerivedOffer: item.emailDerivedOffer ? { ...item.emailDerivedOffer } : item.emailDerivedOffer,
-      tradeMessageDraft: item.tradeMessageDraft ? { ...item.tradeMessageDraft } : item.tradeMessageDraft,
+      emailDerivedOffer: item.emailDerivedOffer
+        ? { ...item.emailDerivedOffer }
+        : item.emailDerivedOffer,
+      tradeMessageDraft: item.tradeMessageDraft
+        ? { ...item.tradeMessageDraft }
+        : item.tradeMessageDraft,
     }));
 
   const cloneState = () => ({
@@ -60,7 +64,8 @@ function createRepositoryHarness() {
         }
       },
       async findPolicyByScopeName(scopeName: string) {
-        return (policies.find((item) => item.scopeName === scopeName) ?? null) as never;
+        return (policies.find((item) => item.scopeName === scopeName) ??
+          null) as never;
       },
       async createPolicy(data: Record<string, unknown>) {
         const created = {
@@ -92,66 +97,92 @@ function createRepositoryHarness() {
       },
       async listReadinessEvents(scopeName: string) {
         const policy = policies.find((item) => item.scopeName === scopeName);
-        return events.filter((item) => item.automationReadinessPolicyId === policy?.id) as never;
+        return events.filter(
+          (item) => item.automationReadinessPolicyId === policy?.id,
+        ) as never;
       },
       async listOffersInWindow(windowStart: Date, windowEnd: Date) {
         return offers.filter(
-          (item) => item.createdAt >= windowStart && item.createdAt <= windowEnd,
+          (item) =>
+            item.createdAt >= windowStart && item.createdAt <= windowEnd,
         ) as never;
       },
       async listWorkflowItemsInWindow(windowStart: Date, windowEnd: Date) {
         return workflows.filter(
-          (item) => item.createdAt >= windowStart && item.createdAt <= windowEnd,
+          (item) =>
+            item.createdAt >= windowStart && item.createdAt <= windowEnd,
         ) as never;
       },
       async listBuyDecisionsInWindow(windowStart: Date, windowEnd: Date) {
         return buyDecisions.filter(
-          (item) => item.createdAt >= windowStart && item.createdAt <= windowEnd,
+          (item) =>
+            item.createdAt >= windowStart && item.createdAt <= windowEnd,
         ) as never;
       },
       async listTradeDraftsInWindow(windowStart: Date, windowEnd: Date) {
         return drafts.filter(
-          (item) => item.createdAt >= windowStart && item.createdAt <= windowEnd,
+          (item) =>
+            item.createdAt >= windowStart && item.createdAt <= windowEnd,
         ) as never;
       },
       async listFeedbackInWindow(windowStart: Date, windowEnd: Date) {
         return feedbacks
-          .filter((item) => item.createdAt >= windowStart && item.createdAt <= windowEnd)
-          .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime()) as never;
+          .filter(
+            (item) =>
+              item.createdAt >= windowStart && item.createdAt <= windowEnd,
+          )
+          .sort(
+            (left, right) =>
+              right.createdAt.getTime() - left.createdAt.getTime(),
+          ) as never;
       },
       async listFeedbackByOfferIds(emailDerivedOfferIds: string[]) {
         return feedbacks
-          .filter((item) => item.emailDerivedOfferId && emailDerivedOfferIds.includes(item.emailDerivedOfferId))
-          .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime()) as never;
+          .filter(
+            (item) =>
+              item.emailDerivedOfferId &&
+              emailDerivedOfferIds.includes(item.emailDerivedOfferId),
+          )
+          .sort(
+            (left, right) =>
+              right.createdAt.getTime() - left.createdAt.getTime(),
+          ) as never;
       },
       async listFeedbackByTradeOpportunityIds(tradeOpportunityIds: string[]) {
         return feedbacks
-          .filter((item) => item.tradeOpportunityId && tradeOpportunityIds.includes(item.tradeOpportunityId))
-          .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime()) as never;
+          .filter(
+            (item) =>
+              item.tradeOpportunityId &&
+              tradeOpportunityIds.includes(item.tradeOpportunityId),
+          )
+          .sort(
+            (left, right) =>
+              right.createdAt.getTime() - left.createdAt.getTime(),
+          ) as never;
       },
       async findRecentMatchingFeedback(input: Record<string, any>) {
-        return (
-          feedbacks.find(
-            (item) =>
-              item.emailDerivedOfferId === input.emailDerivedOfferId &&
-              item.offerWorkflowItemId === input.offerWorkflowItemId &&
-              item.tradeOpportunityId === input.tradeOpportunityId &&
-              item.tradeMessageDraftId === input.tradeMessageDraftId &&
-              item.feedbackType === input.feedbackType &&
-              item.verdict === input.verdict &&
-              item.actorType === input.actorType &&
-              item.actorIdentifier === input.actorIdentifier,
-          ) ?? null
-        ) as never;
+        return (feedbacks.find(
+          (item) =>
+            item.emailDerivedOfferId === input.emailDerivedOfferId &&
+            item.offerWorkflowItemId === input.offerWorkflowItemId &&
+            item.tradeOpportunityId === input.tradeOpportunityId &&
+            item.tradeMessageDraftId === input.tradeMessageDraftId &&
+            item.feedbackType === input.feedbackType &&
+            item.verdict === input.verdict &&
+            item.actorType === input.actorType &&
+            item.actorIdentifier === input.actorIdentifier,
+        ) ?? null) as never;
       },
       async createFeedback(data: Record<string, unknown>) {
         const offer =
           typeof data.emailDerivedOfferId === 'string'
-            ? offers.find((item) => item.id === data.emailDerivedOfferId) ?? null
+            ? (offers.find((item) => item.id === data.emailDerivedOfferId) ??
+              null)
             : null;
         const draft =
           typeof data.tradeMessageDraftId === 'string'
-            ? drafts.find((item) => item.id === data.tradeMessageDraftId) ?? null
+            ? (drafts.find((item) => item.id === data.tradeMessageDraftId) ??
+              null)
             : null;
         const created = {
           id: nextId('feedback'),
@@ -161,7 +192,8 @@ function createRepositoryHarness() {
             ? {
                 id: offer.id,
                 fieldConfidence: offer.fieldConfidence ?? null,
-                entityResolutionConfidence: offer.entityResolutionConfidence ?? null,
+                entityResolutionConfidence:
+                  offer.entityResolutionConfidence ?? null,
               }
             : null,
           tradeMessageDraft: draft
@@ -377,7 +409,10 @@ test('readiness gate blocks higher automation when sample size is too low or thr
 
   assert.equal(overview.policy.globalMode, 'INTERNAL_SIGNALS_ONLY');
   assert.equal(overview.decisions.internalSignals.eligible, false);
-  assert.match(JSON.stringify(overview.decisions.internalSignals.blockedReasons), /minimum sample size/i);
+  assert.match(
+    JSON.stringify(overview.decisions.internalSignals.blockedReasons),
+    /minimum sample size/i,
+  );
   assert.equal(overview.decisions.supplierDrafts.eligible, false);
 });
 
@@ -451,6 +486,12 @@ test('actual send remains blocked by policy default in this pass', async () => {
 
   assert.equal(overview.policy.allowActualSend, false);
   assert.equal(overview.decisions.actualSend.eligible, false);
-  assert.match(JSON.stringify(overview.decisions.actualSend.blockedReasons), /blocked/i);
-  assert.equal(harness.events.some((event) => event.actionType === 'SEND_BLOCKED'), true);
+  assert.match(
+    JSON.stringify(overview.decisions.actualSend.blockedReasons),
+    /blocked/i,
+  );
+  assert.equal(
+    harness.events.some((event) => event.actionType === 'SEND_BLOCKED'),
+    true,
+  );
 });

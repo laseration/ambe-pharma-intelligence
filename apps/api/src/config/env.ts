@@ -72,7 +72,9 @@ function readNodeEnv(value: string | undefined): NodeEnv {
   return 'development';
 }
 
-function readOpportunityBusinessMode(value: string | undefined): OpportunityBusinessMode {
+function readOpportunityBusinessMode(
+  value: string | undefined,
+): OpportunityBusinessMode {
   const trimmed = value?.trim().toUpperCase();
 
   if (trimmed === 'STOCKHOLDING') {
@@ -82,7 +84,9 @@ function readOpportunityBusinessMode(value: string | undefined): OpportunityBusi
   return 'TRADING';
 }
 
-function readAccountOpeningStorageProvider(value: string | undefined): AccountOpeningStorageProvider {
+function readAccountOpeningStorageProvider(
+  value: string | undefined,
+): AccountOpeningStorageProvider {
   const trimmed = value?.trim().toUpperCase();
 
   if (trimmed === 'ONEDRIVE') {
@@ -113,7 +117,10 @@ function readIdList(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
-function readStringListWithDefaults(value: string | undefined, defaults: string[]): string[] {
+function readStringListWithDefaults(
+  value: string | undefined,
+  defaults: string[],
+): string[] {
   return Array.from(new Set([...defaults, ...readIdList(value)]));
 }
 
@@ -221,7 +228,8 @@ function readEmailInboundSupplierMappings(value: string | undefined) {
 }
 
 const microsoftMailGraphCredentials = resolveMicrosoftMailGraphCredentials();
-const microsoftStorageGraphCredentials = resolveMicrosoftStorageGraphCredentials();
+const microsoftStorageGraphCredentials =
+  resolveMicrosoftStorageGraphCredentials();
 
 export const env = {
   nodeEnv: readNodeEnv(process.env.NODE_ENV),
@@ -238,8 +246,14 @@ export const env = {
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN?.trim() || '',
   telegramInternalChatId: process.env.TELEGRAM_INTERNAL_CHAT_ID?.trim() || '',
   telegramDryRun: readBoolean(process.env.TELEGRAM_DRY_RUN, false),
-  telegramPollingEnabled: readBoolean(process.env.TELEGRAM_POLLING_ENABLED, false),
-  telegramPollingIntervalMs: readPort(process.env.TELEGRAM_POLLING_INTERVAL_MS, 5000),
+  telegramPollingEnabled: readBoolean(
+    process.env.TELEGRAM_POLLING_ENABLED,
+    false,
+  ),
+  telegramPollingIntervalMs: readPort(
+    process.env.TELEGRAM_POLLING_INTERVAL_MS,
+    5000,
+  ),
   telegramAllowedUserIds: readIdList(process.env.TELEGRAM_ALLOWED_USER_IDS),
   telegramAllowedChatIds: readIdList(process.env.TELEGRAM_ALLOWED_CHAT_IDS),
   emailAlertsEnabled: readBoolean(process.env.EMAIL_ALERTS_ENABLED, false),
@@ -254,9 +268,13 @@ export const env = {
   microsoftGraphTenantId: microsoftMailGraphCredentials.tenantId,
   microsoftGraphClientId: microsoftMailGraphCredentials.clientId,
   microsoftGraphClientSecret: microsoftMailGraphCredentials.clientSecret,
-  microsoftGraphRefreshToken: process.env.MICROSOFT_GRAPH_REFRESH_TOKEN?.trim() || '',
-  microsoftGraphSenderMailbox: process.env.MICROSOFT_GRAPH_SENDER_MAILBOX?.trim() || '',
-  internalAlertEmailRecipients: readIdList(process.env.INTERNAL_ALERT_EMAIL_RECIPIENTS),
+  microsoftGraphRefreshToken:
+    process.env.MICROSOFT_GRAPH_REFRESH_TOKEN?.trim() || '',
+  microsoftGraphSenderMailbox:
+    process.env.MICROSOFT_GRAPH_SENDER_MAILBOX?.trim() || '',
+  internalAlertEmailRecipients: readIdList(
+    process.env.INTERNAL_ALERT_EMAIL_RECIPIENTS,
+  ),
   sharePointAccountOpeningEnabled: readBoolean(
     process.env.SHAREPOINT_ACCOUNT_OPENING_ENABLED,
     false,
@@ -266,7 +284,8 @@ export const env = {
   ),
   sharePointSiteId: process.env.SHAREPOINT_SITE_ID?.trim() || '',
   sharePointDriveId: process.env.SHAREPOINT_DRIVE_ID?.trim() || '',
-  microsoftDriveRootFolder: process.env.MICROSOFT_DRIVE_ROOT_FOLDER?.trim() || 'AI BOT FOLDER',
+  microsoftDriveRootFolder:
+    process.env.MICROSOFT_DRIVE_ROOT_FOLDER?.trim() || 'AI BOT FOLDER',
   sharePointAccountOpeningFolder: buildMicrosoftDriveWorkflowFolder(
     process.env.MICROSOFT_DRIVE_ROOT_FOLDER,
     process.env.SHAREPOINT_ACCOUNT_OPENING_FOLDER,
@@ -303,9 +322,17 @@ export const env = {
     process.env.ONEDRIVE_REPORTS_FOLDER,
     'Reports',
   ),
-  emailInboundPollingEnabled: readBoolean(process.env.EMAIL_INBOUND_POLLING_ENABLED, false),
-  emailInboundPollingIntervalMs: readPort(process.env.EMAIL_INBOUND_POLLING_INTERVAL_MS, 30000),
-  emailInboundAllowedSenders: readIdList(process.env.EMAIL_INBOUND_ALLOWED_SENDERS),
+  emailInboundPollingEnabled: readBoolean(
+    process.env.EMAIL_INBOUND_POLLING_ENABLED,
+    false,
+  ),
+  emailInboundPollingIntervalMs: readPort(
+    process.env.EMAIL_INBOUND_POLLING_INTERVAL_MS,
+    30000,
+  ),
+  emailInboundAllowedSenders: readIdList(
+    process.env.EMAIL_INBOUND_ALLOWED_SENDERS,
+  ),
   emailInboundSupplierMappings: readEmailInboundSupplierMappings(
     process.env.EMAIL_INBOUND_SUPPLIER_MAPPINGS,
   ),
@@ -319,12 +346,21 @@ export const env = {
   ),
   openAiApiKey: process.env.OPENAI_API_KEY?.trim() || '',
   openAiParserEnabled: readBoolean(process.env.OPENAI_PARSER_ENABLED, false),
-  openAiParserModel: readString(process.env.OPENAI_PARSER_MODEL, 'gpt-5.4-mini'),
+  openAiParserModel: readString(
+    process.env.OPENAI_PARSER_MODEL,
+    'gpt-5.4-mini',
+  ),
   openAiParserTimeoutMs: readPort(process.env.OPENAI_PARSER_TIMEOUT_MS, 8000),
   openAiParserMinChars: readPort(process.env.OPENAI_PARSER_MIN_CHARS, 24),
   openAiParserMaxChars: readPort(process.env.OPENAI_PARSER_MAX_CHARS, 4000),
-  openAiEmailReviewEnabled: readBoolean(process.env.OPENAI_EMAIL_REVIEW_ENABLED, false),
-  openAiEmailReviewDailyLimit: readPort(process.env.OPENAI_EMAIL_REVIEW_DAILY_LIMIT, 10),
+  openAiEmailReviewEnabled: readBoolean(
+    process.env.OPENAI_EMAIL_REVIEW_ENABLED,
+    false,
+  ),
+  openAiEmailReviewDailyLimit: readPort(
+    process.env.OPENAI_EMAIL_REVIEW_DAILY_LIMIT,
+    10,
+  ),
   openAiEmailReviewPerSupplierDailyLimit: readPort(
     process.env.OPENAI_EMAIL_REVIEW_PER_SUPPLIER_DAILY_LIMIT,
     2,
@@ -333,5 +369,7 @@ export const env = {
     process.env.OPENAI_EMAIL_REVIEW_MIN_BUSINESS_SCORE,
     65,
   ),
-  opportunityBusinessMode: readOpportunityBusinessMode(process.env.OPPORTUNITY_BUSINESS_MODE),
+  opportunityBusinessMode: readOpportunityBusinessMode(
+    process.env.OPPORTUNITY_BUSINESS_MODE,
+  ),
 };

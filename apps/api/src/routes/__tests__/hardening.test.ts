@@ -6,10 +6,7 @@ import { createApp } from '../../app';
 import { buyExecutionService } from '../../buyExecutions/service';
 import { env } from '../../config/env';
 
-function overrideEnv(
-  context: TestContext,
-  overrides: Partial<typeof env>,
-) {
+function overrideEnv(context: TestContext, overrides: Partial<typeof env>) {
   const snapshot = Object.fromEntries(
     Object.keys(overrides).map((key) => [key, env[key as keyof typeof env]]),
   ) as Partial<typeof env>;
@@ -23,7 +20,12 @@ function overrideEnv(
 function stubMethod<
   TObject extends Record<string, any>,
   TKey extends keyof TObject,
->(context: TestContext, object: TObject, key: TKey, replacement: TObject[TKey]) {
+>(
+  context: TestContext,
+  object: TObject,
+  key: TKey,
+  replacement: TObject[TKey],
+) {
   const original = object[key];
   object[key] = replacement;
   context.after(() => {
@@ -70,6 +72,58 @@ test('missing and invalid internal API keys are rejected for protected API route
     },
   });
   assert.equal(invalidAuthResponse.status, 401);
+});
+
+test('local auth bypass is disabled when live-looking database config is present', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'development',
+    databaseUrl:
+      'postgresql://redacted@ep-example.eu-west-2.aws.neon.tech/neondb',
+    databaseHost: 'ep-example.eu-west-2.aws.neon.tech',
+    internalApiKey: '',
+    internalAdminApiKey: '',
+    enableDebugRoutes: false,
+  });
+  const baseUrl = await startServer(t);
+
+  const response = await fetch(`${baseUrl}/api/buy-executions`);
+
+  assert.equal(response.status, 401);
+});
+
+test('local auth bypass is disabled when side-effect integration config is present', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'development',
+    databaseUrl: '',
+    databaseHost: null,
+    internalApiKey: '',
+    internalAdminApiKey: '',
+    telegramBotToken: 'configured-token-redacted',
+    enableDebugRoutes: false,
+  });
+  const baseUrl = await startServer(t);
+
+  const response = await fetch(`${baseUrl}/api/buy-executions`);
+
+  assert.equal(response.status, 401);
+});
+
+test('local auth bypass is disabled when OpenAI or Microsoft storage config is present', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'development',
+    databaseUrl: '',
+    databaseHost: null,
+    internalApiKey: '',
+    internalAdminApiKey: '',
+    openAiApiKey: 'configured-openai-key-redacted',
+    microsoftStorageClientSecret: 'configured-storage-secret-redacted',
+    enableDebugRoutes: false,
+  });
+  const baseUrl = await startServer(t);
+
+  const response = await fetch(`${baseUrl}/api/buy-executions`);
+
+  assert.equal(response.status, 401);
 });
 
 test('valid internal API key is accepted for authenticated read routes', async (t) => {
@@ -146,24 +200,33 @@ test('invalid query, params, and body values are rejected with 422', async (t) =
     'x-internal-api-key': 'test-secret',
   };
 
-  const invalidQueryResponse = await fetch(`${baseUrl}/api/automation/evaluation?days=abc`, {
-    headers,
-  });
+  const invalidQueryResponse = await fetch(
+    `${baseUrl}/api/automation/evaluation?days=abc`,
+    {
+      headers,
+    },
+  );
   assert.equal(invalidQueryResponse.status, 422);
 
-  const invalidParamResponse = await fetch(`${baseUrl}/api/sources/profiles/%20`, {
-    headers,
-  });
+  const invalidParamResponse = await fetch(
+    `${baseUrl}/api/sources/profiles/%20`,
+    {
+      headers,
+    },
+  );
   assert.equal(invalidParamResponse.status, 422);
 
-  const invalidBodyResponse = await fetch(`${baseUrl}/api/buy-executions/execution-1`, {
-    method: 'PATCH',
-    headers,
-    body: JSON.stringify({
-      actorType: 'OPERATOR',
-      receivedAt: 'not-a-date',
-    }),
-  });
+  const invalidBodyResponse = await fetch(
+    `${baseUrl}/api/buy-executions/execution-1`,
+    {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({
+        actorType: 'OPERATOR',
+        receivedAt: 'not-a-date',
+      }),
+    },
+  );
   assert.equal(invalidBodyResponse.status, 422);
 });
 
@@ -180,17 +243,23 @@ test('null service lookups become 404 and unexpected service failures become 500
   };
 
   stubMethod(t, buyExecutionService, 'getBuyExecution', async () => null);
-  const notFoundResponse = await fetch(`${baseUrl}/api/buy-executions/execution-1`, {
-    headers,
-  });
+  const notFoundResponse = await fetch(
+    `${baseUrl}/api/buy-executions/execution-1`,
+    {
+      headers,
+    },
+  );
   assert.equal(notFoundResponse.status, 404);
 
   stubMethod(t, buyExecutionService, 'getBuyExecution', async () => {
     throw new Error('boom');
   });
-  const serverErrorResponse = await fetch(`${baseUrl}/api/buy-executions/execution-1`, {
-    headers,
-  });
+  const serverErrorResponse = await fetch(
+    `${baseUrl}/api/buy-executions/execution-1`,
+    {
+      headers,
+    },
+  );
   assert.equal(serverErrorResponse.status, 500);
 });
 
@@ -221,20 +290,48 @@ test('debug, send-capable, and inbound-update routes are not publicly accessible
   });
   assert.equal(debugWithAdminKey.status, 200);
 
-  const sendWithoutAuth = await fetch(`${baseUrl}/api/email/daily-summary/send`, {
-    method: 'POST',
-  });
+  const sendWithoutAuth = await fetch(
+    `${baseUrl}/api/email/daily-summary/send`,
+    {
+      method: 'POST',
+    },
+  );
   assert.equal(sendWithoutAuth.status, 401);
 
-  const inboundWithoutAuth = await fetch(`${baseUrl}/api/email/inbound/messages`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
+  const opportunitySendWithoutAuth = await fetch(
+    `${baseUrl}/api/email/opportunities/opportunity-1/send`,
+    {
+      method: 'POST',
     },
-    body: JSON.stringify({
-      from: 'supplier@example.com',
-    }),
-  });
+  );
+  assert.equal(opportunitySendWithoutAuth.status, 401);
+
+  const accountOpeningFilingWithoutAuth = await fetch(
+    `${baseUrl}/api/account-opening/case-1/completed-form-filing/file`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        binaryFillPreviewId: 'preview-1',
+      }),
+    },
+  );
+  assert.equal(accountOpeningFilingWithoutAuth.status, 401);
+
+  const inboundWithoutAuth = await fetch(
+    `${baseUrl}/api/email/inbound/messages`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'supplier@example.com',
+      }),
+    },
+  );
   assert.equal(inboundWithoutAuth.status, 401);
 });
 

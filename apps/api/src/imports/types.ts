@@ -41,7 +41,10 @@ export type ProductCandidates = {
   };
 };
 
-export type ProductMatchOutcome = 'EXISTING_PRODUCT' | 'EXISTING_ALIAS' | 'NEW_PRODUCT';
+export type ProductMatchOutcome =
+  | 'EXISTING_PRODUCT'
+  | 'EXISTING_ALIAS'
+  | 'NEW_PRODUCT';
 
 export type ProductMatchReasonCode =
   | 'EXACT_NORMALIZED_KEY_MATCH'
@@ -150,9 +153,14 @@ export type InventoryImportRequest = ImportRequestBase;
 
 export type SalesImportRequest = ImportRequestBase;
 
-export type ImportHandler<TRequest> = (request: TRequest) => Promise<ImportResponse>;
+export type ImportHandler<TRequest> = (
+  request: TRequest,
+) => Promise<ImportResponse>;
 
-export const IMPORT_KINDS: Record<'supplierPriceList' | 'inventory' | 'sales', ImportKind> = {
+export const IMPORT_KINDS: Record<
+  'supplierPriceList' | 'inventory' | 'sales',
+  ImportKind
+> = {
   supplierPriceList: 'SUPPLIER_PRICE_LIST',
   inventory: 'INVENTORY',
   sales: 'SALES',

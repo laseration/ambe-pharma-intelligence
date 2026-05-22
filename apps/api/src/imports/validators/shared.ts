@@ -8,7 +8,10 @@ type ParseContext = {
   issues: RowIssue[];
 };
 
-export function createValidationContext(rowNumber: number, rawRow: ParsedTableRow): ParseContext {
+export function createValidationContext(
+  rowNumber: number,
+  rawRow: ParsedTableRow,
+): ParseContext {
   return {
     rowNumber,
     rawRow,
@@ -20,7 +23,11 @@ export function getIssues(context: ParseContext): RowIssue[] {
   return context.issues;
 }
 
-function addIssue(context: ParseContext, message: string, fieldName?: string): void {
+function addIssue(
+  context: ParseContext,
+  message: string,
+  fieldName?: string,
+): void {
   context.issues.push({
     rowNumber: context.rowNumber,
     fieldName,
@@ -64,13 +71,20 @@ export function requireString(
   return value;
 }
 
-export function optionalString(context: ParseContext, keys: string[]): string | null {
+export function optionalString(
+  context: ParseContext,
+  keys: string[],
+): string | null {
   const value = findValue(context.rawRow, keys).trim();
 
   return value || null;
 }
 
-export function optionalInteger(context: ParseContext, keys: string[], fieldName: string): number | null {
+export function optionalInteger(
+  context: ParseContext,
+  keys: string[],
+  fieldName: string,
+): number | null {
   const value = findValue(context.rawRow, keys).trim();
 
   if (!value) {
@@ -87,7 +101,11 @@ export function optionalInteger(context: ParseContext, keys: string[], fieldName
   return parsed;
 }
 
-export function requireInteger(context: ParseContext, keys: string[], fieldName: string): number | null {
+export function requireInteger(
+  context: ParseContext,
+  keys: string[],
+  fieldName: string,
+): number | null {
   const value = requireString(context, keys, fieldName);
 
   if (value === null) {
@@ -148,7 +166,11 @@ export function requireDecimal(
   return new Prisma.Decimal(normalized);
 }
 
-export function optionalDate(context: ParseContext, keys: string[], fieldName: string): Date | null {
+export function optionalDate(
+  context: ParseContext,
+  keys: string[],
+  fieldName: string,
+): Date | null {
   const value = findValue(context.rawRow, keys).trim();
 
   if (!value) {
@@ -165,7 +187,11 @@ export function optionalDate(context: ParseContext, keys: string[], fieldName: s
   return date;
 }
 
-export function requireDate(context: ParseContext, keys: string[], fieldName: string): Date | null {
+export function requireDate(
+  context: ParseContext,
+  keys: string[],
+  fieldName: string,
+): Date | null {
   const value = requireString(context, keys, fieldName);
 
   if (value === null) {
@@ -182,7 +208,11 @@ export function requireDate(context: ParseContext, keys: string[], fieldName: st
   return date;
 }
 
-export function optionalBoolean(context: ParseContext, keys: string[], fieldName: string): boolean | null {
+export function optionalBoolean(
+  context: ParseContext,
+  keys: string[],
+  fieldName: string,
+): boolean | null {
   const value = findValue(context.rawRow, keys).trim().toLowerCase();
 
   if (!value) {

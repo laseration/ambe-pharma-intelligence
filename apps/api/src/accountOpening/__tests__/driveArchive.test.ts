@@ -34,8 +34,11 @@ const disabledConfig: AccountOpeningDriveArchiveConfig = {
 function buildDetail(
   overrides: Partial<AccountOpeningCaseDetail> = {},
 ): AccountOpeningCaseDetail {
+  const { diagnosticCorrelationId, ...remainingOverrides } = overrides;
+
   return {
     id: 'account-case-abcdefghi',
+    diagnosticCorrelationId: diagnosticCorrelationId ?? null,
     sourceFingerprint: 'fingerprint-1',
     messageId: 'message-1',
     senderEmail: 'forms@supplier.co.uk',
@@ -185,7 +188,7 @@ function buildDetail(
     latestCompletedFormFiling: null,
     createdAt: '2026-05-12T09:00:00.000Z',
     updatedAt: '2026-05-12T09:00:00.000Z',
-    ...overrides,
+    ...remainingOverrides,
   };
 }
 

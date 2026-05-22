@@ -95,7 +95,9 @@ test('database readiness still falls back to message matching for optional missi
   const warnings: Array<Record<string, unknown> | undefined> = [];
   const client = createHealthyClient();
   client.offerCorrection.findFirst = async () => {
-    throw new Error('The table `public.OfferCorrection` does not exist in the current database.');
+    throw new Error(
+      'The table `public.OfferCorrection` does not exist in the current database.',
+    );
   };
 
   await verifyDatabaseReadiness(client as never, {

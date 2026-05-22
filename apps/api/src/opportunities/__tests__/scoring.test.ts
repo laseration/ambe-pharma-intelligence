@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { buildOpportunityConfig } from '../config';
-import { auditOpportunityScoring, scoreOpportunityCandidates } from '../scoring';
+import {
+  auditOpportunityScoring,
+  scoreOpportunityCandidates,
+} from '../scoring';
 import type { ScoringContext } from '../types';
 
 const baseNow = new Date('2026-04-20T00:00:00.000Z');
@@ -55,45 +58,53 @@ test('mode-specific opportunity thresholds split trading demand and margin input
 });
 
 test('creates restock candidate for low stock with recent sales', () => {
-  const candidates = scoreOpportunityCandidates(createContext({}), stockholdingConfig);
+  const candidates = scoreOpportunityCandidates(
+    createContext({}),
+    stockholdingConfig,
+  );
 
   assert.ok(candidates.some((candidate) => candidate.type === 'RESTOCK'));
   assert.ok(
     candidates.some(
       (candidate) =>
         candidate.type === 'RESTOCK' &&
-        candidate.description === 'Low stock with positive recent sales velocity over last 30 days.',
+        candidate.description ===
+          'Low stock with positive recent sales velocity over last 30 days.',
     ),
   );
 });
 
 test('creates dead stock candidate for high stock with no recent sales', () => {
-  const candidates = scoreOpportunityCandidates(createContext({
-    product: {
-      id: 'product-2',
-      name: 'Paracetamol 500mg Tablets',
-    },
-    latestInventory: {
-      supplierId: 'supplier-1',
-      snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
-      quantityAvailable: 400,
-      quantityOnHand: 420,
-    },
-    latestSupplierPrice: null,
-    previousSupplierPrice: null,
-    recentSales: {
-      units30d: 0,
-      averageSalePrice: null,
-      lastSaleDate: null,
-    },
-  }), stockholdingConfig);
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      product: {
+        id: 'product-2',
+        name: 'Paracetamol 500mg Tablets',
+      },
+      latestInventory: {
+        supplierId: 'supplier-1',
+        snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
+        quantityAvailable: 400,
+        quantityOnHand: 420,
+      },
+      latestSupplierPrice: null,
+      previousSupplierPrice: null,
+      recentSales: {
+        units30d: 0,
+        averageSalePrice: null,
+        lastSaleDate: null,
+      },
+    }),
+    stockholdingConfig,
+  );
 
   assert.ok(candidates.some((candidate) => candidate.type === 'DEAD_STOCK'));
   assert.ok(
     candidates.some(
       (candidate) =>
         candidate.type === 'DEAD_STOCK' &&
-        candidate.description === 'High stock with no recent sales; potential dead stock risk.',
+        candidate.description ===
+          'High stock with no recent sales; potential dead stock risk.',
     ),
   );
 });
@@ -125,66 +136,72 @@ test('TRADING mode PUSH works on healthy demand without warehouse assumptions', 
 });
 
 test('suppresses redundant PRICE_ALERT when BUY already captures the commercial action', () => {
-  const candidates = scoreOpportunityCandidates(createContext({
-    product: {
-      id: 'product-3',
-      name: 'Ibuprofen 200mg Tablets',
-    },
-    latestInventory: {
-      supplierId: 'supplier-1',
-      snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
-      quantityAvailable: 180,
-      quantityOnHand: 200,
-    },
-    latestSupplierPrice: {
-      supplierId: 'supplier-1',
-      unitPrice: 1.5,
-      createdAt: new Date('2026-04-19T00:00:00.000Z'),
-    },
-    previousSupplierPrice: {
-      supplierId: 'supplier-1',
-      unitPrice: 1.8,
-      createdAt: new Date('2026-04-08T00:00:00.000Z'),
-    },
-    recentSales: {
-      units30d: 90,
-      averageSalePrice: 2.5,
-      lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
-    },
-  }), tradingConfig);
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      product: {
+        id: 'product-3',
+        name: 'Ibuprofen 200mg Tablets',
+      },
+      latestInventory: {
+        supplierId: 'supplier-1',
+        snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
+        quantityAvailable: 180,
+        quantityOnHand: 200,
+      },
+      latestSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.5,
+        createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      },
+      previousSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.8,
+        createdAt: new Date('2026-04-08T00:00:00.000Z'),
+      },
+      recentSales: {
+        units30d: 90,
+        averageSalePrice: 2.5,
+        lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
+      },
+    }),
+    tradingConfig,
+  );
 
   assert.ok(candidates.some((candidate) => candidate.type === 'BUY'));
   assert.ok(!candidates.some((candidate) => candidate.type === 'PRICE_ALERT'));
 });
 
 test('BUY explanation is stronger when supplier price is the best recent known offer', () => {
-  const candidates = scoreOpportunityCandidates(createContext({
-    product: {
-      id: 'product-buy-explained',
-      name: 'Ibuprofen 200mg Tablets',
-    },
-    latestInventory: {
-      supplierId: 'supplier-1',
-      snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
-      quantityAvailable: 180,
-      quantityOnHand: 200,
-    },
-    latestSupplierPrice: {
-      supplierId: 'supplier-1',
-      unitPrice: 1.5,
-      createdAt: new Date('2026-04-19T00:00:00.000Z'),
-    },
-    previousSupplierPrice: {
-      supplierId: 'supplier-1',
-      unitPrice: 1.8,
-      createdAt: new Date('2026-04-08T00:00:00.000Z'),
-    },
-    recentSales: {
-      units30d: 90,
-      averageSalePrice: 2.5,
-      lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
-    },
-  }), tradingConfig);
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      product: {
+        id: 'product-buy-explained',
+        name: 'Ibuprofen 200mg Tablets',
+      },
+      latestInventory: {
+        supplierId: 'supplier-1',
+        snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
+        quantityAvailable: 180,
+        quantityOnHand: 200,
+      },
+      latestSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.5,
+        createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      },
+      previousSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.8,
+        createdAt: new Date('2026-04-08T00:00:00.000Z'),
+      },
+      recentSales: {
+        units30d: 90,
+        averageSalePrice: 2.5,
+        lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
+      },
+    }),
+    tradingConfig,
+  );
 
   const buyCandidate = candidates.find((candidate) => candidate.type === 'BUY');
 
@@ -192,78 +209,94 @@ test('BUY explanation is stronger when supplier price is the best recent known o
   assert.match(buyCandidate.description, /best recent known supplier offer/i);
   assert.match(buyCandidate.description, /estimated margin is about 40%/i);
   assert.equal(
-    (buyCandidate.metadata as { commercialContext?: { hasBestRecentKnownOffer?: boolean } })
-      .commercialContext?.hasBestRecentKnownOffer,
+    (
+      buyCandidate.metadata as {
+        commercialContext?: { hasBestRecentKnownOffer?: boolean };
+      }
+    ).commercialContext?.hasBestRecentKnownOffer,
     true,
   );
 });
 
 test('PRICE_ALERT explanation is more commercially actionable', () => {
-  const candidates = scoreOpportunityCandidates(createContext({
-    product: {
-      id: 'product-price-alert',
-      name: 'Ibuprofen 200mg Tablets',
-    },
-    latestInventory: {
-      supplierId: 'supplier-1',
-      snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
-      quantityAvailable: 180,
-      quantityOnHand: 200,
-    },
-    latestSupplierPrice: {
-      supplierId: 'supplier-1',
-      unitPrice: 2.2,
-      createdAt: new Date('2026-04-19T00:00:00.000Z'),
-    },
-    previousSupplierPrice: {
-      supplierId: 'supplier-1',
-      unitPrice: 1.8,
-      createdAt: new Date('2026-04-08T00:00:00.000Z'),
-    },
-    recentSales: {
-      units30d: 90,
-      averageSalePrice: 2.5,
-      lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
-    },
-  }), tradingConfig);
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      product: {
+        id: 'product-price-alert',
+        name: 'Ibuprofen 200mg Tablets',
+      },
+      latestInventory: {
+        supplierId: 'supplier-1',
+        snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
+        quantityAvailable: 180,
+        quantityOnHand: 200,
+      },
+      latestSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 2.2,
+        createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      },
+      previousSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.8,
+        createdAt: new Date('2026-04-08T00:00:00.000Z'),
+      },
+      recentSales: {
+        units30d: 90,
+        averageSalePrice: 2.5,
+        lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
+      },
+    }),
+    tradingConfig,
+  );
 
-  const priceAlertCandidate = candidates.find((candidate) => candidate.type === 'PRICE_ALERT');
+  const priceAlertCandidate = candidates.find(
+    (candidate) => candidate.type === 'PRICE_ALERT',
+  );
 
   assert.ok(priceAlertCandidate);
   assert.match(priceAlertCandidate.description, /review selling price cover/i);
-  assert.match(priceAlertCandidate.description, /estimated margin is now about 12%/i);
+  assert.match(
+    priceAlertCandidate.description,
+    /estimated margin is now about 12%/i,
+  );
 });
 
 test('LOW_MARGIN explanation reflects the commercial issue clearly', () => {
-  const candidates = scoreOpportunityCandidates(createContext({
-    product: {
-      id: 'product-low-margin',
-      name: 'Ibuprofen 200mg Tablets',
-    },
-    latestInventory: {
-      supplierId: 'supplier-1',
-      snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
-      quantityAvailable: 180,
-      quantityOnHand: 200,
-    },
-    latestSupplierPrice: {
-      supplierId: 'supplier-1',
-      unitPrice: 2.9,
-      createdAt: new Date('2026-04-19T00:00:00.000Z'),
-    },
-    previousSupplierPrice: {
-      supplierId: 'supplier-1',
-      unitPrice: 3,
-      createdAt: new Date('2026-04-08T00:00:00.000Z'),
-    },
-    recentSales: {
-      units30d: 90,
-      averageSalePrice: 3.1,
-      lastSaleDate: new Date('2026-04-18T00:00:00.000Z'),
-    },
-  }), tradingConfig);
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      product: {
+        id: 'product-low-margin',
+        name: 'Ibuprofen 200mg Tablets',
+      },
+      latestInventory: {
+        supplierId: 'supplier-1',
+        snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
+        quantityAvailable: 180,
+        quantityOnHand: 200,
+      },
+      latestSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 2.9,
+        createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      },
+      previousSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 3,
+        createdAt: new Date('2026-04-08T00:00:00.000Z'),
+      },
+      recentSales: {
+        units30d: 90,
+        averageSalePrice: 3.1,
+        lastSaleDate: new Date('2026-04-18T00:00:00.000Z'),
+      },
+    }),
+    tradingConfig,
+  );
 
-  const lowMarginCandidate = candidates.find((candidate) => candidate.type === 'LOW_MARGIN');
+  const lowMarginCandidate = candidates.find(
+    (candidate) => candidate.type === 'LOW_MARGIN',
+  );
 
   assert.ok(lowMarginCandidate);
   assert.match(lowMarginCandidate.description, /average sale price is 3\.10/i);
@@ -330,117 +363,132 @@ test('BUY explanation uses supplier currency code when supplier price history pr
   const buyCandidate = candidates.find((candidate) => candidate.type === 'BUY');
 
   assert.ok(buyCandidate);
-  assert.match(buyCandidate.description, /simulated market reference of USD 1\.61/i);
+  assert.match(
+    buyCandidate.description,
+    /simulated market reference of USD 1\.61/i,
+  );
 });
 
 test('TRADING mode BUY is not suppressed when stock is already high', () => {
-  const candidates = scoreOpportunityCandidates(createContext({
-    latestInventory: {
-      supplierId: 'supplier-1',
-      snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
-      quantityAvailable: 260,
-      quantityOnHand: 275,
-    },
-    latestSupplierPrice: {
-      supplierId: 'supplier-1',
-      unitPrice: 1.5,
-      createdAt: new Date('2026-04-19T00:00:00.000Z'),
-    },
-    previousSupplierPrice: {
-      supplierId: 'supplier-1',
-      unitPrice: 1.8,
-      createdAt: new Date('2026-04-08T00:00:00.000Z'),
-    },
-    recentSales: {
-      units30d: 90,
-      averageSalePrice: 2.5,
-      lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
-    },
-  }), tradingConfig);
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      latestInventory: {
+        supplierId: 'supplier-1',
+        snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
+        quantityAvailable: 260,
+        quantityOnHand: 275,
+      },
+      latestSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.5,
+        createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      },
+      previousSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.8,
+        createdAt: new Date('2026-04-08T00:00:00.000Z'),
+      },
+      recentSales: {
+        units30d: 90,
+        averageSalePrice: 2.5,
+        lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
+      },
+    }),
+    tradingConfig,
+  );
 
   assert.ok(candidates.some((candidate) => candidate.type === 'BUY'));
 });
 
 test('TRADING mode BUY is not suppressed when inventory snapshot is stale', () => {
-  const candidates = scoreOpportunityCandidates(createContext({
-    latestInventory: {
-      supplierId: 'supplier-1',
-      snapshotDate: new Date('2026-02-20T00:00:00.000Z'),
-      quantityAvailable: 60,
-      quantityOnHand: 70,
-    },
-    latestSupplierPrice: {
-      supplierId: 'supplier-1',
-      unitPrice: 1.5,
-      createdAt: new Date('2026-04-19T00:00:00.000Z'),
-    },
-    previousSupplierPrice: {
-      supplierId: 'supplier-1',
-      unitPrice: 1.8,
-      createdAt: new Date('2026-04-08T00:00:00.000Z'),
-    },
-    recentSales: {
-      units30d: 90,
-      averageSalePrice: 2.5,
-      lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
-    },
-  }), tradingConfig);
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      latestInventory: {
+        supplierId: 'supplier-1',
+        snapshotDate: new Date('2026-02-20T00:00:00.000Z'),
+        quantityAvailable: 60,
+        quantityOnHand: 70,
+      },
+      latestSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.5,
+        createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      },
+      previousSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.8,
+        createdAt: new Date('2026-04-08T00:00:00.000Z'),
+      },
+      recentSales: {
+        units30d: 90,
+        averageSalePrice: 2.5,
+        lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
+      },
+    }),
+    tradingConfig,
+  );
 
   assert.ok(candidates.some((candidate) => candidate.type === 'BUY'));
 });
 
 test('STOCKHOLDING mode BUY is still suppressed when stock is already high', () => {
-  const candidates = scoreOpportunityCandidates(createContext({
-    latestInventory: {
-      supplierId: 'supplier-1',
-      snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
-      quantityAvailable: 260,
-      quantityOnHand: 275,
-    },
-    latestSupplierPrice: {
-      supplierId: 'supplier-1',
-      unitPrice: 1.5,
-      createdAt: new Date('2026-04-19T00:00:00.000Z'),
-    },
-    previousSupplierPrice: {
-      supplierId: 'supplier-1',
-      unitPrice: 1.8,
-      createdAt: new Date('2026-04-08T00:00:00.000Z'),
-    },
-    recentSales: {
-      units30d: 90,
-      averageSalePrice: 2.5,
-      lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
-    },
-  }), stockholdingConfig);
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      latestInventory: {
+        supplierId: 'supplier-1',
+        snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
+        quantityAvailable: 260,
+        quantityOnHand: 275,
+      },
+      latestSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.5,
+        createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      },
+      previousSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.8,
+        createdAt: new Date('2026-04-08T00:00:00.000Z'),
+      },
+      recentSales: {
+        units30d: 90,
+        averageSalePrice: 2.5,
+        lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
+      },
+    }),
+    stockholdingConfig,
+  );
 
   assert.ok(!candidates.some((candidate) => candidate.type === 'BUY'));
 });
 
 test('STOCKHOLDING mode BUY is still suppressed when inventory snapshot is stale', () => {
-  const candidates = scoreOpportunityCandidates(createContext({
-    latestInventory: {
-      supplierId: 'supplier-1',
-      snapshotDate: new Date('2026-02-20T00:00:00.000Z'),
-      quantityAvailable: 60,
-      quantityOnHand: 70,
-    },
-    latestSupplierPrice: {
-      supplierId: 'supplier-1',
-      unitPrice: 1.5,
-      createdAt: new Date('2026-04-19T00:00:00.000Z'),
-    },
-    previousSupplierPrice: {
-      supplierId: 'supplier-1',
-      unitPrice: 1.8,
-      createdAt: new Date('2026-04-08T00:00:00.000Z'),
-    },
-    recentSales: {
-      units30d: 90,
-      averageSalePrice: 2.5,
-      lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
-    },
-  }), stockholdingConfig);
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      latestInventory: {
+        supplierId: 'supplier-1',
+        snapshotDate: new Date('2026-02-20T00:00:00.000Z'),
+        quantityAvailable: 60,
+        quantityOnHand: 70,
+      },
+      latestSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.5,
+        createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      },
+      previousSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.8,
+        createdAt: new Date('2026-04-08T00:00:00.000Z'),
+      },
+      recentSales: {
+        units30d: 90,
+        averageSalePrice: 2.5,
+        lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
+      },
+    }),
+    stockholdingConfig,
+  );
 
   assert.ok(!candidates.some((candidate) => candidate.type === 'BUY'));
 });
@@ -497,10 +545,15 @@ test('TRADING mode BUY uses a lower healthy-demand threshold than STOCKHOLDING m
   });
 
   const tradingCandidates = scoreOpportunityCandidates(context, tradingConfig);
-  const stockholdingCandidates = scoreOpportunityCandidates(context, stockholdingConfig);
+  const stockholdingCandidates = scoreOpportunityCandidates(
+    context,
+    stockholdingConfig,
+  );
 
   assert.ok(tradingCandidates.some((candidate) => candidate.type === 'BUY'));
-  assert.ok(!stockholdingCandidates.some((candidate) => candidate.type === 'BUY'));
+  assert.ok(
+    !stockholdingCandidates.some((candidate) => candidate.type === 'BUY'),
+  );
 });
 
 test('TRADING mode PUSH uses a lower healthy-demand threshold than STOCKHOLDING mode', () => {
@@ -529,10 +582,15 @@ test('TRADING mode PUSH uses a lower healthy-demand threshold than STOCKHOLDING 
   });
 
   const tradingCandidates = scoreOpportunityCandidates(context, tradingConfig);
-  const stockholdingCandidates = scoreOpportunityCandidates(context, stockholdingConfig);
+  const stockholdingCandidates = scoreOpportunityCandidates(
+    context,
+    stockholdingConfig,
+  );
 
   assert.ok(tradingCandidates.some((candidate) => candidate.type === 'PUSH'));
-  assert.ok(!stockholdingCandidates.some((candidate) => candidate.type === 'PUSH'));
+  assert.ok(
+    !stockholdingCandidates.some((candidate) => candidate.type === 'PUSH'),
+  );
 });
 
 test('audit suppresses redundant PRICE_ALERT when BUY is already eligible', () => {
@@ -558,7 +616,9 @@ test('audit suppresses redundant PRICE_ALERT when BUY is already eligible', () =
   );
 
   const buyAudit = audit.opportunities.find((entry) => entry.type === 'BUY');
-  const priceAlertAudit = audit.opportunities.find((entry) => entry.type === 'PRICE_ALERT');
+  const priceAlertAudit = audit.opportunities.find(
+    (entry) => entry.type === 'PRICE_ALERT',
+  );
 
   assert.ok(buyAudit);
   assert.equal(buyAudit?.eligible, true);
@@ -592,10 +652,19 @@ test('TRADING mode LOW_MARGIN uses a tighter margin threshold than STOCKHOLDING 
   });
 
   const tradingCandidates = scoreOpportunityCandidates(context, tradingConfig);
-  const stockholdingCandidates = scoreOpportunityCandidates(context, stockholdingConfig);
+  const stockholdingCandidates = scoreOpportunityCandidates(
+    context,
+    stockholdingConfig,
+  );
 
-  assert.ok(tradingCandidates.some((candidate) => candidate.type === 'LOW_MARGIN'));
-  assert.ok(!stockholdingCandidates.some((candidate) => candidate.type === 'LOW_MARGIN'));
+  assert.ok(
+    tradingCandidates.some((candidate) => candidate.type === 'LOW_MARGIN'),
+  );
+  assert.ok(
+    !stockholdingCandidates.some(
+      (candidate) => candidate.type === 'LOW_MARGIN',
+    ),
+  );
 });
 
 test('audit shows BUY as eligible with score breakdown when thresholds pass', () => {
@@ -684,7 +753,9 @@ test('audit shows BUY blocked when price improvement is too small', () => {
   assert.ok(buyAudit);
   assert.equal(buyAudit.eligible, false);
   assert.ok(
-    buyAudit.blockingReasons.includes('Supplier price improvement meets BUY threshold'),
+    buyAudit.blockingReasons.includes(
+      'Supplier price improvement meets BUY threshold',
+    ),
   );
   assert.equal(buyAudit.scoreBreakdown, null);
   assert.ok(!audit.generatedOpportunityTypes.includes('BUY'));
@@ -702,12 +773,16 @@ test('audit shows RESTOCK blocked when sales velocity is too low', () => {
     stockholdingConfig,
   );
 
-  const restockAudit = audit.opportunities.find((entry) => entry.type === 'RESTOCK');
+  const restockAudit = audit.opportunities.find(
+    (entry) => entry.type === 'RESTOCK',
+  );
 
   assert.ok(restockAudit);
   assert.equal(restockAudit.eligible, false);
   assert.ok(
-    restockAudit.blockingReasons.includes('Recent sales demand meets RESTOCK healthy-demand threshold'),
+    restockAudit.blockingReasons.includes(
+      'Recent sales demand meets RESTOCK healthy-demand threshold',
+    ),
   );
 });
 
@@ -764,37 +839,43 @@ test('STOCKHOLDING mode PUSH is suppressed on low margin', () => {
 });
 
 test('suppresses RESTOCK when inventory snapshot is stale', () => {
-  const candidates = scoreOpportunityCandidates(createContext({
-    latestInventory: {
-      supplierId: 'supplier-1',
-      snapshotDate: new Date('2026-02-20T00:00:00.000Z'),
-      quantityAvailable: 30,
-      quantityOnHand: 35,
-    },
-    recentSales: {
-      units30d: 120,
-      averageSalePrice: 3.1,
-      lastSaleDate: new Date('2026-04-18T00:00:00.000Z'),
-    },
-  }), stockholdingConfig);
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      latestInventory: {
+        supplierId: 'supplier-1',
+        snapshotDate: new Date('2026-02-20T00:00:00.000Z'),
+        quantityAvailable: 30,
+        quantityOnHand: 35,
+      },
+      recentSales: {
+        units30d: 120,
+        averageSalePrice: 3.1,
+        lastSaleDate: new Date('2026-04-18T00:00:00.000Z'),
+      },
+    }),
+    stockholdingConfig,
+  );
 
   assert.ok(!candidates.some((candidate) => candidate.type === 'RESTOCK'));
 });
 
 test('RESTOCK still triggers for genuinely low stock with healthy demand', () => {
-  const candidates = scoreOpportunityCandidates(createContext({
-    latestInventory: {
-      supplierId: 'supplier-1',
-      snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
-      quantityAvailable: 30,
-      quantityOnHand: 35,
-    },
-    recentSales: {
-      units30d: 150,
-      averageSalePrice: 3.1,
-      lastSaleDate: new Date('2026-04-18T00:00:00.000Z'),
-    },
-  }), stockholdingConfig);
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      latestInventory: {
+        supplierId: 'supplier-1',
+        snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
+        quantityAvailable: 30,
+        quantityOnHand: 35,
+      },
+      recentSales: {
+        units30d: 150,
+        averageSalePrice: 3.1,
+        lastSaleDate: new Date('2026-04-18T00:00:00.000Z'),
+      },
+    }),
+    stockholdingConfig,
+  );
 
   assert.ok(candidates.some((candidate) => candidate.type === 'RESTOCK'));
 });
@@ -823,7 +904,9 @@ test('audit shows DEAD_STOCK as eligible for stale no-sales inventory', () => {
     stockholdingConfig,
   );
 
-  const deadStockAudit = audit.opportunities.find((entry) => entry.type === 'DEAD_STOCK');
+  const deadStockAudit = audit.opportunities.find(
+    (entry) => entry.type === 'DEAD_STOCK',
+  );
 
   assert.ok(deadStockAudit);
   assert.equal(deadStockAudit.eligible, true);
@@ -976,7 +1059,11 @@ test('audit shows TRADING mode BUY is not blocked by high stock', () => {
 
   assert.ok(buyAudit);
   assert.equal(buyAudit.eligible, true);
-  assert.ok(!buyAudit.blockingReasons.includes('Current stock is below BUY stock-suppression threshold'));
+  assert.ok(
+    !buyAudit.blockingReasons.includes(
+      'Current stock is below BUY stock-suppression threshold',
+    ),
+  );
 });
 
 test('audit shows TRADING mode BUY is not blocked by stale inventory', () => {
@@ -1011,7 +1098,11 @@ test('audit shows TRADING mode BUY is not blocked by stale inventory', () => {
 
   assert.ok(buyAudit);
   assert.equal(buyAudit.eligible, true);
-  assert.ok(!buyAudit.blockingReasons.includes('Inventory snapshot is fresh enough for BUY'));
+  assert.ok(
+    !buyAudit.blockingReasons.includes(
+      'Inventory snapshot is fresh enough for BUY',
+    ),
+  );
 });
 
 test('audit shows STOCKHOLDING mode BUY blocked when stock is already high', () => {
@@ -1047,7 +1138,9 @@ test('audit shows STOCKHOLDING mode BUY blocked when stock is already high', () 
   assert.ok(buyAudit);
   assert.equal(buyAudit.eligible, false);
   assert.ok(
-    buyAudit.blockingReasons.includes('Current stock is below BUY stock-suppression threshold'),
+    buyAudit.blockingReasons.includes(
+      'Current stock is below BUY stock-suppression threshold',
+    ),
   );
 });
 
@@ -1084,7 +1177,9 @@ test('audit shows STOCKHOLDING mode BUY blocked when inventory snapshot is stale
   assert.ok(buyAudit);
   assert.equal(buyAudit.eligible, false);
   assert.ok(
-    buyAudit.blockingReasons.includes('Inventory snapshot is fresh enough for BUY'),
+    buyAudit.blockingReasons.includes(
+      'Inventory snapshot is fresh enough for BUY',
+    ),
   );
 });
 
@@ -1106,12 +1201,16 @@ test('audit shows RESTOCK blocked when inventory snapshot is stale', () => {
     stockholdingConfig,
   );
 
-  const restockAudit = audit.opportunities.find((entry) => entry.type === 'RESTOCK');
+  const restockAudit = audit.opportunities.find(
+    (entry) => entry.type === 'RESTOCK',
+  );
 
   assert.ok(restockAudit);
   assert.equal(restockAudit.eligible, false);
   assert.ok(
-    restockAudit.blockingReasons.includes('Inventory snapshot is fresh enough for RESTOCK'),
+    restockAudit.blockingReasons.includes(
+      'Inventory snapshot is fresh enough for RESTOCK',
+    ),
   );
 });
 
@@ -1267,15 +1366,22 @@ test('PUSH explanation is more useful in TRADING mode than STOCKHOLDING mode', (
     stockholdingConfig,
   );
 
-  const tradingPush = tradingPushCandidates.find((candidate) => candidate.type === 'PUSH');
-  const stockholdingPush = stockholdingPushCandidates.find((candidate) => candidate.type === 'PUSH');
+  const tradingPush = tradingPushCandidates.find(
+    (candidate) => candidate.type === 'PUSH',
+  );
+  const stockholdingPush = stockholdingPushCandidates.find(
+    (candidate) => candidate.type === 'PUSH',
+  );
 
   assert.ok(tradingPush);
   assert.ok(stockholdingPush);
   assert.match(tradingPush.description, /promoted more actively/i);
   assert.match(tradingPush.description, /estimated margin is about 35%/i);
   assert.match(stockholdingPush.description, /high stock/i);
-  assert.match(stockholdingPush.description, /estimated margin remains about 35%/i);
+  assert.match(
+    stockholdingPush.description,
+    /estimated margin remains about 35%/i,
+  );
 });
 
 test('audit shows mode-aware PUSH blocking reasons clearly', () => {
@@ -1335,12 +1441,16 @@ test('audit shows mode-aware DEAD_STOCK blocking reasons clearly', () => {
     stockholdingConfig,
   );
 
-  const deadStockAudit = audit.opportunities.find((entry) => entry.type === 'DEAD_STOCK');
+  const deadStockAudit = audit.opportunities.find(
+    (entry) => entry.type === 'DEAD_STOCK',
+  );
 
   assert.ok(deadStockAudit);
   assert.equal(deadStockAudit.eligible, false);
   assert.ok(
-    deadStockAudit.blockingReasons.includes('Inventory snapshot is fresh enough for DEAD_STOCK'),
+    deadStockAudit.blockingReasons.includes(
+      'Inventory snapshot is fresh enough for DEAD_STOCK',
+    ),
   );
 });
 
@@ -1362,12 +1472,16 @@ test('audit shows business-mode suppression clearly for RESTOCK in TRADING mode'
     tradingConfig,
   );
 
-  const restockAudit = audit.opportunities.find((entry) => entry.type === 'RESTOCK');
+  const restockAudit = audit.opportunities.find(
+    (entry) => entry.type === 'RESTOCK',
+  );
 
   assert.ok(restockAudit);
   assert.equal(restockAudit.eligible, false);
   assert.ok(
-    restockAudit.blockingReasons.includes('Opportunity type is enabled for current business mode'),
+    restockAudit.blockingReasons.includes(
+      'Opportunity type is enabled for current business mode',
+    ),
   );
   assert.equal(restockAudit.thresholds.businessMode, 'TRADING');
 });
@@ -1408,6 +1522,10 @@ test('STOCKHOLDING mode preserves RESTOCK and DEAD_STOCK behavior', () => {
     stockholdingConfig,
   );
 
-  assert.ok(restockCandidates.some((candidate) => candidate.type === 'RESTOCK'));
-  assert.ok(deadStockCandidates.some((candidate) => candidate.type === 'DEAD_STOCK'));
+  assert.ok(
+    restockCandidates.some((candidate) => candidate.type === 'RESTOCK'),
+  );
+  assert.ok(
+    deadStockCandidates.some((candidate) => candidate.type === 'DEAD_STOCK'),
+  );
 });

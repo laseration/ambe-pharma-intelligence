@@ -63,8 +63,9 @@ export default async function ImportsPage() {
               <p className="eyebrow">Imports</p>
               <h2 className="title">Recent Import Batches</h2>
               <p className="copy">
-                A bounded read-only view of recent file imports, whether they completed cleanly,
-                completed with errors, or need operator follow-up.
+                A bounded read-only view of recent file imports, whether they
+                completed cleanly, completed with errors, or need operator
+                follow-up.
               </p>
             </div>
             <Link className="button" href="/dashboard">
@@ -77,8 +78,9 @@ export default async function ImportsPage() {
           <section className="panel dashboard-panel">
             <h3 className="section-title">No Imports Yet</h3>
             <p className="copy">
-              No import batches have been recorded yet. Once supplier price lists, inventory files,
-              or sales files are imported, they will appear here.
+              No import batches have been recorded yet. Once supplier price
+              lists, inventory files, or sales files are imported, they will
+              appear here.
             </p>
           </section>
         ) : (
@@ -99,10 +101,14 @@ export default async function ImportsPage() {
                 <article className="dashboard-opportunity-card" key={batch.id}>
                   <div className="dashboard-opportunity-top">
                     <div>
-                      <p className="dashboard-opportunity-title">{batch.fileName}</p>
+                      <p className="dashboard-opportunity-title">
+                        {batch.fileName}
+                      </p>
                       <p className="dashboard-opportunity-meta">
                         {formatImportKind(batch.kind)}
-                        {formatFileSize(batch.fileSizeBytes) ? ` | ${formatFileSize(batch.fileSizeBytes)}` : ''}
+                        {formatFileSize(batch.fileSizeBytes)
+                          ? ` | ${formatFileSize(batch.fileSizeBytes)}`
+                          : ''}
                       </p>
                     </div>
                     <div className="dashboard-opportunity-badges">
@@ -144,7 +150,10 @@ export default async function ImportsPage() {
                   </dl>
 
                   <div className="actions">
-                    <Link className="button" href={`/dashboard/imports/${batch.id}`}>
+                    <Link
+                      className="button"
+                      href={`/dashboard/imports/${batch.id}`}
+                    >
                       View batch
                     </Link>
                   </div>
@@ -161,7 +170,9 @@ export default async function ImportsPage() {
         <p className="eyebrow">Imports</p>
         <h2 className="title">Import History Unavailable</h2>
         <p className="copy">
-          {error instanceof Error ? error.message : 'Failed to load recent import batches.'}
+          {error instanceof Error
+            ? error.message
+            : 'Failed to load recent import batches.'}
         </p>
         <div className="actions">
           <Link className="button" href="/dashboard">

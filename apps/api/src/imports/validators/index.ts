@@ -41,16 +41,32 @@ export function validateSupplierPriceRows(
       ['productName', 'rawProductName', 'product', 'name'],
       'productName',
     );
-    const manufacturer = optionalString(context, ['manufacturer', 'manufacturerName', 'mfr', 'brand']);
-    const unitPrice = requireDecimal(context, ['unitPrice', 'price'], 'unitPrice');
-    const packDescription = optionalString(context, ['packDescription', 'packSize']);
+    const manufacturer = optionalString(context, [
+      'manufacturer',
+      'manufacturerName',
+      'mfr',
+      'brand',
+    ]);
+    const unitPrice = requireDecimal(
+      context,
+      ['unitPrice', 'price'],
+      'unitPrice',
+    );
+    const packDescription = optionalString(context, [
+      'packDescription',
+      'packSize',
+    ]);
     const minimumOrderQuantity = optionalInteger(
       context,
       ['minimumOrderQuantity', 'minOrderQty', 'minimumOrderQty'],
       'minimumOrderQuantity',
     );
-    const isAvailable = optionalBoolean(context, ['isAvailable', 'available'], 'isAvailable') ?? true;
-    const currencyCode = optionalString(context, ['currencyCode', 'currency']) ?? defaultCurrencyCode;
+    const isAvailable =
+      optionalBoolean(context, ['isAvailable', 'available'], 'isAvailable') ??
+      true;
+    const currencyCode =
+      optionalString(context, ['currencyCode', 'currency']) ??
+      defaultCurrencyCode;
 
     const issues = getIssues(context);
     if (!rawProductName || !unitPrice || issues.length > 0) {
@@ -78,7 +94,9 @@ export function validateSupplierPriceRows(
   };
 }
 
-export function validateInventoryRows(rows: ParsedTableRow[]): ValidationResult<InventoryRowInput> {
+export function validateInventoryRows(
+  rows: ParsedTableRow[],
+): ValidationResult<InventoryRowInput> {
   const validRows: InventoryRowInput[] = [];
   const errors: RowIssue[] = [];
 
@@ -90,20 +108,50 @@ export function validateInventoryRows(rows: ParsedTableRow[]): ValidationResult<
       ['productName', 'rawProductName', 'product', 'name'],
       'productName',
     );
-    const manufacturer = optionalString(context, ['manufacturer', 'manufacturerName', 'mfr', 'brand']);
-    const rawSupplierName = optionalString(context, ['supplierName', 'supplier']);
-    const warehouseCode = requireString(context, ['warehouseCode', 'warehouse'], 'warehouseCode');
-    const snapshotDate = requireDate(context, ['snapshotDate', 'date'], 'snapshotDate');
-    const quantityOnHand = requireInteger(context, ['quantityOnHand', 'quantity'], 'quantityOnHand');
+    const manufacturer = optionalString(context, [
+      'manufacturer',
+      'manufacturerName',
+      'mfr',
+      'brand',
+    ]);
+    const rawSupplierName = optionalString(context, [
+      'supplierName',
+      'supplier',
+    ]);
+    const warehouseCode = requireString(
+      context,
+      ['warehouseCode', 'warehouse'],
+      'warehouseCode',
+    );
+    const snapshotDate = requireDate(
+      context,
+      ['snapshotDate', 'date'],
+      'snapshotDate',
+    );
+    const quantityOnHand = requireInteger(
+      context,
+      ['quantityOnHand', 'quantity'],
+      'quantityOnHand',
+    );
     const quantityReserved =
-      optionalInteger(context, ['quantityReserved', 'reserved'], 'quantityReserved') ?? 0;
+      optionalInteger(
+        context,
+        ['quantityReserved', 'reserved'],
+        'quantityReserved',
+      ) ?? 0;
     const quantityAvailable =
-      optionalInteger(context, ['quantityAvailable', 'availableQuantity'], 'quantityAvailable') ??
-      (quantityOnHand !== null ? quantityOnHand - quantityReserved : 0);
+      optionalInteger(
+        context,
+        ['quantityAvailable', 'availableQuantity'],
+        'quantityAvailable',
+      ) ?? (quantityOnHand !== null ? quantityOnHand - quantityReserved : 0);
     const unitCost = optionalDecimal(context, ['unitCost', 'cost'], 'unitCost');
     const totalValue =
-      optionalDecimal(context, ['totalValue', 'inventoryValue'], 'totalValue') ??
-      (unitCost ? unitCost.mul(quantityOnHand ?? 0) : null);
+      optionalDecimal(
+        context,
+        ['totalValue', 'inventoryValue'],
+        'totalValue',
+      ) ?? (unitCost ? unitCost.mul(quantityOnHand ?? 0) : null);
 
     const issues = getIssues(context);
     if (
@@ -140,7 +188,9 @@ export function validateInventoryRows(rows: ParsedTableRow[]): ValidationResult<
   };
 }
 
-export function validateSalesRows(rows: ParsedTableRow[]): ValidationResult<SalesRowInput> {
+export function validateSalesRows(
+  rows: ParsedTableRow[],
+): ValidationResult<SalesRowInput> {
   const validRows: SalesRowInput[] = [];
   const errors: RowIssue[] = [];
 
@@ -158,11 +208,24 @@ export function validateSalesRows(rows: ParsedTableRow[]): ValidationResult<Sale
       ['productName', 'rawProductName', 'product', 'name'],
       'productName',
     );
-    const manufacturer = optionalString(context, ['manufacturer', 'manufacturerName', 'mfr', 'brand']);
-    const rawSupplierName = optionalString(context, ['supplierName', 'supplier']);
+    const manufacturer = optionalString(context, [
+      'manufacturer',
+      'manufacturerName',
+      'mfr',
+      'brand',
+    ]);
+    const rawSupplierName = optionalString(context, [
+      'supplierName',
+      'supplier',
+    ]);
     const quantity = requireInteger(context, ['quantity', 'units'], 'quantity');
-    const unitPrice = requireDecimal(context, ['unitPrice', 'price'], 'unitPrice');
-    const currencyCode = optionalString(context, ['currencyCode', 'currency']) ?? 'USD';
+    const unitPrice = requireDecimal(
+      context,
+      ['unitPrice', 'price'],
+      'unitPrice',
+    );
+    const currencyCode =
+      optionalString(context, ['currencyCode', 'currency']) ?? 'USD';
     const totalRevenue =
       optionalDecimal(context, ['totalRevenue', 'revenue'], 'totalRevenue') ??
       (quantity !== null && unitPrice ? unitPrice.mul(quantity) : null);
@@ -190,7 +253,10 @@ export function validateSalesRows(rows: ParsedTableRow[]): ValidationResult<Sale
       rawSupplierName,
       saleDate,
       quantity,
-      unitPrice: unitPrice instanceof Prisma.Decimal ? unitPrice : new Prisma.Decimal(unitPrice),
+      unitPrice:
+        unitPrice instanceof Prisma.Decimal
+          ? unitPrice
+          : new Prisma.Decimal(unitPrice),
       totalRevenue:
         totalRevenue instanceof Prisma.Decimal
           ? totalRevenue

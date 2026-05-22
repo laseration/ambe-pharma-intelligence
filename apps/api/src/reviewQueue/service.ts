@@ -16,16 +16,30 @@ import {
   tradeOpportunityService,
   type EnrichedTradeOpportunityRecord,
 } from '../deals/service';
-import { listStoredEmailReviewItems, type StoredEmailReviewItem } from '../email/inbound/reviewStore';
+import {
+  listStoredEmailReviewItems,
+  type StoredEmailReviewItem,
+} from '../email/inbound/reviewStore';
 import { listOpenRegulatoryReviewQueueItems } from '../regulatory/service';
-import { supplierScorecardService, type SupplierScorecardRecord } from '../suppliers/scorecardService';
+import {
+  supplierScorecardService,
+  type SupplierScorecardRecord,
+} from '../suppliers/scorecardService';
 import { listInboundItems } from '../telegram/inbound/service';
-import { buildReviewSummary, describeReviewReason, type ReviewSummary } from './summary';
+import {
+  buildReviewSummary,
+  describeReviewReason,
+  type ReviewSummary,
+} from './summary';
 import { offerWorkflowService } from './workflowService';
 
 type TelegramReviewItem = Awaited<ReturnType<typeof listInboundItems>>[number];
-type OfferWorkflowReviewItem = Awaited<ReturnType<typeof offerWorkflowService.listWorkflowItems>>[number];
-type RegulatoryReviewItem = Awaited<ReturnType<typeof listOpenRegulatoryReviewQueueItems>>[number];
+type OfferWorkflowReviewItem = Awaited<
+  ReturnType<typeof offerWorkflowService.listWorkflowItems>
+>[number];
+type RegulatoryReviewItem = Awaited<
+  ReturnType<typeof listOpenRegulatoryReviewQueueItems>
+>[number];
 
 export type ReviewQueueItem = {
   id: string;
@@ -84,16 +98,14 @@ export type ReviewQueueItem = {
   > | null;
   recommendedNextAction?: string | null;
   reviewSummary: ReviewSummary | null;
-  linkedImportBatch:
-    | {
-        id: string;
-        kind: string | null;
-        status: string | null;
-        totalRows?: number | null;
-        validRows?: number | null;
-        invalidRows?: number | null;
-      }
-    | null;
+  linkedImportBatch: {
+    id: string;
+    kind: string | null;
+    status: string | null;
+    totalRows?: number | null;
+    validRows?: number | null;
+    invalidRows?: number | null;
+  } | null;
   regulatoryReviewItemId?: string | null;
   regulatorySignalId?: string | null;
   regulatoryAlertId?: string | null;
@@ -120,7 +132,16 @@ type ReviewQueueDependencies = {
   ) => Promise<Record<string, OfferFeedbackSummary>>;
   getOfferLearningSummariesForOfferIds: (
     emailDerivedOfferIds: string[],
-  ) => Promise<Record<string, Awaited<ReturnType<typeof offerCorrectionService.getOfferLearningSummariesForOfferIds>>[string]>>;
+  ) => Promise<
+    Record<
+      string,
+      Awaited<
+        ReturnType<
+          typeof offerCorrectionService.getOfferLearningSummariesForOfferIds
+        >
+      >[string]
+    >
+  >;
   getAutomationReadinessOverview: () => Promise<AutomationReadinessOverview>;
 };
 
@@ -132,7 +153,9 @@ function mapTelegramItem(item: TelegramReviewItem): ReviewQueueItem | null {
   }
 
   const metadata =
-    item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
+    item.metadata &&
+    typeof item.metadata === 'object' &&
+    !Array.isArray(item.metadata)
       ? (item.metadata as Record<string, unknown>)
       : null;
   const reason =
@@ -140,27 +163,36 @@ function mapTelegramItem(item: TelegramReviewItem): ReviewQueueItem | null {
     item.errorMessage ||
     'Queued for internal review.';
   const textParsing =
-    metadata?.textParsing && typeof metadata.textParsing === 'object' && !Array.isArray(metadata.textParsing)
+    metadata?.textParsing &&
+    typeof metadata.textParsing === 'object' &&
+    !Array.isArray(metadata.textParsing)
       ? (metadata.textParsing as Record<string, unknown>)
       : null;
   const reviewSummary = buildReviewSummary({
     processingStatus: item.processingStatus,
     fileType: item.fileType,
     fileName: item.fileName,
-    inferredImportType: typeof metadata?.inferredImportType === 'string' ? metadata.inferredImportType : null,
+    inferredImportType:
+      typeof metadata?.inferredImportType === 'string'
+        ? metadata.inferredImportType
+        : null,
     reason,
-    sender: item.senderDisplayName || item.telegramUserId || item.telegramChatId,
+    sender:
+      item.senderDisplayName || item.telegramUserId || item.telegramChatId,
     subjectOrCaption: item.caption,
-    parsedLineCount: typeof textParsing?.parsedRows === 'object' && Array.isArray(textParsing.parsedRows)
-      ? textParsing.parsedRows.length
-      : null,
+    parsedLineCount:
+      typeof textParsing?.parsedRows === 'object' &&
+      Array.isArray(textParsing.parsedRows)
+        ? textParsing.parsedRows.length
+        : null,
   });
 
   return {
     id: `telegram-review-${item.id}`,
     sourceType: 'TELEGRAM_INBOUND',
     receivedAt: item.createdAt,
-    sender: item.senderDisplayName || item.telegramUserId || item.telegramChatId,
+    sender:
+      item.senderDisplayName || item.telegramUserId || item.telegramChatId,
     fileName: item.fileName,
     subject: item.caption,
     processingStatus: item.processingStatus,
@@ -185,7 +217,9 @@ function mapEmailItem(item: StoredEmailReviewItem): ReviewQueueItem | null {
   }
 
   const textParsing =
-    item.textParsing && typeof item.textParsing === 'object' && !Array.isArray(item.textParsing)
+    item.textParsing &&
+    typeof item.textParsing === 'object' &&
+    !Array.isArray(item.textParsing)
       ? (item.textParsing as Record<string, unknown>)
       : null;
   const reviewSummary = buildReviewSummary({
@@ -196,9 +230,11 @@ function mapEmailItem(item: StoredEmailReviewItem): ReviewQueueItem | null {
     reason: item.error || item.reason,
     sender: item.email.from,
     subjectOrCaption: item.email.subject || null,
-    parsedLineCount: typeof textParsing?.parsedRows === 'object' && Array.isArray(textParsing.parsedRows)
-      ? textParsing.parsedRows.length
-      : null,
+    parsedLineCount:
+      typeof textParsing?.parsedRows === 'object' &&
+      Array.isArray(textParsing.parsedRows)
+        ? textParsing.parsedRows.length
+        : null,
   });
 
   return {
@@ -209,7 +245,9 @@ function mapEmailItem(item: StoredEmailReviewItem): ReviewQueueItem | null {
     fileName: item.attachment.fileName,
     subject: item.email.subject || null,
     processingStatus: item.processingStatus,
-    reason: describeReviewReason({ reason: item.error || item.reason || 'Queued for internal review.' }),
+    reason: describeReviewReason({
+      reason: item.error || item.reason || 'Queued for internal review.',
+    }),
     reviewSummary,
     linkedImportBatch: item.importBatchId
       ? {
@@ -224,7 +262,9 @@ function mapEmailItem(item: StoredEmailReviewItem): ReviewQueueItem | null {
   };
 }
 
-function mapAccountOpeningCase(item: PersistedAccountOpeningReviewCase): ReviewQueueItem | null {
+function mapAccountOpeningCase(
+  item: PersistedAccountOpeningReviewCase,
+): ReviewQueueItem | null {
   if (!['PENDING_REVIEW', 'NEEDS_INFO'].includes(item.status)) {
     return null;
   }
@@ -263,14 +303,17 @@ function mapAccountOpeningCase(item: PersistedAccountOpeningReviewCase): ReviewQ
     fileName: null,
     subject: item.subject,
     processingStatus: item.status,
-    reason: 'Account opening form detected - review required before completion/signing.',
+    reason:
+      'Account opening form detected - review required before completion/signing.',
     reviewSummary,
     accountOpeningSigningNotes: signingNotes,
     linkedImportBatch: null,
   };
 }
 
-function resolveWorkflowSupplierId(item: OfferWorkflowReviewItem): string | null {
+function resolveWorkflowSupplierId(
+  item: OfferWorkflowReviewItem,
+): string | null {
   if (item.buyDecision?.supplierId) {
     return item.buyDecision.supplierId;
   }
@@ -287,12 +330,20 @@ function mapEmailDerivedOfferItem(
   supplierScorecard: SupplierScorecardRecord | null,
   tradeOpportunity: EnrichedTradeOpportunityRecord | null,
   feedbackSummary: OfferFeedbackSummary | null,
-  learningSummary: Awaited<
-    ReturnType<typeof offerCorrectionService.getOfferLearningSummariesForOfferIds>
-  >[string] | null,
+  learningSummary:
+    | Awaited<
+        ReturnType<
+          typeof offerCorrectionService.getOfferLearningSummariesForOfferIds
+        >
+      >[string]
+    | null,
   readinessOverview: AutomationReadinessOverview,
 ): ReviewQueueItem | null {
-  if (!['NEW', 'IN_REVIEW', 'NEEDS_INFO', 'APPROVED_TO_BUY', 'ORDERED'].includes(item.status)) {
+  if (
+    !['NEW', 'IN_REVIEW', 'NEEDS_INFO', 'APPROVED_TO_BUY', 'ORDERED'].includes(
+      item.status,
+    )
+  ) {
     return null;
   }
 
@@ -302,21 +353,23 @@ function mapEmailDerivedOfferItem(
     !Array.isArray(item.emailDerivedOffer.metadata)
       ? (item.emailDerivedOffer.metadata as Record<string, unknown>)
       : null;
-  const executionSummary =
-    item.buyDecision
-      ? summarizeBuyExecution(item.buyDecision as never, item.buyDecision.execution ?? null)
-      : null;
+  const executionSummary = item.buyDecision
+    ? summarizeBuyExecution(
+        item.buyDecision as never,
+        item.buyDecision.execution ?? null,
+      )
+    : null;
   const recommendedNextAction =
     tradeOpportunity?.summary.recommendedNextStep ??
     learningSummary?.recommendedNextAction ??
     (supplierScorecard?.summary.recommendedAction === 'restrict supplier'
       ? 'restrict supplier'
-      : executionSummary?.recommendedNextAction ??
+      : (executionSummary?.recommendedNextAction ??
         (item.status === 'APPROVED_TO_BUY'
           ? 'place order'
           : item.status === 'ORDERED'
             ? 'confirm order'
-            : 'review offer'));
+            : 'review offer')));
   const draftBlockedReasons = Array.from(
     new Set([
       ...readinessOverview.decisions.supplierDrafts.blockedReasons,
@@ -331,7 +384,8 @@ function mapEmailDerivedOfferItem(
     inferredImportType: 'supplier-price-list',
     reason: item.sourceReviewReason ?? 'Email-derived offer requires review.',
     sender: typeof metadata?.sender === 'string' ? metadata.sender : null,
-    subjectOrCaption: typeof metadata?.subject === 'string' ? metadata.subject : null,
+    subjectOrCaption:
+      typeof metadata?.subject === 'string' ? metadata.subject : null,
     parsedLineCount: 1,
     qualificationStatus: item.supplierQualificationStatus,
     qualificationRiskSummary: item.qualificationRiskNote,
@@ -367,29 +421,38 @@ function mapEmailDerivedOfferItem(
     tradeOpportunityId: tradeOpportunity?.id ?? null,
     tradeOpportunityStatus: tradeOpportunity?.status ?? null,
     tradeOpportunityStage: tradeOpportunity?.stage ?? null,
-    tradeEstimatedMarginAmount: tradeOpportunity?.summary.estimatedMarginAmount ?? null,
-    tradeEstimatedMarginPct: tradeOpportunity?.summary.estimatedMarginPct ?? null,
-    tradeMessagingPolicyViolationCount: tradeOpportunity?.messagingPolicyViolationCount ?? null,
-    executionFulfillmentStatus: item.buyDecision?.execution?.fulfillmentStatus ?? null,
-    executionReconciliationStatus: executionSummary?.reconciliationStatus ?? null,
+    tradeEstimatedMarginAmount:
+      tradeOpportunity?.summary.estimatedMarginAmount ?? null,
+    tradeEstimatedMarginPct:
+      tradeOpportunity?.summary.estimatedMarginPct ?? null,
+    tradeMessagingPolicyViolationCount:
+      tradeOpportunity?.messagingPolicyViolationCount ?? null,
+    executionFulfillmentStatus:
+      item.buyDecision?.execution?.fulfillmentStatus ?? null,
+    executionReconciliationStatus:
+      executionSummary?.reconciliationStatus ?? null,
     hasCommercialDrift: executionSummary?.hasCommercialDrift ?? false,
     hasOperatorFeedback: feedbackSummary?.hasFeedback ?? false,
     hasOfferCorrection: learningSummary?.hasCorrection ?? false,
     sourceReliabilityTier: learningSummary?.sourceReliabilityTier ?? null,
     sourceReliabilityScore: learningSummary?.sourceReliabilityScore ?? null,
-    hasLearnedSupplierSuggestion: learningSummary?.hasLearnedSupplierSuggestion ?? false,
+    hasLearnedSupplierSuggestion:
+      learningSummary?.hasLearnedSupplierSuggestion ?? false,
     learnedSupplierName: learningSummary?.learnedSupplierName ?? null,
-    hasLearnedProductSuggestion: learningSummary?.hasLearnedProductSuggestion ?? false,
+    hasLearnedProductSuggestion:
+      learningSummary?.hasLearnedProductSuggestion ?? false,
     learnedProductName: learningSummary?.learnedProductName ?? null,
     hasLearnedManufacturerSuggestion:
       learningSummary?.hasLearnedManufacturerSuggestion ?? false,
     learnedManufacturer: learningSummary?.learnedManufacturer ?? null,
     learningRecommendedAction: learningSummary?.recommendedNextAction ?? null,
     extractionFeedbackVerdict: feedbackSummary?.extractionVerdict ?? null,
-    supplierResolutionFeedbackVerdict: feedbackSummary?.supplierResolutionVerdict ?? null,
+    supplierResolutionFeedbackVerdict:
+      feedbackSummary?.supplierResolutionVerdict ?? null,
     signalFeedbackVerdict: feedbackSummary?.signalVerdict ?? null,
     automationMode: readinessOverview.policy.globalMode,
-    automationEligibleForInternalSignals: readinessOverview.decisions.internalSignals.eligible,
+    automationEligibleForInternalSignals:
+      readinessOverview.decisions.internalSignals.eligible,
     automationEligibleForDrafts:
       readinessOverview.decisions.supplierDrafts.eligible ||
       readinessOverview.decisions.buyerDrafts.eligible,
@@ -410,7 +473,9 @@ function mapEmailDerivedOfferItem(
   };
 }
 
-function mapRegulatoryReviewItem(item: RegulatoryReviewItem): ReviewQueueItem | null {
+function mapRegulatoryReviewItem(
+  item: RegulatoryReviewItem,
+): ReviewQueueItem | null {
   if (!['NEW', 'REVIEWING'].includes(item.status)) {
     return null;
   }
@@ -454,7 +519,9 @@ function mapRegulatoryReviewItem(item: RegulatoryReviewItem): ReviewQueueItem | 
   };
 }
 
-export function createReviewQueueService(overrides?: Partial<ReviewQueueDependencies>) {
+export function createReviewQueueService(
+  overrides?: Partial<ReviewQueueDependencies>,
+) {
   const dependencies: ReviewQueueDependencies = {
     listTelegramInboundItems: async () => listInboundItems({}),
     listEmailReviewItems: () => listStoredEmailReviewItems(),
@@ -490,12 +557,19 @@ export function createReviewQueueService(overrides?: Partial<ReviewQueueDependen
     getSupplierScorecardsForIds: async (supplierIds) =>
       supplierScorecardService.getScorecardsForSupplierIds(supplierIds),
     getTradeOpportunitiesForOfferIds: async (emailDerivedOfferIds) =>
-      tradeOpportunityService.getActiveTradeOpportunitiesForOfferIds(emailDerivedOfferIds),
+      tradeOpportunityService.getActiveTradeOpportunitiesForOfferIds(
+        emailDerivedOfferIds,
+      ),
     getOfferFeedbackSummariesForOfferIds: async (emailDerivedOfferIds) =>
-      automationService.getOfferFeedbackSummariesForOfferIds(emailDerivedOfferIds),
+      automationService.getOfferFeedbackSummariesForOfferIds(
+        emailDerivedOfferIds,
+      ),
     getOfferLearningSummariesForOfferIds: async (emailDerivedOfferIds) =>
-      offerCorrectionService.getOfferLearningSummariesForOfferIds(emailDerivedOfferIds),
-    getAutomationReadinessOverview: async () => automationService.getReadinessOverview(),
+      offerCorrectionService.getOfferLearningSummariesForOfferIds(
+        emailDerivedOfferIds,
+      ),
+    getAutomationReadinessOverview: async () =>
+      automationService.getReadinessOverview(),
     ...overrides,
   };
 
@@ -520,7 +594,9 @@ export function createReviewQueueService(overrides?: Partial<ReviewQueueDependen
       const emailReviewItems = emailItems.filter(
         (item) =>
           !item.accountOpeningCase ||
-          !persistedAccountOpeningFingerprints.has(item.accountOpeningCase.sourceFingerprint),
+          !persistedAccountOpeningFingerprints.has(
+            item.accountOpeningCase.sourceFingerprint,
+          ),
       );
       const supplierScorecards = await dependencies.getSupplierScorecardsForIds(
         emailDerivedOfferItems.flatMap((item) => {
@@ -528,9 +604,10 @@ export function createReviewQueueService(overrides?: Partial<ReviewQueueDependen
           return supplierId ? [supplierId] : [];
         }),
       );
-      const tradeOpportunities = await dependencies.getTradeOpportunitiesForOfferIds(
-        emailDerivedOfferItems.map((item) => item.emailDerivedOfferId),
-      );
+      const tradeOpportunities =
+        await dependencies.getTradeOpportunitiesForOfferIds(
+          emailDerivedOfferItems.map((item) => item.emailDerivedOfferId),
+        );
       const offerFeedbackSummaries =
         emailDerivedOfferItems.length > 0
           ? await dependencies.getOfferFeedbackSummariesForOfferIds(
@@ -571,7 +648,9 @@ export function createReviewQueueService(overrides?: Partial<ReviewQueueDependen
             item,
             (() => {
               const supplierId = resolveWorkflowSupplierId(item);
-              return supplierId ? supplierScorecards[supplierId] ?? null : null;
+              return supplierId
+                ? (supplierScorecards[supplierId] ?? null)
+                : null;
             })(),
             tradeOpportunities[item.emailDerivedOfferId] ?? null,
             offerFeedbackSummaries[item.emailDerivedOfferId] ?? null,

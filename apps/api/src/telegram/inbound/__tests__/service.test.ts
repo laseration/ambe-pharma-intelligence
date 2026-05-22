@@ -7,14 +7,18 @@ import { buildProductCandidates } from '../../../imports/normalization';
 import { createTelegramInboundService } from '../service';
 import type { TelegramUpdate } from '../types';
 
-function asMetadata(
-  value: TelegramInboundItem['metadata'],
-): { rawText?: string; reason?: string; textParsing?: { rawBodyText?: string; reviewRecommended?: boolean } } {
-  return (value as {
-    rawText?: string;
-    reason?: string;
-    textParsing?: { rawBodyText?: string; reviewRecommended?: boolean };
-  }) ?? {};
+function asMetadata(value: TelegramInboundItem['metadata']): {
+  rawText?: string;
+  reason?: string;
+  textParsing?: { rawBodyText?: string; reviewRecommended?: boolean };
+} {
+  return (
+    (value as {
+      rawText?: string;
+      reason?: string;
+      textParsing?: { rawBodyText?: string; reviewRecommended?: boolean };
+    }) ?? {}
+  );
 }
 
 function createInboundItem(
@@ -43,10 +47,17 @@ function createInboundItem(
 }
 
 function createTestService(options?: {
-  isAllowedSender?: (input: { telegramUserId: string | null; telegramChatId: string }) => boolean;
+  isAllowedSender?: (input: {
+    telegramUserId: string | null;
+    telegramChatId: string;
+  }) => boolean;
   parseTextMessage?: (rawText: string) => Promise<ParsedEmailBodyResult>;
 }) {
-  const acknowledgements: Array<{ chatId: string; message: string; replyToMessageId?: number }> = [];
+  const acknowledgements: Array<{
+    chatId: string;
+    message: string;
+    replyToMessageId?: number;
+  }> = [];
   const createdRecords: TelegramInboundItem[] = [];
 
   const service = createTelegramInboundService({
@@ -54,7 +65,10 @@ function createTestService(options?: {
       acknowledgements.push({ chatId, message, replyToMessageId });
     },
     createInboundRecord: async (input) => {
-      const record = createInboundItem(`inbound-${createdRecords.length + 1}`, input);
+      const record = createInboundItem(
+        `inbound-${createdRecords.length + 1}`,
+        input,
+      );
       createdRecords.push(record);
       return record;
     },
@@ -95,9 +109,15 @@ function createTestService(options?: {
         throw new Error(`Missing record ${id}`);
       }
 
-      existing.processingStatus = (input.processingStatus as TelegramInboundItem['processingStatus']) ?? existing.processingStatus;
-      existing.errorMessage = (input.errorMessage as string | null | undefined) ?? existing.errorMessage;
-      existing.metadata = (input.metadata as TelegramInboundItem['metadata']) ?? existing.metadata;
+      existing.processingStatus =
+        (input.processingStatus as TelegramInboundItem['processingStatus']) ??
+        existing.processingStatus;
+      existing.errorMessage =
+        (input.errorMessage as string | null | undefined) ??
+        existing.errorMessage;
+      existing.metadata =
+        (input.metadata as TelegramInboundItem['metadata']) ??
+        existing.metadata;
       return existing;
     },
   });
@@ -139,7 +159,9 @@ test('allowed user structured text receives parsed summary and stays review-firs
           packSize: '16',
           price: 1.25,
           currencyCode: 'GBP',
-          productCandidates: buildProductCandidates('Paracetamol 500mg caplets 16'),
+          productCandidates: buildProductCandidates(
+            'Paracetamol 500mg caplets 16',
+          ),
           confidence: 'HIGH',
           explanation: 'Strong line structure.',
         },
@@ -157,7 +179,10 @@ test('allowed user structured text receives parsed summary and stays review-firs
   const update: TelegramUpdate = {
     message: {
       message_id: 101,
-      text: ['Amlodipine 5mg tabs 28 - 8.40 GBP', 'Paracetamol 500mg caplets 16 : 1.25 GBP'].join('\n'),
+      text: [
+        'Amlodipine 5mg tabs 28 - 8.40 GBP',
+        'Paracetamol 500mg caplets 16 : 1.25 GBP',
+      ].join('\n'),
       from: { id: 10, first_name: 'Jane' },
       chat: { id: 20, type: 'private' },
     },
@@ -229,13 +254,22 @@ test('existing file attachment review behavior still works', async () => {
       caption: 'supplier quote',
       from: { id: 13, first_name: 'Photo' },
       chat: { id: 23, type: 'private' },
-      photo: [{ file_id: 'photo-1', file_unique_id: 'photo-unique-1', file_size: 100 }],
+      photo: [
+        {
+          file_id: 'photo-1',
+          file_unique_id: 'photo-unique-1',
+          file_size: 100,
+        },
+      ],
     },
   });
 
   assert.equal(result.ignored, false);
   assert.equal(result.processingStatus, 'REVIEW_REQUIRED');
-  assert.equal(acknowledgements[0]?.message, 'Received file. Queued for manual review.');
+  assert.equal(
+    acknowledgements[0]?.message,
+    'Received file. Queued for manual review.',
+  );
   assert.equal(createdRecords[0]?.fileType, 'IMAGE');
 });
 
@@ -276,7 +310,9 @@ test('parser reviewRecommended is reflected in Telegram metadata', async () => {
       aiFallbackUsed: false,
     }),
   });
-  const text = ['Aspirin 75mg - 1.20 GBP', 'Please confirm lead time'].join('\n');
+  const text = ['Aspirin 75mg - 1.20 GBP', 'Please confirm lead time'].join(
+    '\n',
+  );
 
   const result = await service.handleTelegramUpdate({
     message: {
@@ -313,7 +349,8 @@ test('Telegram messy text can use AI fallback and stays review-first', async () 
           currencyCode: 'GBP',
           productCandidates: buildProductCandidates('Metformin 500mg 28'),
           confidence: 'MEDIUM',
-          explanation: 'AI fallback extracted a commercially relevant offer from messy prose.',
+          explanation:
+            'AI fallback extracted a commercially relevant offer from messy prose.',
         },
       ],
       skippedLines: [],
@@ -326,7 +363,8 @@ test('Telegram messy text can use AI fallback and stays review-first', async () 
       aiFallbackUsed: true,
       supplierName: 'Acme Pharma',
       notes: ['Messy prose kept review-oriented.'],
-      parsingReason: 'Used OpenAI fallback because deterministic parsing was weak or unclear.',
+      parsingReason:
+        'Used OpenAI fallback because deterministic parsing was weak or unclear.',
     }),
   });
 
@@ -343,7 +381,10 @@ test('Telegram messy text can use AI fallback and stays review-first', async () 
   assert.equal(result.processingStatus, 'NEEDS_REVIEW');
   assert.equal(result.parsedText?.parsingSource, 'OPENAI_FALLBACK');
   assert.equal(result.parsedText?.reviewRecommended, true);
-  assert.equal(acknowledgements[0]?.message, 'Received price text.\nParsed lines: 1\nReview needed: Yes');
+  assert.equal(
+    acknowledgements[0]?.message,
+    'Received price text.\nParsed lines: 1\nReview needed: Yes',
+  );
   const metadata = asMetadata(createdRecords[0]?.metadata ?? null);
   assert.equal(metadata.textParsing?.reviewRecommended, true);
 });

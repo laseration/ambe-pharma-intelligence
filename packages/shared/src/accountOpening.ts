@@ -1,0 +1,394 @@
+export type AccountOpeningSigningNotes = {
+  title: string;
+  recommendedSigner: string;
+  defaultSigningStatement: string;
+  detectedNames: string[];
+  detectedRolesOrSections: string[];
+  reviewerChecks: string[];
+  riskFlags: string[];
+  missingOrUnclear: string[];
+  signatureInstruction: string;
+  summary: string;
+};
+
+export type AccountOpeningMissingInfoResponses = {
+  website?: string | null;
+  numberOfEmployees?: string | null;
+  businessHours?: string | null;
+  estimatedMonthlyPurchases?: string | null;
+  webOrdering?: string | null;
+  directDebitRequested?: string | null;
+  cdLicenceApplies?: string | null;
+  gphcPremisesNumber?: string | null;
+  cqcRegistration?: string | null;
+  reviewerNotes?: string | null;
+};
+
+export type AccountOpeningDraftField = {
+  key: string;
+  supplierLabel: string;
+  proposedValue: string | null;
+  valueSource:
+    | 'AMBE_MASTER_PROFILE'
+    | 'REVIEWER_RESPONSE'
+    | 'EXTRACTED_TEXT'
+    | 'SYSTEM_PLACEHOLDER'
+    | 'NOT_PROVIDED';
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'BLOCKED';
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'BLOCKED';
+  requiresReview: boolean;
+  reviewReason: string | null;
+  evidence: Array<{
+    sourceType:
+      | 'MASTER_PROFILE'
+      | 'EMAIL_BODY'
+      | 'ATTACHMENT_TEXT'
+      | 'REVIEWER_INPUT'
+      | 'SYSTEM_RULE';
+    sourceLabel: string | null;
+    snippet: string | null;
+  }>;
+};
+
+export type AccountOpeningCompletionDraft = {
+  status: 'PREVIEW' | 'READY_FOR_REVIEW' | 'REVIEW_REQUIRED' | 'BLOCKED';
+  overallConfidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'BLOCKED';
+  isStored: boolean;
+  profileId: string;
+  profileVersion: string;
+  generatedAt: string;
+  fields: AccountOpeningDraftField[];
+  summary: {
+    totalFields: number;
+    highConfidenceFields: number;
+    reviewRequiredFields: number;
+    blockedFields: number;
+    safeToAutoFill: boolean;
+  };
+  safetyNotes: string[];
+};
+
+export type AccountOpeningFieldMappingStatus =
+  | 'UNMAPPED'
+  | 'MAPPED_SAFE'
+  | 'MAPPED_REVIEW_REQUIRED'
+  | 'BLOCKED'
+  | 'IGNORED'
+  | 'NEEDS_OPERATOR_INPUT';
+
+export type AccountOpeningFieldMapping = {
+  id: string;
+  supplierFieldLabel: string;
+  supplierSectionLabel: string | null;
+  normalizedLabel: string;
+  sourceType:
+    | 'DRAFT_FIELD'
+    | 'SOURCE_EVIDENCE'
+    | 'SYSTEM_RULE'
+    | 'OPERATOR_CREATED';
+  sourceEvidenceId: string | null;
+  evidenceSnippet: string | null;
+  suggestedDraftFieldKey: string | null;
+  mappedDraftFieldKey: string | null;
+  proposedValue: string | null;
+  valueSource: string | null;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'BLOCKED';
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'BLOCKED';
+  status: AccountOpeningFieldMappingStatus;
+  requiresReview: boolean;
+  blockedReason: string | null;
+  reviewReason: string | null;
+  operatorNote: string | null;
+};
+
+export type AccountOpeningFieldMappingReview = {
+  status: 'PREVIEW' | 'SAVED';
+  generatedAt: string;
+  mappings: AccountOpeningFieldMapping[];
+  summary: {
+    totalMappings: number;
+    mappedSafe: number;
+    reviewRequired: number;
+    blocked: number;
+    ignored: number;
+    unmapped: number;
+    needsOperatorInput: number;
+    safeToFillSupplierForms: false;
+  };
+  safetyNotes: string[];
+};
+
+export type AccountOpeningFieldMappingSaveInput = {
+  id?: string | null;
+  supplierFieldLabel: string;
+  supplierSectionLabel?: string | null;
+  sourceType: AccountOpeningFieldMapping['sourceType'];
+  sourceEvidenceId?: string | null;
+  evidenceSnippet?: string | null;
+  suggestedDraftFieldKey?: string | null;
+  mappedDraftFieldKey?: string | null;
+  status?: AccountOpeningFieldMappingStatus | null;
+  operatorNote?: string | null;
+};
+
+export type AccountOpeningSourceEvidence = {
+  id: string | null;
+  sourceType: string;
+  sourceLabel: string | null;
+  fileName: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  contentId: string | null;
+  disposition: string | null;
+  extractionMethod: string | null;
+  extractedTextHash: string | null;
+  extractedTextChars: number | null;
+  safeSnippet: string | null;
+  rawFileAvailable: boolean;
+  storageProvider: string | null;
+  storageFolderUrl: string | null;
+  storageFileUrl: string | null;
+  storageDriveItemId: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type AccountOpeningSourceEvidenceDetail = AccountOpeningSourceEvidence;
+
+export type AccountOpeningOriginalForm = {
+  id: string;
+  sourceEvidenceId: string | null;
+  fileName: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  fileHash: string | null;
+  storageProvider: string | null;
+  storageFolderUrl: string | null;
+  storageFileUrl: string | null;
+  storageDriveItemId: string | null;
+  localBlobAvailable: boolean;
+  formType: string;
+  fillSupportStatus: string;
+  detectedFieldCount: number | null;
+  detectionSummary: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AccountOpeningOriginalFormDetail = AccountOpeningOriginalForm;
+
+export type AccountOpeningFillPreviewDetail = {
+  id: string;
+  originalFormId: string | null;
+  status: string;
+  previewVersion: string;
+  fileNames: string[];
+  summary: Record<string, unknown>;
+  safetySummary: Record<string, unknown>;
+  generatedAt: string;
+  createdByType: string | null;
+  createdByIdentifier: string | null;
+};
+
+export type AccountOpeningBinaryFillPreviewDetail = {
+  id: string;
+  originalFormId: string | null;
+  status: string;
+  previewVersion: string;
+  binaryPreviewFileName: string | null;
+  binaryPreviewContentType: string | null;
+  binaryPreviewHash: string | null;
+  binaryPreviewBytesAvailable: boolean;
+  filledFieldCount: number;
+  blankFieldCount: number;
+  unsupportedReason: string | null;
+  warnings: string[];
+  brandingPreservationCheck: Record<string, unknown>;
+  safetySummary: Record<string, unknown>;
+  generatedAt: string;
+  createdByType: string | null;
+  createdByIdentifier: string | null;
+};
+
+export type AccountOpeningCompletedFormFilingDetail = {
+  id: string;
+  binaryFillPreviewId: string;
+  status: string;
+  fileName: string;
+  contentType: string;
+  fileHash: string | null;
+  fileSizeBytes: number | null;
+  storageProvider: string | null;
+  storageFolderUrl: string | null;
+  storageFileUrl: string | null;
+  storageDriveItemId: string | null;
+  approvedByType: string | null;
+  approvedByIdentifier: string | null;
+  approvedAt: string | null;
+  approvalNote: string | null;
+  filedByType: string | null;
+  filedByIdentifier: string | null;
+  filedAt: string | null;
+  filingNote: string | null;
+  skippedReason: string | null;
+  safetySummary: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AccountOpeningReadinessStatus = 'GREEN' | 'AMBER' | 'RED';
+
+export type AccountOpeningReadinessCheckKey =
+  | 'COMPLETION_DRAFT_STORED'
+  | 'REVIEWED_FIELD_MAPPINGS_SAVED'
+  | 'ORIGINAL_FORM_REFERENCE_PRESENT'
+  | 'ORIGINAL_BYTES_RETRIEVABLE'
+  | 'FORM_TYPE_SUPPORTED'
+  | 'PDF_ACROFORM_FIELD_COUNT'
+  | 'SAFE_MAPPED_FIELDS_COUNT'
+  | 'BLOCKED_FIELDS_COUNT'
+  | 'BINARY_PREVIEW_GENERATED'
+  | 'BINARY_PREVIEW_DOWNLOADED'
+  | 'BINARY_PREVIEW_APPROVED'
+  | 'SHAREPOINT_DRIVE_CONFIGURED'
+  | 'COMPLETED_UNSIGNED_FORM_FILED'
+  | 'MISSING_BLOCKERS';
+
+export type AccountOpeningReadinessCheck = {
+  key: AccountOpeningReadinessCheckKey;
+  label: string;
+  status: AccountOpeningReadinessStatus;
+  value: string;
+  blocker: string | null;
+  nextAction: string;
+};
+
+export type AccountOpeningOriginalFormLifecycle = {
+  originalFormId: string;
+  fileName: string;
+  sourceEvidenceCaptured: boolean;
+  textExtractionStatus:
+    | 'TEXT_EXTRACTED'
+    | 'NO_TEXT_EXTRACTED'
+    | 'METADATA_ONLY';
+  extractedTextChars: number | null;
+  originalFormReferenceCaptured: true;
+  originalBytesRetrievable: boolean;
+  originalBytesRetrievalStatus:
+    | 'LOCAL_BLOB_AVAILABLE'
+    | 'DRIVE_REFERENCE_AVAILABLE'
+    | 'DRIVE_REFERENCE_CONFIG_BLOCKED'
+    | 'MISSING_BYTES_REFERENCE';
+  formType: string;
+  binaryFillSupportStatus: string;
+  fillablePdfLikely: boolean;
+  acroFieldCountKnown: boolean;
+  acroFieldCount: number | null;
+  binaryPreviewStatus: string | null;
+  binaryPreviewDownloadable: boolean;
+  completedUnsignedFilingStatus: string | null;
+  primaryBlocker: string | null;
+  nextAction: string;
+};
+
+export type AccountOpeningDocumentLifecycleSummary = {
+  originalFormCount: number;
+  primaryOriginalFormId: string | null;
+  canAttemptBinaryPreview: boolean;
+  canDownloadBinaryPreview: boolean;
+  canApproveCompletedUnsignedFiling: boolean;
+  canFileCompletedUnsignedForm: boolean;
+  completedUnsignedFilingStatus: string | null;
+  primaryBlocker: string | null;
+  nextAction: string;
+  forms: AccountOpeningOriginalFormLifecycle[];
+  safety: {
+    metadataOnly: true;
+    rawExtractedTextIncluded: false;
+    binaryBytesIncluded: false;
+    bankDetailsIncluded: false;
+    directDebitMandateValuesIncluded: false;
+    signaturesIncluded: false;
+    guaranteesIncluded: false;
+  };
+};
+
+export type AccountOpeningReadinessReport = {
+  caseId: string;
+  diagnosticCorrelationId: string | null;
+  status: AccountOpeningReadinessStatus;
+  readyForEndToEndFillingAndFiling: boolean;
+  nextAction: string;
+  documentLifecycle: AccountOpeningDocumentLifecycleSummary;
+  checks: AccountOpeningReadinessCheck[];
+  blockerTexts: string[];
+  counts: {
+    pdfAcroFormFieldCount: number | null;
+    safeMappedFields: number;
+    blockedFields: number;
+  };
+  safety: {
+    diagnosticOnly: true;
+    internalSharePointFilingOnly: true;
+    notSigned: true;
+    notSent: true;
+    notSubmitted: true;
+    directDebitBankAuthorityNotCompleted: true;
+    guaranteeIndemnityDirectorOnlyNotCompleted: true;
+    purchaseWorkflowTriggered: false;
+    rawExtractedTextIncluded: false;
+    binaryBytesIncluded: false;
+    bankDetailsIncluded: false;
+    sortCodesIncluded: false;
+  };
+};
+
+export type AccountOpeningStatusAction =
+  | 'MARKED_NEEDS_INFO'
+  | 'APPROVED_FOR_COMPLETION'
+  | 'REJECTED';
+
+export type AccountOpeningCaseDetail = {
+  id: string;
+  diagnosticCorrelationId: string | null;
+  sourceFingerprint: string;
+  messageId: string | null;
+  senderEmail: string | null;
+  senderDomain: string | null;
+  subject: string | null;
+  receivedAt: string | null;
+  companyName: string | null;
+  detectedFormType: string | null;
+  status: string;
+  recommendedSigner: string;
+  signingStatement: string;
+  signingExplanation: string | null;
+  detectedNames: string[];
+  detectedRoles: string[];
+  escalationNotes: string[];
+  riskFlags: string[];
+  missingFields: string[];
+  reviewerChecks: string[];
+  signingNotes: AccountOpeningSigningNotes;
+  missingInfoResponses: AccountOpeningMissingInfoResponses;
+  extractedTextSummary: string | null;
+  storageStatus: string | null;
+  storageNote: string | null;
+  storageSkippedReason: string | null;
+  storageLastAttemptAt: string | null;
+  storageFolderUrl: string | null;
+  sourceAttachmentNames: string[];
+  draftStatus: string | null;
+  draftVersion: string | null;
+  draftGeneratedAt: string | null;
+  sourceEvidence: AccountOpeningSourceEvidence[];
+  originalForms: AccountOpeningOriginalForm[];
+  completionDraft: AccountOpeningCompletionDraft;
+  fieldMappings: AccountOpeningFieldMappingReview;
+  latestFillPreview: AccountOpeningFillPreviewDetail | null;
+  latestBinaryFillPreview: AccountOpeningBinaryFillPreviewDetail | null;
+  latestCompletedFormFiling: AccountOpeningCompletedFormFilingDetail | null;
+  createdAt: string;
+  updatedAt: string;
+};

@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { requestInternalJson } from './internalApiRequest';
+
 export type OpportunityListItem = {
   id: string;
   type: string;
@@ -63,60 +65,18 @@ type RegenerateOpportunitiesResult = {
   generatedCount: number;
 };
 
-function getInternalApiBaseUrl(): string {
-  return (
-    process.env.INTERNAL_API_BASE_URL?.trim() ||
-    process.env.NEXT_PUBLIC_INTERNAL_API_BASE_URL?.trim() ||
-    'http://127.0.0.1:4000/api'
-  );
-}
-
-function buildHeaders(includeJsonContentType = false): HeadersInit {
-  const headers: Record<string, string> = {};
-  const apiKey =
-    process.env.INTERNAL_API_KEY?.trim() || process.env.INTERNAL_ADMIN_API_KEY?.trim() || '';
-
-  if (apiKey) {
-    headers['x-internal-api-key'] = apiKey;
-    headers['x-internal-caller-name'] = 'web-dashboard';
-  }
-
-  if (includeJsonContentType) {
-    headers['content-type'] = 'application/json';
-  }
-
-  return headers;
-}
+const CALLER_NAME = 'web-dashboard';
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${getInternalApiBaseUrl()}${path}`, {
-    ...init,
-    cache: 'no-store',
-    headers: {
-      ...buildHeaders(init?.body !== undefined),
-      ...(init?.headers ?? {}),
-    },
+  return requestInternalJson<T>(path, {
+    callerName: CALLER_NAME,
+    init,
   });
-
-  if (!response.ok) {
-    let message = `Request failed with status ${response.status}.`;
-
-    try {
-      const payload = (await response.json()) as { error?: string };
-      if (payload.error) {
-        message = payload.error;
-      }
-    } catch {
-      // Keep the generic status-based message.
-    }
-
-    throw new Error(message);
-  }
-
-  return (await response.json()) as T;
 }
 
-export async function listOpportunities(options?: ListOpportunitiesOptions): Promise<OpportunityListItem[]> {
+export async function listOpportunities(
+  options?: ListOpportunitiesOptions,
+): Promise<OpportunityListItem[]> {
   const searchParams = new URLSearchParams();
 
   if (options?.status) {
@@ -155,14 +115,20 @@ export async function updateOpportunityStatus(
     actorIdentifier: string;
   },
 ): Promise<void> {
-  await requestJson<{ item: OpportunityListItem }>(`/opportunities/${encodeURIComponent(opportunityId)}/status`, {
-    method: 'PATCH',
-    body: JSON.stringify(body),
-  });
+  await requestJson<{ item: OpportunityListItem }>(
+    `/opportunities/${encodeURIComponent(opportunityId)}/status`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 export async function regenerateOpportunities(): Promise<RegenerateOpportunitiesResult> {
-  return requestJson<RegenerateOpportunitiesResult>('/opportunities/regenerate', {
-    method: 'POST',
-  });
+  return requestJson<RegenerateOpportunitiesResult>(
+    '/opportunities/regenerate',
+    {
+      method: 'POST',
+    },
+  );
 }

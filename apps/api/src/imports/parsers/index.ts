@@ -24,5 +24,7 @@ export function parseUploadedFile(file: UploadFile): ParsedFileResult {
     return parseXlsxFile(file);
   }
 
-  throw new Error('Unsupported file type. Only CSV and XLSX uploads are supported.');
+  throw new Error(
+    'Unsupported file type. Only CSV and XLSX uploads are supported.',
+  );
 }

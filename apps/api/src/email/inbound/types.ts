@@ -1,6 +1,9 @@
 import type { ParsedEmailBodyResult } from '../parsing';
 import type { ImportResponse, UploadFile } from '../../imports/types';
-import type { AccountOpeningCase, AccountOpeningCasePersistenceInput } from '../../accountOpening/service';
+import type {
+  AccountOpeningCase,
+  AccountOpeningCasePersistenceInput,
+} from '../../accountOpening/service';
 import type { EmailTriageResult, EmailTriageStatus } from './triage';
 
 export type EmailInboundFileType = 'CSV' | 'XLSX' | 'PDF' | 'IMAGE' | 'UNKNOWN';
@@ -13,7 +16,10 @@ export type EmailInboundProcessingStatus =
   | 'IGNORED'
   | 'FAILED';
 
-export type EmailInboundImportType = 'supplier-price-list' | 'inventory' | 'sales';
+export type EmailInboundImportType =
+  | 'supplier-price-list'
+  | 'inventory'
+  | 'sales';
 
 export type EmailInboundConfidence = 'HIGH' | 'LOW';
 
@@ -130,16 +136,19 @@ export type EmailInboundDependencies = {
   }) => Promise<ImportResponse>;
   importInventory: (request: { file: UploadFile }) => Promise<ImportResponse>;
   importSales: (request: { file: UploadFile }) => Promise<ImportResponse>;
-  parseUploadedFile: (file: UploadFile) => { rows: Record<string, string>[]; warnings: string[] };
+  parseUploadedFile: (file: UploadFile) => {
+    rows: Record<string, string>[];
+    warnings: string[];
+  };
   parseTextMessage: (rawText: string) => Promise<ParsedEmailBodyResult>;
-  extractAttachmentText: (
-    attachment: NormalizedEmailAttachment,
-  ) => Promise<{
+  extractAttachmentText: (attachment: NormalizedEmailAttachment) => Promise<{
     method: 'PDF_TEXT' | 'IMAGE_OCR';
     text: string;
     warnings: string[];
   } | null>;
-  persistAccountOpeningCase?: (input: AccountOpeningCasePersistenceInput) => Promise<unknown>;
+  persistAccountOpeningCase?: (
+    input: AccountOpeningCasePersistenceInput,
+  ) => Promise<unknown>;
   allowedSenders: string[];
   supplierMappings: EmailInboundSupplierMapping[];
   emailReviewEnabled?: boolean;
@@ -149,7 +158,12 @@ export type EmailInboundDependencies = {
   listStoredReviewItems?: () => Array<{
     createdAt: Date;
     updatedAt: Date;
-    email: { from: string; subject: string; bodyText: string; messageId: string | null };
+    email: {
+      from: string;
+      subject: string;
+      bodyText: string;
+      messageId: string | null;
+    };
     triageStatus?: EmailTriageStatus;
     aiEscalated?: boolean;
   }>;

@@ -31,7 +31,12 @@ function createProduct(
   };
 }
 
-function createAlias(id: string, productId: string, aliasName: string, product: Product): ProductAlias & {
+function createAlias(
+  id: string,
+  productId: string,
+  aliasName: string,
+  product: Product,
+): ProductAlias & {
   product: Product;
 } {
   return {
@@ -45,7 +50,9 @@ function createAlias(id: string, productId: string, aliasName: string, product: 
   };
 }
 
-function createCandidates(overrides?: Partial<ProductCandidates>): ProductCandidates {
+function createCandidates(
+  overrides?: Partial<ProductCandidates>,
+): ProductCandidates {
   const candidates: ProductCandidates = {
     baseName: 'amlodipine',
     normalizedName: 'amlodipine',
@@ -150,7 +157,9 @@ test('fallback match fails on strength conflict', async () => {
 
   assert.equal(decision.outcome, 'NEW_PRODUCT');
   assert.equal(decision.reasonCode, 'NO_SAFE_MATCH_CREATED_NEW_PRODUCT');
-  assert.deepEqual(decision.structuredCompatibility?.conflictFields, ['strength']);
+  assert.deepEqual(decision.structuredCompatibility?.conflictFields, [
+    'strength',
+  ]);
 });
 
 test('fallback match fails on formulation conflict', async () => {
@@ -177,7 +186,9 @@ test('fallback match fails on formulation conflict', async () => {
 
   assert.equal(decision.outcome, 'NEW_PRODUCT');
   assert.equal(decision.reasonCode, 'NO_SAFE_MATCH_CREATED_NEW_PRODUCT');
-  assert.deepEqual(decision.structuredCompatibility?.conflictFields, ['formulation']);
+  assert.deepEqual(decision.structuredCompatibility?.conflictFields, [
+    'formulation',
+  ]);
 });
 
 test('fallback match fails on pack-size conflict when both sides have pack size', async () => {
@@ -204,12 +215,19 @@ test('fallback match fails on pack-size conflict when both sides have pack size'
 
   assert.equal(decision.outcome, 'NEW_PRODUCT');
   assert.equal(decision.reasonCode, 'NO_SAFE_MATCH_CREATED_NEW_PRODUCT');
-  assert.deepEqual(decision.structuredCompatibility?.conflictFields, ['packSize']);
+  assert.deepEqual(decision.structuredCompatibility?.conflictFields, [
+    'packSize',
+  ]);
 });
 
 test('returns alias match decision when raw product name already exists as alias', async () => {
   const product = createProduct('product-alias', 'amlodipine|5mg|tablet|28');
-  const alias = createAlias('alias-1', 'product-alias', 'Amlodipine 5 mg tablets x 28', product);
+  const alias = createAlias(
+    'alias-1',
+    'product-alias',
+    'Amlodipine 5 mg tablets x 28',
+    product,
+  );
   const decision = await determineProductMatchDecision(
     {
       findProductByStoredCanonicalField: async () => null,
@@ -230,8 +248,16 @@ test('returns alias match decision when raw product name already exists as alias
 });
 
 test('returns canonicalized alias match decision for whitespace and case variant', async () => {
-  const product = createProduct('product-canonical-alias', 'amlodipine|5mg|tablet|28');
-  const alias = createAlias('alias-2', 'product-canonical-alias', 'Amlodipine 5MG Tablets 28', product);
+  const product = createProduct(
+    'product-canonical-alias',
+    'amlodipine|5mg|tablet|28',
+  );
+  const alias = createAlias(
+    'alias-2',
+    'product-canonical-alias',
+    'Amlodipine 5MG Tablets 28',
+    product,
+  );
   const decision = await determineProductMatchDecision(
     {
       findProductByStoredCanonicalField: async () => null,
@@ -250,7 +276,10 @@ test('returns canonicalized alias match decision for whitespace and case variant
 });
 
 test('returns canonicalized alias match decision for deterministic structured variant', async () => {
-  const product = createProduct('product-structured-alias', 'amlodipine|5mg|tablet|28');
+  const product = createProduct(
+    'product-structured-alias',
+    'amlodipine|5mg|tablet|28',
+  );
   const alias = createAlias(
     'alias-structured-1',
     'product-structured-alias',
@@ -276,8 +305,16 @@ test('returns canonicalized alias match decision for deterministic structured va
 });
 
 test('canonicalized alias does not match when medically meaningful text differs', async () => {
-  const product = createProduct('product-medical-difference', 'amlodipine|5mg|tablet|28');
-  const alias = createAlias('alias-3', 'product-medical-difference', 'Amlodipine 10mg tablets 28', product);
+  const product = createProduct(
+    'product-medical-difference',
+    'amlodipine|5mg|tablet|28',
+  );
+  const alias = createAlias(
+    'alias-3',
+    'product-medical-difference',
+    'Amlodipine 10mg tablets 28',
+    product,
+  );
   const decision = await determineProductMatchDecision(
     {
       findProductByStoredCanonicalField: async () => null,
@@ -357,21 +394,41 @@ test('blocks automatic new product creation when structured identity is underspe
     eligibility.reason ?? '',
     /new canonical product was not created because the product identity is too incomplete or weak/i,
   );
-  assert.match(eligibility.reason ?? '', /missing structured product fields: strength/i);
-  assert.match(eligibility.reason ?? '', /needs product review before catalog creation/i);
+  assert.match(
+    eligibility.reason ?? '',
+    /missing structured product fields: strength/i,
+  );
+  assert.match(
+    eligibility.reason ?? '',
+    /needs product review before catalog creation/i,
+  );
 });
 
 test('does not create duplicate alias for whitespace or case only variants', () => {
-  const product = createProduct('product-duplicate-alias', 'amlodipine|5mg|tablet|28');
-  const alias = createAlias('alias-4', 'product-duplicate-alias', 'Amlodipine 5MG Tablets 28', product);
-  const match = findMatchingAliasVariant([alias], '  amlodipine   5mg tablets 28 ');
+  const product = createProduct(
+    'product-duplicate-alias',
+    'amlodipine|5mg|tablet|28',
+  );
+  const alias = createAlias(
+    'alias-4',
+    'product-duplicate-alias',
+    'Amlodipine 5MG Tablets 28',
+    product,
+  );
+  const match = findMatchingAliasVariant(
+    [alias],
+    '  amlodipine   5mg tablets 28 ',
+  );
 
   assert.equal(match.alias?.id, 'alias-4');
   assert.equal(match.matchType, 'CANONICALIZED_ALIAS');
 });
 
 test('canonicalized alias match stays safe when duplicate variants belong to the same product', () => {
-  const product = createProduct('product-same-product-aliases', 'amlodipine|5mg|tablet|28');
+  const product = createProduct(
+    'product-same-product-aliases',
+    'amlodipine|5mg|tablet|28',
+  );
   const aliases = [
     createAlias(
       'alias-duplicate-1',
@@ -393,9 +450,20 @@ test('canonicalized alias match stays safe when duplicate variants belong to the
 });
 
 test('new alias can still be created for genuinely new raw supplier wording', () => {
-  const product = createProduct('product-new-alias', 'amlodipine|5mg|tablet|28');
-  const alias = createAlias('alias-5', 'product-new-alias', 'Amlodipine 5mg tablets 28', product);
-  const match = findMatchingAliasVariant([alias], 'Amlodipine oral suspension 5mg 28');
+  const product = createProduct(
+    'product-new-alias',
+    'amlodipine|5mg|tablet|28',
+  );
+  const alias = createAlias(
+    'alias-5',
+    'product-new-alias',
+    'Amlodipine 5mg tablets 28',
+    product,
+  );
+  const match = findMatchingAliasVariant(
+    [alias],
+    'Amlodipine oral suspension 5mg 28',
+  );
 
   assert.equal(match.alias, null);
   assert.equal(match.matchType, null);

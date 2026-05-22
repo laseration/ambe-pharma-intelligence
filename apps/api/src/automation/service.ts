@@ -270,27 +270,35 @@ type AutomationDependencies = {
 };
 
 export type AutomationFeedbackWriteRepository = {
-  findRecentMatchingFeedback: (
-    input: {
-      emailDerivedOfferId: string | null;
-      offerWorkflowItemId: string | null;
-      tradeOpportunityId: string | null;
-      tradeMessageDraftId: string | null;
-      feedbackType: OperatorFeedbackType;
-      verdict: OperatorFeedbackVerdict;
-      actorType: string;
-      actorIdentifier: string | null;
-      createdAfter: Date;
-    },
-  ) => Promise<OperatorValidationFeedbackRecord | null>;
-  createFeedback: (data: Record<string, unknown>) => Promise<OperatorValidationFeedbackRecord>;
-  findTradeMessageDraftById?: (draftId: string) => Promise<TradeDraftLookup | null>;
+  findRecentMatchingFeedback: (input: {
+    emailDerivedOfferId: string | null;
+    offerWorkflowItemId: string | null;
+    tradeOpportunityId: string | null;
+    tradeMessageDraftId: string | null;
+    feedbackType: OperatorFeedbackType;
+    verdict: OperatorFeedbackVerdict;
+    actorType: string;
+    actorIdentifier: string | null;
+    createdAfter: Date;
+  }) => Promise<OperatorValidationFeedbackRecord | null>;
+  createFeedback: (
+    data: Record<string, unknown>,
+  ) => Promise<OperatorValidationFeedbackRecord>;
+  findTradeMessageDraftById?: (
+    draftId: string,
+  ) => Promise<TradeDraftLookup | null>;
 };
 
 export type AutomationRepository = AutomationFeedbackWriteRepository & {
-  transaction: <T>(callback: (repository: AutomationRepository) => Promise<T>) => Promise<T>;
-  findPolicyByScopeName: (scopeName: string) => Promise<AutomationReadinessPolicyRecord | null>;
-  createPolicy: (data: Record<string, unknown>) => Promise<AutomationReadinessPolicyRecord>;
+  transaction: <T>(
+    callback: (repository: AutomationRepository) => Promise<T>,
+  ) => Promise<T>;
+  findPolicyByScopeName: (
+    scopeName: string,
+  ) => Promise<AutomationReadinessPolicyRecord | null>;
+  createPolicy: (
+    data: Record<string, unknown>,
+  ) => Promise<AutomationReadinessPolicyRecord>;
   updatePolicy: (
     automationReadinessPolicyId: string,
     data: Record<string, unknown>,
@@ -298,12 +306,29 @@ export type AutomationRepository = AutomationFeedbackWriteRepository & {
   createReadinessEvent: (
     data: Omit<AutomationReadinessEventRecord, 'id' | 'createdAt'>,
   ) => Promise<AutomationReadinessEventRecord>;
-  listReadinessEvents: (scopeName: string) => Promise<AutomationReadinessEventRecord[]>;
-  listOffersInWindow: (windowStart: Date, windowEnd: Date) => Promise<OfferEvaluationSource[]>;
-  listWorkflowItemsInWindow: (windowStart: Date, windowEnd: Date) => Promise<WorkflowEvaluationSource[]>;
-  listBuyDecisionsInWindow: (windowStart: Date, windowEnd: Date) => Promise<BuyDecisionEvaluationSource[]>;
-  listTradeDraftsInWindow: (windowStart: Date, windowEnd: Date) => Promise<DraftEvaluationSource[]>;
-  listFeedbackInWindow: (windowStart: Date, windowEnd: Date) => Promise<OperatorValidationFeedbackRecord[]>;
+  listReadinessEvents: (
+    scopeName: string,
+  ) => Promise<AutomationReadinessEventRecord[]>;
+  listOffersInWindow: (
+    windowStart: Date,
+    windowEnd: Date,
+  ) => Promise<OfferEvaluationSource[]>;
+  listWorkflowItemsInWindow: (
+    windowStart: Date,
+    windowEnd: Date,
+  ) => Promise<WorkflowEvaluationSource[]>;
+  listBuyDecisionsInWindow: (
+    windowStart: Date,
+    windowEnd: Date,
+  ) => Promise<BuyDecisionEvaluationSource[]>;
+  listTradeDraftsInWindow: (
+    windowStart: Date,
+    windowEnd: Date,
+  ) => Promise<DraftEvaluationSource[]>;
+  listFeedbackInWindow: (
+    windowStart: Date,
+    windowEnd: Date,
+  ) => Promise<OperatorValidationFeedbackRecord[]>;
   listFeedbackByOfferIds: (
     emailDerivedOfferIds: string[],
   ) => Promise<OperatorValidationFeedbackRecord[]>;
@@ -340,7 +365,12 @@ function toNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
 
-  if (typeof value === 'object' && value && 'toString' in value && typeof value.toString === 'function') {
+  if (
+    typeof value === 'object' &&
+    value &&
+    'toString' in value &&
+    typeof value.toString === 'function'
+  ) {
     const parsed = Number(value.toString());
     return Number.isFinite(parsed) ? parsed : null;
   }
@@ -361,9 +391,18 @@ function jsonEqual(left: unknown, right: unknown): boolean {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
 
-function feedbackScore(feedbackType: OperatorFeedbackType, verdict: OperatorFeedbackVerdict): number | null {
+function feedbackScore(
+  feedbackType: OperatorFeedbackType,
+  verdict: OperatorFeedbackVerdict,
+): number | null {
   if (feedbackType === 'EXTRACTION' || feedbackType === 'SUPPLIER_RESOLUTION') {
-    return verdict === 'CORRECT' ? 1 : verdict === 'PARTIALLY_CORRECT' ? 0.5 : verdict === 'INCORRECT' ? 0 : null;
+    return verdict === 'CORRECT'
+      ? 1
+      : verdict === 'PARTIALLY_CORRECT'
+        ? 0.5
+        : verdict === 'INCORRECT'
+          ? 0
+          : null;
   }
 
   if (feedbackType === 'SIGNAL' || feedbackType === 'DEAL') {
@@ -379,7 +418,9 @@ function feedbackScore(feedbackType: OperatorFeedbackType, verdict: OperatorFeed
   if (feedbackType === 'DRAFT') {
     return verdict === 'SAFE' || verdict === 'USEFUL'
       ? 1
-      : verdict === 'POLICY_ISSUE' || verdict === 'NOT_USEFUL' || verdict === 'INCORRECT'
+      : verdict === 'POLICY_ISSUE' ||
+          verdict === 'NOT_USEFUL' ||
+          verdict === 'INCORRECT'
         ? 0
         : null;
   }
@@ -387,7 +428,9 @@ function feedbackScore(feedbackType: OperatorFeedbackType, verdict: OperatorFeed
   return null;
 }
 
-function scoreAverage(feedbacks: OperatorValidationFeedbackRecord[]): number | null {
+function scoreAverage(
+  feedbacks: OperatorValidationFeedbackRecord[],
+): number | null {
   const scores = feedbacks
     .map((feedback) => feedbackScore(feedback.feedbackType, feedback.verdict))
     .filter((score): score is number => score !== null);
@@ -396,10 +439,15 @@ function scoreAverage(feedbacks: OperatorValidationFeedbackRecord[]): number | n
     return null;
   }
 
-  return round(scores.reduce((sum, score) => sum + score, 0) / scores.length, 6);
+  return round(
+    scores.reduce((sum, score) => sum + score, 0) / scores.length,
+    6,
+  );
 }
 
-function confidenceBucket(value: number | null | undefined): 'HIGH' | 'MEDIUM' | 'LOW' {
+function confidenceBucket(
+  value: number | null | undefined,
+): 'HIGH' | 'MEDIUM' | 'LOW' {
   if ((value ?? 0) >= 80) {
     return 'HIGH';
   }
@@ -409,7 +457,9 @@ function confidenceBucket(value: number | null | undefined): 'HIGH' | 'MEDIUM' |
   return 'LOW';
 }
 
-function defaultPolicyData(scopeName = DEFAULT_SCOPE_NAME): Record<string, unknown> {
+function defaultPolicyData(
+  scopeName = DEFAULT_SCOPE_NAME,
+): Record<string, unknown> {
   return {
     scopeName,
     globalMode: 'INTERNAL_SIGNALS_ONLY',
@@ -424,11 +474,15 @@ function defaultPolicyData(scopeName = DEFAULT_SCOPE_NAME): Record<string, unkno
     minimumSignalAcceptancePct: 0.7,
     minimumDraftPolicyPassPct: 0.95,
     minimumSampleSize: 20,
-    notes: 'Conservative default policy. Live autonomous sending remains blocked in this pass.',
+    notes:
+      'Conservative default policy. Live autonomous sending remains blocked in this pass.',
   };
 }
 
-function compareThreshold(current: number | null, minimum: number | null): { current: number | null; minimum: number | null; met: boolean } {
+function compareThreshold(
+  current: number | null,
+  minimum: number | null,
+): { current: number | null; minimum: number | null; met: boolean } {
   return {
     current,
     minimum,
@@ -442,7 +496,9 @@ function latestVerdict(
 ): OperatorFeedbackVerdict | null {
   const latest = feedbacks
     .filter((feedback) => feedback.feedbackType === feedbackType)
-    .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())[0];
+    .sort(
+      (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
+    )[0];
 
   return latest?.verdict ?? null;
 }
@@ -451,24 +507,40 @@ function deriveRecommendation(
   decisions: AutomationReadinessOverview['decisions'],
 ): AutomationEvaluationMetrics['readinessRecommendation'] {
   if (
-    decisions.internalSignals.blockedReasons.some((reason) => reason.includes('minimum sample size')) ||
-    decisions.supplierDrafts.blockedReasons.some((reason) => reason.includes('minimum sample size')) ||
-    decisions.buyerDrafts.blockedReasons.some((reason) => reason.includes('minimum sample size'))
+    decisions.internalSignals.blockedReasons.some((reason) =>
+      reason.includes('minimum sample size'),
+    ) ||
+    decisions.supplierDrafts.blockedReasons.some((reason) =>
+      reason.includes('minimum sample size'),
+    ) ||
+    decisions.buyerDrafts.blockedReasons.some((reason) =>
+      reason.includes('minimum sample size'),
+    )
   ) {
     return 'review more samples';
   }
 
   if (
-    decisions.internalSignals.blockedReasons.some((reason) => reason.includes('supplier resolution')) ||
-    decisions.supplierDrafts.blockedReasons.some((reason) => reason.includes('supplier resolution')) ||
-    decisions.buyerDrafts.blockedReasons.some((reason) => reason.includes('supplier resolution'))
+    decisions.internalSignals.blockedReasons.some((reason) =>
+      reason.includes('supplier resolution'),
+    ) ||
+    decisions.supplierDrafts.blockedReasons.some((reason) =>
+      reason.includes('supplier resolution'),
+    ) ||
+    decisions.buyerDrafts.blockedReasons.some((reason) =>
+      reason.includes('supplier resolution'),
+    )
   ) {
     return 'fix supplier mapping';
   }
 
   if (
-    decisions.supplierDrafts.blockedReasons.some((reason) => reason.includes('draft policy')) ||
-    decisions.buyerDrafts.blockedReasons.some((reason) => reason.includes('draft policy'))
+    decisions.supplierDrafts.blockedReasons.some((reason) =>
+      reason.includes('draft policy'),
+    ) ||
+    decisions.buyerDrafts.blockedReasons.some((reason) =>
+      reason.includes('draft policy'),
+    )
   ) {
     return 'improve draft policy cleanliness';
   }
@@ -492,8 +564,14 @@ export async function recordOperatorValidationFeedbackWithRepository(
   const note = normalizeString(input.note);
   let tradeOpportunityId = input.tradeOpportunityId ?? null;
 
-  if (!tradeOpportunityId && input.tradeMessageDraftId && repository.findTradeMessageDraftById) {
-    const draft = await repository.findTradeMessageDraftById(input.tradeMessageDraftId);
+  if (
+    !tradeOpportunityId &&
+    input.tradeMessageDraftId &&
+    repository.findTradeMessageDraftById
+  ) {
+    const draft = await repository.findTradeMessageDraftById(
+      input.tradeMessageDraftId,
+    );
     tradeOpportunityId = draft?.tradeOpportunityId ?? null;
   }
 
@@ -547,14 +625,19 @@ export async function recordOperatorValidationFeedbackWithRepository(
   });
 }
 
-export function createAutomationRepository(client: typeof db = db, inTransaction = false): AutomationRepository {
+export function createAutomationRepository(
+  client: typeof db = db,
+  inTransaction = false,
+): AutomationRepository {
   return {
     transaction: async (callback) => {
       if (inTransaction) {
         return callback(createAutomationRepository(client, true));
       }
 
-      return db.$transaction(async (tx) => callback(createAutomationRepository(tx as never, true)));
+      return db.$transaction(async (tx) =>
+        callback(createAutomationRepository(tx as never, true)),
+      );
     },
     findPolicyByScopeName: async (scopeName) =>
       client.automationReadinessPolicy.findUnique({
@@ -785,8 +868,14 @@ export function createAutomationRepository(client: typeof db = db, inTransaction
 function computeDraftPassRate(
   drafts: DraftEvaluationSource[],
   feedbacks: OperatorValidationFeedbackRecord[],
-): { draftPolicyPassPct: number | null; draftHumanAcceptancePct: number | null; dealDraftRejectionRatePct: number | null } {
-  const outwardDrafts = drafts.filter((draft) => draft.direction !== 'INTERNAL');
+): {
+  draftPolicyPassPct: number | null;
+  draftHumanAcceptancePct: number | null;
+  dealDraftRejectionRatePct: number | null;
+} {
+  const outwardDrafts = drafts.filter(
+    (draft) => draft.direction !== 'INTERNAL',
+  );
   if (outwardDrafts.length === 0) {
     return {
       draftPolicyPassPct: null,
@@ -795,8 +884,13 @@ function computeDraftPassRate(
     };
   }
 
-  const latestFeedbackByDraftId = new Map<string, OperatorValidationFeedbackRecord>();
-  for (const feedback of feedbacks.filter((item) => item.feedbackType === 'DRAFT' && item.tradeMessageDraftId)) {
+  const latestFeedbackByDraftId = new Map<
+    string,
+    OperatorValidationFeedbackRecord
+  >();
+  for (const feedback of feedbacks.filter(
+    (item) => item.feedbackType === 'DRAFT' && item.tradeMessageDraftId,
+  )) {
     if (!latestFeedbackByDraftId.has(feedback.tradeMessageDraftId!)) {
       latestFeedbackByDraftId.set(feedback.tradeMessageDraftId!, feedback);
     }
@@ -808,7 +902,9 @@ function computeDraftPassRate(
 
   for (const draft of outwardDrafts) {
     const latestFeedback = latestFeedbackByDraftId.get(draft.id);
-    const policyViolationCount = Array.isArray(draft.policyViolations) ? draft.policyViolations.length : 0;
+    const policyViolationCount = Array.isArray(draft.policyViolations)
+      ? draft.policyViolations.length
+      : 0;
     const passesPolicy =
       latestFeedback?.verdict === 'POLICY_ISSUE'
         ? false
@@ -850,24 +946,34 @@ function buildGateDecision(input: {
   additionalBlocks?: string[];
   minimumSampleSize: number | null;
 }) {
-  const extractionMinimum = toNumber(input.policy.minimumExtractionPrecisionPct);
-  const supplierMinimum = toNumber(input.policy.minimumSupplierResolutionPrecisionPct);
+  const extractionMinimum = toNumber(
+    input.policy.minimumExtractionPrecisionPct,
+  );
+  const supplierMinimum = toNumber(
+    input.policy.minimumSupplierResolutionPrecisionPct,
+  );
   const signalMinimum = toNumber(input.policy.minimumSignalAcceptancePct);
   const draftMinimum = toNumber(input.policy.minimumDraftPolicyPassPct);
   const minimumSampleSize = input.minimumSampleSize;
   const blockedReasons = [
     !input.modeAllowed ? input.blockModeReason : null,
     !input.featureAllowed ? 'feature is disabled by readiness policy' : null,
-    minimumSampleSize !== null && input.evaluation.extractionFeedbackCount < minimumSampleSize
+    minimumSampleSize !== null &&
+    input.evaluation.extractionFeedbackCount < minimumSampleSize
       ? 'minimum sample size not met for extraction feedback'
       : null,
-    minimumSampleSize !== null && input.evaluation.supplierResolutionFeedbackCount < minimumSampleSize
+    minimumSampleSize !== null &&
+    input.evaluation.supplierResolutionFeedbackCount < minimumSampleSize
       ? 'minimum sample size not met for supplier resolution feedback'
       : null,
-    input.requiresSignalRate && minimumSampleSize !== null && input.evaluation.signalFeedbackCount < minimumSampleSize
+    input.requiresSignalRate &&
+    minimumSampleSize !== null &&
+    input.evaluation.signalFeedbackCount < minimumSampleSize
       ? 'minimum sample size not met for signal usefulness feedback'
       : null,
-    input.requiresDraftRate && minimumSampleSize !== null && input.evaluation.draftFeedbackCount < minimumSampleSize
+    input.requiresDraftRate &&
+    minimumSampleSize !== null &&
+    input.evaluation.draftFeedbackCount < minimumSampleSize
       ? 'minimum sample size not met for draft feedback'
       : null,
     extractionMinimum !== null &&
@@ -882,12 +988,14 @@ function buildGateDecision(input: {
       : null,
     input.requiresSignalRate &&
     signalMinimum !== null &&
-    (input.evaluation.signalAcceptancePct === null || input.evaluation.signalAcceptancePct < signalMinimum)
+    (input.evaluation.signalAcceptancePct === null ||
+      input.evaluation.signalAcceptancePct < signalMinimum)
       ? 'signal acceptance is below policy minimum'
       : null,
     input.requiresDraftRate &&
     draftMinimum !== null &&
-    (input.evaluation.draftPolicyPassPct === null || input.evaluation.draftPolicyPassPct < draftMinimum)
+    (input.evaluation.draftPolicyPassPct === null ||
+      input.evaluation.draftPolicyPassPct < draftMinimum)
       ? 'draft policy pass rate is below policy minimum'
       : null,
     ...(input.additionalBlocks ?? []),
@@ -898,13 +1006,17 @@ function buildGateDecision(input: {
     blockedReasons,
     currentMetricsSummary: {
       extractionPrecisionPct: input.evaluation.extractionPrecisionPct,
-      supplierResolutionPrecisionPct: input.evaluation.supplierResolutionPrecisionPct,
+      supplierResolutionPrecisionPct:
+        input.evaluation.supplierResolutionPrecisionPct,
       signalAcceptancePct: input.evaluation.signalAcceptancePct,
       draftPolicyPassPct: input.evaluation.draftPolicyPassPct,
       minimumSampleSize,
     },
     thresholdComparisons: {
-      extractionPrecisionPct: compareThreshold(input.evaluation.extractionPrecisionPct, extractionMinimum),
+      extractionPrecisionPct: compareThreshold(
+        input.evaluation.extractionPrecisionPct,
+        extractionMinimum,
+      ),
       supplierResolutionPrecisionPct: compareThreshold(
         input.evaluation.supplierResolutionPrecisionPct,
         supplierMinimum,
@@ -935,7 +1047,9 @@ export function createAutomationService(
   };
 
   return {
-    async getReadinessPolicy(scopeName = DEFAULT_SCOPE_NAME): Promise<AutomationReadinessPolicyRecord> {
+    async getReadinessPolicy(
+      scopeName = DEFAULT_SCOPE_NAME,
+    ): Promise<AutomationReadinessPolicyRecord> {
       const existing = await repository.findPolicyByScopeName(scopeName);
       if (existing) {
         return existing;
@@ -944,7 +1058,9 @@ export function createAutomationService(
       return repository.createPolicy(defaultPolicyData(scopeName));
     },
 
-    async updateReadinessPolicy(input: AutomationReadinessPolicyUpdateInput): Promise<AutomationReadinessOverview> {
+    async updateReadinessPolicy(
+      input: AutomationReadinessPolicyUpdateInput,
+    ): Promise<AutomationReadinessOverview> {
       const actor = normalizeActor(input);
       const scopeName = normalizeString(input.scopeName) ?? DEFAULT_SCOPE_NAME;
 
@@ -994,23 +1110,34 @@ export function createAutomationService(
               ? existing.minimumDraftPolicyPassPct
               : input.minimumDraftPolicyPassPct,
           minimumSampleSize:
-            input.minimumSampleSize === undefined ? existing.minimumSampleSize : input.minimumSampleSize,
-          notes: input.notes === undefined ? existing.notes : normalizeString(input.notes),
+            input.minimumSampleSize === undefined
+              ? existing.minimumSampleSize
+              : input.minimumSampleSize,
+          notes:
+            input.notes === undefined
+              ? existing.notes
+              : normalizeString(input.notes),
         };
 
         const hasMaterialChange =
           existing.globalMode !== nextData.globalMode ||
           existing.allowInternalSignals !== nextData.allowInternalSignals ||
           existing.allowDraftGeneration !== nextData.allowDraftGeneration ||
-          existing.allowSupplierDraftApprovalFlow !== nextData.allowSupplierDraftApprovalFlow ||
-          existing.allowBuyerDraftApprovalFlow !== nextData.allowBuyerDraftApprovalFlow ||
+          existing.allowSupplierDraftApprovalFlow !==
+            nextData.allowSupplierDraftApprovalFlow ||
+          existing.allowBuyerDraftApprovalFlow !==
+            nextData.allowBuyerDraftApprovalFlow ||
           existing.allowActualSend !== nextData.allowActualSend ||
-          existing.requireHumanApprovalBeforeSend !== nextData.requireHumanApprovalBeforeSend ||
-          toNumber(existing.minimumExtractionPrecisionPct) !== toNumber(nextData.minimumExtractionPrecisionPct) ||
+          existing.requireHumanApprovalBeforeSend !==
+            nextData.requireHumanApprovalBeforeSend ||
+          toNumber(existing.minimumExtractionPrecisionPct) !==
+            toNumber(nextData.minimumExtractionPrecisionPct) ||
           toNumber(existing.minimumSupplierResolutionPrecisionPct) !==
             toNumber(nextData.minimumSupplierResolutionPrecisionPct) ||
-          toNumber(existing.minimumSignalAcceptancePct) !== toNumber(nextData.minimumSignalAcceptancePct) ||
-          toNumber(existing.minimumDraftPolicyPassPct) !== toNumber(nextData.minimumDraftPolicyPassPct) ||
+          toNumber(existing.minimumSignalAcceptancePct) !==
+            toNumber(nextData.minimumSignalAcceptancePct) ||
+          toNumber(existing.minimumDraftPolicyPassPct) !==
+            toNumber(nextData.minimumDraftPolicyPassPct) ||
           existing.minimumSampleSize !== nextData.minimumSampleSize ||
           existing.notes !== nextData.notes;
 
@@ -1018,7 +1145,11 @@ export function createAutomationService(
           ? await txRepository.updatePolicy(existing.id, nextData)
           : existing;
 
-        if (!existing.createdAt || existing.id === updated.id && existing.createdAt.getTime() === updated.createdAt.getTime()) {
+        if (
+          !existing.createdAt ||
+          (existing.id === updated.id &&
+            existing.createdAt.getTime() === updated.createdAt.getTime())
+        ) {
           if (!existing.createdAt) {
             await txRepository.createReadinessEvent({
               automationReadinessPolicyId: updated.id,
@@ -1036,7 +1167,10 @@ export function createAutomationService(
         if (hasMaterialChange) {
           await txRepository.createReadinessEvent({
             automationReadinessPolicyId: updated.id,
-            actionType: existing.globalMode !== updated.globalMode ? 'MODE_CHANGED' : 'UPDATED',
+            actionType:
+              existing.globalMode !== updated.globalMode
+                ? 'MODE_CHANGED'
+                : 'UPDATED',
             previousGlobalMode: existing.globalMode,
             newGlobalMode: updated.globalMode,
             actorType: actor.actorType,
@@ -1079,7 +1213,8 @@ export function createAutomationService(
           internalSignals: previousOverview.decisions.internalSignals.eligible,
           supplierDrafts: previousOverview.decisions.supplierDrafts.eligible,
           buyerDrafts: previousOverview.decisions.buyerDrafts.eligible,
-          assistedOutreach: previousOverview.decisions.assistedOutreach.eligible,
+          assistedOutreach:
+            previousOverview.decisions.assistedOutreach.eligible,
         });
         const nextEligibility = JSON.stringify({
           internalSignals: nextOverview.decisions.internalSignals.eligible,
@@ -1108,7 +1243,9 @@ export function createAutomationService(
       });
     },
 
-    async recordFeedback(input: OperatorValidationFeedbackCreateInput): Promise<OperatorValidationFeedbackRecord> {
+    async recordFeedback(
+      input: OperatorValidationFeedbackCreateInput,
+    ): Promise<OperatorValidationFeedbackRecord> {
       return repository.transaction((txRepository) =>
         recordOperatorValidationFeedbackWithRepository(txRepository, input),
       );
@@ -1119,25 +1256,39 @@ export function createAutomationService(
       return repository.listReadinessEvents(scopeName);
     },
 
-    async getEvaluationMetrics(input?: { scopeName?: string; days?: number }): Promise<AutomationEvaluationMetrics> {
+    async getEvaluationMetrics(input?: {
+      scopeName?: string;
+      days?: number;
+    }): Promise<AutomationEvaluationMetrics> {
       const windowEnd = dependencies.now();
       const days = input?.days ?? 30;
-      const windowStart = new Date(windowEnd.getTime() - days * 24 * 60 * 60 * 1000);
-
-      const [offers, workflowItems, buyDecisions, drafts, feedbacks] = await Promise.all([
-        repository.listOffersInWindow(windowStart, windowEnd),
-        repository.listWorkflowItemsInWindow(windowStart, windowEnd),
-        repository.listBuyDecisionsInWindow(windowStart, windowEnd),
-        repository.listTradeDraftsInWindow(windowStart, windowEnd),
-        repository.listFeedbackInWindow(windowStart, windowEnd),
-      ]);
-
-      const extractionFeedbacks = feedbacks.filter((feedback) => feedback.feedbackType === 'EXTRACTION');
-      const supplierFeedbacks = feedbacks.filter((feedback) => feedback.feedbackType === 'SUPPLIER_RESOLUTION');
-      const signalFeedbacks = feedbacks.filter(
-        (feedback) => feedback.feedbackType === 'SIGNAL' || feedback.feedbackType === 'DEAL',
+      const windowStart = new Date(
+        windowEnd.getTime() - days * 24 * 60 * 60 * 1000,
       );
-      const draftFeedbacks = feedbacks.filter((feedback) => feedback.feedbackType === 'DRAFT');
+
+      const [offers, workflowItems, buyDecisions, drafts, feedbacks] =
+        await Promise.all([
+          repository.listOffersInWindow(windowStart, windowEnd),
+          repository.listWorkflowItemsInWindow(windowStart, windowEnd),
+          repository.listBuyDecisionsInWindow(windowStart, windowEnd),
+          repository.listTradeDraftsInWindow(windowStart, windowEnd),
+          repository.listFeedbackInWindow(windowStart, windowEnd),
+        ]);
+
+      const extractionFeedbacks = feedbacks.filter(
+        (feedback) => feedback.feedbackType === 'EXTRACTION',
+      );
+      const supplierFeedbacks = feedbacks.filter(
+        (feedback) => feedback.feedbackType === 'SUPPLIER_RESOLUTION',
+      );
+      const signalFeedbacks = feedbacks.filter(
+        (feedback) =>
+          feedback.feedbackType === 'SIGNAL' ||
+          feedback.feedbackType === 'DEAL',
+      );
+      const draftFeedbacks = feedbacks.filter(
+        (feedback) => feedback.feedbackType === 'DRAFT',
+      );
       const draftMetrics = computeDraftPassRate(drafts, feedbacks);
       const falsePositiveCount = feedbacks.filter((feedback) =>
         ['INCORRECT', 'NOT_USEFUL', 'POLICY_ISSUE'].includes(feedback.verdict),
@@ -1150,23 +1301,24 @@ export function createAutomationService(
 
         const confidence =
           feedback.feedbackType === 'SUPPLIER_RESOLUTION'
-            ? feedback.emailDerivedOffer?.entityResolutionConfidence ?? null
-            : feedback.emailDerivedOffer?.fieldConfidence ?? null;
+            ? (feedback.emailDerivedOffer?.entityResolutionConfidence ?? null)
+            : (feedback.emailDerivedOffer?.fieldConfidence ?? null);
 
         return confidenceBucket(confidence) === 'HIGH';
       }).length;
 
-      const confidenceBucketPerformance: AutomationEvaluationMetrics['confidenceBucketPerformance'] = {
-        HIGH: { sampleCount: 0, scorePct: null },
-        MEDIUM: { sampleCount: 0, scorePct: null },
-        LOW: { sampleCount: 0, scorePct: null },
-      };
+      const confidenceBucketPerformance: AutomationEvaluationMetrics['confidenceBucketPerformance'] =
+        {
+          HIGH: { sampleCount: 0, scorePct: null },
+          MEDIUM: { sampleCount: 0, scorePct: null },
+          LOW: { sampleCount: 0, scorePct: null },
+        };
       for (const bucket of ['HIGH', 'MEDIUM', 'LOW'] as const) {
         const bucketFeedbacks = feedbacks.filter((feedback) => {
           const confidence =
             feedback.feedbackType === 'SUPPLIER_RESOLUTION'
-              ? feedback.emailDerivedOffer?.entityResolutionConfidence ?? null
-              : feedback.emailDerivedOffer?.fieldConfidence ?? null;
+              ? (feedback.emailDerivedOffer?.entityResolutionConfidence ?? null)
+              : (feedback.emailDerivedOffer?.fieldConfidence ?? null);
           return confidenceBucket(confidence) === bucket;
         });
         confidenceBucketPerformance[bucket] = {
@@ -1192,20 +1344,26 @@ export function createAutomationService(
         workflowToBuyApprovalConversionPct:
           workflowItems.length > 0
             ? round(
-                buyDecisions.filter((decision) => decision.approvalStatus === 'APPROVED').length /
-                  workflowItems.length,
+                buyDecisions.filter(
+                  (decision) => decision.approvalStatus === 'APPROVED',
+                ).length / workflowItems.length,
                 6,
               )
             : null,
         dealDraftRejectionRatePct: draftMetrics.dealDraftRejectionRatePct,
         aiAssistedReviewBurdenRatePct:
           workflowItems.length > 0
-            ? round(workflowItems.filter((item) => item.aiAssisted).length / workflowItems.length, 6)
+            ? round(
+                workflowItems.filter((item) => item.aiAssisted).length /
+                  workflowItems.length,
+                6,
+              )
             : null,
         unresolvedSupplierRatePct:
           workflowItems.length > 0
             ? round(
-                workflowItems.filter((item) => item.hasUnresolvedSupplier).length / workflowItems.length,
+                workflowItems.filter((item) => item.hasUnresolvedSupplier)
+                  .length / workflowItems.length,
                 6,
               )
             : null,
@@ -1218,7 +1376,10 @@ export function createAutomationService(
       return metrics;
     },
 
-    async getReadinessOverview(input?: { scopeName?: string; days?: number }): Promise<AutomationReadinessOverview> {
+    async getReadinessOverview(input?: {
+      scopeName?: string;
+      days?: number;
+    }): Promise<AutomationReadinessOverview> {
       const scopeName = normalizeString(input?.scopeName) ?? DEFAULT_SCOPE_NAME;
       const [policy, evaluation] = await Promise.all([
         this.getReadinessPolicy(scopeName),
@@ -1231,33 +1392,42 @@ export function createAutomationService(
           policy,
           evaluation,
           modeAllowed:
-            policy.globalMode !== 'FULLY_BLOCKED' && policy.globalMode !== 'OBSERVE_ONLY',
+            policy.globalMode !== 'FULLY_BLOCKED' &&
+            policy.globalMode !== 'OBSERVE_ONLY',
           featureAllowed: policy.allowInternalSignals,
           requiresSignalRate: true,
           requiresDraftRate: false,
-          blockModeReason: 'policy mode is observe-only or fully blocked for internal signals',
+          blockModeReason:
+            'policy mode is observe-only or fully blocked for internal signals',
           minimumSampleSize,
         }),
         supplierDrafts: buildGateDecision({
           policy,
           evaluation,
           modeAllowed:
-            policy.globalMode === 'DRAFTS_ONLY' || policy.globalMode === 'ASSISTED_OUTREACH',
-          featureAllowed: policy.allowDraftGeneration && policy.allowSupplierDraftApprovalFlow,
+            policy.globalMode === 'DRAFTS_ONLY' ||
+            policy.globalMode === 'ASSISTED_OUTREACH',
+          featureAllowed:
+            policy.allowDraftGeneration &&
+            policy.allowSupplierDraftApprovalFlow,
           requiresSignalRate: true,
           requiresDraftRate: true,
-          blockModeReason: 'policy mode is below drafts-only for supplier outreach drafts',
+          blockModeReason:
+            'policy mode is below drafts-only for supplier outreach drafts',
           minimumSampleSize,
         }),
         buyerDrafts: buildGateDecision({
           policy,
           evaluation,
           modeAllowed:
-            policy.globalMode === 'DRAFTS_ONLY' || policy.globalMode === 'ASSISTED_OUTREACH',
-          featureAllowed: policy.allowDraftGeneration && policy.allowBuyerDraftApprovalFlow,
+            policy.globalMode === 'DRAFTS_ONLY' ||
+            policy.globalMode === 'ASSISTED_OUTREACH',
+          featureAllowed:
+            policy.allowDraftGeneration && policy.allowBuyerDraftApprovalFlow,
           requiresSignalRate: true,
           requiresDraftRate: true,
-          blockModeReason: 'policy mode is below drafts-only for buyer outreach drafts',
+          blockModeReason:
+            'policy mode is below drafts-only for buyer outreach drafts',
           minimumSampleSize,
         }),
         assistedOutreach: buildGateDecision({
@@ -1272,7 +1442,9 @@ export function createAutomationService(
           requiresDraftRate: true,
           blockModeReason: 'policy mode is below assisted outreach',
           additionalBlocks: policy.requireHumanApprovalBeforeSend
-            ? ['human approval remains required before any outreach progression']
+            ? [
+                'human approval remains required before any outreach progression',
+              ]
             : [],
           minimumSampleSize,
         }),
@@ -1283,7 +1455,8 @@ export function createAutomationService(
           featureAllowed: false,
           requiresSignalRate: true,
           requiresDraftRate: true,
-          blockModeReason: 'live autonomous sending remains blocked in this implementation pass',
+          blockModeReason:
+            'live autonomous sending remains blocked in this implementation pass',
           additionalBlocks: [
             policy.allowActualSend
               ? 'allowActualSend is force-blocked until a future implementation pass'
@@ -1311,15 +1484,22 @@ export function createAutomationService(
         return {};
       }
 
-      const feedbacks = await repository.listFeedbackByOfferIds(Array.from(new Set(emailDerivedOfferIds)));
+      const feedbacks = await repository.listFeedbackByOfferIds(
+        Array.from(new Set(emailDerivedOfferIds)),
+      );
       const result: Record<string, OfferFeedbackSummary> = {};
 
       for (const offerId of emailDerivedOfferIds) {
-        const offerFeedbacks = feedbacks.filter((feedback) => feedback.emailDerivedOfferId === offerId);
+        const offerFeedbacks = feedbacks.filter(
+          (feedback) => feedback.emailDerivedOfferId === offerId,
+        );
         result[offerId] = {
           hasFeedback: offerFeedbacks.length > 0,
           extractionVerdict: latestVerdict(offerFeedbacks, 'EXTRACTION'),
-          supplierResolutionVerdict: latestVerdict(offerFeedbacks, 'SUPPLIER_RESOLUTION'),
+          supplierResolutionVerdict: latestVerdict(
+            offerFeedbacks,
+            'SUPPLIER_RESOLUTION',
+          ),
           signalVerdict: latestVerdict(offerFeedbacks, 'SIGNAL'),
           feedbackCount: offerFeedbacks.length,
         };
@@ -1335,7 +1515,9 @@ export function createAutomationService(
         return {};
       }
 
-      const feedbacks = await repository.listFeedbackByTradeOpportunityIds(Array.from(new Set(tradeOpportunityIds)));
+      const feedbacks = await repository.listFeedbackByTradeOpportunityIds(
+        Array.from(new Set(tradeOpportunityIds)),
+      );
       const result: Record<string, TradeFeedbackSummary> = {};
 
       for (const tradeOpportunityId of tradeOpportunityIds) {
@@ -1347,10 +1529,13 @@ export function createAutomationService(
           dealVerdict: latestVerdict(tradeFeedbacks, 'DEAL'),
           latestDraftVerdict: latestVerdict(tradeFeedbacks, 'DRAFT'),
           draftPolicyIssueCount: tradeFeedbacks.filter(
-            (feedback) => feedback.feedbackType === 'DRAFT' && feedback.verdict === 'POLICY_ISSUE',
+            (feedback) =>
+              feedback.feedbackType === 'DRAFT' &&
+              feedback.verdict === 'POLICY_ISSUE',
           ).length,
           draftSafetyPassCount: tradeFeedbacks.filter(
-            (feedback) => feedback.feedbackType === 'DRAFT' && feedback.verdict === 'SAFE',
+            (feedback) =>
+              feedback.feedbackType === 'DRAFT' && feedback.verdict === 'SAFE',
           ).length,
           feedbackCount: tradeFeedbacks.length,
         };

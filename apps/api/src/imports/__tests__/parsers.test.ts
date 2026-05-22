@@ -5,12 +5,18 @@ import assert from 'node:assert/strict';
 import XLSX from 'xlsx';
 
 import { parseUploadedFile } from '../parsers';
-import { validateInventoryRows, validateSalesRows, validateSupplierPriceRows } from '../validators';
+import {
+  validateInventoryRows,
+  validateSalesRows,
+  validateSupplierPriceRows,
+} from '../validators';
 
 const fixturesDir = path.resolve(process.cwd(), 'fixtures/imports');
 
 test('parses supplier price list CSV fixture', async () => {
-  const buffer = await readFile(path.join(fixturesDir, 'supplier-price-list.csv'));
+  const buffer = await readFile(
+    path.join(fixturesDir, 'supplier-price-list.csv'),
+  );
   const parsed = parseUploadedFile({
     buffer,
     mimetype: 'text/csv',
@@ -25,10 +31,13 @@ test('parses supplier price list CSV fixture', async () => {
 });
 
 test('parses supplier price list XLSX fixture', async () => {
-  const buffer = await readFile(path.join(fixturesDir, 'supplier-price-list.xlsx'));
+  const buffer = await readFile(
+    path.join(fixturesDir, 'supplier-price-list.xlsx'),
+  );
   const parsed = parseUploadedFile({
     buffer,
-    mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    mimetype:
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     originalname: 'supplier-price-list.xlsx',
     size: buffer.byteLength,
   });
@@ -100,7 +109,8 @@ test('parses XLSX with multiple sheets where the useful sheet is not first', () 
   const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
   const parsed = parseUploadedFile({
     buffer,
-    mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    mimetype:
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     originalname: 'supplier-price-list.xlsx',
     size: buffer.byteLength,
   });
@@ -130,7 +140,10 @@ test('adds safe canonical aliases for Description / Unit Cost / MOQ / Stock', ()
 
   const validation = validateSupplierPriceRows(parsed.rows, 'USD');
   assert.equal(validation.validRows.length, 1);
-  assert.equal(validation.validRows[0]?.rawProductName, 'Paracetamol 500mg Tablets');
+  assert.equal(
+    validation.validRows[0]?.rawProductName,
+    'Paracetamol 500mg Tablets',
+  );
   assert.equal(validation.validRows[0]?.unitPrice.toString(), '2.35');
   assert.equal(validation.validRows[0]?.minimumOrderQuantity, 50);
 });

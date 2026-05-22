@@ -1,9 +1,24 @@
 import { env } from '../config/env';
 import { db } from '../lib/db';
 import { logger } from '../lib/logger';
-import { buildDailySummaryMessage, buildOpportunityMessage } from '../telegram/templates';
-import { getMicrosoftGraphAccessToken, isMicrosoftGraphConfigured } from './graph';
+import {
+  buildDailySummaryMessage,
+  buildOpportunityMessage,
+} from '../telegram/templates';
+import {
+  getMicrosoftGraphAccessToken,
+  isMicrosoftGraphConfigured,
+} from './graph';
 import { parseStructuredPriceText } from './parsing';
+
+type StructuredPriceTextDependencies = NonNullable<
+  Parameters<typeof parseStructuredPriceText>[1]
+>;
+
+export type EmailBodyParsingDependencies = Pick<
+  StructuredPriceTextDependencies,
+  'aiOfferParser'
+>;
 
 async function findOpportunityForEmail(opportunityId: string) {
   return db.opportunity.findUnique({
@@ -26,8 +41,8 @@ async function findOpportunityForEmail(opportunityId: string) {
 function isEmailConfigured(): boolean {
   return Boolean(
     env.emailAlertsEnabled &&
-      isMicrosoftGraphConfigured() &&
-      env.internalAlertEmailRecipients.length > 0,
+    isMicrosoftGraphConfigured() &&
+    env.internalAlertEmailRecipients.length > 0,
   );
 }
 
@@ -37,7 +52,9 @@ function createEmailConfigError(): Error {
   );
 }
 
-function buildOpportunityEmailSubject(opportunity: NonNullable<Awaited<ReturnType<typeof findOpportunityForEmail>>>) {
+function buildOpportunityEmailSubject(
+  opportunity: NonNullable<Awaited<ReturnType<typeof findOpportunityForEmail>>>,
+) {
   return `Ambe Signal: ${opportunity.type} - ${opportunity.product?.name ?? 'Unknown product'}`;
 }
 
@@ -54,35 +71,34 @@ async function sendEmail(subject: string, text: string) {
   const sendMailUrl = env.microsoftGraphRefreshToken
     ? 'https://graph.microsoft.com/v1.0/me/sendMail'
     : `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(env.microsoftGraphSenderMailbox)}/sendMail`;
-  const response = await fetch(
-    sendMailUrl,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        message: {
-          subject,
-          body: {
-            contentType: 'Text',
-            content: text,
-          },
-          toRecipients: env.internalAlertEmailRecipients.map((emailAddress) => ({
-            emailAddress: {
-              address: emailAddress,
-            },
-          })),
-        },
-        saveToSentItems: true,
-      }),
+  const response = await fetch(sendMailUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
     },
-  );
+    body: JSON.stringify({
+      message: {
+        subject,
+        body: {
+          contentType: 'Text',
+          content: text,
+        },
+        toRecipients: env.internalAlertEmailRecipients.map((emailAddress) => ({
+          emailAddress: {
+            address: emailAddress,
+          },
+        })),
+      },
+      saveToSentItems: true,
+    }),
+  });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Microsoft Graph sendMail failed with status ${response.status}. ${errorText}`);
+    throw new Error(
+      `Microsoft Graph sendMail failed with status ${response.status}. ${errorText}`,
+    );
   }
 
   const messageId = `${env.microsoftGraphSenderMailbox}:${new Date().toISOString()}`;
@@ -90,7 +106,9 @@ async function sendEmail(subject: string, text: string) {
   logger.info('Internal alert email sent', {
     messageId,
     senderMailbox: env.microsoftGraphSenderMailbox,
-    authMode: env.microsoftGraphRefreshToken ? 'delegated_refresh_token' : 'application',
+    authMode: env.microsoftGraphRefreshToken
+      ? 'delegated_refresh_token'
+      : 'application',
     recipientCount: env.internalAlertEmailRecipients.length,
     subject,
   });
@@ -103,8 +121,12 @@ async function sendEmail(subject: string, text: string) {
   };
 }
 
-export async function previewEmailBodyParsing(bodyText: string) {
+export async function previewEmailBodyParsing(
+  bodyText: string,
+  dependencies: EmailBodyParsingDependencies = {},
+) {
   return parseStructuredPriceText(bodyText, {
+    aiOfferParser: dependencies.aiOfferParser,
     source: 'EMAIL_BODY',
   });
 }
@@ -133,7 +155,10 @@ export async function sendOpportunityEmail(opportunityId: string) {
       ...(await sendEmail(preview.subject, preview.text)),
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to send opportunity email.';
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Failed to send opportunity email.';
 
     logger.error('Failed to send opportunity email', {
       error: message,
@@ -182,7 +207,10 @@ export async function sendDailySummaryEmail() {
       ...(await sendEmail(preview.subject, preview.text)),
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to send daily summary email.';
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Failed to send daily summary email.';
 
     logger.error('Failed to send daily summary email', {
       error: message,

@@ -1,8 +1,13 @@
-import { listLikelyDuplicateProductGroups, type ProductDuplicateGroup } from '../../../lib/productsApi';
+import {
+  listLikelyDuplicateProductGroups,
+  type ProductDuplicateGroup,
+} from '../../../lib/productsApi';
 
 export const dynamic = 'force-dynamic';
 
-function describeReasonCode(reasonCode: ProductDuplicateGroup['reasonCodes'][number]) {
+function describeReasonCode(
+  reasonCode: ProductDuplicateGroup['reasonCodes'][number],
+) {
   switch (reasonCode) {
     case 'STRUCTURED_BASE_NAME_MATCH':
       return 'Same base product name and matching structured attributes.';
@@ -31,8 +36,9 @@ export default async function ProductDuplicateTriagePage() {
           <p className="eyebrow">Product Catalog</p>
           <h2 className="title">Likely Duplicate Products</h2>
           <p className="copy">
-            Read-only catalog triage for products that look commercially related enough to review
-            before they weaken matching, supplier resolution, or signal quality.
+            Read-only catalog triage for products that look commercially related
+            enough to review before they weaken matching, supplier resolution,
+            or signal quality.
           </p>
         </section>
 
@@ -40,8 +46,8 @@ export default async function ProductDuplicateTriagePage() {
           <section className="panel duplicate-panel">
             <h3 className="section-title">No Likely Duplicates Found</h3>
             <p className="copy">
-              The current duplicate check did not find any product groups that are safe enough to
-              flag for review.
+              The current duplicate check did not find any product groups that
+              are safe enough to flag for review.
             </p>
           </section>
         ) : (
@@ -49,16 +55,22 @@ export default async function ProductDuplicateTriagePage() {
             <section className="panel duplicate-panel" key={group.groupKey}>
               <div className="duplicate-group-header">
                 <div>
-                  <h3 className="section-title">Duplicate group with {group.products.length} products</h3>
+                  <h3 className="section-title">
+                    Duplicate group with {group.products.length} products
+                  </h3>
                   <p className="copy">
                     {group.reasonCodes.map(describeReasonCode).join(' ')}
                   </p>
                 </div>
                 <div className="duplicate-group-badges">
-                  <span className={`pill pill-${group.confidence === 'HIGH' ? 'high' : 'neutral'}`}>
+                  <span
+                    className={`pill pill-${group.confidence === 'HIGH' ? 'high' : 'neutral'}`}
+                  >
                     {formatConfidence(group.confidence)}
                   </span>
-                  <span className="pill pill-neutral">{group.products.length} records</span>
+                  <span className="pill pill-neutral">
+                    {group.products.length} records
+                  </span>
                 </div>
               </div>
 
@@ -67,10 +79,16 @@ export default async function ProductDuplicateTriagePage() {
                   <article className="duplicate-product-card" key={product.id}>
                     <div className="duplicate-product-top">
                       <div>
-                        <p className="duplicate-product-title">{product.name}</p>
-                        <p className="duplicate-product-meta">Product ID: {product.id}</p>
+                        <p className="duplicate-product-title">
+                          {product.name}
+                        </p>
+                        <p className="duplicate-product-meta">
+                          Product ID: {product.id}
+                        </p>
                       </div>
-                      <span className="pill pill-neutral">{product.aliasCount} aliases</span>
+                      <span className="pill pill-neutral">
+                        {product.aliasCount} aliases
+                      </span>
                     </div>
 
                     <dl className="duplicate-product-details">

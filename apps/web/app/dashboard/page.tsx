@@ -9,7 +9,10 @@ import {
 } from '../../lib/opportunitiesApi';
 import { listLikelyDuplicateProductGroups } from '../../lib/productsApi';
 import { listReviewWorkflowItems } from '../../lib/reviewApi';
-import { submitOpportunityRefreshAction, submitOpportunityTriageAction } from './actions';
+import {
+  submitOpportunityRefreshAction,
+  submitOpportunityTriageAction,
+} from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,12 +62,17 @@ const OPEN_OPPORTUNITY_FILTER_OPTIONS: Array<{
   { label: 'PRICE_ALERT', value: 'PRICE_ALERT' },
 ];
 
-function formatPrice(value: number | null | undefined, currencyCode?: string | null) {
+function formatPrice(
+  value: number | null | undefined,
+  currencyCode?: string | null,
+) {
   if (value === null || value === undefined) {
     return null;
   }
 
-  return currencyCode?.trim() ? `${currencyCode.trim().toUpperCase()} ${value.toFixed(2)}` : value.toFixed(2);
+  return currencyCode?.trim()
+    ? `${currencyCode.trim().toUpperCase()} ${value.toFixed(2)}`
+    : value.toFixed(2);
 }
 
 function formatPct(value: number | null | undefined) {
@@ -75,9 +83,13 @@ function formatPct(value: number | null | undefined) {
   return `${Math.round(value * 100)}%`;
 }
 
-function countPendingReviewEmails(reviewItems: Awaited<ReturnType<typeof listReviewWorkflowItems>>) {
+function countPendingReviewEmails(
+  reviewItems: Awaited<ReturnType<typeof listReviewWorkflowItems>>,
+) {
   return new Set(
-    reviewItems.map((item) => item.inboundEmailId ?? item.inboundEmail?.id ?? item.id),
+    reviewItems.map(
+      (item) => item.inboundEmailId ?? item.inboundEmail?.id ?? item.id,
+    ),
   ).size;
 }
 
@@ -132,7 +144,9 @@ function buildOperationalSnapshotMetrics(input: {
   hasRecentTriagedSection: boolean;
 }): OperationalSnapshotMetric[] {
   const recentTriagedCount =
-    input.recentReviewedCount + input.recentActionedCount + input.recentDismissedCount;
+    input.recentReviewedCount +
+    input.recentActionedCount +
+    input.recentDismissedCount;
 
   return [
     {
@@ -153,12 +167,17 @@ function buildOperationalSnapshotMetrics(input: {
       label: 'Recent triage activity',
       value: String(recentTriagedCount),
       note: `${input.recentReviewedCount} reviewed, ${input.recentActionedCount} actioned, ${input.recentDismissedCount} dismissed in the recent activity sample.`,
-      actionHref: input.hasRecentTriagedSection ? '#recently-triaged' : undefined,
+      actionHref: input.hasRecentTriagedSection
+        ? '#recently-triaged'
+        : undefined,
       actionLabel: input.hasRecentTriagedSection ? 'View' : undefined,
     },
     {
       label: 'Duplicate product groups',
-      value: input.duplicateGroupCount === null ? 'n/a' : String(input.duplicateGroupCount),
+      value:
+        input.duplicateGroupCount === null
+          ? 'n/a'
+          : String(input.duplicateGroupCount),
       note:
         input.duplicateGroupCount === null
           ? 'Duplicate catalog cleanup count is temporarily unavailable.'
@@ -187,7 +206,8 @@ function summarizeReadiness(input: {
     };
   }
 
-  const firstBlockedReason = input.blockedReasons[0] ?? 'More operator evidence is needed.';
+  const firstBlockedReason =
+    input.blockedReasons[0] ?? 'More operator evidence is needed.';
   return {
     title: 'Trust boundaries still need operator evidence.',
     detail: `${firstBlockedReason} ${unresolvedSupplierText}`,
@@ -199,12 +219,19 @@ function buildOpportunitySignals(item: OpportunityListItem): string[] {
   const commercialContext = item.metadata?.commercialContext;
   const currencyCode = commercialContext?.supplierCurrencyCode ?? null;
   const latestSupplierBuyPrice =
-    commercialContext?.latestSupplierBuyPrice ?? metrics?.latestSupplierBuyPrice ?? null;
-  const averageSalePrice = commercialContext?.averageSalePrice ?? metrics?.averageSalePrice ?? null;
+    commercialContext?.latestSupplierBuyPrice ??
+    metrics?.latestSupplierBuyPrice ??
+    null;
+  const averageSalePrice =
+    commercialContext?.averageSalePrice ?? metrics?.averageSalePrice ?? null;
   const estimatedMarginPct =
-    commercialContext?.estimatedMarginPct ?? metrics?.estimatedMarginPct ?? null;
+    commercialContext?.estimatedMarginPct ??
+    metrics?.estimatedMarginPct ??
+    null;
   const priceDeltaVsMarketPct =
-    commercialContext?.priceDeltaVsMarketPct ?? metrics?.priceDeltaVsMarketPct ?? null;
+    commercialContext?.priceDeltaVsMarketPct ??
+    metrics?.priceDeltaVsMarketPct ??
+    null;
   const simulatedMarketPrice = commercialContext?.simulatedMarketPrice ?? null;
   const recentSalesUnits30d = metrics?.recentSalesUnits30d ?? null;
   const currentStockQty = metrics?.currentStockQty ?? null;
@@ -219,33 +246,49 @@ function buildOpportunitySignals(item: OpportunityListItem): string[] {
     averageSalePrice !== null
       ? `Average sale price ${formatPrice(averageSalePrice, currencyCode)}`
       : null,
-    estimatedMarginPct !== null ? `Estimated margin ${formatPct(estimatedMarginPct)}` : null,
-    recentSalesUnits30d !== null ? `Recent sales ${recentSalesUnits30d} units in 30d` : null,
+    estimatedMarginPct !== null
+      ? `Estimated margin ${formatPct(estimatedMarginPct)}`
+      : null,
+    recentSalesUnits30d !== null
+      ? `Recent sales ${recentSalesUnits30d} units in 30d`
+      : null,
     currentStockQty !== null ? `Current stock ${currentStockQty} units` : null,
   ];
 
   return signals.filter((value): value is string => Boolean(value)).slice(0, 4);
 }
 
-function bucketOpportunities(items: OpportunityListItem[]): OpportunityBucket[] {
+function bucketOpportunities(
+  items: OpportunityListItem[],
+): OpportunityBucket[] {
   return [
     {
       key: 'buy',
       title: 'Buying signals',
-      description: 'Products that look commercially worth checking now based on current pricing and market position.',
-      items: items.filter((item) => item.type === 'BUY' || item.type === 'PRICE_ALERT'),
+      description:
+        'Products that look commercially worth checking now based on current pricing and market position.',
+      items: items.filter(
+        (item) => item.type === 'BUY' || item.type === 'PRICE_ALERT',
+      ),
     },
     {
       key: 'push',
       title: 'Products to push',
-      description: 'Items where demand or margin suggests it may be worth following up quickly.',
+      description:
+        'Items where demand or margin suggests it may be worth following up quickly.',
       items: items.filter((item) => item.type === 'PUSH'),
     },
     {
       key: 'watch',
       title: 'Watchlist',
-      description: 'Secondary signals to keep in view once the main buying and selling work is covered.',
-      items: items.filter((item) => item.type !== 'BUY' && item.type !== 'PRICE_ALERT' && item.type !== 'PUSH'),
+      description:
+        'Secondary signals to keep in view once the main buying and selling work is covered.',
+      items: items.filter(
+        (item) =>
+          item.type !== 'BUY' &&
+          item.type !== 'PRICE_ALERT' &&
+          item.type !== 'PUSH',
+      ),
     },
   ];
 }
@@ -284,7 +327,9 @@ function formatDateTime(value: string | null | undefined) {
   }).format(parsed);
 }
 
-function normalizeOpenOpportunityFilterType(value: string | undefined): OpportunityListType | null {
+function normalizeOpenOpportunityFilterType(
+  value: string | undefined,
+): OpportunityListType | null {
   switch (value) {
     case 'BUY':
     case 'PUSH':
@@ -295,12 +340,15 @@ function normalizeOpenOpportunityFilterType(value: string | undefined): Opportun
   }
 }
 
-function getOpportunityFreshnessSummary(items: OpportunityListItem[]): OpportunityFreshnessSummary {
+function getOpportunityFreshnessSummary(
+  items: OpportunityListItem[],
+): OpportunityFreshnessSummary {
   if (items.length === 0) {
     return {
       label: 'No open signals',
       pillClassName: 'pill-neutral',
-      detail: 'No open opportunities are stored right now, so freshness cannot be assessed yet.',
+      detail:
+        'No open opportunities are stored right now, so freshness cannot be assessed yet.',
     };
   }
 
@@ -312,7 +360,8 @@ function getOpportunityFreshnessSummary(items: OpportunityListItem[]): Opportuni
     return {
       label: 'Unknown freshness',
       pillClassName: 'pill-neutral',
-      detail: 'Open opportunities exist, but no valid refresh timestamp is available.',
+      detail:
+        'Open opportunities exist, but no valid refresh timestamp is available.',
     };
   }
 
@@ -322,8 +371,10 @@ function getOpportunityFreshnessSummary(items: OpportunityListItem[]): Opportuni
   const oldest = validUpdatedAt.reduce((earliest, current) =>
     current.parsed.getTime() < earliest.parsed.getTime() ? current : earliest,
   );
-  const newestAgeHours = (Date.now() - newest.parsed.getTime()) / (1000 * 60 * 60);
-  const oldestAgeHours = (Date.now() - oldest.parsed.getTime()) / (1000 * 60 * 60);
+  const newestAgeHours =
+    (Date.now() - newest.parsed.getTime()) / (1000 * 60 * 60);
+  const oldestAgeHours =
+    (Date.now() - oldest.parsed.getTime()) / (1000 * 60 * 60);
 
   let label = 'Fresh';
   let pillClassName = 'pill-high';
@@ -350,18 +401,32 @@ function getOpportunityFreshnessSummary(items: OpportunityListItem[]): Opportuni
   };
 }
 
-export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+export default async function DashboardPage({
+  searchParams,
+}: DashboardPageProps) {
   const query = searchParams ? await searchParams : undefined;
-  const selectedOpenOpportunityType = normalizeOpenOpportunityFilterType(query?.openType);
+  const selectedOpenOpportunityType = normalizeOpenOpportunityFilterType(
+    query?.openType,
+  );
 
   try {
     const [opportunities, filteredOpenOpportunities] = await Promise.all([
       listOpenOpportunities(),
       selectedOpenOpportunityType
-        ? listOpportunities({ status: 'OPEN', type: selectedOpenOpportunityType })
+        ? listOpportunities({
+            status: 'OPEN',
+            type: selectedOpenOpportunityType,
+          })
         : listOpenOpportunities(),
     ]);
-    const [reviewItemsResult, readinessResult, reviewedResult, actionedResult, dismissedResult, duplicateGroupsResult] = await Promise.allSettled([
+    const [
+      reviewItemsResult,
+      readinessResult,
+      reviewedResult,
+      actionedResult,
+      dismissedResult,
+      duplicateGroupsResult,
+    ] = await Promise.allSettled([
       listReviewWorkflowItems(),
       getAutomationReadinessOverview(),
       listOpportunities({ status: 'REVIEWED', sortBy: 'updatedAt', take: 4 }),
@@ -369,13 +434,20 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       listOpportunities({ status: 'DISMISSED', sortBy: 'updatedAt', take: 4 }),
       listLikelyDuplicateProductGroups(),
     ]);
-    const reviewItems = reviewItemsResult.status === 'fulfilled' ? reviewItemsResult.value : [];
-    const reviewedItems = reviewedResult.status === 'fulfilled' ? reviewedResult.value : [];
-    const actionedItems = actionedResult.status === 'fulfilled' ? actionedResult.value : [];
-    const dismissedItems = dismissedResult.status === 'fulfilled' ? dismissedResult.value : [];
+    const reviewItems =
+      reviewItemsResult.status === 'fulfilled' ? reviewItemsResult.value : [];
+    const reviewedItems =
+      reviewedResult.status === 'fulfilled' ? reviewedResult.value : [];
+    const actionedItems =
+      actionedResult.status === 'fulfilled' ? actionedResult.value : [];
+    const dismissedItems =
+      dismissedResult.status === 'fulfilled' ? dismissedResult.value : [];
     const duplicateGroups =
-      duplicateGroupsResult.status === 'fulfilled' ? duplicateGroupsResult.value : null;
-    const readiness = readinessResult.status === 'fulfilled' ? readinessResult.value : null;
+      duplicateGroupsResult.status === 'fulfilled'
+        ? duplicateGroupsResult.value
+        : null;
+    const readiness =
+      readinessResult.status === 'fulfilled' ? readinessResult.value : null;
     const recentlyTriaged = buildRecentlyTriagedOpportunities([
       ...reviewedItems,
       ...actionedItems,
@@ -400,9 +472,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           openSignalCount: opportunities.length,
           pendingReviewEmailCount: countPendingReviewEmails(reviewItems),
           stagedOfferCount: readiness.evaluation.totalStagedOffers,
-          reviewToBuyConversionPct: readiness.evaluation.workflowToBuyApprovalConversionPct,
+          reviewToBuyConversionPct:
+            readiness.evaluation.workflowToBuyApprovalConversionPct,
           signalAcceptancePct: readiness.evaluation.signalAcceptancePct,
-          supplierResolutionPrecisionPct: readiness.evaluation.supplierResolutionPrecisionPct,
+          supplierResolutionPrecisionPct:
+            readiness.evaluation.supplierResolutionPrecisionPct,
         })
       : [];
     const readinessSummary = readiness
@@ -410,13 +484,15 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           eligible: readiness.decisions.internalSignals.eligible,
           recommendedAction: readiness.recommendedAction,
           blockedReasons: readiness.decisions.internalSignals.blockedReasons,
-          unresolvedSupplierRatePct: readiness.evaluation.unresolvedSupplierRatePct,
+          unresolvedSupplierRatePct:
+            readiness.evaluation.unresolvedSupplierRatePct,
         })
       : null;
     const opportunityFreshness = getOpportunityFreshnessSummary(opportunities);
     const selectedOpenOpportunityFilterLabel =
-      OPEN_OPPORTUNITY_FILTER_OPTIONS.find((option) => option.value === selectedOpenOpportunityType)?.label ??
-      'All';
+      OPEN_OPPORTUNITY_FILTER_OPTIONS.find(
+        (option) => option.value === selectedOpenOpportunityType,
+      )?.label ?? 'All';
 
     return (
       <section className="dashboard-layout">
@@ -426,14 +502,19 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               <p className="eyebrow">Ambe Intelligence</p>
               <h2 className="title">Your trading desk, simplified</h2>
               <p className="copy">
-                Review supplier offers, check opportunities, and keep buying decisions clear.
+                Review supplier offers, check opportunities, and keep buying
+                decisions clear.
               </p>
             </div>
             <div className="dashboard-hero-status">
               <p className="dashboard-summary-label">Signal freshness</p>
               <div className="dashboard-hero-pill-row">
-                <span className={`pill ${opportunityFreshness.pillClassName}`}>{opportunityFreshness.label}</span>
-                <p className="dashboard-summary-note">{opportunityFreshness.detail}</p>
+                <span className={`pill ${opportunityFreshness.pillClassName}`}>
+                  {opportunityFreshness.label}
+                </span>
+                <p className="dashboard-summary-note">
+                  {opportunityFreshness.detail}
+                </p>
               </div>
             </div>
           </div>
@@ -444,7 +525,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           ) : null}
           {query?.refreshed ? (
             <p className="dashboard-inline-message dashboard-inline-message-success">
-              Opportunities refreshed. {query.refreshed} signals were created or updated.
+              Opportunities refreshed. {query.refreshed} signals were created or
+              updated.
             </p>
           ) : null}
           {query?.error ? (
@@ -472,7 +554,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 Check new prices before they enter the system.
               </p>
             </Link>
-            <Link className="dashboard-feature-card" href="/dashboard/opportunities">
+            <Link
+              className="dashboard-feature-card"
+              href="/dashboard/opportunities"
+            >
               <p className="dashboard-feature-title">Buying signals</p>
               <p className="dashboard-feature-copy">
                 See which products may be worth acting on.
@@ -493,15 +578,20 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               <p className="eyebrow">Business Overview</p>
               <h3 className="section-title">Today at a glance</h3>
               <p className="copy">
-                A quick view of the work waiting for the team and the records that may need cleanup.
+                A quick view of the work waiting for the team and the records
+                that may need cleanup.
               </p>
             </div>
           </div>
           <div className="dashboard-filter-row">
-            <span className="dashboard-filter-label">Focus open opportunities:</span>
+            <span className="dashboard-filter-label">
+              Focus open opportunities:
+            </span>
             {OPEN_OPPORTUNITY_FILTER_OPTIONS.map((option) => {
               const isActive = option.value === selectedOpenOpportunityType;
-              const href = option.value ? `/dashboard?openType=${option.value}#open-opportunities` : '/dashboard#open-opportunities';
+              const href = option.value
+                ? `/dashboard?openType=${option.value}#open-opportunities`
+                : '/dashboard#open-opportunities';
 
               return (
                 <Link
@@ -516,7 +606,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
           {selectedOpenOpportunityType ? (
             <p className="dashboard-summary-note">
-              Showing only {selectedOpenOpportunityFilterLabel.replace('_', ' ')} opportunities.
+              Showing only{' '}
+              {selectedOpenOpportunityFilterLabel.replace('_', ' ')}{' '}
+              opportunities.
             </p>
           ) : null}
           <div className="dashboard-summary-grid">
@@ -541,7 +633,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               <p className="eyebrow">Operational Snapshot</p>
               <h3 className="section-title">What the system is doing</h3>
               <p className="copy">
-                A compact view of whether work is being created, reviewed, and kept clean enough to trust.
+                A compact view of whether work is being created, reviewed, and
+                kept clean enough to trust.
               </p>
             </div>
             <Link className="button" href="/dashboard/products">
@@ -549,20 +642,23 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             </Link>
           </div>
 
-            <div className="dashboard-summary-grid">
-              {operationalSnapshotMetrics.map((metric) => (
-                <article className="dashboard-summary-card" key={metric.label}>
-                  <p className="dashboard-summary-value">{metric.value}</p>
-                  <p className="dashboard-summary-label">{metric.label}</p>
-                  <p className="dashboard-summary-note">{metric.note}</p>
-                  {metric.actionHref && metric.actionLabel ? (
-                    <Link className="dashboard-metric-link" href={metric.actionHref}>
-                      {metric.actionLabel}
-                    </Link>
-                  ) : null}
-                </article>
-              ))}
-            </div>
+          <div className="dashboard-summary-grid">
+            {operationalSnapshotMetrics.map((metric) => (
+              <article className="dashboard-summary-card" key={metric.label}>
+                <p className="dashboard-summary-value">{metric.value}</p>
+                <p className="dashboard-summary-label">{metric.label}</p>
+                <p className="dashboard-summary-note">{metric.note}</p>
+                {metric.actionHref && metric.actionLabel ? (
+                  <Link
+                    className="dashboard-metric-link"
+                    href={metric.actionHref}
+                  >
+                    {metric.actionLabel}
+                  </Link>
+                ) : null}
+              </article>
+            ))}
+          </div>
         </section>
 
         <section className="panel dashboard-panel">
@@ -571,11 +667,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               <p className="eyebrow">Pilot Readiness</p>
               <h3 className="section-title">Value and trust at a glance</h3>
               <p className="copy">
-                A compact readout of signal volume, operator workload, and trust signals from the last 30 days.
+                A compact readout of signal volume, operator workload, and trust
+                signals from the last 30 days.
               </p>
             </div>
             <span className="pill pill-neutral">
-              {readiness ? readiness.policy.globalMode.replaceAll('_', ' ') : 'Snapshot unavailable'}
+              {readiness
+                ? readiness.policy.globalMode.replaceAll('_', ' ')
+                : 'Snapshot unavailable'}
             </span>
           </div>
 
@@ -583,7 +682,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <>
               <div className="dashboard-proof-grid">
                 {pilotSnapshotMetrics.map((metric) => (
-                  <article className="dashboard-summary-card" key={metric.label}>
+                  <article
+                    className="dashboard-summary-card"
+                    key={metric.label}
+                  >
                     <p className="dashboard-summary-value">{metric.value}</p>
                     <p className="dashboard-summary-label">{metric.label}</p>
                     <p className="dashboard-summary-note">{metric.note}</p>
@@ -593,14 +695,19 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
               {readinessSummary ? (
                 <div className="dashboard-proof-callout">
-                  <p className="dashboard-proof-title">{readinessSummary.title}</p>
-                  <p className="dashboard-proof-copy">{readinessSummary.detail}</p>
+                  <p className="dashboard-proof-title">
+                    {readinessSummary.title}
+                  </p>
+                  <p className="dashboard-proof-copy">
+                    {readinessSummary.detail}
+                  </p>
                 </div>
               ) : null}
             </>
           ) : (
             <p className="copy">
-              Pilot trust metrics are temporarily unavailable. Your open opportunities are still shown below.
+              Pilot trust metrics are temporarily unavailable. Your open
+              opportunities are still shown below.
             </p>
           )}
         </section>
@@ -609,17 +716,22 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <section className="panel dashboard-panel" id="open-opportunities">
             <h3 className="section-title">No open opportunities</h3>
             <p className="copy">
-              Everything is up to date. New opportunities will appear here when fresh supplier, sales,
-              or pricing data creates a signal worth reviewing.
+              Everything is up to date. New opportunities will appear here when
+              fresh supplier, sales, or pricing data creates a signal worth
+              reviewing.
             </p>
           </section>
         ) : filteredOpenOpportunities.length === 0 ? (
           <section className="panel dashboard-panel" id="open-opportunities">
             <h3 className="section-title">No matching opportunities</h3>
             <p className="copy">
-              There are no open {selectedOpenOpportunityFilterLabel.replace('_', ' ')} opportunities right now.
-              {' '}
-              <Link href="/dashboard#open-opportunities">Show all opportunities</Link>.
+              There are no open{' '}
+              {selectedOpenOpportunityFilterLabel.replace('_', ' ')}{' '}
+              opportunities right now.{' '}
+              <Link href="/dashboard#open-opportunities">
+                Show all opportunities
+              </Link>
+              .
             </p>
           </section>
         ) : (
@@ -636,31 +748,49 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                     <h3 className="section-title">{bucket.title}</h3>
                     <p className="copy">{bucket.description}</p>
                   </div>
-                  <span className="pill pill-neutral">{bucket.items.length} open</span>
+                  <span className="pill pill-neutral">
+                    {bucket.items.length} open
+                  </span>
                 </div>
 
                 <div className="dashboard-opportunity-list">
                   {bucket.items.slice(0, 5).map((item) => (
-                    <article className="dashboard-opportunity-card" key={item.id}>
+                    <article
+                      className="dashboard-opportunity-card"
+                      key={item.id}
+                    >
                       <div className="dashboard-opportunity-top">
                         <div>
-                          <p className="dashboard-opportunity-title">{item.title}</p>
+                          <p className="dashboard-opportunity-title">
+                            {item.title}
+                          </p>
                           <p className="dashboard-opportunity-meta">
                             {item.product?.name ?? 'Product not found'}
-                            {item.supplier?.name ? ` | ${item.supplier.name}` : ''}
+                            {item.supplier?.name
+                              ? ` | ${item.supplier.name}`
+                              : ''}
                           </p>
                         </div>
                         <div className="dashboard-opportunity-badges">
-                          <span className="pill pill-neutral">{item.type.replace('_', ' ')}</span>
-                          <span className="pill pill-neutral">{item.status}</span>
-                          <span className="pill pill-high">Score {item.score}</span>
+                          <span className="pill pill-neutral">
+                            {item.type.replace('_', ' ')}
+                          </span>
+                          <span className="pill pill-neutral">
+                            {item.status}
+                          </span>
+                          <span className="pill pill-high">
+                            Score {item.score}
+                          </span>
                         </div>
                       </div>
 
-                      <p className="dashboard-opportunity-copy">{item.description}</p>
+                      <p className="dashboard-opportunity-copy">
+                        {item.description}
+                      </p>
 
                       <p className="dashboard-triage-meta">
-                        Signal refreshed {formatDateTime(item.updatedAt) ?? 'recently'}
+                        Signal refreshed{' '}
+                        {formatDateTime(item.updatedAt) ?? 'recently'}
                       </p>
 
                       <ul className="dashboard-signal-list">
@@ -669,15 +799,37 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                         ))}
                       </ul>
 
-                      <form action={submitOpportunityTriageAction} className="dashboard-opportunity-actions">
-                        <input name="opportunityId" type="hidden" value={item.id} />
-                        <button className="button" name="status" type="submit" value="REVIEWED">
+                      <form
+                        action={submitOpportunityTriageAction}
+                        className="dashboard-opportunity-actions"
+                      >
+                        <input
+                          name="opportunityId"
+                          type="hidden"
+                          value={item.id}
+                        />
+                        <button
+                          className="button"
+                          name="status"
+                          type="submit"
+                          value="REVIEWED"
+                        >
                           Mark reviewed
                         </button>
-                        <button className="button button-primary" name="status" type="submit" value="ACTIONED">
+                        <button
+                          className="button button-primary"
+                          name="status"
+                          type="submit"
+                          value="ACTIONED"
+                        >
                           Mark actioned
                         </button>
-                        <button className="button" name="status" type="submit" value="DISMISSED">
+                        <button
+                          className="button"
+                          name="status"
+                          type="submit"
+                          value="DISMISSED"
+                        >
                           Dismiss
                         </button>
                       </form>
@@ -692,12 +844,17 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <section className="panel dashboard-panel" id="recently-triaged">
             <div className="dashboard-section-header">
               <div>
-                <h3 className="section-title">Recently updated opportunities</h3>
+                <h3 className="section-title">
+                  Recently updated opportunities
+                </h3>
                 <p className="copy">
-                  A short record of what was recently reviewed, actioned, or dismissed.
+                  A short record of what was recently reviewed, actioned, or
+                  dismissed.
                 </p>
               </div>
-              <span className="pill pill-neutral">{recentlyTriaged.length} recent</span>
+              <span className="pill pill-neutral">
+                {recentlyTriaged.length} recent
+              </span>
             </div>
 
             <div className="dashboard-opportunity-list">
@@ -705,22 +862,30 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 <article className="dashboard-opportunity-card" key={item.id}>
                   <div className="dashboard-opportunity-top">
                     <div>
-                      <p className="dashboard-opportunity-title">{item.title}</p>
+                      <p className="dashboard-opportunity-title">
+                        {item.title}
+                      </p>
                       <p className="dashboard-opportunity-meta">
                         {item.product?.name ?? 'Product not found'}
                         {item.supplier?.name ? ` | ${item.supplier.name}` : ''}
                       </p>
                     </div>
                     <div className="dashboard-opportunity-badges">
-                      <span className="pill pill-neutral">{item.type.replace('_', ' ')}</span>
+                      <span className="pill pill-neutral">
+                        {item.type.replace('_', ' ')}
+                      </span>
                       <span className="pill pill-neutral">{item.status}</span>
                     </div>
                   </div>
 
-                  <p className="dashboard-opportunity-copy">{item.description}</p>
+                  <p className="dashboard-opportunity-copy">
+                    {item.description}
+                  </p>
 
                   <p className="dashboard-triage-meta">
-                    Triaged {formatDateTime(getOpportunityTriageTimestamp(item)) ?? 'recently'}
+                    Triaged{' '}
+                    {formatDateTime(getOpportunityTriageTimestamp(item)) ??
+                      'recently'}
                   </p>
                 </article>
               ))}
@@ -735,7 +900,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <p className="eyebrow">Ambe Intelligence</p>
         <h2 className="title">Dashboard unavailable</h2>
         <p className="copy">
-          {error instanceof Error ? error.message : 'Failed to load open opportunities.'}
+          {error instanceof Error
+            ? error.message
+            : 'Failed to load open opportunities.'}
         </p>
         <div className="actions">
           <Link className="button" href="/dashboard/review">

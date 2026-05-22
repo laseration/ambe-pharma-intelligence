@@ -1,4 +1,10 @@
-import type { ErrorRequestHandler, NextFunction, Request, RequestHandler, Response } from 'express';
+import type {
+  ErrorRequestHandler,
+  NextFunction,
+  Request,
+  RequestHandler,
+  Response,
+} from 'express';
 import multer from 'multer';
 import { ZodError } from 'zod';
 
@@ -81,7 +87,11 @@ function normalizeError(error: unknown): AppError {
 
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
-      return new AppError('Uploaded file is too large.', 413, 'PAYLOAD_TOO_LARGE');
+      return new AppError(
+        'Uploaded file is too large.',
+        413,
+        'PAYLOAD_TOO_LARGE',
+      );
     }
 
     return new BadRequestError(error.message);
@@ -101,14 +111,21 @@ function normalizeError(error: unknown): AppError {
 }
 
 export function asyncHandler(
-  handler: (request: Request, response: Response, next: NextFunction) => Promise<unknown> | unknown,
+  handler: (
+    request: Request,
+    response: Response,
+    next: NextFunction,
+  ) => Promise<unknown> | unknown,
 ): RequestHandler {
   return (request, response, next) => {
     Promise.resolve(handler(request, response, next)).catch(next);
   };
 }
 
-export function requireFound<T>(value: T | null | undefined, message: string): T {
+export function requireFound<T>(
+  value: T | null | undefined,
+  message: string,
+): T {
   if (value === null || value === undefined) {
     throw new NotFoundError(message);
   }
@@ -116,7 +133,12 @@ export function requireFound<T>(value: T | null | undefined, message: string): T
   return value;
 }
 
-export const errorHandler: ErrorRequestHandler = (error, _request, response, _next) => {
+export const errorHandler: ErrorRequestHandler = (
+  error,
+  _request,
+  response,
+  _next,
+) => {
   const normalized = normalizeError(error);
   const payload: Record<string, unknown> = {
     error: normalized.message,

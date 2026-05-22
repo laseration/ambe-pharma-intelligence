@@ -14,7 +14,10 @@ test('local account-opening test message is fake and contains no bank details', 
 
   assert.equal(message.from, LOCAL_ACCOUNT_OPENING_TEST_SENDER);
   assert.equal(message.subject, 'Account opening form for AMBE LTD test');
-  assert.match(message.bodyText ?? '', /Please complete this account opening form/);
+  assert.match(
+    message.bodyText ?? '',
+    /Please complete this account opening form/,
+  );
   assert.match(message.bodyText ?? '', /No real bank details are included/);
   assert.doesNotMatch(message.bodyText ?? '', /\b\d{8}\b/);
   assert.doesNotMatch(message.bodyText ?? '', /\b\d{2}-\d{2}-\d{2}\b/);
@@ -36,7 +39,8 @@ test('script creates a pending account-opening case without buy or purchase work
             processingStatus: 'REVIEW_REQUIRED',
             inferredImportType: null,
             confidence: 'HIGH',
-            reason: 'Account opening form detected - review required before completion/signing.',
+            reason:
+              'Account opening form detected - review required before completion/signing.',
             fileType: 'UNKNOWN',
             attachment: {
               fileName: null,
@@ -64,18 +68,18 @@ test('script creates a pending account-opening case without buy or purchase work
       return {
         id: 'account-case-test',
         status: 'PENDING_REVIEW',
-        signingStatement: 'Aman Dhillon can sign this account-opening form by default.',
+        signingStatement:
+          'Aman Dhillon can sign this account-opening form by default.',
       };
     },
     countBuyDecisions: async () => 4,
     countOfferWorkflowItems: async () => 7,
-    listReviewQueueItems: async () =>
-      [
-        {
-          id: 'account-opening-account-case-test',
-          sourceType: 'ACCOUNT_OPENING',
-        } as ReviewQueueItem,
-      ],
+    listReviewQueueItems: async () => [
+      {
+        id: 'account-opening-account-case-test',
+        sourceType: 'ACCOUNT_OPENING',
+      } as ReviewQueueItem,
+    ],
   });
 
   assert.equal(ingestedMessages[0]?.from, LOCAL_ACCOUNT_OPENING_TEST_SENDER);

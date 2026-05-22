@@ -1,10 +1,16 @@
 import { createApp } from './app';
 import { env } from './config/env';
-import { createEmailInboundPollingWorker, isEmailInboundPollingActive } from './email/polling';
+import {
+  createEmailInboundPollingWorker,
+  isEmailInboundPollingActive,
+} from './email/polling';
 import { db } from './lib/db';
 import { logger } from './lib/logger';
 import { verifyDatabaseReadiness } from './startup/databaseHealth';
-import { createTelegramPollingWorker, isTelegramPollingActive } from './telegram/polling';
+import {
+  createTelegramPollingWorker,
+  isTelegramPollingActive,
+} from './telegram/polling';
 
 const app = createApp();
 
@@ -41,7 +47,9 @@ async function start() {
     });
 
     if (env.telegramPollingEnabled && !env.telegramBotToken) {
-      logger.warn('Telegram polling is enabled but TELEGRAM_BOT_TOKEN is missing');
+      logger.warn(
+        'Telegram polling is enabled but TELEGRAM_BOT_TOKEN is missing',
+      );
     }
 
     if (isTelegramPollingActive()) {

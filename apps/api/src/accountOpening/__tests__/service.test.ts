@@ -33,6 +33,7 @@ import {
   type PersistedAccountOpeningFillPreview,
   type PersistedAccountOpeningOriginalForm,
   type PersistedAccountOpeningReviewCase,
+  type PersistedAccountOpeningSourceEvidence,
 } from '../service';
 import type { AccountOpeningCompletionDraft } from '../draft';
 import type { AccountOpeningDriveArchiveConfig } from '../driveArchive';
@@ -50,10 +51,39 @@ test('detectAccountOpeningEmail detects account-opening body and attachment name
   });
 
   assert.equal(result.detected, true);
-  assert.ok(result.matchedTerms.includes('new account form'));
+  assert.ok(result.matchedTerms.includes('new account application'));
   assert.ok(
     result.matchedAttachmentNames.includes('AMBE account opening form.pdf'),
   );
+});
+
+test('detectAccountOpeningEmail detects account-opening from attachment filename only', () => {
+  const result = detectAccountOpeningEmail({
+    subject: 'Documents attached',
+    bodyText: 'Please see attached.',
+    attachmentFileNames: ['supplier-account-application-form.pdf'],
+  });
+
+  assert.equal(result.detected, true);
+  assert.deepEqual(result.matchedAttachmentNames, [
+    'supplier-account-application-form.pdf',
+  ]);
+  assert.match(result.classificationReason ?? '', /attachment filename/);
+});
+
+test('detectAccountOpeningEmail detects vague emails from extracted attachment text', () => {
+  const result = detectAccountOpeningEmail({
+    subject: 'Form attached',
+    bodyText: 'Please complete and return.',
+    attachmentFileNames: ['form.pdf'],
+    attachmentTexts: [
+      'Credit account application. Company details, VAT number, company number and WDA number.',
+    ],
+  });
+
+  assert.equal(result.detected, true);
+  assert.ok(result.matchedTerms.includes('credit account application'));
+  assert.match(result.classificationReason ?? '', /extracted attachment text/);
 });
 
 test('detectAccountOpeningEmail does not classify normal supplier price lists', () => {
@@ -62,6 +92,28 @@ test('detectAccountOpeningEmail does not classify normal supplier price lists', 
     bodyText:
       'Please find our wholesale price list attached. Amlodipine 5mg tablets GBP 1.20.',
     attachmentFileNames: ['supplier-price-list-may.xlsx'],
+  });
+
+  assert.equal(result.detected, false);
+});
+
+test('detectAccountOpeningEmail does not classify stock or offer lists as account-opening', () => {
+  const result = detectAccountOpeningEmail({
+    subject: 'Products available and stock list',
+    bodyText:
+      'Please see offer list below. Batch, expiry, MOQ and price rows are included for your account team.',
+    attachmentFileNames: ['stock-offer-list.xlsx'],
+  });
+
+  assert.equal(result.detected, false);
+});
+
+test('detectAccountOpeningEmail does not classify generic account or customer wording', () => {
+  const result = detectAccountOpeningEmail({
+    subject: 'Customer account update',
+    bodyText:
+      'Please ask your accounts customer contact to confirm the latest quote and account statement.',
+    attachmentFileNames: ['quote.pdf'],
   });
 
   assert.equal(result.detected, false);
@@ -425,6 +477,35 @@ function buildPersistedOriginalForm(
       metadataOnly: true,
       rawFileBytesStored: false,
     },
+    createdAt: new Date('2026-05-12T09:00:00.000Z'),
+    updatedAt: new Date('2026-05-12T09:00:00.000Z'),
+    ...overrides,
+  };
+}
+
+function buildPersistedSourceEvidence(
+  overrides: Partial<PersistedAccountOpeningSourceEvidence> = {},
+): PersistedAccountOpeningSourceEvidence {
+  return {
+    id: 'evidence-1',
+    accountOpeningCaseId: 'account-case-1',
+    sourceType: 'ATTACHMENT',
+    sourceLabel: 'supplier-account-opening-form.pdf',
+    fileName: 'supplier-account-opening-form.pdf',
+    mimeType: 'application/pdf',
+    sizeBytes: 12000,
+    contentId: null,
+    disposition: 'attachment',
+    extractionMethod: 'PDF_TEXT',
+    extractedTextHash: 'text-hash-1',
+    extractedTextChars: 240,
+    safeSnippet: 'Account opening form company details.',
+    rawFileAvailable: false,
+    storageProvider: 'MICROSOFT_DRIVE',
+    storageFolderUrl: 'https://sharepoint.example/account-opening',
+    storageFileUrl: 'https://sharepoint.example/account-opening/form.pdf',
+    storageDriveItemId: 'drive-item-1',
+    metadata: { rawExtractedTextStored: false },
     createdAt: new Date('2026-05-12T09:00:00.000Z'),
     updatedAt: new Date('2026-05-12T09:00:00.000Z'),
     ...overrides,
@@ -1782,6 +1863,50 @@ test('readiness blocks when no original form is available', async () => {
   assert.ok(
     readiness?.blockerTexts.includes('No original form reference is present.'),
   );
+  assert.equal(readiness?.documentLifecycle.originalFormCount, 0);
+  assert.equal(readiness?.documentLifecycle.canAttemptBinaryPreview, false);
+  assert.equal(
+    readiness?.documentLifecycle.nextAction,
+    'Capture the supplier original form reference.',
+  );
+});
+
+test('readiness lifecycle blocks PDF references without retrievable bytes', async () => {
+  const { repository } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      draftJson: buildDraftFixture({ status: 'READY_FOR_REVIEW' }),
+      fieldMappings: [buildPersistedFieldMapping()],
+      sourceEvidence: [buildPersistedSourceEvidence()],
+      originalForms: [
+        buildPersistedOriginalForm({
+          detectedFieldCount: 4,
+          storageDriveItemId: null,
+          storageFileUrl: null,
+          localBlobAvailable: false,
+        }),
+      ],
+    }),
+  );
+
+  const readiness = await getAccountOpeningReadinessReport({
+    id: 'account-case-1',
+    repository,
+    storageConfig: enabledStorageConfig,
+  });
+  const lifecycle = readiness?.documentLifecycle.forms[0];
+
+  assert.equal(readiness?.documentLifecycle.canAttemptBinaryPreview, false);
+  assert.equal(lifecycle?.sourceEvidenceCaptured, true);
+  assert.equal(lifecycle?.textExtractionStatus, 'TEXT_EXTRACTED');
+  assert.equal(lifecycle?.originalBytesRetrievable, false);
+  assert.equal(
+    lifecycle?.originalBytesRetrievalStatus,
+    'MISSING_BYTES_REFERENCE',
+  );
+  assert.match(
+    lifecycle?.primaryBlocker ?? '',
+    /Original form bytes are not retrievable/,
+  );
 });
 
 test('readiness blocks when reviewed field mappings are not saved', async () => {
@@ -1895,6 +2020,102 @@ test('readiness passes when binary preview is approved and filed', async () => {
   assert.equal(readiness?.status, 'GREEN');
   assert.equal(readiness?.readyForEndToEndFillingAndFiling, true);
   assert.deepEqual(readiness?.blockerTexts, []);
+  assert.equal(readiness?.documentLifecycle.canAttemptBinaryPreview, true);
+  assert.equal(readiness?.documentLifecycle.canDownloadBinaryPreview, true);
+  assert.equal(
+    readiness?.documentLifecycle.completedUnsignedFilingStatus,
+    'FILED',
+  );
+  assert.equal(
+    readiness?.documentLifecycle.forms[0]?.binaryPreviewStatus,
+    'GENERATED_FOR_REVIEW',
+  );
+  assert.equal(
+    readiness?.documentLifecycle.forms[0]?.completedUnsignedFilingStatus,
+    'FILED',
+  );
+});
+
+test('readiness lifecycle exposes approved completed unsigned form as fileable', async () => {
+  const { repository } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      draftJson: buildDraftFixture({ status: 'READY_FOR_REVIEW' }),
+      fieldMappings: [buildPersistedFieldMapping()],
+      originalForms: [buildPersistedOriginalForm({ detectedFieldCount: 4 })],
+      binaryFillPreviews: [buildPersistedBinaryFillPreview()],
+      completedFormFilings: [
+        buildPersistedCompletedFormFiling({
+          status: 'APPROVED_FOR_FILING',
+          filedAt: null,
+          filedByType: null,
+          filedByIdentifier: null,
+          storageProvider: null,
+          storageFolderUrl: null,
+          storageFileUrl: null,
+          storageDriveItemId: null,
+        }),
+      ],
+    }),
+  );
+
+  const readiness = await getAccountOpeningReadinessReport({
+    id: 'account-case-1',
+    repository,
+    storageConfig: enabledStorageConfig,
+  });
+
+  assert.equal(
+    readiness?.documentLifecycle.completedUnsignedFilingStatus,
+    'APPROVED_FOR_FILING',
+  );
+  assert.equal(readiness?.documentLifecycle.canFileCompletedUnsignedForm, true);
+  assert.equal(
+    readiness?.documentLifecycle.forms[0]?.completedUnsignedFilingStatus,
+    'APPROVED_FOR_FILING',
+  );
+});
+
+test('readiness lifecycle reflects skipped and failed filing statuses safely', async () => {
+  for (const status of ['FILING_SKIPPED', 'FILING_FAILED']) {
+    const { repository } = createAccountOpeningRepository(
+      buildPersistedAccountOpeningCase({
+        draftJson: buildDraftFixture({ status: 'READY_FOR_REVIEW' }),
+        fieldMappings: [buildPersistedFieldMapping()],
+        originalForms: [buildPersistedOriginalForm({ detectedFieldCount: 4 })],
+        binaryFillPreviews: [buildPersistedBinaryFillPreview()],
+        completedFormFilings: [
+          buildPersistedCompletedFormFiling({
+            status,
+            filedAt: null,
+            storageProvider: null,
+            storageFolderUrl: null,
+            storageFileUrl: null,
+            storageDriveItemId: null,
+            skippedReason: `${status} without sensitive text.`,
+          }),
+        ],
+      }),
+    );
+
+    const readiness = await getAccountOpeningReadinessReport({
+      id: 'account-case-1',
+      repository,
+      storageConfig: enabledStorageConfig,
+    });
+
+    assert.equal(
+      readiness?.documentLifecycle.completedUnsignedFilingStatus,
+      status,
+    );
+    assert.equal(
+      readiness?.documentLifecycle.forms[0]?.completedUnsignedFilingStatus,
+      status,
+    );
+    assert.equal(
+      readiness?.documentLifecycle.canFileCompletedUnsignedForm,
+      false,
+    );
+  }
 });
 
 test('readiness response excludes sensitive account-opening data', async () => {
@@ -1936,6 +2157,12 @@ test('readiness response excludes sensitive account-opening data', async () => {
   assert.equal(readiness?.safety.rawExtractedTextIncluded, false);
   assert.equal(readiness?.safety.bankDetailsIncluded, false);
   assert.equal(readiness?.safety.sortCodesIncluded, false);
+  assert.equal(
+    readiness?.documentLifecycle.safety.rawExtractedTextIncluded,
+    false,
+  );
+  assert.equal(readiness?.documentLifecycle.safety.binaryBytesIncluded, false);
+  assert.equal(readiness?.documentLifecycle.safety.bankDetailsIncluded, false);
 });
 
 test('completed unsigned form approval requires an existing generated preview', async () => {
@@ -2073,6 +2300,7 @@ test('completed unsigned form approval records safe approval metadata', async ()
   );
   assert.equal(getCompletedFormFilings().length, 1);
   assert.equal(event?.actorIdentifier, 'test-reviewer');
+  assert.match(eventText, /ACCOUNT_OPENING_APPROVE_COMPLETED_UNSIGNED_FORM/);
   assert.match(eventText, /supplierSubmissionTriggered":false/);
   assert.match(eventText, /purchaseWorkflowTriggered":false/);
   assert.doesNotMatch(eventText, /%PDF/);
@@ -2156,6 +2384,10 @@ test('completed unsigned form filing skips when approval is missing', async () =
   assert.equal(result.filing.status, 'FILING_SKIPPED');
   assert.match(result.filing.skippedReason ?? '', /Approve/);
   assert.equal(event?.actionType, 'COMPLETED_UNSIGNED_FORM_FILING_SKIPPED');
+  assert.match(
+    JSON.stringify(event?.metadata),
+    /ACCOUNT_OPENING_FILE_COMPLETED_UNSIGNED_FORM/,
+  );
 });
 
 test('completed unsigned form filing skips safely when storage is unavailable', async () => {
@@ -2196,6 +2428,10 @@ test('completed unsigned form filing skips safely when storage is unavailable', 
   assert.match(result.filing.skippedReason ?? '', /disabled/);
   assert.equal(result.filing.storageFileUrl, null);
   assert.equal(event?.actionType, 'COMPLETED_UNSIGNED_FORM_FILING_SKIPPED');
+  assert.match(
+    JSON.stringify(event?.metadata),
+    /ACCOUNT_OPENING_FILE_COMPLETED_UNSIGNED_FORM/,
+  );
   assert.doesNotMatch(JSON.stringify(event?.metadata), /%PDF/);
 });
 
@@ -2278,6 +2514,7 @@ test('completed unsigned form filing uploads approved preview and is idempotent 
   );
   assert.match(eventText, /supplierSubmissionTriggered":false/);
   assert.match(eventText, /purchaseWorkflowTriggered":false/);
+  assert.match(eventText, /ACCOUNT_OPENING_FILE_COMPLETED_UNSIGNED_FORM/);
   assert.doesNotMatch(eventText, /binaryPreviewBytes/);
   assert.doesNotMatch(eventText, /%PDF/);
 });
@@ -2328,7 +2565,7 @@ test('generate draft stores safe draft metadata and records blocked audit route 
   );
 
   assert.equal(detail.draftStatus, 'BLOCKED');
-  assert.equal(detail.draftVersion, '2026-05-15');
+  assert.equal(detail.draftVersion, '2026-05-19');
   assert.equal(detail.draftGeneratedAt, '2026-05-15T10:00:00.000Z');
   assert.equal(detail.completionDraft.isStored, true);
   assert.equal(detail.completionDraft.status, 'BLOCKED');

@@ -55,6 +55,18 @@ pnpm test
 
 The API uses Neon PostgreSQL with Prisma. Prisma lives in `apps/api/prisma`.
 
+### Safe Local Runtime Smoke
+
+When a disposable local PostgreSQL database is available, run the guarded API smoke harness:
+
+```bash
+pnpm --filter @ambe/api smoke:local-runtime
+```
+
+The harness refuses Neon, Supabase, AWS RDS, Azure PostgreSQL, unknown public hosts, invalid URLs, empty URLs, and local databases whose names do not clearly contain `local`, `dev`, or `test`. It also refuses live-capable OpenAI, Telegram polling, email, inbox polling, SharePoint, and OneDrive modes. It does not migrate, seed, run Prisma migrate status, start polling workers, send messages, or upload files.
+
+Full instructions are in [docs/local-runtime-smoke-runbook.md](/d:/Users/User/Desktop/ambe-pharma-intelligence/docs/local-runtime-smoke-runbook.md:1).
+
 ### Configure Neon
 
 1. Create `apps/api/.env` from `apps/api/.env.example`.

@@ -19,7 +19,12 @@ export type ParsedEmailBodyRow = {
   availability?: string | null;
   minimumOrderQuantity?: number | null;
   manufacturer?: string | null;
-  sourceSegment?: 'BODY_MAIN' | 'BODY_FORWARDED' | 'SIGNATURE' | 'UNKNOWN' | null;
+  sourceSegment?:
+    | 'BODY_MAIN'
+    | 'BODY_FORWARDED'
+    | 'SIGNATURE'
+    | 'UNKNOWN'
+    | null;
   productCandidates: ReturnType<typeof buildProductCandidates>;
   confidence: EmailParseConfidence;
   explanation: string;
@@ -56,14 +61,15 @@ export type ParsedEmailBodyResult = {
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
   '\u00A3': 'GBP',
-  '$': 'USD',
+  $: 'USD',
   '\u20AC': 'EUR',
 };
 
 const STRUCTURED_PRICE_LINE_PATTERN =
   /^(?<product>.+?)(?:\s*[-:]\s*|\s+)(?<currencySymbol>\u00A3|\$|\u20AC)?\s*(?<price>\d+(?:\.\d{1,2})?)\s*(?<currencyCode>[A-Z]{3})?$/i;
 
-const PRICE_LIKE_PATTERN = /(?:\u00A3|\$|\u20AC|\b(?:usd|gbp|eur)\b|\d+[.,]\d{2})/i;
+const PRICE_LIKE_PATTERN =
+  /(?:\u00A3|\$|\u20AC|\b(?:usd|gbp|eur)\b|\d+[.,]\d{2})/i;
 const SHARED_PRICE_PATTERN =
   /^prices?\s+for\s+both\s+refs?\s+are\s+(?<price>\d+(?:\.\d{1,2})?)\s*(?<currency>euro|eur|gbp|usd|\u20AC|\u00A3|\$)\b.*$/i;
 const NON_PRODUCT_SHARED_PRICE_PREFIX_PATTERN =
@@ -77,8 +83,14 @@ export function normalizeEmailTextForParsing(rawText: string): string {
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
     .replace(/\t/g, ' ')
-    .replace(/\u00c3\u0192\u00e2\u20ac\u0161\u00c3\u201a\u00c2\u00a3|\u00c3\u201a\u00c2\u00a3|\u00c2\u00a3/g, '\u00A3')
-    .replace(/\u00c3\u0192\u00c2\u00a2\u00c3\u00a2\u00e2\u201a\u00ac\u0161\u00c3\u201a\u00c2\u00ac|\u00c3\u00a2\u00e2\u201a\u00ac\u0161\u00c3\u201a\u00c2\u00ac|\u00e2\u201a\u00ac/g, '\u20AC')
+    .replace(
+      /\u00c3\u0192\u00e2\u20ac\u0161\u00c3\u201a\u00c2\u00a3|\u00c3\u201a\u00c2\u00a3|\u00c2\u00a3/g,
+      '\u00A3',
+    )
+    .replace(
+      /\u00c3\u0192\u00c2\u00a2\u00c3\u00a2\u00e2\u201a\u00ac\u0161\u00c3\u201a\u00c2\u00ac|\u00c3\u00a2\u00e2\u201a\u00ac\u0161\u00c3\u201a\u00c2\u00ac|\u00e2\u201a\u00ac/g,
+      '\u20AC',
+    )
     .replace(/\u00a0/g, ' ')
     .replace(/[\u2012\u2013\u2014\u2015\u2212]/g, '-')
     .replace(/^[ \t]*[\u2022\u25CF\u25E6\u25AA\u00B7][ \t]*/gm, '')
@@ -96,33 +108,46 @@ function deriveRowConfidence(input: {
   usedExplicitSeparator: boolean;
 }): { confidence: EmailParseConfidence; explanation: string } {
   const hasBaseName = input.productName.trim().length > 2;
-  const hasStrongProductDetail = Boolean(input.strength && (input.formulation || input.packSize));
-  const hasModerateProductDetail = Boolean(input.strength || (input.formulation && input.packSize));
+  const hasStrongProductDetail = Boolean(
+    input.strength && (input.formulation || input.packSize),
+  );
+  const hasModerateProductDetail = Boolean(
+    input.strength || (input.formulation && input.packSize),
+  );
 
-  if (hasBaseName && hasStrongProductDetail && input.currencyCode && input.usedExplicitSeparator) {
+  if (
+    hasBaseName &&
+    hasStrongProductDetail &&
+    input.currencyCode &&
+    input.usedExplicitSeparator
+  ) {
     return {
       confidence: 'HIGH',
-      explanation: 'Line has strong product detail, a clear separator, and an explicit price/currency.',
+      explanation:
+        'Line has strong product detail, a clear separator, and an explicit price/currency.',
     };
   }
 
   if (hasBaseName && hasStrongProductDetail) {
     return {
       confidence: 'MEDIUM',
-      explanation: 'Line is structured and priced, but the currency or separator is slightly less explicit.',
+      explanation:
+        'Line is structured and priced, but the currency or separator is slightly less explicit.',
     };
   }
 
   if (hasBaseName && hasModerateProductDetail) {
     return {
       confidence: 'MEDIUM',
-      explanation: 'Line has usable product detail and a price, but the structure is slightly ambiguous.',
+      explanation:
+        'Line has usable product detail and a price, but the structure is slightly ambiguous.',
     };
   }
 
   return {
     confidence: 'LOW',
-    explanation: 'Line has a price, but the product text is too weak to trust automatically.',
+    explanation:
+      'Line has a price, but the product text is too weak to trust automatically.',
   };
 }
 
@@ -135,15 +160,22 @@ function deriveOverallConfidence(
   }
 
   const distinctCurrencies = new Set(
-    rows.map((row) => row.currencyCode).filter((currency): currency is string => Boolean(currency)),
+    rows
+      .map((row) => row.currencyCode)
+      .filter((currency): currency is string => Boolean(currency)),
   );
-  const priceLikeSkippedLines = skippedLines.filter((line) => PRICE_LIKE_PATTERN.test(line.rawLine));
+  const priceLikeSkippedLines = skippedLines.filter((line) =>
+    PRICE_LIKE_PATTERN.test(line.rawLine),
+  );
 
   if (distinctCurrencies.size > 1) {
     return 'LOW';
   }
 
-  if (rows.every((row) => row.confidence === 'HIGH') && skippedLines.length === 0) {
+  if (
+    rows.every((row) => row.confidence === 'HIGH') &&
+    skippedLines.length === 0
+  ) {
     return 'HIGH';
   }
 
@@ -218,7 +250,10 @@ function isObviousContactOrFooterLine(line: string): boolean {
 function parseLine(
   line: string,
   lineNumber: number,
-): { parsedRow: ParsedEmailBodyRow | null; skippedLine: SkippedEmailBodyLine | null } {
+): {
+  parsedRow: ParsedEmailBodyRow | null;
+  skippedLine: SkippedEmailBodyLine | null;
+} {
   const trimmed = line.trim();
 
   if (!trimmed || trimmed.length < 4) {
@@ -257,11 +292,14 @@ function parseLine(
   const rawProductName = match.groups.product.trim().replace(/\s+[-:]\s*$/, '');
   const productCandidates = buildProductCandidates(rawProductName);
   const currencyFromSymbol = match.groups.currencySymbol
-    ? CURRENCY_SYMBOLS[match.groups.currencySymbol] ?? null
+    ? (CURRENCY_SYMBOLS[match.groups.currencySymbol] ?? null)
     : null;
-  const currencyFromCode = (match.groups.currencyCode || '').toUpperCase() || null;
+  const currencyFromCode =
+    (match.groups.currencyCode || '').toUpperCase() || null;
   const currencyCode =
-    currencyFromCode && currencyFromSymbol && currencyFromCode !== currencyFromSymbol
+    currencyFromCode &&
+    currencyFromSymbol &&
+    currencyFromCode !== currencyFromSymbol
       ? null
       : currencyFromCode || currencyFromSymbol || null;
   const confidenceResult = deriveRowConfidence({
@@ -286,11 +324,15 @@ function parseLine(
       currencyCode,
       productCandidates,
       confidence:
-        currencyFromCode && currencyFromSymbol && currencyFromCode !== currencyFromSymbol
+        currencyFromCode &&
+        currencyFromSymbol &&
+        currencyFromCode !== currencyFromSymbol
           ? 'LOW'
           : confidenceResult.confidence,
       explanation:
-        currencyFromCode && currencyFromSymbol && currencyFromCode !== currencyFromSymbol
+        currencyFromCode &&
+        currencyFromSymbol &&
+        currencyFromCode !== currencyFromSymbol
           ? 'Line has conflicting currency markers, so it is not trusted automatically.'
           : confidenceResult.explanation,
     },
@@ -301,7 +343,11 @@ function parseLine(
 function normalizeSharedPriceCurrency(value: string): string | null {
   const normalized = value.trim().toLowerCase();
 
-  if (normalized === 'euro' || normalized === 'eur' || normalized === '\u20ac') {
+  if (
+    normalized === 'euro' ||
+    normalized === 'eur' ||
+    normalized === '\u20ac'
+  ) {
     return 'EUR';
   }
 
@@ -333,7 +379,10 @@ function isSharedPriceCandidateLine(line: string): boolean {
   return productCandidates.confidence !== 'LOW';
 }
 
-function buildSharedPriceRows(lines: string[], existingRows: ParsedEmailBodyRow[]): {
+function buildSharedPriceRows(
+  lines: string[],
+  existingRows: ParsedEmailBodyRow[],
+): {
   parsedRows: ParsedEmailBodyRow[];
   consumedLineNumbers: Set<number>;
 } {
@@ -350,14 +399,21 @@ function buildSharedPriceRows(lines: string[], existingRows: ParsedEmailBodyRow[
     }
 
     const sharedPriceAmount = sharedMatch.groups.price;
-    const currencyCode = normalizeSharedPriceCurrency(sharedMatch.groups.currency);
+    const currencyCode = normalizeSharedPriceCurrency(
+      sharedMatch.groups.currency,
+    );
     if (!currencyCode) {
       return;
     }
 
-    const precedingCandidates: Array<{ lineNumber: number; rawLine: string }> = [];
+    const precedingCandidates: Array<{ lineNumber: number; rawLine: string }> =
+      [];
 
-    for (let previousIndex = index - 1; previousIndex >= 0 && precedingCandidates.length < 2; previousIndex -= 1) {
+    for (
+      let previousIndex = index - 1;
+      previousIndex >= 0 && precedingCandidates.length < 2;
+      previousIndex -= 1
+    ) {
       const previousLine = lines[previousIndex]?.trim() ?? '';
 
       if (!previousLine) {
@@ -365,7 +421,11 @@ function buildSharedPriceRows(lines: string[], existingRows: ParsedEmailBodyRow[
       }
 
       const lineNumber = previousIndex + 1;
-      if (parsedLineNumbers.has(lineNumber) || PRICE_LIKE_PATTERN.test(previousLine) || !isSharedPriceCandidateLine(previousLine)) {
+      if (
+        parsedLineNumbers.has(lineNumber) ||
+        PRICE_LIKE_PATTERN.test(previousLine) ||
+        !isSharedPriceCandidateLine(previousLine)
+      ) {
         break;
       }
 
@@ -444,10 +504,14 @@ function shouldAttemptAiFallback(result: ParsedEmailBodyResult): boolean {
     return true;
   }
 
-  return result.reviewRecommended && isCommerciallyRelevantText(result.rawBodyText);
+  return (
+    result.reviewRecommended && isCommerciallyRelevantText(result.rawBodyText)
+  );
 }
 
-function normalizeConfidence(confidence: 'HIGH' | 'MEDIUM' | 'LOW'): EmailParseConfidence {
+function normalizeConfidence(
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW',
+): EmailParseConfidence {
   return confidence;
 }
 
@@ -458,14 +522,22 @@ function buildAiParsedRows(
   const trimmedLines = rawBodyText.split(/\r?\n/).map((line) => line.trim());
 
   return aiResult.offers
-    .filter((offer) => Boolean(offer.rawLine.trim()) && Boolean(offer.productText?.trim()) && offer.price !== null)
+    .filter(
+      (offer) =>
+        Boolean(offer.rawLine.trim()) &&
+        Boolean(offer.productText?.trim()) &&
+        offer.price !== null,
+    )
     .map((offer, index) => {
       const rawProductText = offer.productText?.trim() ?? '';
       const productCandidates = buildProductCandidates(rawProductText);
-      const matchingLineNumber = trimmedLines.findIndex((line) => line === offer.rawLine.trim());
+      const matchingLineNumber = trimmedLines.findIndex(
+        (line) => line === offer.rawLine.trim(),
+      );
 
       return {
-        lineNumber: matchingLineNumber >= 0 ? matchingLineNumber + 1 : index + 1,
+        lineNumber:
+          matchingLineNumber >= 0 ? matchingLineNumber + 1 : index + 1,
         rawLine: offer.rawLine.trim(),
         evidenceText: offer.evidenceText,
         rawProductName: rawProductText,
@@ -490,11 +562,17 @@ function buildAiAssistedResult(
   deterministicResult: ParsedEmailBodyResult,
   aiResult: AiParsedOfferResponse,
 ): ParsedEmailBodyResult {
-  const parsedRows = buildAiParsedRows(deterministicResult.rawBodyText, aiResult);
+  const parsedRows = buildAiParsedRows(
+    deterministicResult.rawBodyText,
+    aiResult,
+  );
   const parsedRawLines = new Set(parsedRows.map((row) => row.rawLine));
-  const skippedLines = deterministicResult.skippedLines.filter((line) => !parsedRawLines.has(line.rawLine));
+  const skippedLines = deterministicResult.skippedLines.filter(
+    (line) => !parsedRawLines.has(line.rawLine),
+  );
   const overallConfidence = normalizeConfidence(aiResult.overallConfidence);
-  const reviewRecommended = aiResult.reviewRecommended || overallConfidence !== 'HIGH';
+  const reviewRecommended =
+    aiResult.reviewRecommended || overallConfidence !== 'HIGH';
 
   return {
     totalLines: deterministicResult.totalLines,
@@ -513,7 +591,8 @@ function buildAiAssistedResult(
     aiFallbackRejectedReason: undefined,
     supplierName: aiResult.supplierName,
     notes: aiResult.notes,
-    parsingReason: 'Used OpenAI fallback because deterministic parsing was weak or unclear.',
+    parsingReason:
+      'Used OpenAI fallback because deterministic parsing was weak or unclear.',
   };
 }
 
@@ -523,7 +602,11 @@ function mergeDeterministicNotes(
 ): ParsedEmailBodyResult {
   const notes = [...(result.notes ?? [])];
 
-  if (aiAttempt && aiAttempt.status !== 'success' && aiAttempt.status !== 'disabled') {
+  if (
+    aiAttempt &&
+    aiAttempt.status !== 'success' &&
+    aiAttempt.status !== 'disabled'
+  ) {
     notes.push(aiAttempt.reason);
   }
 
@@ -538,8 +621,13 @@ function mergeDeterministicNotes(
     aiFallbackUsed: false,
     aiFallbackDecision: aiAttempt?.decision,
     aiFallbackRejectedReason:
-      aiAttempt && aiAttempt.status !== 'success' ? aiAttempt.reason : undefined,
-    aiPromptVersion: aiAttempt && 'promptVersion' in aiAttempt ? (aiAttempt.promptVersion ?? null) : null,
+      aiAttempt && aiAttempt.status !== 'success'
+        ? aiAttempt.reason
+        : undefined,
+    aiPromptVersion:
+      aiAttempt && 'promptVersion' in aiAttempt
+        ? (aiAttempt.promptVersion ?? null)
+        : null,
     notes: notes.length > 0 ? notes : undefined,
   };
 }
@@ -552,17 +640,24 @@ function shouldUseAiResult(
     return false;
   }
 
-  if (confidenceRank(aiAssistedResult.overallConfidence) > confidenceRank(deterministicResult.overallConfidence)) {
+  if (
+    confidenceRank(aiAssistedResult.overallConfidence) >
+    confidenceRank(deterministicResult.overallConfidence)
+  ) {
     return true;
   }
 
   return (
-    aiAssistedResult.parsedRows.length > deterministicResult.parsedRows.length &&
-    confidenceRank(aiAssistedResult.overallConfidence) >= confidenceRank(deterministicResult.overallConfidence)
+    aiAssistedResult.parsedRows.length >
+      deterministicResult.parsedRows.length &&
+    confidenceRank(aiAssistedResult.overallConfidence) >=
+      confidenceRank(deterministicResult.overallConfidence)
   );
 }
 
-export function parseStructuredPriceEmailBody(rawBodyText: string): ParsedEmailBodyResult {
+export function parseStructuredPriceEmailBody(
+  rawBodyText: string,
+): ParsedEmailBodyResult {
   const lines = normalizeEmailTextForParsing(rawBodyText).split(/\n/);
   const parsedRows: ParsedEmailBodyRow[] = [];
   let skippedLines: SkippedEmailBodyLine[] = [];
@@ -582,7 +677,9 @@ export function parseStructuredPriceEmailBody(rawBodyText: string): ParsedEmailB
   const sharedPriceRows = buildSharedPriceRows(lines, parsedRows);
   if (sharedPriceRows.parsedRows.length > 0) {
     parsedRows.push(...sharedPriceRows.parsedRows);
-    skippedLines = skippedLines.filter((line) => !sharedPriceRows.consumedLineNumbers.has(line.lineNumber));
+    skippedLines = skippedLines.filter(
+      (line) => !sharedPriceRows.consumedLineNumbers.has(line.lineNumber),
+    );
   }
 
   const overallConfidence = deriveOverallConfidence(parsedRows, skippedLines);
@@ -593,7 +690,9 @@ export function parseStructuredPriceEmailBody(rawBodyText: string): ParsedEmailB
   return {
     totalLines: lines.length,
     candidateLines: parsedRows.length,
-    parsedRows: parsedRows.sort((left, right) => left.lineNumber - right.lineNumber),
+    parsedRows: parsedRows.sort(
+      (left, right) => left.lineNumber - right.lineNumber,
+    ),
     skippedLines,
     overallConfidence,
     reviewRecommended,
@@ -627,7 +726,9 @@ export async function parseStructuredPriceText(
     return mergeDeterministicNotes(deterministicResult);
   }
 
-  const aiAttempt = await (dependencies?.aiOfferParser ?? openAiOfferParser).parseText({
+  const aiAttempt = await (
+    dependencies?.aiOfferParser ?? openAiOfferParser
+  ).parseText({
     rawText: rawBodyText,
     source: dependencies?.source ?? 'EMAIL_BODY',
   });
@@ -645,13 +746,17 @@ export async function parseStructuredPriceText(
     );
   }
 
-  const aiAssistedResult = buildAiAssistedResult(deterministicResult, aiAttempt.result);
+  const aiAssistedResult = buildAiAssistedResult(
+    deterministicResult,
+    aiAttempt.result,
+  );
 
   if (!shouldUseAiResult(deterministicResult, aiAssistedResult)) {
     return mergeDeterministicNotes(
       {
         ...deterministicResult,
-        parsingReason: 'Kept deterministic parsing because it remained as strong as the AI fallback.',
+        parsingReason:
+          'Kept deterministic parsing because it remained as strong as the AI fallback.',
       },
       aiAttempt,
     );

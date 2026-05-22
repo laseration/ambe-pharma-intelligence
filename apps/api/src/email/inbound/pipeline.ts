@@ -32,7 +32,8 @@ import type { EmailInboundMessage, EmailInboundResult } from './types';
 const EXTRACTOR_VERSION = 'email-staging-v1';
 const PRICE_PATTERN =
   /\b(?:((?:GBP|USD|EUR))\s*(\d+(?:\.\d{1,2})?)|([\u00A3$€])\s*(\d+(?:\.\d{1,2})?)|(\d+(?:\.\d{1,2})?)\s*((?:GBP|USD|EUR)))\b/i;
-const MOQ_PATTERN = /\b(?:moq|min(?:imum)?(?: order| qty| quantity)?)[\s:=-]*(\d+)\b/i;
+const MOQ_PATTERN =
+  /\b(?:moq|min(?:imum)?(?: order| qty| quantity)?)[\s:=-]*(\d+)\b/i;
 const AVAILABILITY_PATTERN =
   /\b(available|in stock|instock|limited stock|limited|ready stock|eta\s+\w+)\b/i;
 const MANUFACTURER_PATTERN =
@@ -59,7 +60,9 @@ const DOMAIN_COMPANY_FALLBACK_BLOCKLIST = new Set([
   'office',
 ]);
 
-function normalizeSupplierIdentityToken(value: string | null | undefined): string {
+function normalizeSupplierIdentityToken(
+  value: string | null | undefined,
+): string {
   return normalizeFingerprintText(value).replace(/[^a-z0-9]+/g, '');
 }
 
@@ -90,7 +93,8 @@ const ATTACHMENT_TEXT_NOISE_PATTERN =
   /\b(?:batch|lot|item number|quantity|pack ref|ref)\b|\(\d{2,3}\)|\b\d{6,}\b/i;
 const PRODUCT_WORD_SIGNAL_PATTERN =
   /\b(?:needle|needles|inj|injection|tab|tabs|tablet|tablets|capsule|capsules|caplet|caplets|vial|vials|amp|amps|syrup|cream|ointment|pack|pcs|pieces|mg|ml|g|mm|novofine)\b/i;
-const EXPLICIT_PRICE_SIGNAL_PATTERN = /(?:£|\$|€|\b(?:gbp|eur|usd|price|prices|offer)\b)/i;
+const EXPLICIT_PRICE_SIGNAL_PATTERN =
+  /(?:£|\$|€|\b(?:gbp|eur|usd|price|prices|offer)\b)/i;
 
 const ATTACHMENT_FILENAME_NOISE_PATTERN =
   /\b(?:price\s*list|stock\s*list|supplier\s*price\s*list|prices?|quotes?|quotations?|offers?|stock|inventory|sales|reports?|catalog(?:ue)?|april|may|january|february|march|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|20\d{2}|\d{1,2}[-_. ]?\d{1,2}[-_. ]?\d{2,4})\b/gi;
@@ -121,7 +125,10 @@ function buildSupplierFamilyKey(value: string | null | undefined): string {
     changed = false;
 
     for (const suffix of SUPPLIER_FAMILY_SUFFIXES) {
-      if (normalized.endsWith(suffix) && normalized.length > suffix.length + 2) {
+      if (
+        normalized.endsWith(suffix) &&
+        normalized.length > suffix.length + 2
+      ) {
         normalized = normalized.slice(0, -suffix.length);
         changed = true;
       }
@@ -142,23 +149,41 @@ function looksLikeCodeHeavyText(value: string | null | undefined): boolean {
   const alphaCount = (compact.match(/[A-Za-z]/g) ?? []).length;
   const digitCount = (compact.match(/\d/g) ?? []).length;
 
-  return compact.length <= 14 && digitCount > 0 && alphaCount > 0 && /^[A-Za-z0-9]+$/.test(compact);
+  return (
+    compact.length <= 14 &&
+    digitCount > 0 &&
+    alphaCount > 0 &&
+    /^[A-Za-z0-9]+$/.test(compact)
+  );
 }
 
-function shouldSuppressAttachmentTextOfferCandidate(candidate: StagedOfferCandidate): boolean {
+function shouldSuppressAttachmentTextOfferCandidate(
+  candidate: StagedOfferCandidate,
+): boolean {
   if (!candidate.sourceKind.includes('ATTACHMENT_TEXT')) {
     return false;
   }
 
   const rawProductText = candidate.rawProductText?.trim() ?? '';
   const sourceBlockText = candidate.sourceBlockText.trim();
-  const hasExplicitPriceSignal = EXPLICIT_PRICE_SIGNAL_PATTERN.test(sourceBlockText);
-  const hasProductWordSignal = PRODUCT_WORD_SIGNAL_PATTERN.test(rawProductText) || PRODUCT_WORD_SIGNAL_PATTERN.test(sourceBlockText);
+  const hasExplicitPriceSignal =
+    EXPLICIT_PRICE_SIGNAL_PATTERN.test(sourceBlockText);
+  const hasProductWordSignal =
+    PRODUCT_WORD_SIGNAL_PATTERN.test(rawProductText) ||
+    PRODUCT_WORD_SIGNAL_PATTERN.test(sourceBlockText);
   const hasStructuredProductDetail = Boolean(
-    candidate.strengthCandidate || candidate.dosageFormCandidate || candidate.packSizeCandidate,
+    candidate.strengthCandidate ||
+    candidate.dosageFormCandidate ||
+    candidate.packSizeCandidate,
   );
-  const priceAmount = candidate.priceCandidate ? Number(candidate.priceCandidate.toString()) : null;
-  const strayLowPrice = priceAmount !== null && priceAmount <= 5 && !candidate.currencyCandidate && !hasExplicitPriceSignal;
+  const priceAmount = candidate.priceCandidate
+    ? Number(candidate.priceCandidate.toString())
+    : null;
+  const strayLowPrice =
+    priceAmount !== null &&
+    priceAmount <= 5 &&
+    !candidate.currencyCandidate &&
+    !hasExplicitPriceSignal;
   const codeHeavyProductText = looksLikeCodeHeavyText(rawProductText);
   const codeHeavySourceText = looksLikeCodeHeavyText(sourceBlockText);
   const looksLikeReferenceNoise =
@@ -176,7 +201,10 @@ function shouldSuppressAttachmentTextOfferCandidate(candidate: StagedOfferCandid
   if (
     !hasStructuredProductDetail &&
     !hasProductWordSignal &&
-    (codeHeavyProductText || codeHeavySourceText || looksLikeReferenceNoise || rawProductText.length < 14)
+    (codeHeavyProductText ||
+      codeHeavySourceText ||
+      looksLikeReferenceNoise ||
+      rawProductText.length < 14)
   ) {
     return true;
   }
@@ -185,7 +213,12 @@ function shouldSuppressAttachmentTextOfferCandidate(candidate: StagedOfferCandid
     return true;
   }
 
-  if (!hasStructuredProductDetail && !hasProductWordSignal && !candidate.currencyCandidate && !hasExplicitPriceSignal) {
+  if (
+    !hasStructuredProductDetail &&
+    !hasProductWordSignal &&
+    !candidate.currencyCandidate &&
+    !hasExplicitPriceSignal
+  ) {
     return true;
   }
 
@@ -203,12 +236,15 @@ function isInternalSupplierDomain(domain: string | null | undefined): boolean {
     const normalizedEntry = normalizeFingerprintText(entry).replace(/^@+/, '');
     return (
       Boolean(normalizedEntry) &&
-      (normalizedDomain === normalizedEntry || normalizedDomain.endsWith(`.${normalizedEntry}`))
+      (normalizedDomain === normalizedEntry ||
+        normalizedDomain.endsWith(`.${normalizedEntry}`))
     );
   });
 }
 
-function isInternalSupplierCompanyName(candidateName: string | null | undefined): boolean {
+function isInternalSupplierCompanyName(
+  candidateName: string | null | undefined,
+): boolean {
   const normalizedCandidate = normalizeSupplierIdentityToken(candidateName);
 
   if (!normalizedCandidate) {
@@ -246,11 +282,17 @@ function titleCaseSupplierCue(value: string): string {
   return value
     .split(/\s+/)
     .filter(Boolean)
-    .map((part) => (/^[A-Z]{2,}$/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()))
+    .map((part) =>
+      /^[A-Z]{2,}$/.test(part)
+        ? part
+        : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase(),
+    )
     .join(' ');
 }
 
-export function extractSupplierCueFromAttachmentFileName(fileName: string | null | undefined): string | null {
+export function extractSupplierCueFromAttachmentFileName(
+  fileName: string | null | undefined,
+): string | null {
   const baseName = (fileName ?? '')
     .replace(/\.[A-Za-z0-9]{1,8}$/g, '')
     .replace(/[_-]+/g, ' ')
@@ -264,7 +306,9 @@ export function extractSupplierCueFromAttachmentFileName(fileName: string | null
     normalized.length < 4 ||
     /^\d+$/.test(normalized) ||
     GENERIC_ATTACHMENT_SUPPLIER_WORDS.has(normalized) ||
-    normalized.split(/\s+/).every((part) => GENERIC_ATTACHMENT_SUPPLIER_WORDS.has(part))
+    normalized
+      .split(/\s+/)
+      .every((part) => GENERIC_ATTACHMENT_SUPPLIER_WORDS.has(part))
   ) {
     return null;
   }
@@ -289,7 +333,9 @@ function extractAttachmentFilenameSupplierCue(input: {
       continue;
     }
 
-    const candidate = extractSupplierCueFromAttachmentFileName(normalized.fileName);
+    const candidate = extractSupplierCueFromAttachmentFileName(
+      normalized.fileName,
+    );
     if (candidate) {
       return candidate;
     }
@@ -459,7 +505,11 @@ function buildWorkflowSyncInput(
 }
 
 function normalizeWhitespace(value: string): string {
-  return value.replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  return value
+    .replace(/\r/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function toHash(value: string): string {
@@ -470,7 +520,9 @@ function buildNormalizedSourceBlockHash(value: string): string {
   return toHash(normalizeFingerprintText(value));
 }
 
-function buildAttachmentSummary(message: EmailInboundMessage): Prisma.InputJsonValue {
+function buildAttachmentSummary(
+  message: EmailInboundMessage,
+): Prisma.InputJsonValue {
   return (message.attachments ?? []).map((attachment) => ({
     fileName: attachment.fileName ?? null,
     mimeType: attachment.mimeType ?? null,
@@ -488,7 +540,10 @@ function buildAttachmentCacheKey(input: {
   return [input.fileName ?? '', input.contentId ?? '', input.index].join('|');
 }
 
-function findSignatureSegment(bodyText: string): { bodyMain: string; signature: string | null } {
+function findSignatureSegment(bodyText: string): {
+  bodyMain: string;
+  signature: string | null;
+} {
   const match = bodyText.match(SIGNATURE_PATTERN);
 
   if (!match || typeof match.index !== 'number') {
@@ -504,8 +559,13 @@ function findSignatureSegment(bodyText: string): { bodyMain: string; signature: 
   };
 }
 
-function findForwardedSegment(bodyText: string): { bodyMain: string; forwarded: string | null } {
-  const forwardedMatch = bodyText.match(FORWARDED_HEADER_PATTERN) ?? bodyText.match(ON_WROTE_PATTERN);
+function findForwardedSegment(bodyText: string): {
+  bodyMain: string;
+  forwarded: string | null;
+} {
+  const forwardedMatch =
+    bodyText.match(FORWARDED_HEADER_PATTERN) ??
+    bodyText.match(ON_WROTE_PATTERN);
 
   if (!forwardedMatch || typeof forwardedMatch.index !== 'number') {
     return {
@@ -520,7 +580,10 @@ function findForwardedSegment(bodyText: string): { bodyMain: string; forwarded: 
   };
 }
 
-function findDisclaimerSegment(bodyText: string): { bodyMain: string; disclaimer: string | null } {
+function findDisclaimerSegment(bodyText: string): {
+  bodyMain: string;
+  disclaimer: string | null;
+} {
   const disclaimerMatch = bodyText.match(DISCLAIMER_PATTERN);
 
   if (!disclaimerMatch || typeof disclaimerMatch.index !== 'number') {
@@ -551,15 +614,20 @@ export async function decomposeEmail(
   },
 ): Promise<DocumentSegment[]> {
   const segments: DocumentSegment[] = [];
-  const extractAttachmentTextImpl = options?.extractAttachmentText ?? extractAttachmentText;
+  const extractAttachmentTextImpl =
+    options?.extractAttachmentText ?? extractAttachmentText;
   const attachmentPairs = (message.attachments ?? []).map((attachment) => ({
     attachment,
     normalized: normalizeEmailAttachment(attachment),
   }));
   const filteredNormalizedAttachments = new Set(
-    filterIgnorableEmailAttachments(attachmentPairs.map((pair) => pair.normalized)),
+    filterIgnorableEmailAttachments(
+      attachmentPairs.map((pair) => pair.normalized),
+    ),
   );
-  const filteredAttachments = attachmentPairs.filter((pair) => filteredNormalizedAttachments.has(pair.normalized));
+  const filteredAttachments = attachmentPairs.filter((pair) =>
+    filteredNormalizedAttachments.has(pair.normalized),
+  );
 
   if (message.subject?.trim()) {
     segments.push({
@@ -626,7 +694,8 @@ export async function decomposeEmail(
       fileName.toLowerCase().endsWith('.csv') ||
       fileName.toLowerCase().endsWith('.xlsx') ||
       mimeType === 'text/csv' ||
-      mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      mimeType ===
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     ) {
       try {
         const parsed = parseUploadedFile({
@@ -670,7 +739,8 @@ export async function decomposeEmail(
       options?.extractedAttachmentTextByKey?.get(attachmentCacheKey) ??
       (await extractAttachmentTextImpl({
         fileType:
-          fileName.toLowerCase().endsWith('.pdf') || mimeType === 'application/pdf'
+          fileName.toLowerCase().endsWith('.pdf') ||
+          mimeType === 'application/pdf'
             ? 'PDF'
             : mimeType.startsWith('image/') ||
                 ['.jpg', '.jpeg', '.png', '.webp'].some((extension) =>
@@ -728,7 +798,14 @@ function parsePriceMatch(
   if (priceMatch[3] && priceMatch[4]) {
     return {
       amount: priceMatch[4],
-      currency: priceMatch[3] === '£' ? 'GBP' : priceMatch[3] === '$' ? 'USD' : priceMatch[3] === '€' ? 'EUR' : null,
+      currency:
+        priceMatch[3] === '£'
+          ? 'GBP'
+          : priceMatch[3] === '$'
+            ? 'USD'
+            : priceMatch[3] === '€'
+              ? 'EUR'
+              : null,
     };
   }
 
@@ -753,7 +830,9 @@ function extractSupplierCue(text: string): string | null {
       continue;
     }
 
-    for (const match of line.matchAll(new RegExp(SUPPLIER_NAME_PATTERN.source, 'ig'))) {
+    for (const match of line.matchAll(
+      new RegExp(SUPPLIER_NAME_PATTERN.source, 'ig'),
+    )) {
       const candidateName = match[1]?.trim();
 
       if (candidateName && !shouldIgnoreSupplierCue({ candidateName })) {
@@ -766,7 +845,9 @@ function extractSupplierCue(text: string): string | null {
 }
 
 function extractForwardedSenderEmail(text: string): string | null {
-  for (const match of text.matchAll(new RegExp(FORWARDED_SENDER_EMAIL_PATTERN.source, 'ig'))) {
+  for (const match of text.matchAll(
+    new RegExp(FORWARDED_SENDER_EMAIL_PATTERN.source, 'ig'),
+  )) {
     const email = match[1]?.trim().toLowerCase() ?? null;
 
     if (email && !isInternalSupplierDomain(extractSenderDomain(email))) {
@@ -788,7 +869,10 @@ function extractForwardedSenderHeaderCue(text: string): string | null {
     const withoutEmail = withoutPrefix.replace(/\s*<[^>]+>.*/, '').trim();
     const supplierCue = extractSupplierCue(withoutEmail);
 
-    if (supplierCue && !shouldIgnoreSupplierCue({ candidateName: supplierCue })) {
+    if (
+      supplierCue &&
+      !shouldIgnoreSupplierCue({ candidateName: supplierCue })
+    ) {
       return supplierCue;
     }
   }
@@ -801,12 +885,11 @@ function inferSupplierNameFromDomain(domain: string | null): string | null {
     return null;
   }
 
-  const labels = domain
-    .trim()
-    .toLowerCase()
-    .split('.')
-    .filter(Boolean);
-  const companyLabel = labels.find((label) => !DOMAIN_COMPANY_FALLBACK_BLOCKLIST.has(label) && label.length > 2);
+  const labels = domain.trim().toLowerCase().split('.').filter(Boolean);
+  const companyLabel = labels.find(
+    (label) =>
+      !DOMAIN_COMPANY_FALLBACK_BLOCKLIST.has(label) && label.length > 2,
+  );
 
   if (!companyLabel) {
     return null;
@@ -819,7 +902,10 @@ function inferSupplierNameFromDomain(domain: string | null): string | null {
     .join(' ');
 }
 
-function deriveSourceTrustScore(message: EmailInboundMessage, result: EmailInboundResult): number {
+function deriveSourceTrustScore(
+  message: EmailInboundMessage,
+  result: EmailInboundResult,
+): number {
   const item = result.items[0];
   const triageScore = item?.triageScores?.supplierLikelihoodScore ?? 0;
   const senderTrusted = env.emailInboundAllowedSenders
@@ -835,7 +921,8 @@ function buildOfferCandidateFromParsedRow(
   sourceKind: string,
   sourceTrustScore: number,
 ): StagedOfferCandidate {
-  const fieldConfidence = row.confidence === 'HIGH' ? 90 : row.confidence === 'MEDIUM' ? 72 : 45;
+  const fieldConfidence =
+    row.confidence === 'HIGH' ? 90 : row.confidence === 'MEDIUM' ? 72 : 45;
 
   return {
     sourceKind,
@@ -856,7 +943,8 @@ function buildOfferCandidateFromParsedRow(
     fieldConfidence,
     entityResolutionConfidence: 0,
     promotionConfidence: 0,
-    reviewReason: row.confidence === 'LOW' ? 'deterministic_row_low_confidence' : null,
+    reviewReason:
+      row.confidence === 'LOW' ? 'deterministic_row_low_confidence' : null,
     aiAssisted: false,
     evidences: [
       {
@@ -905,7 +993,10 @@ export function extractLooseOfferCandidate(
     .replace(MOQ_PATTERN, ' ')
     .replace(AVAILABILITY_PATTERN, ' ')
     .replace(MANUFACTURER_PATTERN, ' ')
-    .replace(/\b(?:we can do|we can offer|offer|available|limited stock|instock|in stock|at)\b/gi, ' ')
+    .replace(
+      /\b(?:we can do|we can offer|offer|available|limited stock|instock|in stock|at)\b/gi,
+      ' ',
+    )
     .replace(/[,:;]+/g, ' ')
     .replace(/\s{2,}/g, ' ')
     .replace(/^(?:available|offer|stock|pricing)\s+/i, '')
@@ -986,7 +1077,9 @@ export function extractLooseOfferCandidate(
   };
 }
 
-function dedupeOffers(candidates: StagedOfferCandidate[]): StagedOfferCandidate[] {
+function dedupeOffers(
+  candidates: StagedOfferCandidate[],
+): StagedOfferCandidate[] {
   const seen = new Set<string>();
 
   return candidates.filter((candidate) => {
@@ -1021,12 +1114,16 @@ function buildOfferFingerprint(
     [
       inboundEmailId,
       `doc-index:${offer.sourceDocumentIndex}`,
-      normalizeFingerprintText(offer.normalizedProductNameCandidate ?? offer.rawProductText),
+      normalizeFingerprintText(
+        offer.normalizedProductNameCandidate ?? offer.rawProductText,
+      ),
       offer.priceCandidate?.toString() ?? '',
       normalizeFingerprintText(offer.currencyCandidate),
       offer.minimumOrderQuantityCandidate ?? '',
       normalizeFingerprintText(offer.manufacturerCandidate),
-      normalizeFingerprintText(offer.supplierCandidate ?? selectedSupplier?.candidateName ?? null),
+      normalizeFingerprintText(
+        offer.supplierCandidate ?? selectedSupplier?.candidateName ?? null,
+      ),
       buildNormalizedSourceBlockHash(offer.sourceBlockText),
     ].join('|'),
   );
@@ -1041,7 +1138,9 @@ function buildPromotionFingerprint(
     [
       productId,
       normalizeFingerprintText(selectedSupplierName),
-      normalizeFingerprintText(offer.normalizedProductNameCandidate ?? offer.rawProductText),
+      normalizeFingerprintText(
+        offer.normalizedProductNameCandidate ?? offer.rawProductText,
+      ),
       offer.priceCandidate?.toString() ?? '',
       normalizeFingerprintText(offer.currencyCandidate),
       offer.minimumOrderQuantityCandidate ?? '',
@@ -1055,7 +1154,10 @@ export function mergeResolvedOffers(
   deterministicOffers: ResolvedOfferCandidate[],
   aiOffers: ResolvedOfferCandidate[],
 ): ResolvedOfferCandidate[] {
-  return dedupeOffers([...deterministicOffers, ...aiOffers]) as ResolvedOfferCandidate[];
+  return dedupeOffers([
+    ...deterministicOffers,
+    ...aiOffers,
+  ]) as ResolvedOfferCandidate[];
 }
 
 async function resolveOfferCandidates(
@@ -1077,7 +1179,8 @@ async function resolveOfferCandidates(
       rawProductText: offer.rawProductText,
       normalizedProductNameCandidate: offer.normalizedProductNameCandidate,
     });
-    const resolutionCandidates: ResolvedOfferCandidate['resolutionCandidates'] = [];
+    const resolutionCandidates: ResolvedOfferCandidate['resolutionCandidates'] =
+      [];
 
     if (offer.normalizedProductNameCandidate) {
       const product = await db.product.findFirst({
@@ -1137,19 +1240,26 @@ async function resolveOfferCandidates(
         reason: 'manual_supplier_override',
       },
       {
-        candidateName: resolveSupplierNameFromSender(message.from, env.emailInboundSupplierMappings),
+        candidateName: resolveSupplierNameFromSender(
+          message.from,
+          env.emailInboundSupplierMappings,
+        ),
         confidence: 88,
         reason: 'sender_mapping',
       },
       {
         candidateName: learnedHints.supplierSuggestion?.supplierName ?? null,
         confidence: learnedHints.supplierSuggestion?.confidence ?? 0,
-        reason: learnedHints.supplierSuggestion?.reason ?? 'learned_source_supplier_hint',
+        reason:
+          learnedHints.supplierSuggestion?.reason ??
+          'learned_source_supplier_hint',
       },
       {
         candidateName: extractSupplierCue(
           documents
-            .filter((document) => ['BODY_MAIN', 'BODY_FORWARDED'].includes(document.kind))
+            .filter((document) =>
+              ['BODY_MAIN', 'BODY_FORWARDED'].includes(document.kind),
+            )
             .map((document) => document.textContent)
             .join('\n\n'),
         ),
@@ -1158,13 +1268,17 @@ async function resolveOfferCandidates(
         supportsConflict: false,
       },
       {
-        candidateName: extractSupplierCue(documents.find((document) => document.kind === 'SIGNATURE')?.textContent ?? ''),
+        candidateName: extractSupplierCue(
+          documents.find((document) => document.kind === 'SIGNATURE')
+            ?.textContent ?? '',
+        ),
         confidence: 66,
         reason: 'signature_company_cue',
       },
       {
         candidateName: extractSupplierCue(
-          documents.find((document) => document.kind === 'BODY_FORWARDED')?.textContent ?? '',
+          documents.find((document) => document.kind === 'BODY_FORWARDED')
+            ?.textContent ?? '',
         ),
         confidence: 62,
         reason: 'forwarded_company_cue',
@@ -1172,7 +1286,9 @@ async function resolveOfferCandidates(
       {
         candidateName: extractForwardedSenderHeaderCue(
           documents
-            .filter((document) => ['BODY_MAIN', 'BODY_FORWARDED'].includes(document.kind))
+            .filter((document) =>
+              ['BODY_MAIN', 'BODY_FORWARDED'].includes(document.kind),
+            )
             .map((document) => document.textContent)
             .join('\n\n'),
         ),
@@ -1184,7 +1300,9 @@ async function resolveOfferCandidates(
           extractSenderDomain(
             extractForwardedSenderEmail(
               documents
-                .filter((document) => ['BODY_MAIN', 'BODY_FORWARDED'].includes(document.kind))
+                .filter((document) =>
+                  ['BODY_MAIN', 'BODY_FORWARDED'].includes(document.kind),
+                )
                 .map((document) => document.textContent)
                 .join('\n\n'),
             ) ?? '',
@@ -1205,23 +1323,31 @@ async function resolveOfferCandidates(
         supportsConflict: false,
       },
       {
-        candidateName: extractAttachmentFilenameSupplierCue({ message, documents }),
+        candidateName: extractAttachmentFilenameSupplierCue({
+          message,
+          documents,
+        }),
         confidence: 50,
         reason: 'attachment_filename_company_cue',
         supportsConflict: false,
       },
-    ].filter(
-      (
-        cue,
-      ): cue is {
-        candidateName: string;
-        confidence: number;
-        reason: string;
-        supportsConflict?: boolean;
-      } =>
-        Boolean(cue.candidateName?.trim()),
-    ).filter((cue) => !shouldIgnoreSupplierCue({ candidateName: cue.candidateName }));
-    const hasForwardedSenderDomainCue = supplierCues.some((cue) => cue.reason === 'forwarded_sender_domain');
+    ]
+      .filter(
+        (
+          cue,
+        ): cue is {
+          candidateName: string;
+          confidence: number;
+          reason: string;
+          supportsConflict?: boolean;
+        } => Boolean(cue.candidateName?.trim()),
+      )
+      .filter(
+        (cue) => !shouldIgnoreSupplierCue({ candidateName: cue.candidateName }),
+      );
+    const hasForwardedSenderDomainCue = supplierCues.some(
+      (cue) => cue.reason === 'forwarded_sender_domain',
+    );
 
     const groupedSupplierCues = new Map<
       string,
@@ -1235,39 +1361,49 @@ async function resolveOfferCandidates(
     >();
 
     for (const cue of supplierCues) {
-      const supplierFamilyKey = buildSupplierFamilyKey(cue.candidateName) || normalizeFingerprintText(cue.candidateName);
+      const supplierFamilyKey =
+        buildSupplierFamilyKey(cue.candidateName) ||
+        normalizeFingerprintText(cue.candidateName);
       const existingCue = groupedSupplierCues.get(supplierFamilyKey);
 
       if (!existingCue || cue.confidence > existingCue.confidence) {
         groupedSupplierCues.set(supplierFamilyKey, {
           ...cue,
           supportsConflict:
-            cue.reason === 'signature_company_cue' && hasForwardedSenderDomainCue
+            cue.reason === 'signature_company_cue' &&
+            hasForwardedSenderDomainCue
               ? false
-              : cue.supportsConflict ?? true,
-          aliases: Array.from(new Set([...(existingCue?.aliases ?? []), cue.candidateName])),
+              : (cue.supportsConflict ?? true),
+          aliases: Array.from(
+            new Set([...(existingCue?.aliases ?? []), cue.candidateName]),
+          ),
         });
         continue;
       }
 
-      existingCue.aliases = Array.from(new Set([...existingCue.aliases, cue.candidateName]));
+      existingCue.aliases = Array.from(
+        new Set([...existingCue.aliases, cue.candidateName]),
+      );
       existingCue.supportsConflict =
         existingCue.supportsConflict &&
         (cue.reason === 'signature_company_cue' && hasForwardedSenderDomainCue
           ? false
-          : cue.supportsConflict ?? true);
+          : (cue.supportsConflict ?? true));
     }
 
     const supplierCandidates = Array.from(groupedSupplierCues.values()).sort(
       (left, right) => right.confidence - left.confidence,
     );
-    const supplierCueConflict = supplierCandidates.filter((candidate) => candidate.supportsConflict).length > 1;
-    const selectedSupplierCue =
-      supplierCueConflict
-        ? null
-        : supplierCandidates[0] ?? null;
+    const supplierCueConflict =
+      supplierCandidates.filter((candidate) => candidate.supportsConflict)
+        .length > 1;
+    const selectedSupplierCue = supplierCueConflict
+      ? null
+      : (supplierCandidates[0] ?? null);
     const bestDetectedSupplierName =
-      selectedSupplierCue?.candidateName ?? supplierCandidates[0]?.candidateName ?? null;
+      selectedSupplierCue?.candidateName ??
+      supplierCandidates[0]?.candidateName ??
+      null;
     let selectedResolvedSupplierName: string | null = null;
 
     for (const candidate of supplierCandidates) {
@@ -1283,7 +1419,8 @@ async function resolveOfferCandidates(
           normalizeFingerprintText(candidate.candidateName);
 
       if (candidateSelected) {
-        selectedResolvedSupplierName = supplier?.name ?? candidate.candidateName;
+        selectedResolvedSupplierName =
+          supplier?.name ?? candidate.candidateName;
       }
 
       resolutionCandidates.push({
@@ -1302,7 +1439,9 @@ async function resolveOfferCandidates(
                     }
                   : {}),
                 aliases: candidate.aliases.filter(
-                  (alias) => normalizeFingerprintText(alias) !== normalizeFingerprintText(candidate.candidateName),
+                  (alias) =>
+                    normalizeFingerprintText(alias) !==
+                    normalizeFingerprintText(candidate.candidateName),
                 ),
               }
             : undefined,
@@ -1345,7 +1484,8 @@ async function resolveOfferCandidates(
 
     resolvedOffers.push({
       ...offer,
-      supplierCandidate: selectedResolvedSupplierName ?? bestDetectedSupplierName,
+      supplierCandidate:
+        selectedResolvedSupplierName ?? bestDetectedSupplierName,
       reviewReason:
         offer.reviewReason ??
         (supplierCueConflict
@@ -1354,7 +1494,7 @@ async function resolveOfferCandidates(
             ? 'unresolved_supplier'
             : learnedHints.shouldForceReview
               ? 'source_trust_too_low'
-            : null),
+              : null),
       entityResolutionConfidence: bestResolutionConfidence,
       promotionConfidence,
       resolutionCandidates,
@@ -1373,13 +1513,18 @@ function shouldAttemptAiFallback(
     return false;
   }
 
-  if (resolvedOffers.some((offer) => offer.structureConfidence >= 80 && !offer.reviewReason)) {
+  if (
+    resolvedOffers.some(
+      (offer) => offer.structureConfidence >= 80 && !offer.reviewReason,
+    )
+  ) {
     return false;
   }
 
   return (
     bodyItem.triageStatus === 'AI_REVIEW_ELIGIBLE' ||
-    (bodyItem.triageStatus === 'MANUAL_REVIEW_REQUIRED' && bodyItem.aiEligible === true)
+    (bodyItem.triageStatus === 'MANUAL_REVIEW_REQUIRED' &&
+      bodyItem.aiEligible === true)
   );
 }
 
@@ -1426,7 +1571,8 @@ export function buildAiOfferCandidates(
         rawText: row.evidenceText ?? String(row.price),
         confidence: 60,
       },
-      ...(row.minimumOrderQuantity !== null && row.minimumOrderQuantity !== undefined
+      ...(row.minimumOrderQuantity !== null &&
+      row.minimumOrderQuantity !== undefined
         ? [
             {
               fieldName: 'minimumOrderQuantityCandidate',
@@ -1471,10 +1617,16 @@ export function buildAiOfferCandidates(
       row.sourceSegment === 'BODY_MAIN'
         ? (sourceDocumentIndexes.bodyMain ?? 0)
         : row.sourceSegment === 'BODY_FORWARDED'
-          ? (sourceDocumentIndexes.bodyForwarded ?? sourceDocumentIndexes.bodyMain ?? 0)
+          ? (sourceDocumentIndexes.bodyForwarded ??
+            sourceDocumentIndexes.bodyMain ??
+            0)
           : row.sourceSegment === 'SIGNATURE'
-            ? (sourceDocumentIndexes.signature ?? sourceDocumentIndexes.bodyMain ?? 0)
-            : (sourceDocumentIndexes.bodyMain ?? sourceDocumentIndexes.bodyForwarded ?? 0),
+            ? (sourceDocumentIndexes.signature ??
+              sourceDocumentIndexes.bodyMain ??
+              0)
+            : (sourceDocumentIndexes.bodyMain ??
+              sourceDocumentIndexes.bodyForwarded ??
+              0),
   }));
 }
 
@@ -1539,7 +1691,9 @@ export async function persistPromotion(
     });
 
     if (!supplier) {
-      throw new Error(`Resolved supplier ${selectedSupplier.candidateId} was not found during promotion.`);
+      throw new Error(
+        `Resolved supplier ${selectedSupplier.candidateId} was not found during promotion.`,
+      );
     }
 
     const product = await findOrCreateProduct(
@@ -1586,22 +1740,26 @@ export async function persistPromotion(
         supplierId: supplier.id,
         productId: product.id,
         rawProductName: rawProductText,
-        normalizedProductName: offer.normalizedProductNameCandidate ?? undefined,
+        normalizedProductName:
+          offer.normalizedProductNameCandidate ?? undefined,
         candidateStrength: offer.strengthCandidate,
         candidateFormulation: offer.dosageFormCandidate,
         candidatePackSize: offer.packSizeCandidate,
         unitPrice,
         currencyCode,
         minimumOrderQuantity: offer.minimumOrderQuantityCandidate,
-        isAvailable:
-          offer.availabilityCandidate
-            ? /available|in stock|instock|ready/i.test(offer.availabilityCandidate)
-            : true,
+        isAvailable: offer.availabilityCandidate
+          ? /available|in stock|instock|ready/i.test(
+              offer.availabilityCandidate,
+            )
+          : true,
         rawRow: {
           source: 'inbound_email',
           inboundEmailId,
           sourceBlockText: offer.sourceBlockText,
-          offerFingerprint: buildNormalizedSourceBlockHash(offer.sourceBlockText),
+          offerFingerprint: buildNormalizedSourceBlockHash(
+            offer.sourceBlockText,
+          ),
         },
       },
       create: {
@@ -1609,23 +1767,27 @@ export async function persistPromotion(
         supplierId: supplier.id,
         productId: product.id,
         rawProductName: rawProductText,
-        normalizedProductName: offer.normalizedProductNameCandidate ?? undefined,
+        normalizedProductName:
+          offer.normalizedProductNameCandidate ?? undefined,
         candidateStrength: offer.strengthCandidate,
         candidateFormulation: offer.dosageFormCandidate,
         candidatePackSize: offer.packSizeCandidate,
         unitPrice,
         currencyCode,
         minimumOrderQuantity: offer.minimumOrderQuantityCandidate,
-        isAvailable:
-          offer.availabilityCandidate
-            ? /available|in stock|instock|ready/i.test(offer.availabilityCandidate)
-            : true,
+        isAvailable: offer.availabilityCandidate
+          ? /available|in stock|instock|ready/i.test(
+              offer.availabilityCandidate,
+            )
+          : true,
         promotionFingerprint,
         rawRow: {
           source: 'inbound_email',
           inboundEmailId,
           sourceBlockText: offer.sourceBlockText,
-          offerFingerprint: buildNormalizedSourceBlockHash(offer.sourceBlockText),
+          offerFingerprint: buildNormalizedSourceBlockHash(
+            offer.sourceBlockText,
+          ),
         },
       },
     });
@@ -1655,9 +1817,13 @@ export async function persistPromotion(
   };
 }
 
-export async function stageInboundEmail(message: EmailInboundMessage, result: EmailInboundResult): Promise<void> {
+export async function stageInboundEmail(
+  message: EmailInboundMessage,
+  result: EmailInboundResult,
+): Promise<void> {
   const sourceSystem = message.sourceSystem?.trim() || 'MICROSOFT_GRAPH';
-  const externalMessageId = message.externalMessageId?.trim() || message.messageId?.trim() || null;
+  const externalMessageId =
+    message.externalMessageId?.trim() || message.messageId?.trim() || null;
   const baseInboundEmailData = {
     sourceSystem,
     externalMessageId,
@@ -1723,7 +1889,9 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
 
   const sourceTrustScore = deriveSourceTrustScore(message, result);
   const bodyItem = result.items[0];
-  const triageStatus = bodyItem?.triageStatus ?? (result.ignored ? 'IGNORED_NON_ACTIONABLE' : null);
+  const triageStatus =
+    bodyItem?.triageStatus ??
+    (result.ignored ? 'IGNORED_NON_ACTIONABLE' : null);
   const extractedAttachmentTextByKey = new Map<
     string,
     {
@@ -1810,28 +1978,53 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
 
   const deterministicOffers = dedupeOffers(
     documents.flatMap((document) => {
-      if (!['BODY_MAIN', 'BODY_FORWARDED', 'ATTACHMENT_TEXT', 'ATTACHMENT_TABLE'].includes(document.kind)) {
+      if (
+        ![
+          'BODY_MAIN',
+          'BODY_FORWARDED',
+          'ATTACHMENT_TEXT',
+          'ATTACHMENT_TABLE',
+        ].includes(document.kind)
+      ) {
         return [];
       }
 
       const strictResult = parseStructuredPriceEmailBody(document.textContent);
       const strictOffers = strictResult.parsedRows.map((row) =>
-        buildOfferCandidateFromParsedRow(row, document.documentIndex, `STRICT_${document.kind}`, sourceTrustScore),
+        buildOfferCandidateFromParsedRow(
+          row,
+          document.documentIndex,
+          `STRICT_${document.kind}`,
+          sourceTrustScore,
+        ),
       );
       const strictRawBlocks = new Set(
-        strictResult.parsedRows.map((row) => normalizeFingerprintText(row.rawLine)),
+        strictResult.parsedRows.map((row) =>
+          normalizeFingerprintText(row.rawLine),
+        ),
       );
 
       const looseOffers = splitCommercialBlocks(document.textContent)
-        .filter((block) => !strictRawBlocks.has(normalizeFingerprintText(block)))
-        .map((block) =>
-          extractLooseOfferCandidate(block, document.documentIndex, `BLOCK_${document.kind}`, sourceTrustScore),
+        .filter(
+          (block) => !strictRawBlocks.has(normalizeFingerprintText(block)),
         )
-        .filter((candidate): candidate is StagedOfferCandidate => Boolean(candidate));
+        .map((block) =>
+          extractLooseOfferCandidate(
+            block,
+            document.documentIndex,
+            `BLOCK_${document.kind}`,
+            sourceTrustScore,
+          ),
+        )
+        .filter((candidate): candidate is StagedOfferCandidate =>
+          Boolean(candidate),
+        );
 
       return [...strictOffers, ...looseOffers];
     }),
-  ).filter((candidate) => !shouldSuppressAttachmentTextOfferCandidate(candidate));
+  ).filter(
+    (candidate) => !shouldSuppressAttachmentTextOfferCandidate(candidate),
+  );
   const sourceLearningContext = {
     sourceSystem,
     senderEmail: message.from,
@@ -1851,7 +2044,9 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
 
   if (shouldAttemptAiFallback(resolvedOffers, result)) {
     const aiSourceText = documents
-      .filter((document) => ['BODY_MAIN', 'BODY_FORWARDED'].includes(document.kind))
+      .filter((document) =>
+        ['BODY_MAIN', 'BODY_FORWARDED'].includes(document.kind),
+      )
       .map((document) => document.textContent)
       .join('\n\n')
       .trim();
@@ -1886,21 +2081,27 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
             aiResult,
             {
               bodyMain:
-                documents.find((document) => document.kind === 'BODY_MAIN')?.documentIndex ?? null,
+                documents.find((document) => document.kind === 'BODY_MAIN')
+                  ?.documentIndex ?? null,
               bodyForwarded:
-                documents.find((document) => document.kind === 'BODY_FORWARDED')?.documentIndex ?? null,
+                documents.find((document) => document.kind === 'BODY_FORWARDED')
+                  ?.documentIndex ?? null,
               signature:
-                documents.find((document) => document.kind === 'SIGNATURE')?.documentIndex ?? null,
+                documents.find((document) => document.kind === 'SIGNATURE')
+                  ?.documentIndex ?? null,
             },
             sourceTrustScore,
           ).map((offer) => ({
             ...offer,
             extractionRunId: aiRun.id,
-            })),
+          })),
           sourceLearningContext,
         );
 
-        resolvedOffers = mergeResolvedOffers(resolvedOffers, aiOffers) as typeof resolvedOffers;
+        resolvedOffers = mergeResolvedOffers(
+          resolvedOffers,
+          aiOffers,
+        ) as typeof resolvedOffers;
       }
     }
   }
@@ -1908,7 +2109,10 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
   const finalOfferReviewReasons: string[] = [];
 
   for (const offer of resolvedOffers) {
-    const sourceDocument = documents.find((document) => document.documentIndex === offer.sourceDocumentIndex) ?? null;
+    const sourceDocument =
+      documents.find(
+        (document) => document.documentIndex === offer.sourceDocumentIndex,
+      ) ?? null;
     const offerFingerprint = buildOfferFingerprint(inboundEmail.id, offer);
     const extractionRunId =
       'extractionRunId' in offer && typeof offer.extractionRunId === 'string'
@@ -2017,9 +2221,18 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
       });
     }
 
-    const promotionResult = await persistPromotion(inboundEmail.id, createdOffer.id, offer);
+    const promotionResult = await persistPromotion(
+      inboundEmail.id,
+      createdOffer.id,
+      offer,
+    );
     await offerWorkflowService.syncWorkflowItemForOfferReview(
-      buildWorkflowSyncInput(createdOffer.id, inboundEmail.id, promotionResult, offer),
+      buildWorkflowSyncInput(
+        createdOffer.id,
+        inboundEmail.id,
+        promotionResult,
+        offer,
+      ),
     );
     finalOfferStatuses.push(promotionResult.offerStatus);
     if (promotionResult.reviewReason) {
@@ -2066,22 +2279,26 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
         : finalOfferStatuses.some((status) => status === 'AUTO_PROMOTED') &&
             finalOfferStatuses.every((status) => status !== 'REVIEW_REQUIRED')
           ? 'AUTO_PROMOTED'
-        : finalOfferStatuses.some((status) => status === 'REVIEW_REQUIRED')
-          ? 'REVIEW_REQUIRED'
-          : finalOfferStatuses.every((status) => status === 'REJECTED')
-            ? 'REJECTED'
-            : 'STAGED';
-  const resolvedOfferReviewReason = resolvedOffers.find((offer) => offer.reviewReason)?.reviewReason ?? null;
+          : finalOfferStatuses.some((status) => status === 'REVIEW_REQUIRED')
+            ? 'REVIEW_REQUIRED'
+            : finalOfferStatuses.every((status) => status === 'REJECTED')
+              ? 'REJECTED'
+              : 'STAGED';
+  const resolvedOfferReviewReason =
+    resolvedOffers.find((offer) => offer.reviewReason)?.reviewReason ?? null;
   const promotionReviewReason = finalOfferReviewReasons[0] ?? null;
   const finalReviewReason =
     finalProcessingStatus === 'REVIEW_REQUIRED'
-      ? promotionReviewReason ??
+      ? (promotionReviewReason ??
         resolvedOfferReviewReason ??
-        (finalOfferStatuses.some((status) => status === 'REVIEW_REQUIRED') ? 'promotion_threshold_not_met' : null) ??
+        (finalOfferStatuses.some((status) => status === 'REVIEW_REQUIRED')
+          ? 'promotion_threshold_not_met'
+          : null) ??
         bodyItem?.reason ??
         result.reason ??
-        'review_required'
-      : bodyItem?.reason ?? (result.ignored ? result.reason ?? 'ignored_non_actionable' : null);
+        'review_required')
+      : (bodyItem?.reason ??
+        (result.ignored ? (result.reason ?? 'ignored_non_actionable') : null));
 
   await db.inboundEmail.update({
     where: { id: inboundEmail.id },
@@ -2089,8 +2306,13 @@ export async function stageInboundEmail(message: EmailInboundMessage, result: Em
       processingStatus: finalProcessingStatus,
       triageStatus,
       sourceTrustScore,
-      structureConfidence: Math.max(0, ...resolvedOffers.map((offer) => offer.structureConfidence), 0),
-      businessWorthinessScore: bodyItem?.triageScores?.businessWorthinessScore ?? null,
+      structureConfidence: Math.max(
+        0,
+        ...resolvedOffers.map((offer) => offer.structureConfidence),
+        0,
+      ),
+      businessWorthinessScore:
+        bodyItem?.triageScores?.businessWorthinessScore ?? null,
       parserConfidence: bodyItem?.parserConfidence ?? null,
       reviewReason: finalReviewReason,
       processedAt: new Date(),
@@ -2106,7 +2328,10 @@ export async function stageInboundEmailSafely(
     await stageInboundEmail(message, result);
   } catch (error) {
     logger.error('Failed to stage inbound email', {
-      error: error instanceof Error ? error.message : 'Unknown inbound email staging error.',
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Unknown inbound email staging error.',
       messageId: message.messageId ?? message.externalMessageId ?? null,
       senderEmail: message.from,
     });

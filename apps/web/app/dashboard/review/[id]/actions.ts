@@ -14,7 +14,9 @@ function value(formData: FormData, key: string): string {
   return typeof rawValue === 'string' ? rawValue.trim() : '';
 }
 
-function buildSupplierDetails(formData: FormData): Record<string, string | null> | undefined {
+function buildSupplierDetails(
+  formData: FormData,
+): Record<string, string | null> | undefined {
   const supplierDetails = {
     supplierName: value(formData, 'supplierName') || null,
     contactName: value(formData, 'supplierContactName') || null,
@@ -22,7 +24,9 @@ function buildSupplierDetails(formData: FormData): Record<string, string | null>
     phone: value(formData, 'supplierPhone') || null,
   };
 
-  return Object.values(supplierDetails).some(Boolean) ? supplierDetails : undefined;
+  return Object.values(supplierDetails).some(Boolean)
+    ? supplierDetails
+    : undefined;
 }
 
 function sanitizeReturnTo(value: string | null | undefined): string {
@@ -49,7 +53,10 @@ function buildReviewRedirectTarget(
   return `/dashboard/review/${encodeURIComponent(inboundEmailId)}?${searchParams.toString()}#decision`;
 }
 
-function formatReviewActionErrorMessage(message: string, action: string): string {
+function formatReviewActionErrorMessage(
+  message: string,
+  action: string,
+): string {
   if (
     action === 'APPROVE_TO_BUY' &&
     /qualification risk requires explicit operator confirmation/i.test(message)
@@ -57,7 +64,10 @@ function formatReviewActionErrorMessage(message: string, action: string): string
     return 'Supplier needs checking before approval. The supplier was detected, but it has not been matched to an approved supplier record yet. Use the checkbox below if you intentionally want to continue.';
   }
 
-  if (action === 'APPROVE_TO_BUY' && /blocked supplier cannot be approved to buy/i.test(message)) {
+  if (
+    action === 'APPROVE_TO_BUY' &&
+    /blocked supplier cannot be approved to buy/i.test(message)
+  ) {
     return 'Approval is blocked. The supplier is currently blocked and must be reviewed before you can continue.';
   }
 
@@ -68,8 +78,12 @@ function buildApprovalMessage(outcomes: ReviewWorkflowActionOutcome[]): {
   message: string;
   dealId?: string;
 } {
-  const createdDeal = outcomes.find((outcome) => outcome.tradeOpportunityOutcome === 'CREATED');
-  const existingDeal = outcomes.find((outcome) => outcome.tradeOpportunityOutcome === 'EXISTING_ACTIVE');
+  const createdDeal = outcomes.find(
+    (outcome) => outcome.tradeOpportunityOutcome === 'CREATED',
+  );
+  const existingDeal = outcomes.find(
+    (outcome) => outcome.tradeOpportunityOutcome === 'EXISTING_ACTIVE',
+  );
 
   if (createdDeal?.tradeOpportunityId) {
     return {
@@ -80,14 +94,22 @@ function buildApprovalMessage(outcomes: ReviewWorkflowActionOutcome[]): {
 
   if (existingDeal?.tradeOpportunityId) {
     return {
-      message: 'Approved. A deal opportunity was already open for this supplier offer.',
+      message:
+        'Approved. A deal opportunity was already open for this supplier offer.',
       dealId: existingDeal.tradeOpportunityId,
     };
   }
 
-  const hasBuyDecisionCreated = outcomes.some((outcome) => outcome.buyDecisionCreated);
-  const noDemand = outcomes.some((outcome) => outcome.tradeOpportunityOutcome === 'SKIPPED_NO_RECENT_DEMAND');
-  const noMargin = outcomes.some((outcome) => outcome.tradeOpportunityOutcome === 'SKIPPED_NON_POSITIVE_MARGIN');
+  const hasBuyDecisionCreated = outcomes.some(
+    (outcome) => outcome.buyDecisionCreated,
+  );
+  const noDemand = outcomes.some(
+    (outcome) => outcome.tradeOpportunityOutcome === 'SKIPPED_NO_RECENT_DEMAND',
+  );
+  const noMargin = outcomes.some(
+    (outcome) =>
+      outcome.tradeOpportunityOutcome === 'SKIPPED_NON_POSITIVE_MARGIN',
+  );
 
   if (noDemand) {
     return {
@@ -136,7 +158,8 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
 
   const note = value(formData, 'note') || undefined;
   const supplierDetails = buildSupplierDetails(formData);
-  const allowQualificationRisk = formData.get('allowQualificationRisk') === 'on';
+  const allowQualificationRisk =
+    formData.get('allowQualificationRisk') === 'on';
   const actorPayload = {
     actorType: 'OPERATOR',
     actorIdentifier: 'web-review-console',
@@ -150,9 +173,13 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
 
     if (items.length === 0) {
       redirect(
-        buildReviewRedirectTarget(inboundEmailId, {
-          error: 'No open workflow items were found for this email.',
-        }, returnTo),
+        buildReviewRedirectTarget(
+          inboundEmailId,
+          {
+            error: 'No open workflow items were found for this email.',
+          },
+          returnTo,
+        ),
       );
     }
 
@@ -161,7 +188,9 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
         const result = await updateReviewWorkflowItem(item.id, {
           action,
           note,
-          allowQualificationRisk: workflowItemId ? true : allowQualificationRisk,
+          allowQualificationRisk: workflowItemId
+            ? true
+            : allowQualificationRisk,
           supplierDetails,
           ...actorPayload,
         });
@@ -188,13 +217,19 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
 
     if (inboundEmailId) {
       redirect(
-        buildReviewRedirectTarget(inboundEmailId, {
-          error: message,
-        }, returnTo),
+        buildReviewRedirectTarget(
+          inboundEmailId,
+          {
+            error: message,
+          },
+          returnTo,
+        ),
       );
     }
 
-    redirect(`/dashboard/review/${workflowItemId}?error=${encodeURIComponent(message)}&returnTo=${encodeURIComponent(returnTo)}`);
+    redirect(
+      `/dashboard/review/${workflowItemId}?error=${encodeURIComponent(message)}&returnTo=${encodeURIComponent(returnTo)}`,
+    );
   }
 
   revalidatePath('/dashboard/review');
@@ -218,7 +253,9 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
       if (successPayload.dealId) {
         searchParams.set('dealId', successPayload.dealId);
       }
-      redirect(`${returnTo}${returnTo.includes('?') ? '&' : '?'}${searchParams.toString()}`);
+      redirect(
+        `${returnTo}${returnTo.includes('?') ? '&' : '?'}${searchParams.toString()}`,
+      );
     }
     const nextParams: Record<string, string> = {
       updated: action,
@@ -227,7 +264,9 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
     if (successPayload.dealId) {
       nextParams.dealId = successPayload.dealId;
     }
-    redirect(buildReviewSuccessRedirectTarget(inboundEmailId, nextParams, returnTo));
+    redirect(
+      buildReviewSuccessRedirectTarget(inboundEmailId, nextParams, returnTo),
+    );
   }
 
   const searchParams = new URLSearchParams({
@@ -237,5 +276,7 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
   if (successPayload.dealId) {
     searchParams.set('dealId', successPayload.dealId);
   }
-  redirect(`${returnTo}${returnTo.includes('?') ? '&' : '?'}${searchParams.toString()}`);
+  redirect(
+    `${returnTo}${returnTo.includes('?') ? '&' : '?'}${searchParams.toString()}`,
+  );
 }

@@ -1,7 +1,14 @@
 import { env } from '../config/env';
 import { db } from '../lib/db';
 import { logger } from '../lib/logger';
-import { getMicrosoftGraphAccessToken, isMicrosoftGraphConfigured } from './graph';
+import {
+  buildCorrelationId,
+  correlationLogMeta,
+} from '../observability/correlation';
+import {
+  getMicrosoftGraphAccessToken,
+  isMicrosoftGraphConfigured,
+} from './graph';
 import { ingestInboundEmail } from './inbound/service';
 import type { EmailInboundMessage } from './inbound/types';
 
@@ -82,7 +89,9 @@ function toInboundMessage(message: GraphMessage): EmailInboundMessage | null {
 
   const bodyContent = message.body?.content ?? '';
   const bodyText =
-    message.body?.contentType?.toLowerCase() === 'html' ? stripHtml(bodyContent) : bodyContent;
+    message.body?.contentType?.toLowerCase() === 'html'
+      ? stripHtml(bodyContent)
+      : bodyContent;
 
   return {
     messageId: message.internetMessageId?.trim() || message.id,
@@ -93,9 +102,11 @@ function toInboundMessage(message: GraphMessage): EmailInboundMessage | null {
     fromName: message.from?.emailAddress?.name?.trim() || null,
     subject: message.subject?.trim() || '',
     bodyText,
-    rawHtml: message.body?.contentType?.toLowerCase() === 'html' ? bodyContent : null,
+    rawHtml:
+      message.body?.contentType?.toLowerCase() === 'html' ? bodyContent : null,
     receivedAt:
-      message.receivedDateTime && !Number.isNaN(new Date(message.receivedDateTime).getTime())
+      message.receivedDateTime &&
+      !Number.isNaN(new Date(message.receivedDateTime).getTime())
         ? new Date(message.receivedDateTime)
         : null,
     attachments: [],
@@ -115,7 +126,9 @@ async function graphRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Microsoft Graph request failed with status ${response.status}. ${errorText}`);
+    throw new Error(
+      `Microsoft Graph request failed with status ${response.status}. ${errorText}`,
+    );
   }
 
   if (response.status === 204) {
@@ -128,10 +141,12 @@ async function graphRequest<T>(path: string, init?: RequestInit): Promise<T> {
 async function listUnreadInboxMessages(): Promise<GraphMessage[]> {
   const mailbox = encodeURIComponent(env.microsoftGraphSenderMailbox);
   const query =
-    "/mailFolders/inbox/messages?$select=id,isRead,subject,internetMessageId,conversationId,receivedDateTime,from,body,hasAttachments" +
-    "&$filter=isRead eq false&$orderby=receivedDateTime asc&$top=10";
+    '/mailFolders/inbox/messages?$select=id,isRead,subject,internetMessageId,conversationId,receivedDateTime,from,body,hasAttachments' +
+    '&$filter=isRead eq false&$orderby=receivedDateTime asc&$top=10';
 
-  const payload = await graphRequest<GraphListResponse<GraphMessage>>(`/users/${mailbox}${query}`);
+  const payload = await graphRequest<GraphListResponse<GraphMessage>>(
+    `/users/${mailbox}${query}`,
+  );
   return Array.isArray(payload.value) ? payload.value : [];
 }
 
@@ -146,48 +161,74 @@ async function listAttachments(messageId: string): Promise<GraphAttachment[]> {
 
 async function markMessageRead(messageId: string): Promise<void> {
   const mailbox = encodeURIComponent(env.microsoftGraphSenderMailbox);
-  await graphRequest<void>(`/users/${mailbox}/messages/${encodeURIComponent(messageId)}`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      isRead: true,
-    }),
-  });
+  await graphRequest<void>(
+    `/users/${mailbox}/messages/${encodeURIComponent(messageId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        isRead: true,
+      }),
+    },
+  );
 }
 
 async function processMessage(
   message: GraphMessage,
   dependencies: EmailInboundPollingDependencies,
 ): Promise<void> {
+  const correlation = {
+    sourceSystem: 'MICROSOFT_GRAPH',
+    externalMessageId: message.id ?? null,
+    messageId: message.internetMessageId ?? null,
+  };
+
   if (!message.id) {
-    dependencies.logger.warn('Email inbox polling skipped malformed Graph message', {
-      reason: 'missing_graph_message_id',
-      internetMessageId: message.internetMessageId ?? null,
-      subject: message.subject ?? null,
-    });
+    dependencies.logger.warn(
+      'Email inbox polling skipped malformed Graph message',
+      {
+        ...correlationLogMeta(correlation),
+        reason: 'missing_graph_message_id',
+        internetMessageId: message.internetMessageId ?? null,
+        subject: message.subject ?? null,
+      },
+    );
     return;
   }
 
   const inboundMessage = toInboundMessage(message);
 
   if (!inboundMessage) {
-    dependencies.logger.warn('Email inbox polling skipped malformed Graph message', {
-      reason: 'missing_sender_or_unusable_message_shape',
-      externalMessageId: message.id,
-      internetMessageId: message.internetMessageId ?? null,
-      subject: message.subject ?? null,
-    });
+    dependencies.logger.warn(
+      'Email inbox polling skipped malformed Graph message',
+      {
+        ...correlationLogMeta(correlation),
+        reason: 'missing_sender_or_unusable_message_shape',
+        externalMessageId: message.id,
+        internetMessageId: message.internetMessageId ?? null,
+        subject: message.subject ?? null,
+      },
+    );
     await dependencies.markMessageRead(message.id);
     return;
   }
 
-  const existingInboundEmail = await dependencies.lookupExistingInboundEmail(message.id);
-  if (existingInboundEmail && existingInboundEmail.processingStatus !== 'RECEIVED') {
-    dependencies.logger.info('Email inbox polling skipped already-processed message replay', {
-      externalMessageId: message.id,
-      inboundEmailId: existingInboundEmail.id,
-      processingStatus: existingInboundEmail.processingStatus,
-      from: inboundMessage.from,
-    });
+  const existingInboundEmail = await dependencies.lookupExistingInboundEmail(
+    message.id,
+  );
+  if (
+    existingInboundEmail &&
+    existingInboundEmail.processingStatus !== 'RECEIVED'
+  ) {
+    dependencies.logger.info(
+      'Email inbox polling skipped already-processed message replay',
+      {
+        ...correlationLogMeta(correlation),
+        externalMessageId: message.id,
+        inboundEmailId: existingInboundEmail.id,
+        processingStatus: existingInboundEmail.processingStatus,
+        from: inboundMessage.from,
+      },
+    );
     await dependencies.markMessageRead(message.id);
     return;
   }
@@ -195,7 +236,10 @@ async function processMessage(
   if (message.hasAttachments) {
     const attachments = await dependencies.listAttachments(message.id);
     inboundMessage.attachments = attachments
-      .filter((attachment) => attachment['@odata.type'] === '#microsoft.graph.fileAttachment')
+      .filter(
+        (attachment) =>
+          attachment['@odata.type'] === '#microsoft.graph.fileAttachment',
+      )
       .map((attachment) => ({
         fileName: attachment.name ?? null,
         mimeType: attachment.contentType ?? null,
@@ -209,6 +253,7 @@ async function processMessage(
   const result = await dependencies.ingestInboundEmail(inboundMessage);
 
   dependencies.logger.info('Email inbox polling handled message', {
+    correlationId: buildCorrelationId(correlation),
     messageId: inboundMessage.messageId ?? message.id,
     externalMessageId: message.id,
     from: inboundMessage.from,
@@ -267,18 +312,34 @@ export function createEmailInboundPollingWorker(
         try {
           await processMessage(message, dependencies);
         } catch (error) {
-          dependencies.logger.error('Email inbox polling failed for one message and continued', {
-            error: error instanceof Error ? error.message : 'Unknown email inbox polling message error.',
-            externalMessageId: message.id ?? null,
-            internetMessageId: message.internetMessageId ?? null,
-            from: message.from?.emailAddress?.address?.trim().toLowerCase() ?? null,
-            subject: message.subject ?? null,
-          });
+          dependencies.logger.error(
+            'Email inbox polling failed for one message and continued',
+            {
+              ...correlationLogMeta({
+                sourceSystem: 'MICROSOFT_GRAPH',
+                externalMessageId: message.id ?? null,
+                messageId: message.internetMessageId ?? null,
+              }),
+              error:
+                error instanceof Error
+                  ? error.message
+                  : 'Unknown email inbox polling message error.',
+              externalMessageId: message.id ?? null,
+              internetMessageId: message.internetMessageId ?? null,
+              from:
+                message.from?.emailAddress?.address?.trim().toLowerCase() ??
+                null,
+              subject: message.subject ?? null,
+            },
+          );
         }
       }
     } catch (error) {
       dependencies.logger.error('Email inbox polling failed', {
-        error: error instanceof Error ? error.message : 'Unknown email inbox polling error.',
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Unknown email inbox polling error.',
       });
     } finally {
       inFlight = false;

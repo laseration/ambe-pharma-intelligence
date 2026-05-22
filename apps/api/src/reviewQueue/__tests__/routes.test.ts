@@ -6,10 +6,7 @@ import { createApp } from '../../app';
 import { env } from '../../config/env';
 import { offerWorkflowService } from '../workflowService';
 
-function overrideEnv(
-  context: TestContext,
-  overrides: Partial<typeof env>,
-) {
+function overrideEnv(context: TestContext, overrides: Partial<typeof env>) {
   const snapshot = Object.fromEntries(
     Object.keys(overrides).map((key) => [key, env[key as keyof typeof env]]),
   ) as Partial<typeof env>;
@@ -23,7 +20,12 @@ function overrideEnv(
 function stubMethod<
   TObject extends Record<string, any>,
   TKey extends keyof TObject,
->(context: TestContext, object: TObject, key: TKey, replacement: TObject[TKey]) {
+>(
+  context: TestContext,
+  object: TObject,
+  key: TKey,
+  replacement: TObject[TKey],
+) {
   const original = object[key];
   object[key] = replacement;
   context.after(() => {
@@ -130,7 +132,8 @@ test('workflow detail route returns inbound email context and staged offer data'
             kind: 'ATTACHMENT_TABLE',
             documentIndex: 2,
             label: 'price-list.xlsx',
-            textContent: 'productName: Amlodipine 5mg tabs 28 | unitPrice: 8.40',
+            textContent:
+              'productName: Amlodipine 5mg tabs 28 | unitPrice: 8.40',
             metadata: {
               fileName: 'price-list.xlsx',
             },
@@ -173,16 +176,22 @@ test('workflow detail route returns inbound email context and staged offer data'
   );
 
   const baseUrl = await startServer(t);
-  const response = await fetch(`${baseUrl}/api/review-queue/workflows/workflow-1`, {
-    headers: {
-      'x-internal-api-key': 'test-secret',
+  const response = await fetch(
+    `${baseUrl}/api/review-queue/workflows/workflow-1`,
+    {
+      headers: {
+        'x-internal-api-key': 'test-secret',
+      },
     },
-  });
+  );
 
   assert.equal(response.status, 200);
   const payload = await response.json();
   assert.equal(payload.item.id, 'workflow-1');
-  assert.equal(payload.item.emailDerivedOffer.rawProductText, 'Amlodipine 5mg tabs 28');
+  assert.equal(
+    payload.item.emailDerivedOffer.rawProductText,
+    'Amlodipine 5mg tabs 28',
+  );
   assert.equal(payload.item.inboundEmail.documents[0].kind, 'BODY_MAIN');
   assert.equal(payload.item.supplierContact.companyName, 'Shortline');
 });
@@ -196,11 +205,14 @@ test('workflow detail route returns 404 when workflow is missing', async (t) => 
   stubMethod(t, offerWorkflowService, 'getWorkflowItem', async () => null);
 
   const baseUrl = await startServer(t);
-  const response = await fetch(`${baseUrl}/api/review-queue/workflows/missing-workflow`, {
-    headers: {
-      'x-internal-api-key': 'test-secret',
+  const response = await fetch(
+    `${baseUrl}/api/review-queue/workflows/missing-workflow`,
+    {
+      headers: {
+        'x-internal-api-key': 'test-secret',
+      },
     },
-  });
+  );
 
   assert.equal(response.status, 404);
 });
@@ -213,15 +225,10 @@ test('workflow list route accepts inboundEmailId filter', async (t) => {
   });
 
   let capturedFilters: Record<string, unknown> | null = null;
-  stubMethod(
-    t,
-    offerWorkflowService,
-    'listWorkflowItems',
-    (async (filters) => {
-      capturedFilters = filters as Record<string, unknown>;
-      return [];
-    }) as typeof offerWorkflowService.listWorkflowItems,
-  );
+  stubMethod(t, offerWorkflowService, 'listWorkflowItems', (async (filters) => {
+    capturedFilters = filters as Record<string, unknown>;
+    return [];
+  }) as typeof offerWorkflowService.listWorkflowItems);
 
   const baseUrl = await startServer(t);
   const response = await fetch(

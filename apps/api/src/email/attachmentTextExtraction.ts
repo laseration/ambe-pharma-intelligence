@@ -27,21 +27,36 @@ function normalizeExtractedText(value: string): string {
     .trim();
 }
 
-function isPdfAttachment(input: Pick<NormalizedEmailAttachment, 'fileName' | 'mimeType'>): boolean {
-  const extension = input.fileName ? path.extname(input.fileName).toLowerCase() : '';
+function isPdfAttachment(
+  input: Pick<NormalizedEmailAttachment, 'fileName' | 'mimeType'>,
+): boolean {
+  const extension = input.fileName
+    ? path.extname(input.fileName).toLowerCase()
+    : '';
   const mimeType = lower(input.mimeType);
 
   return extension === '.pdf' || mimeType === 'application/pdf';
 }
 
-function isImageAttachment(input: Pick<NormalizedEmailAttachment, 'fileName' | 'mimeType'>): boolean {
-  const extension = input.fileName ? path.extname(input.fileName).toLowerCase() : '';
+function isImageAttachment(
+  input: Pick<NormalizedEmailAttachment, 'fileName' | 'mimeType'>,
+): boolean {
+  const extension = input.fileName
+    ? path.extname(input.fileName).toLowerCase()
+    : '';
   const mimeType = lower(input.mimeType);
 
-  return mimeType.startsWith('image/') || ['.jpg', '.jpeg', '.png', '.webp'].includes(extension);
+  return (
+    mimeType.startsWith('image/') ||
+    ['.jpg', '.jpeg', '.png', '.webp'].includes(extension)
+  );
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
   let timeoutHandle: NodeJS.Timeout | null = null;
 
   try {
@@ -60,11 +75,17 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
   }
 }
 
-async function extractPdfText(buffer: Buffer): Promise<AttachmentTextExtractionResult | null> {
+async function extractPdfText(
+  buffer: Buffer,
+): Promise<AttachmentTextExtractionResult | null> {
   const parser = new PDFParse({ data: buffer });
 
   try {
-    const result = await withTimeout(parser.getText(), EXTRACTION_TIMEOUT_MS, 'PDF text extraction');
+    const result = await withTimeout(
+      parser.getText(),
+      EXTRACTION_TIMEOUT_MS,
+      'PDF text extraction',
+    );
     const text = normalizeExtractedText(result.text);
 
     if (!text) {
@@ -81,7 +102,9 @@ async function extractPdfText(buffer: Buffer): Promise<AttachmentTextExtractionR
   }
 }
 
-async function extractImageText(buffer: Buffer): Promise<AttachmentTextExtractionResult | null> {
+async function extractImageText(
+  buffer: Buffer,
+): Promise<AttachmentTextExtractionResult | null> {
   const worker = await Tesseract.createWorker('eng', 1, {
     logger: () => undefined,
   });

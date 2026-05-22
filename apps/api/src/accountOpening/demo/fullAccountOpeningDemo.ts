@@ -7,11 +7,9 @@ import type {
   AccountOpeningCompletedFormFilingPack,
   AccountOpeningDriveArchiveConfig,
 } from '../driveArchive';
-import type { AccountOpeningCompletionDraft } from '../draft';
 import {
   approveAccountOpeningCompletedFormFiling,
   buildAccountOpeningCase,
-  buildAccountOpeningCaseDetail,
   detectAccountOpeningEmail,
   downloadAccountOpeningBinaryFillPreviewFile,
   downloadAccountOpeningFillPreviewFile,
@@ -28,7 +26,6 @@ import {
   type PersistedAccountOpeningCaseEvent,
   type PersistedAccountOpeningCompletedFormFiling,
   type PersistedAccountOpeningFillPreview,
-  type PersistedAccountOpeningOriginalForm,
   type PersistedAccountOpeningReviewCase,
 } from '../service';
 

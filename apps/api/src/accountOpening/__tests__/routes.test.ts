@@ -37,6 +37,7 @@ function buildCaseDetail(
 ): AccountOpeningCaseDetail {
   return {
     id: 'case-1',
+    diagnosticCorrelationId: 'MESSAGE:<message-1>',
     sourceFingerprint: 'fingerprint-1',
     messageId: '<message-1>',
     senderEmail: 'forms@supplier.co.uk',
@@ -137,9 +138,31 @@ function buildReadinessReport(
 ): AccountOpeningReadinessReport {
   return {
     caseId: 'case-1',
+    diagnosticCorrelationId: 'MESSAGE:<message-1>',
     status: 'RED',
     readyForEndToEndFillingAndFiling: false,
     nextAction: 'Review supplier fields and save field mappings.',
+    documentLifecycle: {
+      originalFormCount: 0,
+      primaryOriginalFormId: null,
+      canAttemptBinaryPreview: false,
+      canDownloadBinaryPreview: false,
+      canApproveCompletedUnsignedFiling: false,
+      canFileCompletedUnsignedForm: false,
+      completedUnsignedFilingStatus: null,
+      primaryBlocker: 'Reviewed field mappings have not been saved.',
+      nextAction: 'Review supplier fields and save field mappings.',
+      forms: [],
+      safety: {
+        metadataOnly: true,
+        rawExtractedTextIncluded: false,
+        binaryBytesIncluded: false,
+        bankDetailsIncluded: false,
+        directDebitMandateValuesIncluded: false,
+        signaturesIncluded: false,
+        guaranteesIncluded: false,
+      },
+    },
     checks: [
       {
         key: 'REVIEWED_FIELD_MAPPINGS_SAVED',
@@ -511,6 +534,11 @@ test('account-opening readiness route requires operator access and returns safe 
 });
 
 test('account-opening missing-info route saves sanitized review fields with audit actor', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
   const savedInputs: Array<{
     id: string;
     missingInfoResponses: AccountOpeningMissingInfoResponses;
@@ -533,7 +561,10 @@ test('account-opening missing-info route saves sanitized review fields with audi
     `${baseUrl}/account-opening/case-1/missing-info`,
     {
       method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-api-key': 'test-secret',
+      },
       body: JSON.stringify({
         website: 'https://supplier.example',
         reviewerNotes:
@@ -561,6 +592,11 @@ test('account-opening missing-info route saves sanitized review fields with audi
 });
 
 test('account-opening status route allows only safe review status actions', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
   const actions: string[] = [];
   const baseUrl = await startServer(t, {
     getCaseDetail: async () => buildCaseDetail(),
@@ -583,7 +619,10 @@ test('account-opening status route allows only safe review status actions', asyn
     `${baseUrl}/account-opening/case-1/status`,
     {
       method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-api-key': 'test-secret',
+      },
       body: JSON.stringify({
         action: 'APPROVED_FOR_COMPLETION',
         note: 'Approved for completion only. This does not sign or send.',
@@ -594,7 +633,10 @@ test('account-opening status route allows only safe review status actions', asyn
     `${baseUrl}/account-opening/case-1/status`,
     {
       method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-api-key': 'test-secret',
+      },
       body: JSON.stringify({
         action: 'REJECTED',
         note: 'No form will be completed, signed, uploaded, or sent.',
@@ -605,7 +647,10 @@ test('account-opening status route allows only safe review status actions', asyn
     `${baseUrl}/account-opening/case-1/status`,
     {
       method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-api-key': 'test-secret',
+      },
       body: JSON.stringify({
         action: 'GENERATE_DRAFT',
       }),
@@ -619,6 +664,11 @@ test('account-opening status route allows only safe review status actions', asyn
 });
 
 test('account-opening draft routes return safe draft and protect generation', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
   const generatedInputs: Array<{
     id: string;
     actorType?: string | null;
@@ -649,7 +699,10 @@ test('account-opening draft routes return safe draft and protect generation', as
     `${baseUrl}/account-opening/case-1/generate-draft`,
     {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-api-key': 'test-secret',
+      },
       body: JSON.stringify({
         actorType: 'OPERATOR',
         actorIdentifier: 'route-draft-test',
@@ -1260,6 +1313,11 @@ test('account-opening completed form filing routes require operator access and r
 });
 
 test('account-opening review export routes return safe pack and downloadable files', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
   const exportedInputs: Array<{ id: string; actorIdentifier?: string | null }> =
     [];
   const downloadedInputs: Array<{
@@ -1346,9 +1404,19 @@ test('account-opening review export routes return safe pack and downloadable fil
 
   const packResponse = await fetch(
     `${baseUrl}/account-opening/case-1/export-pack`,
+    {
+      headers: {
+        'x-internal-api-key': 'test-secret',
+      },
+    },
   );
   const fileResponse = await fetch(
     `${baseUrl}/account-opening/case-1/export-pack/review-pack.md`,
+    {
+      headers: {
+        'x-internal-api-key': 'test-secret',
+      },
+    },
   );
   const packText = await packResponse.text();
   const fileText = await fileResponse.text();
@@ -1372,6 +1440,11 @@ test('account-opening review export routes return safe pack and downloadable fil
 });
 
 test('account-opening review export routes reject unknown and traversal filenames safely', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
   const downloadedInputs: Array<{ fileName: string }> = [];
   const baseUrl = await startServer(t, {
     downloadExportFile: async (input) => {
@@ -1385,9 +1458,19 @@ test('account-opening review export routes reject unknown and traversal filename
 
   const unknownResponse = await fetch(
     `${baseUrl}/account-opening/case-1/export-pack/unknown.json`,
+    {
+      headers: {
+        'x-internal-api-key': 'test-secret',
+      },
+    },
   );
   const traversalResponse = await fetch(
     `${baseUrl}/account-opening/case-1/export-pack/${encodeURIComponent('../secret.json')}`,
+    {
+      headers: {
+        'x-internal-api-key': 'test-secret',
+      },
+    },
   );
 
   assert.equal(unknownResponse.status, 404);

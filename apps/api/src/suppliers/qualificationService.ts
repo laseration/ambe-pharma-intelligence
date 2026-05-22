@@ -77,15 +77,39 @@ export type SupplierQualificationListFilters = {
 };
 
 export type SupplierQualificationRepository = {
-  findBySupplierId: (supplierId: string) => Promise<SupplierQualificationRecord | null>;
-  create: (data: Partial<SupplierQualificationRecord> & Pick<SupplierQualificationRecord, 'supplierId' | 'qualificationStatus' | 'trustTier' | 'requiresManualApproval' | 'canAutoApproveBuyDecisions'>) => Promise<SupplierQualificationRecord>;
-  update: (supplierQualificationId: string, data: Partial<SupplierQualificationRecord>) => Promise<SupplierQualificationRecord>;
-  createEvent: (data: Omit<SupplierQualificationEventRecord, 'id' | 'createdAt'>) => Promise<SupplierQualificationEventRecord>;
-  list: (filters: SupplierQualificationListFilters) => Promise<SupplierQualificationRecord[]>;
-  listEvents: (supplierQualificationId: string) => Promise<SupplierQualificationEventRecord[]>;
+  findBySupplierId: (
+    supplierId: string,
+  ) => Promise<SupplierQualificationRecord | null>;
+  create: (
+    data: Partial<SupplierQualificationRecord> &
+      Pick<
+        SupplierQualificationRecord,
+        | 'supplierId'
+        | 'qualificationStatus'
+        | 'trustTier'
+        | 'requiresManualApproval'
+        | 'canAutoApproveBuyDecisions'
+      >,
+  ) => Promise<SupplierQualificationRecord>;
+  update: (
+    supplierQualificationId: string,
+    data: Partial<SupplierQualificationRecord>,
+  ) => Promise<SupplierQualificationRecord>;
+  createEvent: (
+    data: Omit<SupplierQualificationEventRecord, 'id' | 'createdAt'>,
+  ) => Promise<SupplierQualificationEventRecord>;
+  list: (
+    filters: SupplierQualificationListFilters,
+  ) => Promise<SupplierQualificationRecord[]>;
+  listEvents: (
+    supplierQualificationId: string,
+  ) => Promise<SupplierQualificationEventRecord[]>;
 };
 
-function normalizeActor(actor?: SupplierQualificationActor): { actorType: string; actorIdentifier: string | null } {
+function normalizeActor(actor?: SupplierQualificationActor): {
+  actorType: string;
+  actorIdentifier: string | null;
+} {
   return {
     actorType: actor?.actorType?.trim() || 'SYSTEM',
     actorIdentifier: actor?.actorIdentifier?.trim() || null,
@@ -118,7 +142,9 @@ function buildDefaultQualification(
   };
 }
 
-export function createSupplierQualificationRepository(client: typeof db = db): SupplierQualificationRepository {
+export function createSupplierQualificationRepository(
+  client: typeof db = db,
+): SupplierQualificationRepository {
   return {
     findBySupplierId: async (supplierId) =>
       client.supplierQualification.findUnique({
@@ -188,7 +214,10 @@ export function createSupplierQualificationRepository(client: typeof db = db): S
             },
           },
         },
-        orderBy: [{ qualificationStatus: 'asc' }, { updatedAt: 'desc' }] as never,
+        orderBy: [
+          { qualificationStatus: 'asc' },
+          { updatedAt: 'desc' },
+        ] as never,
         take: filters.take ?? 100,
       })) as SupplierQualificationRecord[];
     },
@@ -222,19 +251,26 @@ async function logQualificationEvent(
   });
 }
 
-export function createSupplierQualificationService(overrides?: Partial<SupplierQualificationRepository>) {
+export function createSupplierQualificationService(
+  overrides?: Partial<SupplierQualificationRepository>,
+) {
   const repository: SupplierQualificationRepository = {
     ...createSupplierQualificationRepository(),
     ...overrides,
   };
 
   return {
-    async getQualificationForSupplier(supplierId: string | null): Promise<SupplierQualificationRecord | null> {
+    async getQualificationForSupplier(
+      supplierId: string | null,
+    ): Promise<SupplierQualificationRecord | null> {
       if (!supplierId) {
         return null;
       }
 
-      return (await repository.findBySupplierId(supplierId)) ?? buildDefaultQualification(supplierId);
+      return (
+        (await repository.findBySupplierId(supplierId)) ??
+        buildDefaultQualification(supplierId)
+      );
     },
 
     async listQualifications(
@@ -243,11 +279,15 @@ export function createSupplierQualificationService(overrides?: Partial<SupplierQ
       return repository.list(filters);
     },
 
-    async listQualificationEvents(supplierQualificationId: string): Promise<SupplierQualificationEventRecord[]> {
+    async listQualificationEvents(
+      supplierQualificationId: string,
+    ): Promise<SupplierQualificationEventRecord[]> {
       return repository.listEvents(supplierQualificationId);
     },
 
-    async upsertQualification(input: UpsertSupplierQualificationInput): Promise<SupplierQualificationRecord> {
+    async upsertQualification(
+      input: UpsertSupplierQualificationInput,
+    ): Promise<SupplierQualificationRecord> {
       const actor = normalizeActor(input);
       const existing = await repository.findBySupplierId(input.supplierId);
 
@@ -279,7 +319,8 @@ export function createSupplierQualificationService(overrides?: Partial<SupplierQ
         return created;
       }
 
-      const nextStatus = input.qualificationStatus ?? existing.qualificationStatus;
+      const nextStatus =
+        input.qualificationStatus ?? existing.qualificationStatus;
       const updated = await repository.update(existing.id, {
         qualificationStatus: nextStatus,
         trustTier: input.trustTier ?? existing.trustTier,
@@ -290,7 +331,8 @@ export function createSupplierQualificationService(overrides?: Partial<SupplierQ
         lastReviewedAt: new Date(),
         reviewedByType: actor.actorType,
         reviewedByIdentifier: actor.actorIdentifier,
-        expiresAt: input.expiresAt === undefined ? existing.expiresAt : input.expiresAt,
+        expiresAt:
+          input.expiresAt === undefined ? existing.expiresAt : input.expiresAt,
         requiresManualApproval:
           typeof input.requiresManualApproval === 'boolean'
             ? input.requiresManualApproval
@@ -299,7 +341,8 @@ export function createSupplierQualificationService(overrides?: Partial<SupplierQ
           typeof input.canAutoApproveBuyDecisions === 'boolean'
             ? input.canAutoApproveBuyDecisions
             : existing.canAutoApproveBuyDecisions,
-        metadata: input.metadata === undefined ? existing.metadata : input.metadata,
+        metadata:
+          input.metadata === undefined ? existing.metadata : input.metadata,
       });
 
       const actionType: SupplierQualificationActionType =
@@ -355,4 +398,5 @@ export function createSupplierQualificationService(overrides?: Partial<SupplierQ
   };
 }
 
-export const supplierQualificationService = createSupplierQualificationService();
+export const supplierQualificationService =
+  createSupplierQualificationService();

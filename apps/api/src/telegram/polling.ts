@@ -30,22 +30,27 @@ export function isTelegramPollingActive(): boolean {
 }
 
 async function fetchUpdates(offset?: number): Promise<TelegramUpdate[]> {
-  const response = await fetch(`https://api.telegram.org/bot${env.telegramBotToken}/getUpdates`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+  const response = await fetch(
+    `https://api.telegram.org/bot${env.telegramBotToken}/getUpdates`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...(typeof offset === 'number' ? { offset } : {}),
+        timeout: 0,
+        allowed_updates: ['message'],
+      }),
     },
-    body: JSON.stringify({
-      ...(typeof offset === 'number' ? { offset } : {}),
-      timeout: 0,
-      allowed_updates: ['message'],
-    }),
-  });
+  );
 
   const payload = (await response.json()) as TelegramGetUpdatesResponse;
 
   if (!response.ok || !payload.ok || !Array.isArray(payload.result)) {
-    throw new Error(payload.description || 'Telegram getUpdates request failed.');
+    throw new Error(
+      payload.description || 'Telegram getUpdates request failed.',
+    );
   }
 
   return payload.result;
@@ -79,12 +84,17 @@ export function createTelegramPollingWorker() {
           updateId: update.update_id ?? null,
           ignored: result.ignored,
           processingStatus:
-            'processingStatus' in result ? result.processingStatus ?? null : null,
+            'processingStatus' in result
+              ? (result.processingStatus ?? null)
+              : null,
         });
       }
     } catch (error) {
       logger.error('Telegram polling failed', {
-        error: error instanceof Error ? error.message : 'Unknown Telegram polling error.',
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Unknown Telegram polling error.',
       });
     } finally {
       inFlight = false;

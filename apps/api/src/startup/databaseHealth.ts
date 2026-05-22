@@ -28,8 +28,13 @@ type PrismaKnownRequestErrorLike = Error & {
   meta?: Record<string, unknown>;
 };
 
-function isPrismaKnownRequestErrorLike(error: unknown): error is PrismaKnownRequestErrorLike {
-  return error instanceof Error && typeof (error as PrismaKnownRequestErrorLike).code === 'string';
+function isPrismaKnownRequestErrorLike(
+  error: unknown,
+): error is PrismaKnownRequestErrorLike {
+  return (
+    error instanceof Error &&
+    typeof (error as PrismaKnownRequestErrorLike).code === 'string'
+  );
 }
 
 function matchesTableName(value: unknown, tableName: string): boolean {
@@ -37,7 +42,11 @@ function matchesTableName(value: unknown, tableName: string): boolean {
     return false;
   }
 
-  return value === tableName || value === `public.${tableName}` || value.includes(`public.${tableName}`);
+  return (
+    value === tableName ||
+    value === `public.${tableName}` ||
+    value.includes(`public.${tableName}`)
+  );
 }
 
 function isMissingTableError(error: unknown, tableName: string): boolean {
@@ -48,7 +57,9 @@ function isMissingTableError(error: unknown, tableName: string): boolean {
     );
   }
 
-  return error instanceof Error && error.message.includes(`public.${tableName}`);
+  return (
+    error instanceof Error && error.message.includes(`public.${tableName}`)
+  );
 }
 
 async function verifyTable(
@@ -64,10 +75,13 @@ async function verifyTable(
     await check();
   } catch (error) {
     if (options.optional && isMissingTableError(error, label)) {
-      options.logger.warn('Optional startup schema check skipped because table is missing', {
-        tableName: label,
-        comment: options.comment ?? null,
-      });
+      options.logger.warn(
+        'Optional startup schema check skipped because table is missing',
+        {
+          tableName: label,
+          comment: options.comment ?? null,
+        },
+      );
       return;
     }
 
@@ -81,7 +95,11 @@ export async function verifyDatabaseReadiness(
   client: StartupHealthClient = db as unknown as StartupHealthClient,
   healthLogger: HealthLogger = logger,
 ): Promise<void> {
-  if (env.nodeEnv === 'production' && !env.internalApiKey && !env.internalAdminApiKey) {
+  if (
+    env.nodeEnv === 'production' &&
+    !env.internalApiKey &&
+    !env.internalAdminApiKey
+  ) {
     throw new Error(
       'INTERNAL_API_KEY or INTERNAL_ADMIN_API_KEY must be configured in production.',
     );
@@ -151,7 +169,8 @@ export async function verifyDatabaseReadiness(
     () => client.offerCorrection.findFirst({ select: { id: true } }),
     {
       optional: true,
-      comment: 'Correction history is optional for startup; core workflow remains available.',
+      comment:
+        'Correction history is optional for startup; core workflow remains available.',
       logger: healthLogger,
     },
   );
@@ -160,7 +179,8 @@ export async function verifyDatabaseReadiness(
     () => client.sourceReliabilityProfile.findFirst({ select: { id: true } }),
     {
       optional: true,
-      comment: 'Source-learning hints are optional for startup; core workflow remains available.',
+      comment:
+        'Source-learning hints are optional for startup; core workflow remains available.',
       logger: healthLogger,
     },
   );

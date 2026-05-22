@@ -30,7 +30,8 @@ function createRepositoryHarness() {
     inboundEmailId: 'email-1',
     status: 'NEW',
     priority: 'MEDIUM',
-    priorityReason: 'commercially relevant offer should be reviewed in the normal operator queue.',
+    priorityReason:
+      'commercially relevant offer should be reviewed in the normal operator queue.',
     assigneeUserId: null,
     assigneeLabel: null,
     latestNote: null,
@@ -104,22 +105,34 @@ function createRepositoryHarness() {
       return null;
     }
 
-    return buyExecutions.find((item) => item.buyDecisionId === decision.id) ?? null;
+    return (
+      buyExecutions.find((item) => item.buyDecisionId === decision.id) ?? null
+    );
   };
 
   const cloneState = () => ({
     workflowItems: workflowItems.map((item) => ({
       ...item,
-      inboundEmail: item.inboundEmail ? { ...item.inboundEmail } : item.inboundEmail,
+      inboundEmail: item.inboundEmail
+        ? { ...item.inboundEmail }
+        : item.inboundEmail,
       buyDecision: item.buyDecision
-        ? { ...item.buyDecision, execution: item.buyDecision.execution ? { ...item.buyDecision.execution } : null }
+        ? {
+            ...item.buyDecision,
+            execution: item.buyDecision.execution
+              ? { ...item.buyDecision.execution }
+              : null,
+          }
         : item.buyDecision,
       emailDerivedOffer: item.emailDerivedOffer
         ? {
             ...item.emailDerivedOffer,
-            resolutionCandidates: item.emailDerivedOffer.resolutionCandidates.map((candidate: Record<string, any>) => ({
-              ...candidate,
-            })),
+            resolutionCandidates:
+              item.emailDerivedOffer.resolutionCandidates.map(
+                (candidate: Record<string, any>) => ({
+                  ...candidate,
+                }),
+              ),
             buyDecision: item.emailDerivedOffer.buyDecision
               ? {
                   ...item.emailDerivedOffer.buyDecision,
@@ -138,7 +151,9 @@ function createRepositoryHarness() {
     buyExecutionEvents: buyExecutionEvents.map((item) => ({ ...item })),
     tradeOpportunities: tradeOpportunities.map((item) => ({ ...item })),
     tradeOpportunityEvents: tradeOpportunityEvents.map((item) => ({ ...item })),
-    tradeOpportunityPolicies: tradeOpportunityPolicies.map((item) => ({ ...item })),
+    tradeOpportunityPolicies: tradeOpportunityPolicies.map((item) => ({
+      ...item,
+    })),
     feedbacks: feedbacks.map((item) => ({ ...item })),
     customers: customers.map((item) => ({ ...item })),
     salesRecords: salesRecords.map((item) => ({ ...item })),
@@ -148,12 +163,32 @@ function createRepositoryHarness() {
     workflowItems.splice(0, workflowItems.length, ...snapshot.workflowItems);
     workflowEvents.splice(0, workflowEvents.length, ...snapshot.workflowEvents);
     buyDecisions.splice(0, buyDecisions.length, ...snapshot.buyDecisions);
-    buyDecisionEvents.splice(0, buyDecisionEvents.length, ...snapshot.buyDecisionEvents);
+    buyDecisionEvents.splice(
+      0,
+      buyDecisionEvents.length,
+      ...snapshot.buyDecisionEvents,
+    );
     buyExecutions.splice(0, buyExecutions.length, ...snapshot.buyExecutions);
-    buyExecutionEvents.splice(0, buyExecutionEvents.length, ...snapshot.buyExecutionEvents);
-    tradeOpportunities.splice(0, tradeOpportunities.length, ...snapshot.tradeOpportunities);
-    tradeOpportunityEvents.splice(0, tradeOpportunityEvents.length, ...snapshot.tradeOpportunityEvents);
-    tradeOpportunityPolicies.splice(0, tradeOpportunityPolicies.length, ...snapshot.tradeOpportunityPolicies);
+    buyExecutionEvents.splice(
+      0,
+      buyExecutionEvents.length,
+      ...snapshot.buyExecutionEvents,
+    );
+    tradeOpportunities.splice(
+      0,
+      tradeOpportunities.length,
+      ...snapshot.tradeOpportunities,
+    );
+    tradeOpportunityEvents.splice(
+      0,
+      tradeOpportunityEvents.length,
+      ...snapshot.tradeOpportunityEvents,
+    );
+    tradeOpportunityPolicies.splice(
+      0,
+      tradeOpportunityPolicies.length,
+      ...snapshot.tradeOpportunityPolicies,
+    );
     feedbacks.splice(0, feedbacks.length, ...snapshot.feedbacks);
     customers.splice(0, customers.length, ...snapshot.customers);
     salesRecords.splice(0, salesRecords.length, ...snapshot.salesRecords);
@@ -185,13 +220,17 @@ function createRepositoryHarness() {
         }
       },
       async findWorkflowItemByOfferId(emailDerivedOfferId: string) {
-        return (workflowItems.find((item) => item.emailDerivedOfferId === emailDerivedOfferId) ?? null) as never;
+        return (workflowItems.find(
+          (item) => item.emailDerivedOfferId === emailDerivedOfferId,
+        ) ?? null) as never;
       },
       async findWorkflowItemById(workflowItemId: string) {
-        return (workflowItems.find((item) => item.id === workflowItemId) ?? null) as never;
+        return (workflowItems.find((item) => item.id === workflowItemId) ??
+          null) as never;
       },
       async findWorkflowDetailById(workflowItemId: string) {
-        return (workflowItems.find((item) => item.id === workflowItemId) ?? null) as never;
+        return (workflowItems.find((item) => item.id === workflowItemId) ??
+          null) as never;
       },
       async createWorkflowItem(data: Record<string, any>) {
         const created = makeWorkflowRecord({
@@ -203,8 +242,13 @@ function createRepositoryHarness() {
         workflowItems.push(created);
         return created as never;
       },
-      async updateWorkflowItem(workflowItemId: string, data: Record<string, any>) {
-        const existing = workflowItems.find((item) => item.id === workflowItemId);
+      async updateWorkflowItem(
+        workflowItemId: string,
+        data: Record<string, any>,
+      ) {
+        const existing = workflowItems.find(
+          (item) => item.id === workflowItemId,
+        );
         if (!existing) {
           throw new Error('Offer workflow item not found.');
         }
@@ -212,12 +256,21 @@ function createRepositoryHarness() {
         Object.assign(existing, data, { updatedAt: new Date() });
         if (existing.emailDerivedOffer) {
           const decision =
-            buyDecisions.find((item) => item.emailDerivedOfferId === existing.emailDerivedOfferId) ?? null;
-          existing.emailDerivedOffer.buyDecision =
-            decision ? { ...decision, execution: attachExecution(decision) } : null;
+            buyDecisions.find(
+              (item) =>
+                item.emailDerivedOfferId === existing.emailDerivedOfferId,
+            ) ?? null;
+          existing.emailDerivedOffer.buyDecision = decision
+            ? { ...decision, execution: attachExecution(decision) }
+            : null;
         }
-        const decision = buyDecisions.find((item) => item.offerWorkflowItemId === existing.id) ?? null;
-        existing.buyDecision = decision ? { ...decision, execution: attachExecution(decision) } : null;
+        const decision =
+          buyDecisions.find(
+            (item) => item.offerWorkflowItemId === existing.id,
+          ) ?? null;
+        existing.buyDecision = decision
+          ? { ...decision, execution: attachExecution(decision) }
+          : null;
         return existing as never;
       },
       async createWorkflowEvent(data: Record<string, any>) {
@@ -235,13 +288,22 @@ function createRepositoryHarness() {
             if (filters.status && item.status !== filters.status) {
               return false;
             }
-            if (filters.onlyOpen === true && ['REJECTED', 'CLOSED'].includes(item.status)) {
+            if (
+              filters.onlyOpen === true &&
+              ['REJECTED', 'CLOSED'].includes(item.status)
+            ) {
               return false;
             }
-            if (filters.blockedSupplier === true && item.hasBlockedSupplier !== true) {
+            if (
+              filters.blockedSupplier === true &&
+              item.hasBlockedSupplier !== true
+            ) {
               return false;
             }
-            if (filters.restrictedSupplier === true && item.hasRestrictedSupplier !== true) {
+            if (
+              filters.restrictedSupplier === true &&
+              item.hasRestrictedSupplier !== true
+            ) {
               return false;
             }
             if (
@@ -265,13 +327,19 @@ function createRepositoryHarness() {
           ) as never;
       },
       async listWorkflowEvents(workflowItemId: string) {
-        return workflowEvents.filter((item) => item.workflowItemId === workflowItemId) as never;
+        return workflowEvents.filter(
+          (item) => item.workflowItemId === workflowItemId,
+        ) as never;
       },
       async findSupplierQualificationBySupplierId(supplierId: string) {
-        return (supplierQualifications.find((item) => item.supplierId === supplierId) ?? null) as never;
+        return (supplierQualifications.find(
+          (item) => item.supplierId === supplierId,
+        ) ?? null) as never;
       },
       async findBuyDecisionByOfferId(emailDerivedOfferId: string) {
-        return (buyDecisions.find((item) => item.emailDerivedOfferId === emailDerivedOfferId) ?? null) as never;
+        return (buyDecisions.find(
+          (item) => item.emailDerivedOfferId === emailDerivedOfferId,
+        ) ?? null) as never;
       },
       async createBuyDecision(data: Record<string, any>) {
         const created = {
@@ -296,7 +364,9 @@ function createRepositoryHarness() {
           execution: null,
         };
         buyDecisions.push(created);
-        const workflow = workflowItems.find((item) => item.id === created.offerWorkflowItemId);
+        const workflow = workflowItems.find(
+          (item) => item.id === created.offerWorkflowItemId,
+        );
         if (workflow) {
           workflow.buyDecision = created;
           if (workflow.emailDerivedOffer) {
@@ -305,16 +375,24 @@ function createRepositoryHarness() {
         }
         return created as never;
       },
-      async updateBuyDecision(buyDecisionId: string, data: Record<string, any>) {
-        const existingIndex = buyDecisions.findIndex((item) => item.id === buyDecisionId);
-        const existing = existingIndex >= 0 ? buyDecisions[existingIndex] : null;
+      async updateBuyDecision(
+        buyDecisionId: string,
+        data: Record<string, any>,
+      ) {
+        const existingIndex = buyDecisions.findIndex(
+          (item) => item.id === buyDecisionId,
+        );
+        const existing =
+          existingIndex >= 0 ? buyDecisions[existingIndex] : null;
         if (!existing) {
           throw new Error('Buy decision not found.');
         }
         const updated = { ...existing, ...data };
         updated.execution = attachExecution(updated);
         buyDecisions[existingIndex] = updated;
-        const workflow = workflowItems.find((item) => item.id === updated.offerWorkflowItemId);
+        const workflow = workflowItems.find(
+          (item) => item.id === updated.offerWorkflowItemId,
+        );
         if (workflow) {
           workflow.buyDecision = updated;
           if (workflow.emailDerivedOffer) {
@@ -331,7 +409,9 @@ function createRepositoryHarness() {
         });
       },
       async findBuyExecutionByDecisionId(buyDecisionId: string) {
-        return (buyExecutions.find((item) => item.buyDecisionId === buyDecisionId) ?? null) as never;
+        return (buyExecutions.find(
+          (item) => item.buyDecisionId === buyDecisionId,
+        ) ?? null) as never;
       },
       async createBuyExecution(data: Record<string, any>) {
         const created: Record<string, any> = {
@@ -341,7 +421,9 @@ function createRepositoryHarness() {
           ...data,
         };
         buyExecutions.push(created);
-        const decision = buyDecisions.find((item) => item.id === created.buyDecisionId);
+        const decision = buyDecisions.find(
+          (item) => item.id === created.buyDecisionId,
+        );
         if (decision) {
           decision.execution = created;
         }
@@ -349,21 +431,34 @@ function createRepositoryHarness() {
           if (item.buyDecision?.id === created.buyDecisionId) {
             item.buyDecision.execution = created;
           }
-          if (item.emailDerivedOffer?.buyDecision?.id === created.buyDecisionId) {
+          if (
+            item.emailDerivedOffer?.buyDecision?.id === created.buyDecisionId
+          ) {
             item.emailDerivedOffer.buyDecision.execution = created;
           }
         });
         return created as never;
       },
-      async updateBuyExecution(buyExecutionId: string, data: Record<string, any>) {
-        const index = buyExecutions.findIndex((item) => item.id === buyExecutionId);
+      async updateBuyExecution(
+        buyExecutionId: string,
+        data: Record<string, any>,
+      ) {
+        const index = buyExecutions.findIndex(
+          (item) => item.id === buyExecutionId,
+        );
         const existing = index >= 0 ? buyExecutions[index] : null;
         if (!existing) {
           throw new Error('Buy execution not found.');
         }
-        const updated: Record<string, any> = { ...existing, ...data, updatedAt: new Date() };
+        const updated: Record<string, any> = {
+          ...existing,
+          ...data,
+          updatedAt: new Date(),
+        };
         buyExecutions[index] = updated;
-        const decision = buyDecisions.find((item) => item.id === updated.buyDecisionId);
+        const decision = buyDecisions.find(
+          (item) => item.id === updated.buyDecisionId,
+        );
         if (decision) {
           decision.execution = updated;
         }
@@ -371,7 +466,9 @@ function createRepositoryHarness() {
           if (item.buyDecision?.id === updated.buyDecisionId) {
             item.buyDecision.execution = updated;
           }
-          if (item.emailDerivedOffer?.buyDecision?.id === updated.buyDecisionId) {
+          if (
+            item.emailDerivedOffer?.buyDecision?.id === updated.buyDecisionId
+          ) {
             item.emailDerivedOffer.buyDecision.execution = updated;
           }
         });
@@ -387,20 +484,18 @@ function createRepositoryHarness() {
         return created as never;
       },
       async findRecentMatchingFeedback(input: Record<string, any>) {
-        return (
-          feedbacks.find(
-            (item) =>
-              item.createdAt >= input.createdAfter &&
-              item.emailDerivedOfferId === input.emailDerivedOfferId &&
-              item.offerWorkflowItemId === input.offerWorkflowItemId &&
-              item.tradeOpportunityId === input.tradeOpportunityId &&
-              item.tradeMessageDraftId === input.tradeMessageDraftId &&
-              item.feedbackType === input.feedbackType &&
-              item.verdict === input.verdict &&
-              item.actorType === input.actorType &&
-              item.actorIdentifier === input.actorIdentifier,
-          ) ?? null
-        ) as never;
+        return (feedbacks.find(
+          (item) =>
+            item.createdAt >= input.createdAfter &&
+            item.emailDerivedOfferId === input.emailDerivedOfferId &&
+            item.offerWorkflowItemId === input.offerWorkflowItemId &&
+            item.tradeOpportunityId === input.tradeOpportunityId &&
+            item.tradeMessageDraftId === input.tradeMessageDraftId &&
+            item.feedbackType === input.feedbackType &&
+            item.verdict === input.verdict &&
+            item.actorType === input.actorType &&
+            item.actorIdentifier === input.actorIdentifier,
+        ) ?? null) as never;
       },
       async createFeedback(data: Record<string, any>) {
         const created = {
@@ -439,8 +534,13 @@ function createRepositoryHarness() {
         tradeOpportunityPolicies.push(created);
         return created as never;
       },
-      async updateTradeOpportunity(tradeOpportunityId: string, data: Record<string, any>) {
-        const existing = tradeOpportunities.find((item) => item.id === tradeOpportunityId);
+      async updateTradeOpportunity(
+        tradeOpportunityId: string,
+        data: Record<string, any>,
+      ) {
+        const existing = tradeOpportunities.find(
+          (item) => item.id === tradeOpportunityId,
+        );
         if (!existing) {
           throw new Error('Trade opportunity not found.');
         }
@@ -457,7 +557,11 @@ function createRepositoryHarness() {
         tradeOpportunityEvents.push(created);
         return created as never;
       },
-      async listRecentSalesByProductId(input: { productId: string; windowStart: Date; currencyCode: string }) {
+      async listRecentSalesByProductId(input: {
+        productId: string;
+        windowStart: Date;
+        currencyCode: string;
+      }) {
         return salesRecords
           .filter(
             (item) =>
@@ -465,10 +569,14 @@ function createRepositoryHarness() {
               item.currencyCode === input.currencyCode &&
               item.saleDate >= input.windowStart,
           )
-          .sort((left, right) => right.saleDate.getTime() - left.saleDate.getTime())
+          .sort(
+            (left, right) => right.saleDate.getTime() - left.saleDate.getTime(),
+          )
           .map((item) => ({
             customerId: item.customerId,
-            customerName: customers.find((customer) => customer.id === item.customerId)?.name ?? 'Customer',
+            customerName:
+              customers.find((customer) => customer.id === item.customerId)
+                ?.name ?? 'Customer',
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             totalRevenue: item.totalRevenue,
@@ -504,7 +612,8 @@ test('workflow detail derives supplier contact from forwarded external email det
             kind: 'BODY_MAIN',
             documentIndex: 1,
             label: 'body-main',
-            textContent: 'Ambe Medical Group\nPlease review this supplier email.',
+            textContent:
+              'Ambe Medical Group\nPlease review this supplier email.',
             metadata: null,
           },
           {
@@ -569,14 +678,19 @@ test('workflow detail derives supplier contact from forwarded external email det
   const service = createOfferWorkflowService(harness.repository as never);
   const detail = await service.getWorkflowItem('workflow-contact-1');
 
-  assert.equal(detail?.supplierContact?.companyName, 'Delta Pharma / Delta BE bv');
+  assert.equal(
+    detail?.supplierContact?.companyName,
+    'Delta Pharma / Delta BE bv',
+  );
   assert.equal(detail?.supplierContact?.contactName, 'Carl Junius');
   assert.equal(detail?.supplierContact?.email, 'carl.junius@delta-pharma.eu');
   assert.equal(detail?.supplierContact?.phone, '+32 11 49 57 77');
   assert.equal(detail?.supplierContact?.source, 'Forwarded email');
 });
 
-function createSyncInput(overrides?: Partial<SyncWorkflowItemInput>): SyncWorkflowItemInput {
+function createSyncInput(
+  overrides?: Partial<SyncWorkflowItemInput>,
+): SyncWorkflowItemInput {
   return {
     emailDerivedOfferId: 'offer-1',
     inboundEmailId: 'email-1',
@@ -609,7 +723,8 @@ test('review-required offer creates one workflow item and does not duplicate on 
   const service = createOfferWorkflowService(harness.repository as never);
 
   const first = await service.syncWorkflowItemForOfferReview(createSyncInput());
-  const second = await service.syncWorkflowItemForOfferReview(createSyncInput());
+  const second =
+    await service.syncWorkflowItemForOfferReview(createSyncInput());
 
   assert.equal(harness.workflowItems.length, 1);
   assert.equal(first?.id, second?.id);
@@ -669,10 +784,25 @@ test('approving a workflow item creates exactly one buy decision and reapproval 
   assert.equal(harness.workflowItems[0]?.status, 'APPROVED_TO_BUY');
   assert.equal(harness.buyDecisions.length, 1);
   assert.equal(harness.buyDecisions[0]?.approvalStatus, 'APPROVED');
-  assert.equal(harness.tradeOpportunities[0]?.buyDecisionId, harness.buyDecisions[0]?.id);
+  assert.equal(
+    harness.workflowEvents.find(
+      (event) => event.actionType === 'APPROVED_TO_BUY',
+    )?.metadata?.sideEffectOperation,
+    'REVIEW_QUEUE_APPROVE_TO_BUY',
+  );
+  assert.equal(
+    harness.buyDecisionEvents.find((event) => event.actionType === 'CREATED')
+      ?.metadata?.sideEffectPolicy?.mayCreateOrUpdateBuyDecisions,
+    true,
+  );
+  assert.equal(
+    harness.tradeOpportunities[0]?.buyDecisionId,
+    harness.buyDecisions[0]?.id,
+  );
   assert.equal(harness.tradeOpportunities[0]?.stage, 'BUY_APPROVED');
   assert.equal(
-    harness.buyDecisionEvents.filter((event) => event.actionType === 'CREATED').length,
+    harness.buyDecisionEvents.filter((event) => event.actionType === 'CREATED')
+      .length,
     1,
   );
 });
@@ -716,22 +846,41 @@ test('approved offer with recent profitable sales creates one review-first trade
 
   assert.equal(approvalResult.outcome.buyDecisionCreated, true);
   assert.equal(approvalResult.outcome.tradeOpportunityOutcome, 'CREATED');
-  assert.equal(approvalResult.outcome.tradeOpportunityId, harness.tradeOpportunities[0]?.id);
+  assert.equal(
+    approvalResult.outcome.tradeOpportunityId,
+    harness.tradeOpportunities[0]?.id,
+  );
   assert.equal(harness.tradeOpportunities.length, 1);
   assert.equal(harness.tradeOpportunities[0]?.sourceType, 'BUY_DECISION');
   assert.equal(harness.tradeOpportunities[0]?.status, 'OPEN');
   assert.equal(harness.tradeOpportunities[0]?.stage, 'REVIEW');
-  assert.equal(harness.tradeOpportunities[0]?.buyDecisionId, harness.buyDecisions[0]?.id);
+  assert.equal(
+    harness.tradeOpportunities[0]?.buyDecisionId,
+    harness.buyDecisions[0]?.id,
+  );
   assert.equal(harness.tradeOpportunities[0]?.productId, 'product-1');
   assert.equal(harness.tradeOpportunities[0]?.targetSellCurrencyCode, 'GBP');
-  assert.equal(harness.tradeOpportunities[0]?.metadata?.createdFrom, 'approved_buy_decision_demand_match');
+  assert.equal(
+    harness.tradeOpportunities[0]?.metadata?.createdFrom,
+    'approved_buy_decision_demand_match',
+  );
   assert.equal(harness.tradeOpportunities[0]?.metadata?.recentUnitsSold, 18);
-  assert.equal(harness.tradeOpportunities[0]?.metadata?.likelyBuyers?.length, 2);
+  assert.equal(
+    harness.tradeOpportunities[0]?.metadata?.likelyBuyers?.length,
+    2,
+  );
   assert.equal(harness.tradeOpportunityPolicies.length, 1);
-  assert.equal(harness.tradeOpportunityEvents.filter((event) => event.actionType === 'CREATED').length, 1);
+  assert.equal(
+    harness.tradeOpportunityEvents.filter(
+      (event) => event.actionType === 'CREATED',
+    ).length,
+    1,
+  );
   assert.equal(
     harness.tradeOpportunityEvents.some((event) =>
-      ['SUPPLIER_OUTREACH_DRAFTED', 'BUYER_OUTREACH_DRAFTED'].includes(event.actionType),
+      ['SUPPLIER_OUTREACH_DRAFTED', 'BUYER_OUTREACH_DRAFTED'].includes(
+        event.actionType,
+      ),
     ),
     false,
   );
@@ -749,7 +898,10 @@ test('approved offer with no recent sales creates no trade opportunity', async (
   });
 
   assert.equal(approvalResult.outcome.buyDecisionCreated, true);
-  assert.equal(approvalResult.outcome.tradeOpportunityOutcome, 'SKIPPED_NO_RECENT_DEMAND');
+  assert.equal(
+    approvalResult.outcome.tradeOpportunityOutcome,
+    'SKIPPED_NO_RECENT_DEMAND',
+  );
   assert.equal(approvalResult.outcome.tradeOpportunityId, null);
   assert.equal(harness.tradeOpportunities.length, 0);
   assert.equal(harness.tradeOpportunityPolicies.length, 0);
@@ -777,7 +929,10 @@ test('approved offer with non-profitable recent sales creates no trade opportuni
     actorIdentifier: 'buyer-1',
   });
 
-  assert.equal(approvalResult.outcome.tradeOpportunityOutcome, 'SKIPPED_NON_POSITIVE_MARGIN');
+  assert.equal(
+    approvalResult.outcome.tradeOpportunityOutcome,
+    'SKIPPED_NON_POSITIVE_MARGIN',
+  );
   assert.equal(approvalResult.outcome.tradeOpportunityId, null);
   assert.equal(harness.tradeOpportunities.length, 0);
 });
@@ -811,7 +966,12 @@ test('re-approving the same profitable offer does not create duplicate trade opp
 
   assert.equal(harness.tradeOpportunities.length, 1);
   assert.equal(harness.tradeOpportunityPolicies.length, 1);
-  assert.equal(harness.tradeOpportunityEvents.filter((event) => event.actionType === 'CREATED').length, 1);
+  assert.equal(
+    harness.tradeOpportunityEvents.filter(
+      (event) => event.actionType === 'CREATED',
+    ).length,
+    1,
+  );
 });
 
 test('workflow approval can record linked operator feedback in the same transaction', async () => {
@@ -833,7 +993,10 @@ test('workflow approval can record linked operator feedback in the same transact
   });
 
   assert.equal(harness.feedbacks.length, 1);
-  assert.equal(harness.feedbacks[0]?.offerWorkflowItemId, harness.workflowItems[0]?.id);
+  assert.equal(
+    harness.feedbacks[0]?.offerWorkflowItemId,
+    harness.workflowItems[0]?.id,
+  );
   assert.equal(harness.feedbacks[0]?.emailDerivedOfferId, 'offer-1');
   assert.equal(harness.feedbacks[0]?.feedbackType, 'EXTRACTION');
 });
@@ -895,17 +1058,36 @@ test('marking ordered updates the linked buy decision and does not duplicate ord
   assert.equal(harness.workflowItems[0]?.status, 'ORDERED');
   assert.equal(harness.buyDecisions[0]?.orderStatus, 'ORDERED');
   assert.equal(harness.buyDecisions[0]?.externalOrderReference, 'PO-001');
+  assert.equal(
+    harness.workflowEvents.find(
+      (event) => event.actionType === 'MARKED_ORDERED',
+    )?.metadata?.sideEffectOperation,
+    'REVIEW_QUEUE_MARK_ORDERED',
+  );
+  assert.equal(
+    harness.buyDecisionEvents.find(
+      (event) => event.actionType === 'MARKED_ORDERED',
+    )?.metadata?.sideEffectPolicy?.mayMarkOrderPlaced,
+    true,
+  );
   assert.equal(harness.buyExecutions.length, 1);
   assert.equal(harness.buyExecutions[0]?.externalOrderReference, 'PO-001');
   assert.equal(harness.buyExecutions[0]?.fulfillmentStatus, 'ORDER_PLACED');
-  assert.equal(harness.tradeOpportunities[0]?.buyExecutionId, harness.buyExecutions[0]?.id);
+  assert.equal(
+    harness.tradeOpportunities[0]?.buyExecutionId,
+    harness.buyExecutions[0]?.id,
+  );
   assert.equal(harness.tradeOpportunities[0]?.stage, 'BUY_ORDERED');
   assert.equal(
-    harness.buyDecisionEvents.filter((event) => event.actionType === 'MARKED_ORDERED').length,
+    harness.buyDecisionEvents.filter(
+      (event) => event.actionType === 'MARKED_ORDERED',
+    ).length,
     1,
   );
   assert.equal(
-    harness.buyExecutionEvents.filter((event) => event.actionType === 'ORDER_PLACED').length,
+    harness.buyExecutionEvents.filter(
+      (event) => event.actionType === 'ORDER_PLACED',
+    ).length,
     1,
   );
 });
@@ -1005,7 +1187,8 @@ test('unknown qualification requires explicit operator confirmation to approve',
     harness.makeWorkflowRecord({
       supplierQualificationStatus: 'UNKNOWN',
       hasUnknownSupplierQualification: true,
-      qualificationRiskNote: 'Supplier qualification is unknown and should be reviewed before purchase.',
+      qualificationRiskNote:
+        'Supplier qualification is unknown and should be reviewed before purchase.',
     }),
   );
 

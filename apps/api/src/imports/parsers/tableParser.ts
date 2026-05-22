@@ -31,7 +31,12 @@ const CANONICAL_HEADER_ALIASES: Record<string, string[]> = {
     'minimumquantity',
     'moq',
   ],
-  quantityAvailable: ['quantityavailable', 'availablequantity', 'qtyavailable', 'stock'],
+  quantityAvailable: [
+    'quantityavailable',
+    'availablequantity',
+    'qtyavailable',
+    'stock',
+  ],
 };
 
 const DIRECT_HEADER_KEYS = [
@@ -81,8 +86,13 @@ for (const key of DIRECT_HEADER_KEYS) {
   NORMALIZED_HEADER_TO_CANONICAL.set(normalizeHeaderKey(key), key);
 }
 
-for (const [canonicalKey, aliases] of Object.entries(CANONICAL_HEADER_ALIASES)) {
-  NORMALIZED_HEADER_TO_CANONICAL.set(normalizeHeaderKey(canonicalKey), canonicalKey);
+for (const [canonicalKey, aliases] of Object.entries(
+  CANONICAL_HEADER_ALIASES,
+)) {
+  NORMALIZED_HEADER_TO_CANONICAL.set(
+    normalizeHeaderKey(canonicalKey),
+    canonicalKey,
+  );
 
   for (const alias of aliases) {
     NORMALIZED_HEADER_TO_CANONICAL.set(alias, canonicalKey);
@@ -150,10 +160,17 @@ function scoreHeaderRow(values: string[]): number {
     return -1;
   }
 
-  return canonicalHeaders.size * 10 + recognizedHeaders.size * 5 + nonEmptyValues.length;
+  return (
+    canonicalHeaders.size * 10 +
+    recognizedHeaders.size * 5 +
+    nonEmptyValues.length
+  );
 }
 
-function findHeaderRowIndex(rows: string[][]): { index: number | null; score: number } {
+function findHeaderRowIndex(rows: string[][]): {
+  index: number | null;
+  score: number;
+} {
   let bestIndex: number | null = null;
   let bestScore = -1;
 
@@ -190,7 +207,11 @@ function getCanonicalAlias(header: string): string | null {
   return NORMALIZED_HEADER_TO_CANONICAL.get(normalized) ?? null;
 }
 
-function buildHeaders(rawHeaderRow: string[], warnings: string[], sourceLabel: string): string[] {
+function buildHeaders(
+  rawHeaderRow: string[],
+  warnings: string[],
+  sourceLabel: string,
+): string[] {
   const seen = new Map<string, number>();
 
   return rawHeaderRow.map((header, index) => {
@@ -217,10 +238,16 @@ function buildHeaders(rawHeaderRow: string[], warnings: string[], sourceLabel: s
   });
 }
 
-function isRepeatedHeaderRow(row: string[], headerComparison: string[]): boolean {
+function isRepeatedHeaderRow(
+  row: string[],
+  headerComparison: string[],
+): boolean {
   const normalizedRow = trimTrailingEmpty(row.map(normalizeComparisonValue));
 
-  return normalizedRow.length > 0 && normalizedRow.join('|') === headerComparison.join('|');
+  return (
+    normalizedRow.length > 0 &&
+    normalizedRow.join('|') === headerComparison.join('|')
+  );
 }
 
 function buildParsedRow(headers: string[], row: string[]): ParsedTableRow {
@@ -246,7 +273,8 @@ function buildParsedRow(headers: string[], row: string[]): ParsedTableRow {
 export function parseTableRows(options: TableParseOptions): TableParseResult {
   const warnings: string[] = [];
   const rows = options.rows.map((row) => row.map(normalizeCellValue));
-  const { index: headerRowIndex, score: recognizedHeaderScore } = findHeaderRowIndex(rows);
+  const { index: headerRowIndex, score: recognizedHeaderScore } =
+    findHeaderRowIndex(rows);
 
   if (headerRowIndex === null) {
     return {
@@ -264,11 +292,19 @@ export function parseTableRows(options: TableParseOptions): TableParseResult {
   }
 
   if (recognizedHeaderScore === 0) {
-    warnings.push(`${options.sourceLabel}: could not confidently identify a header row; using the first non-empty row.`);
+    warnings.push(
+      `${options.sourceLabel}: could not confidently identify a header row; using the first non-empty row.`,
+    );
   }
 
-  const headers = buildHeaders(rows[headerRowIndex] ?? [], warnings, options.sourceLabel);
-  const headerComparison = trimTrailingEmpty(headers.map(normalizeComparisonValue));
+  const headers = buildHeaders(
+    rows[headerRowIndex] ?? [],
+    warnings,
+    options.sourceLabel,
+  );
+  const headerComparison = trimTrailingEmpty(
+    headers.map(normalizeComparisonValue),
+  );
   const parsedRows: ParsedTableRow[] = [];
   let repeatedHeaderCount = 0;
 

@@ -104,7 +104,8 @@ function detectAttachmentType(
 
   if (
     normalizedName.endsWith('.xlsx') ||
-    normalizedMime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    normalizedMime ===
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   ) {
     return 'xlsx';
   }
@@ -115,7 +116,9 @@ function detectAttachmentType(
 
   if (
     normalizedMime.startsWith('image/') ||
-    ['.jpg', '.jpeg', '.png', '.webp'].some((extension) => normalizedName.endsWith(extension))
+    ['.jpg', '.jpeg', '.png', '.webp'].some((extension) =>
+      normalizedName.endsWith(extension),
+    )
   ) {
     return 'image';
   }
@@ -128,12 +131,20 @@ function countMatches(text: string, pattern: RegExp): number {
   return matches?.length ?? 0;
 }
 
-function isKnownSupplierEmail(senderEmail: string, knownSupplierEmails: string[]): boolean {
+function isKnownSupplierEmail(
+  senderEmail: string,
+  knownSupplierEmails: string[],
+): boolean {
   return knownSupplierEmails.includes(senderEmail);
 }
 
-function isKnownSupplierDomain(senderEmail: string, knownSupplierDomains: string[]): boolean {
-  const senderDomain = senderEmail.includes('@') ? senderEmail.split('@').pop() ?? '' : '';
+function isKnownSupplierDomain(
+  senderEmail: string,
+  knownSupplierDomains: string[],
+): boolean {
+  const senderDomain = senderEmail.includes('@')
+    ? (senderEmail.split('@').pop() ?? '')
+    : '';
   return senderDomain !== '' && knownSupplierDomains.includes(senderDomain);
 }
 
@@ -157,20 +168,32 @@ function deriveParserConfidence(input: {
   return 'NONE';
 }
 
-export function scoreInboundEmailTriage(input: EmailTriageInput): EmailTriageResult {
+export function scoreInboundEmailTriage(
+  input: EmailTriageInput,
+): EmailTriageResult {
   const senderEmail = lower(input.fromEmail);
   const subject = lower(input.subject);
   const bodyText = input.bodyText ?? '';
   const normalizedBody = lower(bodyText);
-  const knownSupplierEmails = (input.knownSupplierEmails ?? []).map(lower).filter(Boolean);
-  const knownSupplierDomains = (input.knownSupplierDomains ?? []).map(lower).filter(Boolean);
-  const attachmentType = detectAttachmentType(input.attachmentFileName, input.attachmentMimeType);
+  const knownSupplierEmails = (input.knownSupplierEmails ?? [])
+    .map(lower)
+    .filter(Boolean);
+  const knownSupplierDomains = (input.knownSupplierDomains ?? [])
+    .map(lower)
+    .filter(Boolean);
+  const attachmentType = detectAttachmentType(
+    input.attachmentFileName,
+    input.attachmentMimeType,
+  );
   const trustedSender = Boolean(input.trustedSender);
   const bodyLines = bodyText
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
-  const medicineTokenCount = countMatches(normalizedBody, MEDICINE_TOKEN_PATTERN);
+  const medicineTokenCount = countMatches(
+    normalizedBody,
+    MEDICINE_TOKEN_PATTERN,
+  );
   const priceTokenCount = countMatches(normalizedBody, PRICE_TOKEN_PATTERN);
   const conversationalLineCount = bodyLines.filter((line) =>
     CONVERSATIONAL_TERMS.some((term) => line.toLowerCase().includes(term)),
@@ -179,18 +202,29 @@ export function scoreInboundEmailTriage(input: EmailTriageInput): EmailTriageRes
     bodyLines.filter((line) => PRODUCT_LINE_PATTERN.test(line)).length,
     input.parsedStructuredRowCount ?? 0,
   );
-  const subjectMatched = SUPPLIER_SUBJECT_TERMS.some((term) => subject.includes(term));
-  const senderDomainMatched = isKnownSupplierDomain(senderEmail, knownSupplierDomains);
-  const isKnownSupplier = isKnownSupplierEmail(senderEmail, knownSupplierEmails) || senderDomainMatched;
+  const subjectMatched = SUPPLIER_SUBJECT_TERMS.some((term) =>
+    subject.includes(term),
+  );
+  const senderDomainMatched = isKnownSupplierDomain(
+    senderEmail,
+    knownSupplierDomains,
+  );
+  const isKnownSupplier =
+    isKnownSupplierEmail(senderEmail, knownSupplierEmails) ||
+    senderDomainMatched;
   const parserConfidence = deriveParserConfidence({
     parserConfidence: input.parserConfidence,
     parsedStructuredRowCount: input.parsedStructuredRowCount ?? 0,
     productLikeLineCount,
   });
   const mostlyConversational =
-    conversationalLineCount > 0 && conversationalLineCount >= Math.max(1, Math.ceil(bodyLines.length / 2));
+    conversationalLineCount > 0 &&
+    conversationalLineCount >= Math.max(1, Math.ceil(bodyLines.length / 2));
   const noSupplierSignals =
-    !input.hasAttachment && !subjectMatched && medicineTokenCount === 0 && priceTokenCount === 0;
+    !input.hasAttachment &&
+    !subjectMatched &&
+    medicineTokenCount === 0 &&
+    priceTokenCount === 0;
   const reasons: string[] = [];
 
   let supplierLikelihoodScore = 0;
@@ -234,7 +268,11 @@ export function scoreInboundEmailTriage(input: EmailTriageInput): EmailTriageRes
     reasons.push('body looks mainly conversational');
   }
 
-  if (normalizedBody.length < 30 && medicineTokenCount === 0 && priceTokenCount === 0) {
+  if (
+    normalizedBody.length < 30 &&
+    medicineTokenCount === 0 &&
+    priceTokenCount === 0
+  ) {
     supplierLikelihoodScore -= 25;
     reasons.push('body is very short without product or price indicators');
   }
@@ -281,17 +319,27 @@ export function scoreInboundEmailTriage(input: EmailTriageInput): EmailTriageRes
     structureScore -= 30;
   }
 
-  if (productLikeLineCount === 0 && (input.parsedStructuredRowCount ?? 0) === 0) {
+  if (
+    productLikeLineCount === 0 &&
+    (input.parsedStructuredRowCount ?? 0) === 0
+  ) {
     structureScore -= 20;
     reasons.push('no product-like lines were detected');
   }
 
-  if (priceTokenCount > 0 && medicineTokenCount === 0 && productLikeLineCount === 0) {
+  if (
+    priceTokenCount > 0 &&
+    medicineTokenCount === 0 &&
+    productLikeLineCount === 0
+  ) {
     structureScore -= 15;
     reasons.push('numbers were present without enough product context');
   }
 
-  if (bodyLines.length > 0 && bodyLines.every((line) => SIGNATURE_ONLY_PATTERN.test(line))) {
+  if (
+    bodyLines.length > 0 &&
+    bodyLines.every((line) => SIGNATURE_ONLY_PATTERN.test(line))
+  ) {
     structureScore -= 10;
     reasons.push('body looks like signature or footer text only');
   }
@@ -302,14 +350,25 @@ export function scoreInboundEmailTriage(input: EmailTriageInput): EmailTriageRes
     reasons.push('trusted sender increases business worthiness');
   }
 
-  if (trustedSender && (priceTokenCount > 0 || medicineTokenCount > 0 || productLikeLineCount > 0)) {
+  if (
+    trustedSender &&
+    (priceTokenCount > 0 || medicineTokenCount > 0 || productLikeLineCount > 0)
+  ) {
     businessWorthinessScore += 25;
-    reasons.push('trusted sender with commercial cues increases business worthiness');
+    reasons.push(
+      'trusted sender with commercial cues increases business worthiness',
+    );
   }
 
-  if (trustedSender && priceTokenCount > 0 && (medicineTokenCount > 0 || productLikeLineCount > 0)) {
+  if (
+    trustedSender &&
+    priceTokenCount > 0 &&
+    (medicineTokenCount > 0 || productLikeLineCount > 0)
+  ) {
     businessWorthinessScore += 25;
-    reasons.push('trusted sender with explicit commercial evidence is AI-review worthy');
+    reasons.push(
+      'trusted sender with explicit commercial evidence is AI-review worthy',
+    );
   }
 
   if (isKnownSupplier) {
@@ -342,12 +401,19 @@ export function scoreInboundEmailTriage(input: EmailTriageInput): EmailTriageRes
     reasons.push('mostly conversational body lowers business worthiness');
   }
 
-  if (!input.hasAttachment && priceTokenCount === 0 && productLikeLineCount === 0) {
+  if (
+    !input.hasAttachment &&
+    priceTokenCount === 0 &&
+    productLikeLineCount === 0
+  ) {
     businessWorthinessScore -= 30;
     reasons.push('no pricing, products, or attachment were found');
   }
 
-  if (normalizedBody.includes('as discussed') || normalizedBody.includes('see below')) {
+  if (
+    normalizedBody.includes('as discussed') ||
+    normalizedBody.includes('see below')
+  ) {
     businessWorthinessScore -= 20;
     reasons.push('body looks like vague admin chatter');
   }
@@ -375,7 +441,12 @@ export function scoreInboundEmailTriage(input: EmailTriageInput): EmailTriageRes
     businessWorthinessScore >= 65 &&
     ['MEDIUM', 'LOW', 'NONE'].includes(parserConfidence)
   ) {
-    if (!isKnownSupplier && !trustedSender && !input.hasAttachment && !subjectMatched) {
+    if (
+      !isKnownSupplier &&
+      !trustedSender &&
+      !input.hasAttachment &&
+      !subjectMatched
+    ) {
       status = 'MANUAL_REVIEW_REQUIRED';
       aiBlockedReason = 'unknown_sender_without_attachment_or_supplier_subject';
     } else if (businessWorthinessScore < 65) {
@@ -388,7 +459,8 @@ export function scoreInboundEmailTriage(input: EmailTriageInput): EmailTriageRes
       status = 'MANUAL_REVIEW_REQUIRED';
       aiBlockedReason = 'daily_ai_review_limit_exceeded';
     } else if (
-      (input.perSupplierDailyAiReviewCount ?? 0) >= (input.perSupplierDailyAiReviewLimit ?? Number.MAX_SAFE_INTEGER)
+      (input.perSupplierDailyAiReviewCount ?? 0) >=
+      (input.perSupplierDailyAiReviewLimit ?? Number.MAX_SAFE_INTEGER)
     ) {
       status = 'MANUAL_REVIEW_REQUIRED';
       aiBlockedReason = 'per_supplier_ai_review_limit_exceeded';

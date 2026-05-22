@@ -75,7 +75,10 @@ test('supplier CSV attachment auto-imports through the import pipeline', async (
   assert.equal(result.items[0]?.email.subject, 'Supplier price list April');
   assert.equal(result.items[0]?.attachment.fileName, 'supplier-price-list.csv');
   assert.match(result.items[0]?.reason ?? '', /inferred confidently/i);
-  assert.match(result.items[0]?.reason ?? '', /trusted supplier mapping was used for Acme Labs/i);
+  assert.match(
+    result.items[0]?.reason ?? '',
+    /trusted supplier mapping was used for Acme Labs/i,
+  );
 });
 
 test('trusted domain sender is allowed for direct supplier emails', async () => {
@@ -121,7 +124,9 @@ test('trusted domain sender is allowed for direct supplier emails', async () => 
       {
         fileName: 'supplier-price-list.csv',
         mimeType: 'text/csv',
-        content: Buffer.from('productName,unitPrice\nAspirin,1.50').toString('base64'),
+        content: Buffer.from('productName,unitPrice\nAspirin,1.50').toString(
+          'base64',
+        ),
       },
     ],
   });
@@ -177,7 +182,8 @@ test('inventory XLSX attachment auto-imports through the import pipeline', async
     attachments: [
       {
         fileName: 'weekly-inventory.xlsx',
-        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         content: buffer.toString('base64'),
       },
     ],
@@ -319,7 +325,9 @@ test('image attachment text can be extracted into structured review rows', async
           packSize: '16',
           price: 1.25,
           currencyCode: 'GBP',
-          productCandidates: buildProductCandidates('Paracetamol 500mg caplets 16'),
+          productCandidates: buildProductCandidates(
+            'Paracetamol 500mg caplets 16',
+          ),
           confidence: 'MEDIUM',
           explanation: 'OCR extracted a usable commercial line.',
         },
@@ -358,7 +366,9 @@ test('inline image is ignored when a spreadsheet attachment is present', async (
   let importedFileName: string | null = null;
   const service = createEmailInboundService({
     allowedSenders: ['supplier@example.com'],
-    supplierMappings: [{ pattern: 'supplier@example.com', supplierName: 'Supplier Co' }],
+    supplierMappings: [
+      { pattern: 'supplier@example.com', supplierName: 'Supplier Co' },
+    ],
     logger: createLogger(),
     importSupplierPriceList: async ({ file }) => {
       importedFileName = file.originalname;
@@ -403,7 +413,8 @@ test('inline image is ignored when a spreadsheet attachment is present', async (
       },
       {
         fileName: 'supplier-price-list.xlsx',
-        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         disposition: 'attachment',
         content: Buffer.from('xlsx').toString('base64'),
       },
@@ -412,7 +423,10 @@ test('inline image is ignored when a spreadsheet attachment is present', async (
 
   assert.equal(importedFileName, 'supplier-price-list.xlsx');
   assert.equal(result.items.length, 1);
-  assert.equal(result.items[0]?.attachment.fileName, 'supplier-price-list.xlsx');
+  assert.equal(
+    result.items[0]?.attachment.fileName,
+    'supplier-price-list.xlsx',
+  );
   assert.equal(result.items[0]?.processingStatus, 'IMPORTED');
 });
 
@@ -479,7 +493,9 @@ test('disallowed sender is ignored safely', async () => {
       {
         fileName: 'supplier-price-list.csv',
         mimeType: 'text/csv',
-        content: Buffer.from('supplierName,productName,unitPrice').toString('base64'),
+        content: Buffer.from('supplierName,productName,unitPrice').toString(
+          'base64',
+        ),
       },
     ],
   });
@@ -515,7 +531,8 @@ test('generic sender like sales@company.com does not create sales-import confide
     attachments: [
       {
         fileName: 'report.xlsx',
-        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         content: Buffer.from('x').toString('base64'),
       },
     ],
@@ -550,7 +567,8 @@ test('vague spreadsheet filename becomes needs-review', async () => {
     attachments: [
       {
         fileName: 'spreadsheet.xlsx',
-        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         content: Buffer.from('x').toString('base64'),
       },
     ],
@@ -602,7 +620,9 @@ test('trusted supplier sender mapping populates supplierName for supplier price 
       {
         fileName: 'supplier-price-list.csv',
         mimeType: 'text/csv',
-        content: Buffer.from('productName,unitPrice\nAspirin,1.50').toString('base64'),
+        content: Buffer.from('productName,unitPrice\nAspirin,1.50').toString(
+          'base64',
+        ),
       },
     ],
   });
@@ -610,7 +630,10 @@ test('trusted supplier sender mapping populates supplierName for supplier price 
   assert.equal(capturedSupplierName, 'Supplier Co');
   assert.equal(result.items[0]?.processingStatus, 'IMPORTED');
   assert.match(result.items[0]?.reason ?? '', /inferred confidently/i);
-  assert.match(result.items[0]?.reason ?? '', /trusted supplier mapping was used for Supplier Co/i);
+  assert.match(
+    result.items[0]?.reason ?? '',
+    /trusted supplier mapping was used for Supplier Co/i,
+  );
 });
 
 test('forwarded owner email can use manual supplier override and it takes priority', async () => {
@@ -658,14 +681,19 @@ test('forwarded owner email can use manual supplier override and it takes priori
       {
         fileName: 'supplier-price-list.csv',
         mimeType: 'text/csv',
-        content: Buffer.from('productName,unitPrice\nAspirin,1.50').toString('base64'),
+        content: Buffer.from('productName,unitPrice\nAspirin,1.50').toString(
+          'base64',
+        ),
       },
     ],
   });
 
   assert.equal(capturedSupplierName, 'Forwarded Supplier Ltd');
   assert.equal(result.items[0]?.processingStatus, 'IMPORTED');
-  assert.match(result.items[0]?.reason ?? '', /payload supplier override was used for Forwarded Supplier Ltd/i);
+  assert.match(
+    result.items[0]?.reason ?? '',
+    /payload supplier override was used for Forwarded Supplier Ltd/i,
+  );
 });
 
 test('subject supplier override populates supplierName', async () => {
@@ -706,7 +734,9 @@ test('subject supplier override populates supplierName', async () => {
       {
         fileName: 'supplier-price-list.csv',
         mimeType: 'text/csv',
-        content: Buffer.from('productName,unitPrice\nAspirin,1.50').toString('base64'),
+        content: Buffer.from('productName,unitPrice\nAspirin,1.50').toString(
+          'base64',
+        ),
       },
     ],
   });
@@ -757,7 +787,9 @@ test('body supplier override populates supplierName', async () => {
       {
         fileName: 'supplier-price-list.csv',
         mimeType: 'text/csv',
-        content: Buffer.from('productName,unitPrice\nAspirin,1.50').toString('base64'),
+        content: Buffer.from('productName,unitPrice\nAspirin,1.50').toString(
+          'base64',
+        ),
       },
     ],
   });
@@ -797,7 +829,9 @@ test('malformed supplier override is ignored safely', async () => {
       {
         fileName: 'supplier-price-list.csv',
         mimeType: 'text/csv',
-        content: Buffer.from('productName,unitPrice\nAspirin,1.50').toString('base64'),
+        content: Buffer.from('productName,unitPrice\nAspirin,1.50').toString(
+          'base64',
+        ),
       },
     ],
   });
@@ -832,7 +866,9 @@ test('forwarded email from approved sender without reliable supplier info become
       {
         fileName: 'supplier-price-list.csv',
         mimeType: 'text/csv',
-        content: Buffer.from('productName,unitPrice\nAspirin,1.50').toString('base64'),
+        content: Buffer.from('productName,unitPrice\nAspirin,1.50').toString(
+          'base64',
+        ),
       },
     ],
   });
@@ -865,7 +901,8 @@ test('mixed ambiguous signals do not auto-import', async () => {
     attachments: [
       {
         fileName: 'sales-stock.xlsx',
-        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         content: Buffer.from('x').toString('base64'),
       },
     ],
@@ -906,28 +943,41 @@ test('missing inferredImportType does not crash import flow', async () => {
     attachments: [
       {
         fileName: 'inventory.xlsx',
-        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         content: Buffer.from('x').toString('base64'),
       },
     ],
   });
 
   assert.equal(result.items[0]?.processingStatus, 'NEEDS_REVIEW');
-  assert.match(result.items[0]?.reason ?? '', /test decision reached import step/i);
-  assert.match(result.items[0]?.reason ?? '', /import type was missing at execution time/i);
+  assert.match(
+    result.items[0]?.reason ?? '',
+    /test decision reached import step/i,
+  );
+  assert.match(
+    result.items[0]?.reason ?? '',
+    /import type was missing at execution time/i,
+  );
 });
 
 test('body-only known supplier structured price list is triaged as auto-processed', async () => {
   const service = createEmailInboundService({
     allowedSenders: ['supplier.co'],
-    supplierMappings: [{ pattern: '@supplier.co', supplierName: 'Supplier Co' }],
+    supplierMappings: [
+      { pattern: '@supplier.co', supplierName: 'Supplier Co' },
+    ],
     logger: createLogger(),
   });
 
   const result = await service.ingestMessage({
     from: 'pricing@supplier.co',
     subject: 'Price list April',
-    bodyText: ['Amlodipine 5mg tabs 28 - 8.40 GBP', 'Paracetamol 500mg caplets 16 - 1.25 GBP', 'Metformin 500mg 28 - 3.10 GBP'].join('\n'),
+    bodyText: [
+      'Amlodipine 5mg tabs 28 - 8.40 GBP',
+      'Paracetamol 500mg caplets 16 - 1.25 GBP',
+      'Metformin 500mg 28 - 3.10 GBP',
+    ].join('\n'),
   });
 
   assert.equal(result.ignored, false);
@@ -938,7 +988,9 @@ test('body-only known supplier structured price list is triaged as auto-processe
 test('body-only known supplier messy commercial email is marked ai-review-eligible', async () => {
   const service = createEmailInboundService({
     allowedSenders: ['supplier.co'],
-    supplierMappings: [{ pattern: '@supplier.co', supplierName: 'Supplier Co' }],
+    supplierMappings: [
+      { pattern: '@supplier.co', supplierName: 'Supplier Co' },
+    ],
     emailReviewEnabled: false,
     logger: createLogger(),
   });

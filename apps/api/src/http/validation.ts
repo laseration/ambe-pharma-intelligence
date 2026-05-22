@@ -7,7 +7,11 @@ export type RequestSchemas = {
   body?: ZodTypeAny;
 };
 
-export function parseRequest<TParams = unknown, TQuery = unknown, TBody = unknown>(
+export function parseRequest<
+  TParams = unknown,
+  TQuery = unknown,
+  TBody = unknown,
+>(
   request: Request,
   schemas: RequestSchemas,
 ): {
@@ -16,9 +20,15 @@ export function parseRequest<TParams = unknown, TQuery = unknown, TBody = unknow
   body: TBody;
 } {
   return {
-    params: (schemas.params ? schemas.params.parse(request.params) : request.params) as TParams,
-    query: (schemas.query ? schemas.query.parse(request.query) : request.query) as TQuery,
-    body: (schemas.body ? schemas.body.parse(request.body ?? {}) : (request.body ?? {})) as TBody,
+    params: (schemas.params
+      ? schemas.params.parse(request.params)
+      : request.params) as TParams,
+    query: (schemas.query
+      ? schemas.query.parse(request.query)
+      : request.query) as TQuery,
+    body: (schemas.body
+      ? schemas.body.parse(request.body ?? {})
+      : (request.body ?? {})) as TBody,
   };
 }
 
@@ -49,28 +59,42 @@ export const optionalNumberQuerySchema = z
   .transform((value) => Number(value))
   .optional();
 
-export const optionalDateInputSchema = z.preprocess((value) => {
-  if (value === undefined) {
-    return undefined;
-  }
+export const optionalDateInputSchema = z.preprocess(
+  (value) => {
+    if (value === undefined) {
+      return undefined;
+    }
 
-  if (value === null) {
-    return null;
-  }
+    if (value === null) {
+      return null;
+    }
 
-  if (typeof value !== 'string') {
-    return value;
-  }
+    if (typeof value !== 'string') {
+      return value;
+    }
 
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return undefined;
+    }
 
-  return trimmed;
-}, z.union([
-  z.string().refine((value) => !Number.isNaN(Date.parse(value)), 'Invalid date value.').transform((value) => new Date(value)),
-  z.null(),
-]).optional());
+    return trimmed;
+  },
+  z
+    .union([
+      z
+        .string()
+        .refine(
+          (value) => !Number.isNaN(Date.parse(value)),
+          'Invalid date value.',
+        )
+        .transform((value) => new Date(value)),
+      z.null(),
+    ])
+    .optional(),
+);
 
-export const decimalInputSchema = z.union([z.number(), z.string().trim().min(1)]);
+export const decimalInputSchema = z.union([
+  z.number(),
+  z.string().trim().min(1),
+]);

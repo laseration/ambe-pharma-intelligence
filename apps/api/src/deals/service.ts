@@ -11,7 +11,12 @@ import {
 import { offerCorrectionService } from '../corrections/service';
 import { db } from '../lib/db';
 
-export type TradeOpportunityStatus = 'OPEN' | 'ON_HOLD' | 'DROPPED' | 'WON' | 'LOST';
+export type TradeOpportunityStatus =
+  | 'OPEN'
+  | 'ON_HOLD'
+  | 'DROPPED'
+  | 'WON'
+  | 'LOST';
 
 export type TradeOpportunityStage =
   | 'NEW'
@@ -47,7 +52,10 @@ export type TradeOpportunityActionType =
   | 'DROPPED'
   | 'NOTE_ADDED';
 
-export type TradeMessageDraftDirection = 'TO_SUPPLIER' | 'TO_BUYER' | 'INTERNAL';
+export type TradeMessageDraftDirection =
+  | 'TO_SUPPLIER'
+  | 'TO_BUYER'
+  | 'INTERNAL';
 
 export type TradeMessageDraftStatus =
   | 'DRAFT'
@@ -137,7 +145,12 @@ export type TradeOpportunityRecord = {
   buyDecision?: {
     id: string;
     approvalStatus: 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
-    orderStatus: 'NOT_ORDERED' | 'ORDERED' | 'PARTIALLY_FULFILLED' | 'FULFILLED' | 'CANCELLED';
+    orderStatus:
+      | 'NOT_ORDERED'
+      | 'ORDERED'
+      | 'PARTIALLY_FULFILLED'
+      | 'FULFILLED'
+      | 'CANCELLED';
     supplierQualificationStatus: SupplierQualificationStatus;
     hasQualificationRisk: boolean;
   } | null;
@@ -285,7 +298,12 @@ type BuyDecisionSource = {
   quotedMinimumOrderQuantity: number | null;
   quotedAvailability: string | null;
   approvalStatus: 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
-  orderStatus: 'NOT_ORDERED' | 'ORDERED' | 'PARTIALLY_FULFILLED' | 'FULFILLED' | 'CANCELLED';
+  orderStatus:
+    | 'NOT_ORDERED'
+    | 'ORDERED'
+    | 'PARTIALLY_FULFILLED'
+    | 'FULFILLED'
+    | 'CANCELLED';
   supplierQualificationStatus: SupplierQualificationStatus;
   hasQualificationRisk: boolean;
   qualificationRiskNote: string | null;
@@ -464,7 +482,16 @@ type TradeOpportunityDependencies = {
   ) => Promise<Record<string, OfferFeedbackSummary>>;
   getOfferLearningSummariesForOfferIds: (
     emailDerivedOfferIds: string[],
-  ) => Promise<Record<string, Awaited<ReturnType<typeof offerCorrectionService.getOfferLearningSummariesForOfferIds>>[string]>>;
+  ) => Promise<
+    Record<
+      string,
+      Awaited<
+        ReturnType<
+          typeof offerCorrectionService.getOfferLearningSummariesForOfferIds
+        >
+      >[string]
+    >
+  >;
   getTradeFeedbackSummariesForTradeOpportunityIds: (
     tradeOpportunityIds: string[],
   ) => Promise<Record<string, TradeFeedbackSummary>>;
@@ -496,7 +523,12 @@ type TradeOpportunityBuyDecisionLink = {
   quotedMinimumOrderQuantity: number | null;
   quotedAvailability: string | null;
   approvalStatus: 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
-  orderStatus: 'NOT_ORDERED' | 'ORDERED' | 'PARTIALLY_FULFILLED' | 'FULFILLED' | 'CANCELLED';
+  orderStatus:
+    | 'NOT_ORDERED'
+    | 'ORDERED'
+    | 'PARTIALLY_FULFILLED'
+    | 'FULFILLED'
+    | 'CANCELLED';
   supplierQualificationStatus: SupplierQualificationStatus;
   hasQualificationRisk: boolean;
   execution?: {
@@ -520,7 +552,9 @@ export type TradeOpportunitySyncInput = {
 };
 
 export type TradeOpportunitySyncRepository = {
-  listActiveByOfferId: (emailDerivedOfferId: string) => Promise<TradeOpportunityRecord[]>;
+  listActiveByOfferId: (
+    emailDerivedOfferId: string,
+  ) => Promise<TradeOpportunityRecord[]>;
   updateTradeOpportunity: (
     tradeOpportunityId: string,
     data: Partial<TradeOpportunityRecord>,
@@ -532,7 +566,10 @@ export type TradeOpportunitySyncRepository = {
 
 export type DemandMatchedTradeOpportunityRepository = Pick<
   TradeOpportunityRepository,
-  'listActiveByOfferId' | 'create' | 'createPolicy' | 'createTradeOpportunityEvent'
+  | 'listActiveByOfferId'
+  | 'create'
+  | 'createPolicy'
+  | 'createTradeOpportunityEvent'
 > & {
   listRecentSalesByProductId: (input: {
     productId: string;
@@ -556,19 +593,36 @@ export type DemandMatchedTradeOpportunityResult = {
 };
 
 export type TradeOpportunityRepository = TradeOpportunitySyncRepository & {
-  transaction: <T>(callback: (repository: TradeOpportunityRepository) => Promise<T>) => Promise<T>;
-  findById: (tradeOpportunityId: string) => Promise<TradeOpportunityRecord | null>;
-  list: (filters: TradeOpportunityListFilters) => Promise<TradeOpportunityRecord[]>;
+  transaction: <T>(
+    callback: (repository: TradeOpportunityRepository) => Promise<T>,
+  ) => Promise<T>;
+  findById: (
+    tradeOpportunityId: string,
+  ) => Promise<TradeOpportunityRecord | null>;
+  list: (
+    filters: TradeOpportunityListFilters,
+  ) => Promise<TradeOpportunityRecord[]>;
   create: (data: Record<string, unknown>) => Promise<TradeOpportunityRecord>;
-  update: (tradeOpportunityId: string, data: Record<string, unknown>) => Promise<TradeOpportunityRecord>;
-  listEvents: (tradeOpportunityId: string) => Promise<TradeOpportunityEventRecord[]>;
-  findPolicyByTradeOpportunityId: (tradeOpportunityId: string) => Promise<TradeOpportunityMessagingPolicyRecord | null>;
-  createPolicy: (data: Record<string, unknown>) => Promise<TradeOpportunityMessagingPolicyRecord>;
+  update: (
+    tradeOpportunityId: string,
+    data: Record<string, unknown>,
+  ) => Promise<TradeOpportunityRecord>;
+  listEvents: (
+    tradeOpportunityId: string,
+  ) => Promise<TradeOpportunityEventRecord[]>;
+  findPolicyByTradeOpportunityId: (
+    tradeOpportunityId: string,
+  ) => Promise<TradeOpportunityMessagingPolicyRecord | null>;
+  createPolicy: (
+    data: Record<string, unknown>,
+  ) => Promise<TradeOpportunityMessagingPolicyRecord>;
   updatePolicy: (
     tradeOpportunityId: string,
     data: Record<string, unknown>,
   ) => Promise<TradeOpportunityMessagingPolicyRecord>;
-  listDrafts: (tradeOpportunityId: string) => Promise<TradeMessageDraftRecord[]>;
+  listDrafts: (
+    tradeOpportunityId: string,
+  ) => Promise<TradeMessageDraftRecord[]>;
   findDraftById: (draftId: string) => Promise<TradeMessageDraftRecord | null>;
   findMatchingDraft: (
     tradeOpportunityId: string,
@@ -576,20 +630,35 @@ export type TradeOpportunityRepository = TradeOpportunitySyncRepository & {
     direction: TradeMessageDraftDirection,
     messagePurpose: TradeMessagePurpose,
   ) => Promise<TradeMessageDraftRecord | null>;
-  createDraft: (data: Record<string, unknown>) => Promise<TradeMessageDraftRecord>;
-  updateDraft: (draftId: string, data: Record<string, unknown>) => Promise<TradeMessageDraftRecord>;
+  createDraft: (
+    data: Record<string, unknown>,
+  ) => Promise<TradeMessageDraftRecord>;
+  updateDraft: (
+    draftId: string,
+    data: Record<string, unknown>,
+  ) => Promise<TradeMessageDraftRecord>;
   findRecentMatchingFeedback: Parameters<
     typeof recordOperatorValidationFeedbackWithRepository
   >[0]['findRecentMatchingFeedback'];
-  createFeedback: Parameters<typeof recordOperatorValidationFeedbackWithRepository>[0]['createFeedback'];
+  createFeedback: Parameters<
+    typeof recordOperatorValidationFeedbackWithRepository
+  >[0]['createFeedback'];
   findTradeMessageDraftById: Parameters<
     typeof recordOperatorValidationFeedbackWithRepository
   >[0]['findTradeMessageDraftById'];
-  findOfferById: (emailDerivedOfferId: string) => Promise<EmailDerivedOfferSource | null>;
+  findOfferById: (
+    emailDerivedOfferId: string,
+  ) => Promise<EmailDerivedOfferSource | null>;
   findWorkflowById: (workflowItemId: string) => Promise<WorkflowSource | null>;
-  findBuyDecisionById: (buyDecisionId: string) => Promise<BuyDecisionSource | null>;
-  findBuyExecutionById: (buyExecutionId: string) => Promise<BuyExecutionSource | null>;
-  listActiveByOfferIds: (emailDerivedOfferIds: string[]) => Promise<TradeOpportunityRecord[]>;
+  findBuyDecisionById: (
+    buyDecisionId: string,
+  ) => Promise<BuyDecisionSource | null>;
+  findBuyExecutionById: (
+    buyExecutionId: string,
+  ) => Promise<BuyExecutionSource | null>;
+  listActiveByOfferIds: (
+    emailDerivedOfferIds: string[],
+  ) => Promise<TradeOpportunityRecord[]>;
   listRecentSalesByProductId: (input: {
     productId: string;
     windowStart: Date;
@@ -597,7 +666,10 @@ export type TradeOpportunityRepository = TradeOpportunitySyncRepository & {
   }) => Promise<RecentProductDemandRecord[]>;
 };
 
-const ACTIVE_TRADE_STATUSES = new Set<TradeOpportunityStatus>(['OPEN', 'ON_HOLD']);
+const ACTIVE_TRADE_STATUSES = new Set<TradeOpportunityStatus>([
+  'OPEN',
+  'ON_HOLD',
+]);
 
 const STAGE_ORDER: TradeOpportunityStage[] = [
   'NEW',
@@ -613,7 +685,10 @@ const STAGE_ORDER: TradeOpportunityStage[] = [
   'CLOSED',
 ];
 
-function normalizeActor(actor?: TradeOpportunityActor): { actorType: string; actorIdentifier: string | null } {
+function normalizeActor(actor?: TradeOpportunityActor): {
+  actorType: string;
+  actorIdentifier: string | null;
+} {
   return {
     actorType: actor?.actorType?.trim() || 'SYSTEM',
     actorIdentifier: actor?.actorIdentifier?.trim() || null,
@@ -625,7 +700,9 @@ function normalizeString(value: string | null | undefined): string | null {
   return normalized || null;
 }
 
-function normalizeCurrencyCode(value: string | null | undefined): string | null {
+function normalizeCurrencyCode(
+  value: string | null | undefined,
+): string | null {
   return normalizeString(value)?.toUpperCase() ?? null;
 }
 
@@ -643,7 +720,12 @@ function toNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
 
-  if (typeof value === 'object' && value && 'toString' in value && typeof value.toString === 'function') {
+  if (
+    typeof value === 'object' &&
+    value &&
+    'toString' in value &&
+    typeof value.toString === 'function'
+  ) {
     const parsed = Number(value.toString());
     return Number.isFinite(parsed) ? parsed : null;
   }
@@ -669,7 +751,9 @@ function stageRank(stage: TradeOpportunityStage): number {
 }
 
 function dedupeRiskFlags(flags: Array<string | null | undefined>): string[] {
-  return Array.from(new Set(flags.filter((flag): flag is string => Boolean(flag)))).sort();
+  return Array.from(
+    new Set(flags.filter((flag): flag is string => Boolean(flag))),
+  ).sort();
 }
 
 function marginMetrics(input: {
@@ -688,7 +772,9 @@ function marginMetrics(input: {
       ? round(targetSellUnitPrice - quotedBuyUnitPrice, 2)
       : null;
   const estimatedMarginPct =
-    estimatedMarginAmount !== null && targetSellUnitPrice && targetSellUnitPrice > 0
+    estimatedMarginAmount !== null &&
+    targetSellUnitPrice &&
+    targetSellUnitPrice > 0
       ? round(estimatedMarginAmount / targetSellUnitPrice, 6)
       : null;
   const amountFloorMet =
@@ -733,35 +819,49 @@ function buildRiskFlags(input: {
   buyDecisionId: string | null;
   buyDecision?: TradeOpportunityRecord['buyDecision'] | null;
   buyExecutionId: string | null;
-  buyExecution?: BuyExecutionSource | TradeOpportunityRecord['buyExecution'] | null;
+  buyExecution?:
+    | BuyExecutionSource
+    | TradeOpportunityRecord['buyExecution']
+    | null;
   metadata: unknown;
 }): string[] {
   const metadata =
-    input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)
+    input.metadata &&
+    typeof input.metadata === 'object' &&
+    !Array.isArray(input.metadata)
       ? (input.metadata as Record<string, unknown>)
       : null;
   const weakConfidence =
     input.quotedBuyUnitPrice === null ||
     input.quotedBuyUnitPrice === undefined ||
     metadata?.aiAssisted === true ||
-    (typeof metadata?.fieldConfidence === 'number' && metadata.fieldConfidence < 60);
+    (typeof metadata?.fieldConfidence === 'number' &&
+      metadata.fieldConfidence < 60);
   const hasPriceDrift = Boolean(
     input.buyExecution?.hasPriceDrift ||
-      input.buyExecution?.hasQuantityDrift ||
-      input.buyExecution?.hasCurrencyMismatch ||
-      input.buyExecution?.hasAvailabilityDrift,
+    input.buyExecution?.hasQuantityDrift ||
+    input.buyExecution?.hasCurrencyMismatch ||
+    input.buyExecution?.hasAvailabilityDrift,
   );
 
   return dedupeRiskFlags([
-    !input.supplierId && !input.sourceSupplierNameSnapshot ? 'unresolved_supplier' : null,
-    input.supplierQualificationStatusSnapshot === 'BLOCKED' ? 'blocked_supplier' : null,
-    input.supplierQualificationStatusSnapshot === 'RESTRICTED' ? 'restricted_supplier' : null,
+    !input.supplierId && !input.sourceSupplierNameSnapshot
+      ? 'unresolved_supplier'
+      : null,
+    input.supplierQualificationStatusSnapshot === 'BLOCKED'
+      ? 'blocked_supplier'
+      : null,
+    input.supplierQualificationStatusSnapshot === 'RESTRICTED'
+      ? 'restricted_supplier'
+      : null,
     input.supplierQualificationStatusSnapshot === 'UNKNOWN' ||
-      input.supplierQualificationStatusSnapshot === 'PENDING_REVIEW'
+    input.supplierQualificationStatusSnapshot === 'PENDING_REVIEW'
       ? 'unknown_supplier_qualification'
       : null,
     weakConfidence ? 'weak_buy_price_confidence' : null,
-    toNumber(input.targetSellUnitPrice) === null ? 'no_target_sell_price' : null,
+    toNumber(input.targetSellUnitPrice) === null
+      ? 'no_target_sell_price'
+      : null,
     !input.isMarginFloorMet ? 'margin_below_floor' : null,
     !input.buyDecisionId ||
     (input.buyDecision &&
@@ -777,8 +877,14 @@ function buildRiskFlags(input: {
   ]);
 }
 
-function deriveSuggestedStage(tradeOpportunity: TradeOpportunityRecord): TradeOpportunityStage {
-  if (tradeOpportunity.status === 'WON' || tradeOpportunity.status === 'LOST' || tradeOpportunity.status === 'DROPPED') {
+function deriveSuggestedStage(
+  tradeOpportunity: TradeOpportunityRecord,
+): TradeOpportunityStage {
+  if (
+    tradeOpportunity.status === 'WON' ||
+    tradeOpportunity.status === 'LOST' ||
+    tradeOpportunity.status === 'DROPPED'
+  ) {
     return 'CLOSED';
   }
 
@@ -798,11 +904,18 @@ function deriveSuggestedStage(tradeOpportunity: TradeOpportunityRecord): TradeOp
     return 'READY_FOR_BUY';
   }
 
-  return tradeOpportunity.offerWorkflowItemId || tradeOpportunity.emailDerivedOfferId ? 'REVIEW' : 'NEW';
+  return tradeOpportunity.offerWorkflowItemId ||
+    tradeOpportunity.emailDerivedOfferId
+    ? 'REVIEW'
+    : 'NEW';
 }
 
 function deriveStatus(current: TradeOpportunityRecord): TradeOpportunityStatus {
-  if (current.status === 'WON' || current.status === 'LOST' || current.status === 'DROPPED') {
+  if (
+    current.status === 'WON' ||
+    current.status === 'LOST' ||
+    current.status === 'DROPPED'
+  ) {
     return current.status;
   }
 
@@ -828,7 +941,10 @@ function deriveStatus(current: TradeOpportunityRecord): TradeOpportunityStatus {
   return 'OPEN';
 }
 
-function recommendedNextStep(tradeOpportunity: TradeOpportunityRecord, drafts: TradeMessageDraftRecord[]): TradeOpportunitySummary['recommendedNextStep'] {
+function recommendedNextStep(
+  tradeOpportunity: TradeOpportunityRecord,
+  drafts: TradeMessageDraftRecord[],
+): TradeOpportunitySummary['recommendedNextStep'] {
   const riskFlags = Array.isArray(tradeOpportunity.riskFlags)
     ? (tradeOpportunity.riskFlags as string[])
     : [];
@@ -850,8 +966,15 @@ function recommendedNextStep(tradeOpportunity: TradeOpportunityRecord, drafts: T
     return 'approve to buy';
   }
 
-  const buyerDrafts = drafts.filter((draft) => draft.direction === 'TO_BUYER' && draft.status !== 'CANCELLED');
-  if (buyerDrafts.some((draft) => draft.status === 'DRAFT' || draft.status === 'READY_FOR_REVIEW')) {
+  const buyerDrafts = drafts.filter(
+    (draft) => draft.direction === 'TO_BUYER' && draft.status !== 'CANCELLED',
+  );
+  if (
+    buyerDrafts.some(
+      (draft) =>
+        draft.status === 'DRAFT' || draft.status === 'READY_FOR_REVIEW',
+    )
+  ) {
     return 'review buyer draft';
   }
 
@@ -873,7 +996,9 @@ function summarizeTradeOpportunity(
   const riskFlags = Array.isArray(tradeOpportunity.riskFlags)
     ? (tradeOpportunity.riskFlags as string[])
     : [];
-  const estimatedMarginAmount = toNumber(tradeOpportunity.estimatedMarginAmount);
+  const estimatedMarginAmount = toNumber(
+    tradeOpportunity.estimatedMarginAmount,
+  );
   const estimatedMarginPct = toNumber(tradeOpportunity.estimatedMarginPct);
   const marginSpreadAmount =
     toNumber(tradeOpportunity.targetSellUnitPrice) !== null &&
@@ -916,7 +1041,9 @@ function summarizeTradeOpportunity(
   };
 }
 
-function buildDefaultPolicy(tradeOpportunityId: string): Record<string, unknown> {
+function buildDefaultPolicy(
+  tradeOpportunityId: string,
+): Record<string, unknown> {
   return {
     tradeOpportunityId,
     allowSupplierOutreachDrafts: true,
@@ -995,7 +1122,7 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
     actor?: TradeOpportunityActor;
     recentDemandWindowDays?: number;
   },
-) : Promise<DemandMatchedTradeOpportunityResult> {
+): Promise<DemandMatchedTradeOpportunityResult> {
   if (input.buyDecision.approvalStatus !== 'APPROVED') {
     return {
       outcome: 'SKIPPED_NOT_APPROVED',
@@ -1011,7 +1138,9 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
   }
 
   const quotedBuyUnitPrice = toNumber(input.buyDecision.quotedUnitPrice);
-  const quotedBuyCurrencyCode = normalizeCurrencyCode(input.buyDecision.quotedCurrencyCode);
+  const quotedBuyCurrencyCode = normalizeCurrencyCode(
+    input.buyDecision.quotedCurrencyCode,
+  );
 
   if (quotedBuyUnitPrice === null || !quotedBuyCurrencyCode) {
     return {
@@ -1020,11 +1149,14 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
     };
   }
 
-  const existingActive = await repository.listActiveByOfferId(input.buyDecision.emailDerivedOfferId);
+  const existingActive = await repository.listActiveByOfferId(
+    input.buyDecision.emailDerivedOfferId,
+  );
   const duplicate = existingActive.find(
     (opportunity) =>
       opportunity.buyDecisionId === input.buyDecision.id ||
-      opportunity.offerWorkflowItemId === input.buyDecision.offerWorkflowItemId ||
+      opportunity.offerWorkflowItemId ===
+        input.buyDecision.offerWorkflowItemId ||
       opportunity.emailDerivedOfferId === input.buyDecision.emailDerivedOfferId,
   );
 
@@ -1037,7 +1169,8 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
 
   const actor = normalizeActor(input.actor);
   const now = new Date();
-  const recentDemandWindowDays = input.recentDemandWindowDays ?? DEMAND_MATCH_WINDOW_DAYS;
+  const recentDemandWindowDays =
+    input.recentDemandWindowDays ?? DEMAND_MATCH_WINDOW_DAYS;
   const windowStart = startOfDemandWindow(now, recentDemandWindowDays);
   const recentSales = await repository.listRecentSalesByProductId({
     productId: input.buyDecision.productId,
@@ -1052,22 +1185,39 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
     };
   }
 
-  const recentUnitsSold = recentSales.reduce((total, sale) => total + sale.quantity, 0);
+  const recentUnitsSold = recentSales.reduce(
+    (total, sale) => total + sale.quantity,
+    0,
+  );
   const recentRevenue = round(
-    recentSales.reduce((total, sale) => total + (toNumber(sale.totalRevenue) ?? 0), 0),
+    recentSales.reduce(
+      (total, sale) => total + (toNumber(sale.totalRevenue) ?? 0),
+      0,
+    ),
     2,
   );
   const recentAverageSalePrice =
-    recentUnitsSold > 0 ? round((recentRevenue ?? 0) / recentUnitsSold, 2) : null;
+    recentUnitsSold > 0
+      ? round((recentRevenue ?? 0) / recentUnitsSold, 2)
+      : null;
 
-  if (!recentUnitsSold || recentAverageSalePrice === null || recentAverageSalePrice <= quotedBuyUnitPrice) {
+  if (
+    !recentUnitsSold ||
+    recentAverageSalePrice === null ||
+    recentAverageSalePrice <= quotedBuyUnitPrice
+  ) {
     return {
-      outcome: !recentUnitsSold ? 'SKIPPED_NO_RECENT_DEMAND' : 'SKIPPED_NON_POSITIVE_MARGIN',
+      outcome: !recentUnitsSold
+        ? 'SKIPPED_NO_RECENT_DEMAND'
+        : 'SKIPPED_NON_POSITIVE_MARGIN',
       tradeOpportunity: null,
     };
   }
 
-  const estimatedMarginAmount = round(recentAverageSalePrice - quotedBuyUnitPrice, 2);
+  const estimatedMarginAmount = round(
+    recentAverageSalePrice - quotedBuyUnitPrice,
+    2,
+  );
   const estimatedMarginPct =
     estimatedMarginAmount !== null && recentAverageSalePrice > 0
       ? round(estimatedMarginAmount / recentAverageSalePrice, 6)
@@ -1095,14 +1245,16 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
     productId: input.buyDecision.productId,
     ownerUserId: null,
     rawProductText: input.buyDecision.rawProductText ?? null,
-    normalizedProductNameCandidate: input.buyDecision.normalizedProductNameCandidate ?? null,
+    normalizedProductNameCandidate:
+      input.buyDecision.normalizedProductNameCandidate ?? null,
     manufacturerCandidate: input.buyDecision.manufacturerCandidate ?? null,
     sourceSupplierNameSnapshot:
       normalizeString(input.sourceSupplierNameSnapshot) ??
       normalizeString(input.buyDecision.supplier?.name ?? null),
     targetBuyerNameSnapshot: likelyBuyers[0]?.name ?? null,
     targetBuyerCompanySnapshot: null,
-    supplierQualificationStatusSnapshot: input.buyDecision.supplierQualificationStatus,
+    supplierQualificationStatusSnapshot:
+      input.buyDecision.supplierQualificationStatus,
     quotedBuyUnitPrice,
     quotedBuyCurrencyCode,
     quotedBuyMinimumOrderQuantity: input.buyDecision.quotedMinimumOrderQuantity,
@@ -1113,7 +1265,8 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
     minimumMarginPct: null,
     estimatedMarginAmount,
     estimatedMarginPct,
-    quantityTarget: input.buyDecision.quotedMinimumOrderQuantity ?? recentUnitsSold,
+    quantityTarget:
+      input.buyDecision.quotedMinimumOrderQuantity ?? recentUnitsSold,
     rationale:
       `Approved supplier offer matched recent demand for ${recentUnitsSold} units across ${likelyBuyers.length} likely buyer${likelyBuyers.length === 1 ? '' : 's'}. ` +
       `Recent average sale price is ${quotedBuyCurrencyCode} ${recentAverageSalePrice.toFixed(2)} versus buy price ${quotedBuyCurrencyCode} ${quotedBuyUnitPrice.toFixed(2)}.`,
@@ -1144,7 +1297,8 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
       id: input.buyDecision.id,
       approvalStatus: input.buyDecision.approvalStatus,
       orderStatus: input.buyDecision.orderStatus,
-      supplierQualificationStatus: input.buyDecision.supplierQualificationStatus,
+      supplierQualificationStatus:
+        input.buyDecision.supplierQualificationStatus,
       hasQualificationRisk: input.buyDecision.hasQualificationRisk,
     },
     buyExecution: input.buyDecision.execution
@@ -1174,12 +1328,14 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
     supplierId: input.buyDecision.supplierId,
     productId: input.buyDecision.productId,
     rawProductText: input.buyDecision.rawProductText ?? null,
-    normalizedProductNameCandidate: input.buyDecision.normalizedProductNameCandidate ?? null,
+    normalizedProductNameCandidate:
+      input.buyDecision.normalizedProductNameCandidate ?? null,
     manufacturerCandidate: input.buyDecision.manufacturerCandidate ?? null,
     sourceSupplierNameSnapshot: baseRecord.sourceSupplierNameSnapshot,
     targetBuyerNameSnapshot: likelyBuyers[0]?.name ?? null,
     targetBuyerCompanySnapshot: null,
-    supplierQualificationStatusSnapshot: input.buyDecision.supplierQualificationStatus,
+    supplierQualificationStatusSnapshot:
+      input.buyDecision.supplierQualificationStatus,
     quotedBuyUnitPrice,
     quotedBuyCurrencyCode,
     quotedBuyMinimumOrderQuantity: input.buyDecision.quotedMinimumOrderQuantity,
@@ -1190,7 +1346,8 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
     minimumMarginPct: null,
     estimatedMarginAmount,
     estimatedMarginPct,
-    quantityTarget: input.buyDecision.quotedMinimumOrderQuantity ?? recentUnitsSold,
+    quantityTarget:
+      input.buyDecision.quotedMinimumOrderQuantity ?? recentUnitsSold,
     rationale: baseRecord.rationale,
     riskFlags,
     hasQualificationBlock: baseRecord.hasQualificationBlock,
@@ -1205,25 +1362,31 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
   });
 
   await repository.createPolicy(buildDefaultPolicy(created.id));
-  await logTradeOpportunityEvent(repository as Pick<TradeOpportunityRepository, 'createTradeOpportunityEvent'>, {
-    tradeOpportunityId: created.id,
-    actionType: 'CREATED',
-    previousStatus: null,
-    newStatus: created.status,
-    previousStage: null,
-    newStage: created.stage,
-    actorType: actor.actorType,
-    actorIdentifier: actor.actorIdentifier,
-    note: 'Created from an approved supplier offer with recent customer demand and positive margin.',
-    metadata: {
-      createdFrom: 'approved_buy_decision_demand_match',
-      buyDecisionId: input.buyDecision.id,
-      recentDemandWindowDays,
-      recentUnitsSold,
-      recentAverageSalePrice,
-      likelyBuyerCount: likelyBuyers.length,
+  await logTradeOpportunityEvent(
+    repository as Pick<
+      TradeOpportunityRepository,
+      'createTradeOpportunityEvent'
+    >,
+    {
+      tradeOpportunityId: created.id,
+      actionType: 'CREATED',
+      previousStatus: null,
+      newStatus: created.status,
+      previousStage: null,
+      newStage: created.stage,
+      actorType: actor.actorType,
+      actorIdentifier: actor.actorIdentifier,
+      note: 'Created from an approved supplier offer with recent customer demand and positive margin.',
+      metadata: {
+        createdFrom: 'approved_buy_decision_demand_match',
+        buyDecisionId: input.buyDecision.id,
+        recentDemandWindowDays,
+        recentUnitsSold,
+        recentAverageSalePrice,
+        likelyBuyerCount: likelyBuyers.length,
+      },
     },
-  });
+  );
 
   return {
     outcome: 'CREATED',
@@ -1231,7 +1394,9 @@ export async function createDemandMatchedTradeOpportunityFromApprovedBuyDecision
   };
 }
 
-function eventMetadataFromDraft(draft: TradeMessageDraftRecord): Record<string, unknown> {
+function eventMetadataFromDraft(
+  draft: TradeMessageDraftRecord,
+): Record<string, unknown> {
   return {
     draftId: draft.id,
     direction: draft.direction,
@@ -1281,26 +1446,38 @@ export function validateTradeMessageDraft(
   const phonePattern = /(?:\+?\d[\d\s().-]{6,}\d)/g;
   const headerPattern = /(^|\n)\s*(from|sent|to|subject):/i;
   const urlPattern = /https?:\/\/|www\./i;
-  const containsSupplierIdentity = supplierTerms.some((term) => lowerText.includes(term.toLowerCase()));
-  const containsBuyerIdentity = buyerTerms.some((term) => lowerText.includes(term.toLowerCase()));
+  const containsSupplierIdentity = supplierTerms.some((term) =>
+    lowerText.includes(term.toLowerCase()),
+  );
+  const containsBuyerIdentity = buyerTerms.some((term) =>
+    lowerText.includes(term.toLowerCase()),
+  );
   const containsExternalContactDetails =
     emailPattern.test(text) || phonePattern.test(text) || urlPattern.test(text);
   const containsForwardedContent = headerPattern.test(text);
-  const allowedMessageTypes =
-    Array.isArray(policy.allowedMessageTypes) ? (policy.allowedMessageTypes as unknown[]) : null;
+  const allowedMessageTypes = Array.isArray(policy.allowedMessageTypes)
+    ? (policy.allowedMessageTypes as unknown[])
+    : null;
   const violations = dedupeRiskFlags([
-    input.direction === 'TO_SUPPLIER' && !policy.allowSupplierOutreachDrafts ? 'supplier_outreach_blocked' : null,
-    input.direction === 'TO_BUYER' && !policy.allowBuyerOutreachDrafts ? 'buyer_outreach_blocked' : null,
-    allowedMessageTypes &&
-      !allowedMessageTypes.includes(input.messagePurpose)
+    input.direction === 'TO_SUPPLIER' && !policy.allowSupplierOutreachDrafts
+      ? 'supplier_outreach_blocked'
+      : null,
+    input.direction === 'TO_BUYER' && !policy.allowBuyerOutreachDrafts
+      ? 'buyer_outreach_blocked'
+      : null,
+    allowedMessageTypes && !allowedMessageTypes.includes(input.messagePurpose)
       ? 'message_type_not_allowed'
       : null,
     containsForwardedContent ? 'forwarded_header_content_detected' : null,
     containsExternalContactDetails ? 'external_contact_details_detected' : null,
-    input.direction === 'TO_BUYER' && policy.blockSupplierIdentityLeak && containsSupplierIdentity
+    input.direction === 'TO_BUYER' &&
+    policy.blockSupplierIdentityLeak &&
+    containsSupplierIdentity
       ? 'supplier_identity_leak_detected'
       : null,
-    input.direction === 'TO_SUPPLIER' && policy.blockBuyerIdentityLeak && containsBuyerIdentity
+    input.direction === 'TO_SUPPLIER' &&
+    policy.blockBuyerIdentityLeak &&
+    containsBuyerIdentity
       ? 'buyer_identity_leak_detected'
       : null,
   ]);
@@ -1321,7 +1498,9 @@ export function validateTradeMessageDraft(
     containsBuyerIdentity,
     containsExternalContactDetails,
     containsForwardedContent,
-    status: (violations.length > 0 ? 'DRAFT' : 'READY_FOR_REVIEW') as TradeMessageDraftStatus,
+    status: (violations.length > 0
+      ? 'DRAFT'
+      : 'READY_FOR_REVIEW') as TradeMessageDraftStatus,
   };
 }
 
@@ -1347,7 +1526,9 @@ function renderTradeMessageDraft(
         'Hello,',
         '',
         `We are reviewing current interest in ${productLabel}.`,
-        quantityLabel ? `Please confirm current availability for approximately ${quantityLabel} units.` : 'Please confirm current availability.',
+        quantityLabel
+          ? `Please confirm current availability for approximately ${quantityLabel} units.`
+          : 'Please confirm current availability.',
         buyPrice !== null
           ? `We are also reviewing whether terms around ${tradeOpportunity.quotedBuyCurrencyCode ?? 'the quoted currency'} ${buyPrice.toFixed(2)} per unit remain achievable.`
           : 'Please advise your current best buy terms, MOQ, and lead time.',
@@ -1367,7 +1548,9 @@ function renderTradeMessageDraft(
         'Hello,',
         '',
         `We are reviewing indicative availability for ${productLabel}.`,
-        quantityLabel ? `Potential quantity range is around ${quantityLabel} units, subject to confirmation.` : 'Indicative quantity is subject to confirmation.',
+        quantityLabel
+          ? `Potential quantity range is around ${quantityLabel} units, subject to confirmation.`
+          : 'Indicative quantity is subject to confirmation.',
         sellPrice !== null
           ? `Indicative sell terms are currently being reviewed around ${tradeOpportunity.targetSellCurrencyCode ?? 'the working currency'} ${sellPrice.toFixed(2)} per unit, subject to confirmation and timing.`
           : 'Indicative sell terms are still being reviewed internally.',
@@ -1395,7 +1578,9 @@ function renderTradeMessageDraft(
   };
 }
 
-function recomputeTradeOpportunityState(base: TradeOpportunityRecord): Partial<TradeOpportunityRecord> {
+function recomputeTradeOpportunityState(
+  base: TradeOpportunityRecord,
+): Partial<TradeOpportunityRecord> {
   const margin = marginMetrics({
     quotedBuyUnitPrice: base.quotedBuyUnitPrice,
     targetSellUnitPrice: base.targetSellUnitPrice,
@@ -1405,7 +1590,8 @@ function recomputeTradeOpportunityState(base: TradeOpportunityRecord): Partial<T
   const riskFlags = buildRiskFlags({
     supplierId: base.supplierId,
     sourceSupplierNameSnapshot: base.sourceSupplierNameSnapshot,
-    supplierQualificationStatusSnapshot: base.supplierQualificationStatusSnapshot,
+    supplierQualificationStatusSnapshot:
+      base.supplierQualificationStatusSnapshot,
     quotedBuyUnitPrice: base.quotedBuyUnitPrice,
     targetSellUnitPrice: base.targetSellUnitPrice,
     minimumMarginAmount: base.minimumMarginAmount,
@@ -1461,18 +1647,23 @@ function recomputeTradeOpportunityState(base: TradeOpportunityRecord): Partial<T
           : base.stage,
     closedAt:
       nextStatus === 'WON' || nextStatus === 'LOST' || nextStatus === 'DROPPED'
-        ? base.closedAt ?? new Date()
+        ? (base.closedAt ?? new Date())
         : null,
   };
 }
 
 async function refreshTradeOpportunityMessagingState(
-  repository: Pick<TradeOpportunityRepository, 'listDrafts' | 'updateTradeOpportunity'>,
+  repository: Pick<
+    TradeOpportunityRepository,
+    'listDrafts' | 'updateTradeOpportunity'
+  >,
   tradeOpportunity: TradeOpportunityRecord,
 ) {
   const drafts = await repository.listDrafts(tradeOpportunity.id);
   const violationCount = drafts.reduce((count, draft) => {
-    const violations = Array.isArray(draft.policyViolations) ? draft.policyViolations.length : 0;
+    const violations = Array.isArray(draft.policyViolations)
+      ? draft.policyViolations.length
+      : 0;
     return count + violations;
   }, 0);
 
@@ -1490,7 +1681,9 @@ export async function syncTradeOpportunityCommercialState(
     return [];
   }
 
-  const opportunities = await repository.listActiveByOfferId(input.emailDerivedOfferId);
+  const opportunities = await repository.listActiveByOfferId(
+    input.emailDerivedOfferId,
+  );
   const actor = input.actor ?? { actorType: 'SYSTEM', actorIdentifier: null };
   const results: TradeOpportunityRecord[] = [];
 
@@ -1501,38 +1694,48 @@ export async function syncTradeOpportunityCommercialState(
       ...opportunity,
       buyDecisionId: input.buyDecision?.id ?? opportunity.buyDecisionId,
       buyExecutionId: input.buyExecution?.id ?? opportunity.buyExecutionId,
-      supplierId: input.buyDecision?.supplierId ?? input.buyExecution?.supplierId ?? opportunity.supplierId,
-      productId: input.buyDecision?.productId ?? input.buyExecution?.productId ?? opportunity.productId,
-      quotedBuyUnitPrice: input.buyDecision?.quotedUnitPrice ?? opportunity.quotedBuyUnitPrice,
+      supplierId:
+        input.buyDecision?.supplierId ??
+        input.buyExecution?.supplierId ??
+        opportunity.supplierId,
+      productId:
+        input.buyDecision?.productId ??
+        input.buyExecution?.productId ??
+        opportunity.productId,
+      quotedBuyUnitPrice:
+        input.buyDecision?.quotedUnitPrice ?? opportunity.quotedBuyUnitPrice,
       quotedBuyCurrencyCode:
-        input.buyDecision?.quotedCurrencyCode ?? opportunity.quotedBuyCurrencyCode,
+        input.buyDecision?.quotedCurrencyCode ??
+        opportunity.quotedBuyCurrencyCode,
       quotedBuyMinimumOrderQuantity:
-        input.buyDecision?.quotedMinimumOrderQuantity ?? opportunity.quotedBuyMinimumOrderQuantity,
-      quotedAvailability: input.buyDecision?.quotedAvailability ?? opportunity.quotedAvailability,
+        input.buyDecision?.quotedMinimumOrderQuantity ??
+        opportunity.quotedBuyMinimumOrderQuantity,
+      quotedAvailability:
+        input.buyDecision?.quotedAvailability ?? opportunity.quotedAvailability,
       supplierQualificationStatusSnapshot:
-        input.buyDecision?.supplierQualificationStatus ?? opportunity.supplierQualificationStatusSnapshot,
-      buyDecision:
-        input.buyDecision
-          ? {
-              id: input.buyDecision.id,
-              approvalStatus: input.buyDecision.approvalStatus,
-              orderStatus: input.buyDecision.orderStatus,
-              supplierQualificationStatus: input.buyDecision.supplierQualificationStatus,
-              hasQualificationRisk: input.buyDecision.hasQualificationRisk,
-            }
-          : opportunity.buyDecision,
-      buyExecution:
-        input.buyExecution
-          ? {
-              id: input.buyExecution.id,
-              fulfillmentStatus: input.buyExecution.fulfillmentStatus,
-              reconciliationStatus: input.buyExecution.reconciliationStatus,
-              hasPriceDrift: input.buyExecution.hasPriceDrift,
-              hasQuantityDrift: input.buyExecution.hasQuantityDrift,
-              hasCurrencyMismatch: input.buyExecution.hasCurrencyMismatch,
-              hasAvailabilityDrift: input.buyExecution.hasAvailabilityDrift,
-            }
-          : opportunity.buyExecution,
+        input.buyDecision?.supplierQualificationStatus ??
+        opportunity.supplierQualificationStatusSnapshot,
+      buyDecision: input.buyDecision
+        ? {
+            id: input.buyDecision.id,
+            approvalStatus: input.buyDecision.approvalStatus,
+            orderStatus: input.buyDecision.orderStatus,
+            supplierQualificationStatus:
+              input.buyDecision.supplierQualificationStatus,
+            hasQualificationRisk: input.buyDecision.hasQualificationRisk,
+          }
+        : opportunity.buyDecision,
+      buyExecution: input.buyExecution
+        ? {
+            id: input.buyExecution.id,
+            fulfillmentStatus: input.buyExecution.fulfillmentStatus,
+            reconciliationStatus: input.buyExecution.reconciliationStatus,
+            hasPriceDrift: input.buyExecution.hasPriceDrift,
+            hasQuantityDrift: input.buyExecution.hasQuantityDrift,
+            hasCurrencyMismatch: input.buyExecution.hasCurrencyMismatch,
+            hasAvailabilityDrift: input.buyExecution.hasAvailabilityDrift,
+          }
+        : opportunity.buyExecution,
     };
     const statePatch = recomputeTradeOpportunityState(nextBase);
     const updated = await repository.updateTradeOpportunity(opportunity.id, {
@@ -1544,14 +1747,16 @@ export async function syncTradeOpportunityCommercialState(
       quotedBuyCurrencyCode: nextBase.quotedBuyCurrencyCode,
       quotedBuyMinimumOrderQuantity: nextBase.quotedBuyMinimumOrderQuantity,
       quotedAvailability: nextBase.quotedAvailability,
-      supplierQualificationStatusSnapshot: nextBase.supplierQualificationStatusSnapshot,
+      supplierQualificationStatusSnapshot:
+        nextBase.supplierQualificationStatusSnapshot,
       ...statePatch,
     } as never);
 
     const actionType: TradeOpportunityActionType =
       input.buyExecution && opportunity.buyExecutionId !== input.buyExecution.id
         ? 'BUY_ORDER_LINKED'
-        : input.buyDecision && opportunity.buyDecisionId !== input.buyDecision.id
+        : input.buyDecision &&
+            opportunity.buyDecisionId !== input.buyDecision.id
           ? 'BUY_APPROVAL_LINKED'
           : updated.status !== previousStatus
             ? 'STATUS_CHANGED'
@@ -1576,7 +1781,10 @@ export async function syncTradeOpportunityCommercialState(
         note: input.note ?? null,
         metadata:
           actionType === 'BUY_ORDER_LINKED'
-            ? { buyExecutionId: updated.buyExecutionId, buyDecisionId: updated.buyDecisionId }
+            ? {
+                buyExecutionId: updated.buyExecutionId,
+                buyDecisionId: updated.buyDecisionId,
+              }
             : actionType === 'BUY_APPROVAL_LINKED'
               ? { buyDecisionId: updated.buyDecisionId }
               : null,
@@ -1599,7 +1807,9 @@ export function createTradeOpportunityRepository(
         return callback(createTradeOpportunityRepository(client, true));
       }
 
-      return db.$transaction(async (tx) => callback(createTradeOpportunityRepository(tx as never, true)));
+      return db.$transaction(async (tx) =>
+        callback(createTradeOpportunityRepository(tx as never, true)),
+      );
     },
     findById: async (tradeOpportunityId) =>
       client.tradeOpportunity.findUnique({
@@ -1658,7 +1868,8 @@ export function createTradeOpportunityRepository(
         where.emailDerivedOfferId = filters.emailDerivedOfferId;
       }
       if (typeof filters.hasMessagingPolicyViolations === 'boolean') {
-        where.hasMessagingPolicyViolations = filters.hasMessagingPolicyViolations;
+        where.hasMessagingPolicyViolations =
+          filters.hasMessagingPolicyViolations;
       }
 
       return (await client.tradeOpportunity.findMany({
@@ -1775,7 +1986,12 @@ export function createTradeOpportunityRepository(
       client.tradeMessageDraft.findUnique({
         where: { id: draftId },
       }) as Promise<TradeMessageDraftRecord | null>,
-    findMatchingDraft: async (tradeOpportunityId, contentHash, direction, messagePurpose) =>
+    findMatchingDraft: async (
+      tradeOpportunityId,
+      contentHash,
+      direction,
+      messagePurpose,
+    ) =>
       client.tradeMessageDraft.findFirst({
         where: {
           tradeOpportunityId,
@@ -1905,35 +2121,41 @@ export function createTradeOpportunityRepository(
           },
         },
       }) as Promise<TradeOpportunityRecord[]>,
-    listRecentSalesByProductId: async ({ productId, windowStart, currencyCode }) =>
-      client.salesRecord.findMany({
-        where: {
-          productId,
-          saleDate: {
-            gte: windowStart,
+    listRecentSalesByProductId: async ({
+      productId,
+      windowStart,
+      currencyCode,
+    }) =>
+      client.salesRecord
+        .findMany({
+          where: {
+            productId,
+            saleDate: {
+              gte: windowStart,
+            },
+            currencyCode,
           },
-          currencyCode,
-        },
-        include: {
-          customer: {
-            select: {
-              id: true,
-              name: true,
+          include: {
+            customer: {
+              select: {
+                id: true,
+                name: true,
+              },
             },
           },
-        },
-        orderBy: [{ saleDate: 'desc' }],
-      }).then((items) =>
-        items.map((item) => ({
-          customerId: item.customerId,
-          customerName: item.customer.name,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          totalRevenue: item.totalRevenue,
-          saleDate: item.saleDate,
-          currencyCode: item.currencyCode,
-        })),
-      ) as Promise<RecentProductDemandRecord[]>,
+          orderBy: [{ saleDate: 'desc' }],
+        })
+        .then((items) =>
+          items.map((item) => ({
+            customerId: item.customerId,
+            customerName: item.customer.name,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            totalRevenue: item.totalRevenue,
+            saleDate: item.saleDate,
+            currencyCode: item.currencyCode,
+          })),
+        ) as Promise<RecentProductDemandRecord[]>,
     listActiveByOfferId: async (emailDerivedOfferId) =>
       client.tradeOpportunity.findMany({
         where: {
@@ -1972,20 +2194,33 @@ async function enrichTradeOpportunities(
   const draftMap = new Map<string, TradeMessageDraftRecord[]>();
   await Promise.all(
     opportunities.map(async (opportunity) => {
-      draftMap.set(opportunity.id, opportunity.drafts ?? (await repository.listDrafts(opportunity.id)));
+      draftMap.set(
+        opportunity.id,
+        opportunity.drafts ?? (await repository.listDrafts(opportunity.id)),
+      );
     }),
   );
   const offerIds = opportunities.flatMap((opportunity) =>
     opportunity.emailDerivedOfferId ? [opportunity.emailDerivedOfferId] : [],
   );
   const tradeIds = opportunities.map((opportunity) => opportunity.id);
-  const [offerFeedbackSummaries, offerLearningSummaries, tradeFeedbackSummaries, readinessOverview] =
-    await Promise.all([
-    dependencies.getOfferFeedbackSummariesForOfferIds(Array.from(new Set(offerIds))),
-    dependencies.getOfferLearningSummariesForOfferIds(Array.from(new Set(offerIds))),
-    dependencies.getTradeFeedbackSummariesForTradeOpportunityIds(Array.from(new Set(tradeIds))),
+  const [
+    offerFeedbackSummaries,
+    offerLearningSummaries,
+    tradeFeedbackSummaries,
+    readinessOverview,
+  ] = await Promise.all([
+    dependencies.getOfferFeedbackSummariesForOfferIds(
+      Array.from(new Set(offerIds)),
+    ),
+    dependencies.getOfferLearningSummariesForOfferIds(
+      Array.from(new Set(offerIds)),
+    ),
+    dependencies.getTradeFeedbackSummariesForTradeOpportunityIds(
+      Array.from(new Set(tradeIds)),
+    ),
     dependencies.getAutomationReadinessOverview(),
-    ]);
+  ]);
   const draftBlockedReasons = Array.from(
     new Set([
       ...readinessOverview.decisions.supplierDrafts.blockedReasons,
@@ -1997,53 +2232,68 @@ async function enrichTradeOpportunities(
     ...opportunity,
     drafts: draftMap.get(opportunity.id) ?? [],
     summary: {
-      ...summarizeTradeOpportunity(opportunity, draftMap.get(opportunity.id) ?? []),
+      ...summarizeTradeOpportunity(
+        opportunity,
+        draftMap.get(opportunity.id) ?? [],
+      ),
       hasOperatorFeedback:
         (opportunity.emailDerivedOfferId
           ? offerFeedbackSummaries[opportunity.emailDerivedOfferId]?.hasFeedback
-          : false) || tradeFeedbackSummaries[opportunity.id]?.hasFeedback || false,
+          : false) ||
+        tradeFeedbackSummaries[opportunity.id]?.hasFeedback ||
+        false,
       hasOfferCorrection: opportunity.emailDerivedOfferId
-        ? offerLearningSummaries[opportunity.emailDerivedOfferId]?.hasCorrection ?? false
+        ? (offerLearningSummaries[opportunity.emailDerivedOfferId]
+            ?.hasCorrection ?? false)
         : false,
       sourceReliabilityTier: opportunity.emailDerivedOfferId
-        ? offerLearningSummaries[opportunity.emailDerivedOfferId]?.sourceReliabilityTier ?? null
+        ? (offerLearningSummaries[opportunity.emailDerivedOfferId]
+            ?.sourceReliabilityTier ?? null)
         : null,
       sourceReliabilityScore: opportunity.emailDerivedOfferId
-        ? offerLearningSummaries[opportunity.emailDerivedOfferId]?.sourceReliabilityScore ?? null
+        ? (offerLearningSummaries[opportunity.emailDerivedOfferId]
+            ?.sourceReliabilityScore ?? null)
         : null,
       hasLearnedSupplierSuggestion: opportunity.emailDerivedOfferId
-        ? offerLearningSummaries[opportunity.emailDerivedOfferId]?.hasLearnedSupplierSuggestion ??
-          false
+        ? (offerLearningSummaries[opportunity.emailDerivedOfferId]
+            ?.hasLearnedSupplierSuggestion ?? false)
         : false,
       learnedSupplierName: opportunity.emailDerivedOfferId
-        ? offerLearningSummaries[opportunity.emailDerivedOfferId]?.learnedSupplierName ?? null
+        ? (offerLearningSummaries[opportunity.emailDerivedOfferId]
+            ?.learnedSupplierName ?? null)
         : null,
       hasLearnedProductSuggestion: opportunity.emailDerivedOfferId
-        ? offerLearningSummaries[opportunity.emailDerivedOfferId]?.hasLearnedProductSuggestion ??
-          false
+        ? (offerLearningSummaries[opportunity.emailDerivedOfferId]
+            ?.hasLearnedProductSuggestion ?? false)
         : false,
       learnedProductName: opportunity.emailDerivedOfferId
-        ? offerLearningSummaries[opportunity.emailDerivedOfferId]?.learnedProductName ?? null
+        ? (offerLearningSummaries[opportunity.emailDerivedOfferId]
+            ?.learnedProductName ?? null)
         : null,
       hasLearnedManufacturerSuggestion: opportunity.emailDerivedOfferId
-        ? offerLearningSummaries[opportunity.emailDerivedOfferId]
-            ?.hasLearnedManufacturerSuggestion ?? false
+        ? (offerLearningSummaries[opportunity.emailDerivedOfferId]
+            ?.hasLearnedManufacturerSuggestion ?? false)
         : false,
       learnedManufacturer: opportunity.emailDerivedOfferId
-        ? offerLearningSummaries[opportunity.emailDerivedOfferId]?.learnedManufacturer ?? null
+        ? (offerLearningSummaries[opportunity.emailDerivedOfferId]
+            ?.learnedManufacturer ?? null)
         : null,
       learningRecommendedAction: opportunity.emailDerivedOfferId
-        ? offerLearningSummaries[opportunity.emailDerivedOfferId]?.recommendedNextAction ??
-          'review manually'
+        ? (offerLearningSummaries[opportunity.emailDerivedOfferId]
+            ?.recommendedNextAction ?? 'review manually')
         : 'review manually',
       extractionFeedbackVerdict: opportunity.emailDerivedOfferId
-        ? offerFeedbackSummaries[opportunity.emailDerivedOfferId]?.extractionVerdict ?? null
+        ? (offerFeedbackSummaries[opportunity.emailDerivedOfferId]
+            ?.extractionVerdict ?? null)
         : null,
       supplierResolutionFeedbackVerdict: opportunity.emailDerivedOfferId
-        ? offerFeedbackSummaries[opportunity.emailDerivedOfferId]?.supplierResolutionVerdict ?? null
+        ? (offerFeedbackSummaries[opportunity.emailDerivedOfferId]
+            ?.supplierResolutionVerdict ?? null)
         : null,
-      dealFeedbackVerdict: tradeFeedbackSummaries[opportunity.id]?.dealVerdict ?? null,
-      latestDraftFeedbackVerdict: tradeFeedbackSummaries[opportunity.id]?.latestDraftVerdict ?? null,
+      dealFeedbackVerdict:
+        tradeFeedbackSummaries[opportunity.id]?.dealVerdict ?? null,
+      latestDraftFeedbackVerdict:
+        tradeFeedbackSummaries[opportunity.id]?.latestDraftVerdict ?? null,
       automationMode: readinessOverview.policy.globalMode,
       automationBlockedReasons: draftBlockedReasons,
       automationRecommendedAction: readinessOverview.recommendedAction,
@@ -2061,8 +2311,14 @@ function buildSourceSnapshot(input: {
   const workflow = input.workflow ?? null;
   const fallbackWorkflow = offer?.workflowItem ?? null;
   const buyDecision = input.buyDecision ?? null;
-  const selectedSupplier = findSelectedCandidateName(offer?.resolutionCandidates, 'SUPPLIER');
-  const selectedProduct = findSelectedCandidateName(offer?.resolutionCandidates, 'PRODUCT');
+  const selectedSupplier = findSelectedCandidateName(
+    offer?.resolutionCandidates,
+    'SUPPLIER',
+  );
+  const selectedProduct = findSelectedCandidateName(
+    offer?.resolutionCandidates,
+    'PRODUCT',
+  );
   const supplierQualificationStatusSnapshot =
     buyDecision?.supplierQualificationStatus ??
     workflow?.supplierQualificationStatus ??
@@ -2079,15 +2335,35 @@ function buildSourceSnapshot(input: {
           : offer
             ? 'EMAIL_DERIVED_OFFER'
             : 'OPERATOR_CREATED'),
-    emailDerivedOfferId: buyDecision?.emailDerivedOfferId ?? workflow?.emailDerivedOfferId ?? offer?.id ?? null,
-    offerWorkflowItemId: buyDecision?.offerWorkflowItemId ?? workflow?.id ?? fallbackWorkflow?.id ?? null,
-    inboundEmailId: buyDecision?.inboundEmailId ?? workflow?.inboundEmailId ?? offer?.inboundEmailId ?? null,
+    emailDerivedOfferId:
+      buyDecision?.emailDerivedOfferId ??
+      workflow?.emailDerivedOfferId ??
+      offer?.id ??
+      null,
+    offerWorkflowItemId:
+      buyDecision?.offerWorkflowItemId ??
+      workflow?.id ??
+      fallbackWorkflow?.id ??
+      null,
+    inboundEmailId:
+      buyDecision?.inboundEmailId ??
+      workflow?.inboundEmailId ??
+      offer?.inboundEmailId ??
+      null,
     buyDecisionId: buyDecision?.id ?? null,
-    buyExecutionId: input.explicit.buyExecutionId ?? buyDecision?.execution?.id ?? null,
-    supplierId: input.explicit.supplierId ?? buyDecision?.supplierId ?? selectedSupplier.id,
-    productId: input.explicit.productId ?? buyDecision?.productId ?? selectedProduct.id,
+    buyExecutionId:
+      input.explicit.buyExecutionId ?? buyDecision?.execution?.id ?? null,
+    supplierId:
+      input.explicit.supplierId ??
+      buyDecision?.supplierId ??
+      selectedSupplier.id,
+    productId:
+      input.explicit.productId ?? buyDecision?.productId ?? selectedProduct.id,
     rawProductText:
-      input.explicit.rawProductText ?? buyDecision?.rawProductText ?? offer?.rawProductText ?? null,
+      input.explicit.rawProductText ??
+      buyDecision?.rawProductText ??
+      offer?.rawProductText ??
+      null,
     normalizedProductNameCandidate:
       input.explicit.normalizedProductNameCandidate ??
       buyDecision?.normalizedProductNameCandidate ??
@@ -2106,23 +2382,30 @@ function buildSourceSnapshot(input: {
       null,
     supplierQualificationStatusSnapshot,
     quotedBuyUnitPrice:
-      input.explicit.quotedBuyUnitPrice ?? buyDecision?.quotedUnitPrice ?? offer?.priceCandidate ?? null,
-    quotedBuyCurrencyCode:
-      normalizeCurrencyCode(
-        input.explicit.quotedBuyCurrencyCode ??
-          buyDecision?.quotedCurrencyCode ??
-          offer?.currencyCandidate ??
-          null,
-      ),
+      input.explicit.quotedBuyUnitPrice ??
+      buyDecision?.quotedUnitPrice ??
+      offer?.priceCandidate ??
+      null,
+    quotedBuyCurrencyCode: normalizeCurrencyCode(
+      input.explicit.quotedBuyCurrencyCode ??
+        buyDecision?.quotedCurrencyCode ??
+        offer?.currencyCandidate ??
+        null,
+    ),
     quotedBuyMinimumOrderQuantity:
       input.explicit.quotedBuyMinimumOrderQuantity ??
       buyDecision?.quotedMinimumOrderQuantity ??
       offer?.minimumOrderQuantityCandidate ??
       null,
     quotedAvailability:
-      input.explicit.quotedAvailability ?? buyDecision?.quotedAvailability ?? offer?.availabilityCandidate ?? null,
+      input.explicit.quotedAvailability ??
+      buyDecision?.quotedAvailability ??
+      offer?.availabilityCandidate ??
+      null,
     metadata: {
-      ...(input.explicit.metadata && typeof input.explicit.metadata === 'object' && !Array.isArray(input.explicit.metadata)
+      ...(input.explicit.metadata &&
+      typeof input.explicit.metadata === 'object' &&
+      !Array.isArray(input.explicit.metadata)
         ? (input.explicit.metadata as Record<string, unknown>)
         : {}),
       aiAssisted: offer?.aiAssisted ?? null,
@@ -2130,7 +2413,9 @@ function buildSourceSnapshot(input: {
       offerStatus: offer?.status ?? null,
       workflowStatus: workflow?.status ?? null,
       workflowQualificationRiskNote:
-        workflow?.qualificationRiskNote ?? offer?.workflowItem?.qualificationRiskNote ?? null,
+        workflow?.qualificationRiskNote ??
+        offer?.workflowItem?.qualificationRiskNote ??
+        null,
       sourceInboundEmailSubject: offer?.inboundEmail?.subject ?? null,
       sourceInboundSender: offer?.inboundEmail?.fromEmail ?? null,
     },
@@ -2147,29 +2432,47 @@ export function createTradeOpportunityService(
   };
   const dependencies: TradeOpportunityDependencies = {
     getOfferFeedbackSummariesForOfferIds: async (emailDerivedOfferIds) =>
-      automationService.getOfferFeedbackSummariesForOfferIds(emailDerivedOfferIds),
+      automationService.getOfferFeedbackSummariesForOfferIds(
+        emailDerivedOfferIds,
+      ),
     getOfferLearningSummariesForOfferIds: async (emailDerivedOfferIds) =>
-      offerCorrectionService.getOfferLearningSummariesForOfferIds(emailDerivedOfferIds),
-    getTradeFeedbackSummariesForTradeOpportunityIds: async (tradeOpportunityIds) =>
-      automationService.getTradeFeedbackSummariesForTradeOpportunityIds(tradeOpportunityIds),
-    getAutomationReadinessOverview: async () => automationService.getReadinessOverview(),
+      offerCorrectionService.getOfferLearningSummariesForOfferIds(
+        emailDerivedOfferIds,
+      ),
+    getTradeFeedbackSummariesForTradeOpportunityIds: async (
+      tradeOpportunityIds,
+    ) =>
+      automationService.getTradeFeedbackSummariesForTradeOpportunityIds(
+        tradeOpportunityIds,
+      ),
+    getAutomationReadinessOverview: async () =>
+      automationService.getReadinessOverview(),
     ...dependencyOverrides,
   };
 
   return {
-    async getTradeOpportunity(tradeOpportunityId: string): Promise<EnrichedTradeOpportunityRecord | null> {
+    async getTradeOpportunity(
+      tradeOpportunityId: string,
+    ): Promise<EnrichedTradeOpportunityRecord | null> {
       const item = await repository.findById(tradeOpportunityId);
       if (!item) {
         return null;
       }
 
-      return (await enrichTradeOpportunities(repository, [item], dependencies))[0] ?? null;
+      return (
+        (await enrichTradeOpportunities(repository, [item], dependencies))[0] ??
+        null
+      );
     },
 
     async listTradeOpportunities(
       filters: TradeOpportunityListFilters = {},
     ): Promise<EnrichedTradeOpportunityRecord[]> {
-      return enrichTradeOpportunities(repository, await repository.list(filters), dependencies);
+      return enrichTradeOpportunities(
+        repository,
+        await repository.list(filters),
+        dependencies,
+      );
     },
 
     async listTradeOpportunityEvents(tradeOpportunityId: string) {
@@ -2180,30 +2483,43 @@ export function createTradeOpportunityService(
       return repository.listDrafts(tradeOpportunityId);
     },
 
-    async createTradeOpportunity(input: TradeOpportunityCreateInput): Promise<EnrichedTradeOpportunityRecord> {
+    async createTradeOpportunity(
+      input: TradeOpportunityCreateInput,
+    ): Promise<EnrichedTradeOpportunityRecord> {
       const actor = normalizeActor(input);
 
       const opportunity = await repository.transaction(async (txRepository) => {
-        const workflow =
-          input.offerWorkflowItemId ? await txRepository.findWorkflowById(input.offerWorkflowItemId) : null;
-        const buyDecision =
-          input.buyDecisionId ? await txRepository.findBuyDecisionById(input.buyDecisionId) : null;
+        const workflow = input.offerWorkflowItemId
+          ? await txRepository.findWorkflowById(input.offerWorkflowItemId)
+          : null;
+        const buyDecision = input.buyDecisionId
+          ? await txRepository.findBuyDecisionById(input.buyDecisionId)
+          : null;
         const offerId =
           input.emailDerivedOfferId ??
           workflow?.emailDerivedOfferId ??
           buyDecision?.emailDerivedOfferId ??
           null;
         const offer =
-          input.emailDerivedOfferId && (!workflow || workflow.emailDerivedOfferId !== input.emailDerivedOfferId)
+          input.emailDerivedOfferId &&
+          (!workflow ||
+            workflow.emailDerivedOfferId !== input.emailDerivedOfferId)
             ? await txRepository.findOfferById(input.emailDerivedOfferId)
-            : workflow?.emailDerivedOffer ?? (offerId ? await txRepository.findOfferById(offerId) : null);
+            : (workflow?.emailDerivedOffer ??
+              (offerId ? await txRepository.findOfferById(offerId) : null));
 
-        if ((offer?.status === 'REJECTED' || workflow?.status === 'REJECTED') && input.allowDuplicateActiveDeal !== true) {
-          throw new Error('Rejected offers cannot create a new active deal by default.');
+        if (
+          (offer?.status === 'REJECTED' || workflow?.status === 'REJECTED') &&
+          input.allowDuplicateActiveDeal !== true
+        ) {
+          throw new Error(
+            'Rejected offers cannot create a new active deal by default.',
+          );
         }
 
         if (offerId && input.allowDuplicateActiveDeal !== true) {
-          const existing = (await txRepository.listActiveByOfferId(offerId))[0] ?? null;
+          const existing =
+            (await txRepository.listActiveByOfferId(offerId))[0] ?? null;
           if (existing) {
             return existing;
           }
@@ -2220,10 +2536,12 @@ export function createTradeOpportunityService(
           status: 'OPEN',
           stage:
             snapshot.sourceType === 'BUY_DECISION'
-              ? buyDecision?.orderStatus && buyDecision.orderStatus !== 'NOT_ORDERED'
+              ? buyDecision?.orderStatus &&
+                buyDecision.orderStatus !== 'NOT_ORDERED'
                 ? 'BUY_ORDERED'
                 : 'BUY_APPROVED'
-              : snapshot.sourceType === 'WORKFLOW_ITEM' || snapshot.sourceType === 'EMAIL_DERIVED_OFFER'
+              : snapshot.sourceType === 'WORKFLOW_ITEM' ||
+                  snapshot.sourceType === 'EMAIL_DERIVED_OFFER'
                 ? 'REVIEW'
                 : 'NEW',
           sourceType: snapshot.sourceType,
@@ -2236,28 +2554,44 @@ export function createTradeOpportunityService(
           productId: snapshot.productId,
           ownerUserId: input.ownerUserId ?? workflow?.assigneeUserId ?? null,
           rawProductText: snapshot.rawProductText,
-          normalizedProductNameCandidate: snapshot.normalizedProductNameCandidate,
+          normalizedProductNameCandidate:
+            snapshot.normalizedProductNameCandidate,
           manufacturerCandidate: snapshot.manufacturerCandidate,
           sourceSupplierNameSnapshot: snapshot.sourceSupplierNameSnapshot,
-          targetBuyerNameSnapshot: normalizeString(input.targetBuyerNameSnapshot),
-          targetBuyerCompanySnapshot: normalizeString(input.targetBuyerCompanySnapshot),
-          supplierQualificationStatusSnapshot: snapshot.supplierQualificationStatusSnapshot,
+          targetBuyerNameSnapshot: normalizeString(
+            input.targetBuyerNameSnapshot,
+          ),
+          targetBuyerCompanySnapshot: normalizeString(
+            input.targetBuyerCompanySnapshot,
+          ),
+          supplierQualificationStatusSnapshot:
+            snapshot.supplierQualificationStatusSnapshot,
           quotedBuyUnitPrice: snapshot.quotedBuyUnitPrice,
           quotedBuyCurrencyCode: snapshot.quotedBuyCurrencyCode,
           quotedBuyMinimumOrderQuantity: snapshot.quotedBuyMinimumOrderQuantity,
           quotedAvailability: snapshot.quotedAvailability,
           targetSellUnitPrice: input.targetSellUnitPrice ?? null,
-          targetSellCurrencyCode: normalizeCurrencyCode(input.targetSellCurrencyCode),
+          targetSellCurrencyCode: normalizeCurrencyCode(
+            input.targetSellCurrencyCode,
+          ),
           minimumMarginAmount: input.minimumMarginAmount ?? null,
           minimumMarginPct: input.minimumMarginPct ?? null,
-          quantityTarget: input.quantityTarget ?? snapshot.quotedBuyMinimumOrderQuantity ?? null,
+          quantityTarget:
+            input.quantityTarget ??
+            snapshot.quotedBuyMinimumOrderQuantity ??
+            null,
           rationale: normalizeString(input.rationale),
-          ownerLabel: normalizeString(input.ownerLabel ?? workflow?.assigneeLabel),
+          ownerLabel: normalizeString(
+            input.ownerLabel ?? workflow?.assigneeLabel,
+          ),
           createdByType: actor.actorType,
           createdByIdentifier: actor.actorIdentifier,
           metadata: snapshot.metadata,
         });
-        const withState = await txRepository.update(created.id, recomputeTradeOpportunityState(created) as never);
+        const withState = await txRepository.update(
+          created.id,
+          recomputeTradeOpportunityState(created) as never,
+        );
         await txRepository.createPolicy(buildDefaultPolicy(withState.id));
         await logTradeOpportunityEvent(txRepository, {
           tradeOpportunityId: withState.id,
@@ -2276,10 +2610,14 @@ export function createTradeOpportunityService(
           },
         });
 
-        return txRepository.findById(withState.id) as Promise<TradeOpportunityRecord>;
+        return txRepository.findById(
+          withState.id,
+        ) as Promise<TradeOpportunityRecord>;
       });
 
-      return (await enrichTradeOpportunities(repository, [opportunity], dependencies))[0]!;
+      return (
+        await enrichTradeOpportunities(repository, [opportunity], dependencies)
+      )[0]!;
     },
 
     async updateTradeOpportunity(
@@ -2295,7 +2633,8 @@ export function createTradeOpportunityService(
         }
 
         if (input.policy) {
-          const existingPolicy = await txRepository.findPolicyByTradeOpportunityId(existing.id);
+          const existingPolicy =
+            await txRepository.findPolicyByTradeOpportunityId(existing.id);
           if (!existingPolicy) {
             await txRepository.createPolicy({
               ...buildDefaultPolicy(existing.id),
@@ -2335,17 +2674,17 @@ export function createTradeOpportunityService(
           }
         }
 
-        let nextStatus = input.status ?? existing.status;
+        const nextStatus = input.status ?? existing.status;
         let nextStage = input.stage ?? existing.stage;
         let nextClosedAt = existing.closedAt;
-        if (nextStatus === 'WON' || nextStatus === 'LOST' || nextStatus === 'DROPPED') {
+        if (
+          nextStatus === 'WON' ||
+          nextStatus === 'LOST' ||
+          nextStatus === 'DROPPED'
+        ) {
           nextStage = 'CLOSED';
           nextClosedAt = existing.closedAt ?? new Date();
         }
-        if (nextStage === 'NEGOTIATING' && nextStatus === 'OPEN') {
-          nextStatus = 'OPEN';
-        }
-
         const updatedBase = await txRepository.update(existing.id, {
           status: nextStatus,
           stage: nextStage,
@@ -2358,46 +2697,65 @@ export function createTradeOpportunityService(
               ? existing.targetBuyerCompanySnapshot
               : normalizeString(input.targetBuyerCompanySnapshot),
           targetSellUnitPrice:
-            input.targetSellUnitPrice === undefined ? existing.targetSellUnitPrice : input.targetSellUnitPrice,
+            input.targetSellUnitPrice === undefined
+              ? existing.targetSellUnitPrice
+              : input.targetSellUnitPrice,
           targetSellCurrencyCode:
             input.targetSellCurrencyCode === undefined
               ? existing.targetSellCurrencyCode
               : normalizeCurrencyCode(input.targetSellCurrencyCode),
           minimumMarginAmount:
-            input.minimumMarginAmount === undefined ? existing.minimumMarginAmount : input.minimumMarginAmount,
+            input.minimumMarginAmount === undefined
+              ? existing.minimumMarginAmount
+              : input.minimumMarginAmount,
           minimumMarginPct:
-            input.minimumMarginPct === undefined ? existing.minimumMarginPct : input.minimumMarginPct,
+            input.minimumMarginPct === undefined
+              ? existing.minimumMarginPct
+              : input.minimumMarginPct,
           quantityTarget:
-            input.quantityTarget === undefined ? existing.quantityTarget : input.quantityTarget,
+            input.quantityTarget === undefined
+              ? existing.quantityTarget
+              : input.quantityTarget,
           rationale:
-            input.rationale === undefined ? existing.rationale : normalizeString(input.rationale),
+            input.rationale === undefined
+              ? existing.rationale
+              : normalizeString(input.rationale),
           ownerUserId:
-            input.ownerUserId === undefined ? existing.ownerUserId : normalizeString(input.ownerUserId),
+            input.ownerUserId === undefined
+              ? existing.ownerUserId
+              : normalizeString(input.ownerUserId),
           ownerLabel:
-            input.ownerLabel === undefined ? existing.ownerLabel : normalizeString(input.ownerLabel),
+            input.ownerLabel === undefined
+              ? existing.ownerLabel
+              : normalizeString(input.ownerLabel),
           closeReason:
-            input.closeReason === undefined ? existing.closeReason : normalizeString(input.closeReason),
-          metadata: input.metadata === undefined ? existing.metadata : input.metadata,
+            input.closeReason === undefined
+              ? existing.closeReason
+              : normalizeString(input.closeReason),
+          metadata:
+            input.metadata === undefined ? existing.metadata : input.metadata,
           closedAt: nextClosedAt,
         });
-        const updated = await txRepository.update(existing.id, recomputeTradeOpportunityState(updatedBase) as never);
+        const updated = await txRepository.update(
+          existing.id,
+          recomputeTradeOpportunityState(updatedBase) as never,
+        );
 
-        const actionType: TradeOpportunityActionType =
-          input.note?.trim()
-            ? 'NOTE_ADDED'
-            : updated.status !== existing.status
-              ? updated.status === 'WON'
-                ? 'WON'
-                : updated.status === 'LOST'
-                  ? 'LOST'
-                  : updated.status === 'DROPPED'
-                    ? 'DROPPED'
-                    : 'STATUS_CHANGED'
-              : updated.stage !== existing.stage
-                ? updated.stage === 'NEGOTIATING'
-                  ? 'MARKED_NEGOTIATING'
-                  : 'STAGE_CHANGED'
-                : 'UPDATED';
+        const actionType: TradeOpportunityActionType = input.note?.trim()
+          ? 'NOTE_ADDED'
+          : updated.status !== existing.status
+            ? updated.status === 'WON'
+              ? 'WON'
+              : updated.status === 'LOST'
+                ? 'LOST'
+                : updated.status === 'DROPPED'
+                  ? 'DROPPED'
+                  : 'STATUS_CHANGED'
+            : updated.stage !== existing.stage
+              ? updated.stage === 'NEGOTIATING'
+                ? 'MARKED_NEGOTIATING'
+                : 'STAGE_CHANGED'
+              : 'UPDATED';
 
         await logTradeOpportunityEvent(txRepository, {
           tradeOpportunityId: updated.id,
@@ -2412,10 +2770,14 @@ export function createTradeOpportunityService(
           metadata: input.metadata ?? null,
         });
 
-        return txRepository.findById(updated.id) as Promise<TradeOpportunityRecord>;
+        return txRepository.findById(
+          updated.id,
+        ) as Promise<TradeOpportunityRecord>;
       });
 
-      return (await enrichTradeOpportunities(repository, [opportunity], dependencies))[0]!;
+      return (
+        await enrichTradeOpportunities(repository, [opportunity], dependencies)
+      )[0]!;
     },
 
     async generateTradeMessageDraft(
@@ -2425,18 +2787,27 @@ export function createTradeOpportunityService(
       const actor = normalizeActor(input);
 
       return repository.transaction(async (txRepository) => {
-        const tradeOpportunity = await txRepository.findById(tradeOpportunityId);
+        const tradeOpportunity =
+          await txRepository.findById(tradeOpportunityId);
         if (!tradeOpportunity) {
           throw new Error('Trade opportunity not found.');
         }
 
         const policy =
-          (await txRepository.findPolicyByTradeOpportunityId(tradeOpportunityId)) ??
-          (await txRepository.createPolicy(buildDefaultPolicy(tradeOpportunityId)));
+          (await txRepository.findPolicyByTradeOpportunityId(
+            tradeOpportunityId,
+          )) ??
+          (await txRepository.createPolicy(
+            buildDefaultPolicy(tradeOpportunityId),
+          ));
         const rendered = {
           ...renderTradeMessageDraft(tradeOpportunity, input),
-          subject: normalizeString(input.subject) ?? renderTradeMessageDraft(tradeOpportunity, input).subject,
-          body: normalizeString(input.body) ?? renderTradeMessageDraft(tradeOpportunity, input).body,
+          subject:
+            normalizeString(input.subject) ??
+            renderTradeMessageDraft(tradeOpportunity, input).subject,
+          body:
+            normalizeString(input.body) ??
+            renderTradeMessageDraft(tradeOpportunity, input).body,
         };
         const validation = validateTradeMessageDraft(tradeOpportunity, policy, {
           direction: input.direction,
@@ -2450,7 +2821,9 @@ export function createTradeOpportunityService(
             messagePurpose: input.messagePurpose,
             audienceLabel: normalizeString(input.audienceLabel),
             recipientNameSnapshot: normalizeString(input.recipientNameSnapshot),
-            recipientCompanySnapshot: normalizeString(input.recipientCompanySnapshot),
+            recipientCompanySnapshot: normalizeString(
+              input.recipientCompanySnapshot,
+            ),
             subject: rendered.subject,
             body: rendered.body,
             policyViolations: validation.policyViolations,
@@ -2472,7 +2845,9 @@ export function createTradeOpportunityService(
           status: validation.status,
           audienceLabel: normalizeString(input.audienceLabel),
           recipientNameSnapshot: normalizeString(input.recipientNameSnapshot),
-          recipientCompanySnapshot: normalizeString(input.recipientCompanySnapshot),
+          recipientCompanySnapshot: normalizeString(
+            input.recipientCompanySnapshot,
+          ),
           subject: rendered.subject,
           body: rendered.body,
           messagePurpose: input.messagePurpose,
@@ -2481,15 +2856,17 @@ export function createTradeOpportunityService(
           contentHash,
           containsSupplierIdentity: validation.containsSupplierIdentity,
           containsBuyerIdentity: validation.containsBuyerIdentity,
-          containsExternalContactDetails: validation.containsExternalContactDetails,
+          containsExternalContactDetails:
+            validation.containsExternalContactDetails,
           containsForwardedContent: validation.containsForwardedContent,
           metadata: input.metadata ?? null,
         });
 
-        const refreshedTradeOpportunity = await refreshTradeOpportunityMessagingState(
-          txRepository,
-          tradeOpportunity,
-        );
+        const refreshedTradeOpportunity =
+          await refreshTradeOpportunityMessagingState(
+            txRepository,
+            tradeOpportunity,
+          );
         await logTradeOpportunityEvent(txRepository, {
           tradeOpportunityId,
           actionType:
@@ -2524,14 +2901,20 @@ export function createTradeOpportunityService(
           throw new Error('Trade message draft not found.');
         }
 
-        const tradeOpportunity = await txRepository.findById(existing.tradeOpportunityId);
+        const tradeOpportunity = await txRepository.findById(
+          existing.tradeOpportunityId,
+        );
         if (!tradeOpportunity) {
           throw new Error('Linked trade opportunity not found.');
         }
 
         const policy =
-          (await txRepository.findPolicyByTradeOpportunityId(tradeOpportunity.id)) ??
-          (await txRepository.createPolicy(buildDefaultPolicy(tradeOpportunity.id)));
+          (await txRepository.findPolicyByTradeOpportunityId(
+            tradeOpportunity.id,
+          )) ??
+          (await txRepository.createPolicy(
+            buildDefaultPolicy(tradeOpportunity.id),
+          ));
         const subject = normalizeString(input.subject) ?? existing.subject;
         const body = normalizeString(input.body) ?? existing.body;
         const validation = validateTradeMessageDraft(tradeOpportunity, policy, {
@@ -2541,7 +2924,7 @@ export function createTradeOpportunityService(
           body,
         });
 
-        let nextStatus: TradeMessageDraftStatus =
+        const nextStatus: TradeMessageDraftStatus =
           input.action === 'APPROVE'
             ? 'APPROVED'
             : input.action === 'REJECT'
@@ -2552,8 +2935,13 @@ export function createTradeOpportunityService(
                   ? 'SENT'
                   : validation.status;
 
-        if (input.action === 'APPROVE' && validation.policyViolations.length > 0) {
-          throw new Error('Draft has messaging policy violations and cannot be approved.');
+        if (
+          input.action === 'APPROVE' &&
+          validation.policyViolations.length > 0
+        ) {
+          throw new Error(
+            'Draft has messaging policy violations and cannot be approved.',
+          );
         }
         if (input.action === 'MARK_SENT' && existing.status !== 'APPROVED') {
           throw new Error('Only approved drafts can be marked as sent.');
@@ -2567,10 +2955,15 @@ export function createTradeOpportunityService(
           policyViolations: validation.policyViolations,
           containsSupplierIdentity: validation.containsSupplierIdentity,
           containsBuyerIdentity: validation.containsBuyerIdentity,
-          containsExternalContactDetails: validation.containsExternalContactDetails,
+          containsExternalContactDetails:
+            validation.containsExternalContactDetails,
           containsForwardedContent: validation.containsForwardedContent,
           approvedByType:
-            input.action === 'APPROVE' ? actor.actorType : input.action === 'REJECT' ? null : existing.approvedByType,
+            input.action === 'APPROVE'
+              ? actor.actorType
+              : input.action === 'REJECT'
+                ? null
+                : existing.approvedByType,
           approvedByIdentifier:
             input.action === 'APPROVE'
               ? actor.actorIdentifier
@@ -2584,9 +2977,14 @@ export function createTradeOpportunityService(
                 ? null
                 : existing.approvedAt,
           sentAt: input.action === 'MARK_SENT' ? new Date() : existing.sentAt,
-          metadata: input.metadata === undefined ? existing.metadata : input.metadata,
+          metadata:
+            input.metadata === undefined ? existing.metadata : input.metadata,
         });
-        if (input.action === 'APPROVE' || input.action === 'REJECT' || input.feedback) {
+        if (
+          input.action === 'APPROVE' ||
+          input.action === 'REJECT' ||
+          input.feedback
+        ) {
           await recordOperatorValidationFeedbackWithRepository(txRepository, {
             feedbackType: input.feedback?.feedbackType ?? 'DRAFT',
             verdict:
@@ -2618,10 +3016,11 @@ export function createTradeOpportunityService(
           });
         }
 
-        const refreshedTradeOpportunity = await refreshTradeOpportunityMessagingState(
-          txRepository,
-          tradeOpportunity,
-        );
+        const refreshedTradeOpportunity =
+          await refreshTradeOpportunityMessagingState(
+            txRepository,
+            tradeOpportunity,
+          );
         await logTradeOpportunityEvent(txRepository, {
           tradeOpportunityId: tradeOpportunity.id,
           actionType: 'UPDATED',
@@ -2646,13 +3045,22 @@ export function createTradeOpportunityService(
         return {};
       }
 
-      const opportunities = await repository.listActiveByOfferIds(Array.from(new Set(emailDerivedOfferIds)));
-      const enriched = await enrichTradeOpportunities(repository, opportunities, dependencies);
+      const opportunities = await repository.listActiveByOfferIds(
+        Array.from(new Set(emailDerivedOfferIds)),
+      );
+      const enriched = await enrichTradeOpportunities(
+        repository,
+        opportunities,
+        dependencies,
+      );
 
       return Object.fromEntries(
         enriched
           .filter((opportunity) => Boolean(opportunity.emailDerivedOfferId))
-          .map((opportunity) => [opportunity.emailDerivedOfferId!, opportunity]),
+          .map((opportunity) => [
+            opportunity.emailDerivedOfferId!,
+            opportunity,
+          ]),
       );
     },
   };

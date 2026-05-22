@@ -2,9 +2,16 @@ import type { Prisma, TelegramInboundItem } from '@prisma/client';
 
 import { db } from '../../lib/db';
 import { logger } from '../../lib/logger';
-import { importInventory, importSales, importSupplierPriceList } from '../../imports/service';
+import {
+  importInventory,
+  importSales,
+  importSupplierPriceList,
+} from '../../imports/service';
 import type { ImportResponse, UploadFile } from '../../imports/types';
-import { parseStructuredPriceText, type ParsedEmailBodyResult } from '../../email/parsing';
+import {
+  parseStructuredPriceText,
+  type ParsedEmailBodyResult,
+} from '../../email/parsing';
 import { sendTelegramText } from '../service';
 import {
   buildSenderDisplayName,
@@ -15,16 +22,27 @@ import {
 import type { TelegramUpdate } from './types';
 
 type TelegramInboundServiceDependencies = {
-  acknowledge: (chatId: string, message: string, replyToMessageId?: number) => Promise<void>;
-  createInboundRecord: (input: Prisma.TelegramInboundItemCreateInput) => Promise<TelegramInboundItem>;
+  acknowledge: (
+    chatId: string,
+    message: string,
+    replyToMessageId?: number,
+  ) => Promise<void>;
+  createInboundRecord: (
+    input: Prisma.TelegramInboundItemCreateInput,
+  ) => Promise<TelegramInboundItem>;
   downloadTelegramFile: (filePath: string) => Promise<Buffer>;
   fetchTelegramFilePath: (fileId: string) => Promise<string>;
   findExistingInbound: (input: {
     telegramChatId: string;
     telegramMessageId: string;
   }) => Promise<TelegramInboundItem | null>;
-  listInboundItems: (filters: { processingStatus?: string }) => Promise<TelegramInboundListItem[]>;
-  isAllowedSender: (input: { telegramUserId: string | null; telegramChatId: string }) => boolean;
+  listInboundItems: (filters: {
+    processingStatus?: string;
+  }) => Promise<TelegramInboundListItem[]>;
+  isAllowedSender: (input: {
+    telegramUserId: string | null;
+    telegramChatId: string;
+  }) => boolean;
   parseTextMessage: (rawText: string) => Promise<ParsedEmailBodyResult>;
   runImport: (
     inferredImportType: 'supplier-price-list' | 'inventory' | 'sales',
@@ -71,7 +89,9 @@ async function fetchTelegramFilePath(fileId: string): Promise<string> {
   };
 
   if (!response.ok || !payload.ok || !payload.result?.file_path) {
-    throw new Error(payload.description || 'Failed to fetch Telegram file path.');
+    throw new Error(
+      payload.description || 'Failed to fetch Telegram file path.',
+    );
   }
 
   return payload.result.file_path;
@@ -89,7 +109,9 @@ async function downloadTelegramFile(filePath: string): Promise<Buffer> {
   return Buffer.from(await response.arrayBuffer());
 }
 
-async function createInboundRecord(input: Prisma.TelegramInboundItemCreateInput) {
+async function createInboundRecord(
+  input: Prisma.TelegramInboundItemCreateInput,
+) {
   return db.telegramInboundItem.create({
     data: input,
   });
@@ -142,23 +164,37 @@ async function runImport(
   });
 }
 
-function buildImportAck(result: ImportResponse, inferredImportType: string): string {
+function buildImportAck(
+  result: ImportResponse,
+  inferredImportType: string,
+): string {
   const warnings =
-    result.summary.warnings.length > 0 ? `\nWarnings: ${result.summary.warnings.join('; ')}` : '';
+    result.summary.warnings.length > 0
+      ? `\nWarnings: ${result.summary.warnings.join('; ')}`
+      : '';
 
-  return [
-    `Imported ${inferredImportType}`,
-    `Total rows: ${result.summary.totalRows}`,
-    `Valid rows: ${result.summary.validRows}`,
-    `Invalid rows: ${result.summary.invalidRows}`,
-  ].join('\n') + warnings;
+  return (
+    [
+      `Imported ${inferredImportType}`,
+      `Total rows: ${result.summary.totalRows}`,
+      `Valid rows: ${result.summary.validRows}`,
+      `Invalid rows: ${result.summary.invalidRows}`,
+    ].join('\n') + warnings
+  );
 }
 
-async function acknowledge(chatId: string, message: string, replyToMessageId?: number) {
+async function acknowledge(
+  chatId: string,
+  message: string,
+  replyToMessageId?: number,
+) {
   await sendTelegramText(chatId, message, replyToMessageId);
 }
 
-function buildTextParseAck(parsedLineCount: number, reviewRecommended: boolean): string {
+function buildTextParseAck(
+  parsedLineCount: number,
+  reviewRecommended: boolean,
+): string {
   return [
     'Received price text.',
     `Parsed lines: ${parsedLineCount}`,
@@ -182,7 +218,9 @@ export function createTelegramInboundService(
     listInboundItems: async (filters) =>
       db.telegramInboundItem.findMany({
         where: {
-          ...(filters.processingStatus ? { processingStatus: filters.processingStatus as never } : {}),
+          ...(filters.processingStatus
+            ? { processingStatus: filters.processingStatus as never }
+            : {}),
         },
         orderBy: { createdAt: 'desc' },
         include: {
@@ -197,7 +235,7 @@ export function createTelegramInboundService(
             },
           },
         },
-    }),
+      }),
     isAllowedSender: isAllowedTelegramSender,
     parseTextMessage: async (rawText) =>
       parseStructuredPriceText(rawText, {
@@ -290,10 +328,9 @@ export function createTelegramInboundService(
         processingStatus: 'NEEDS_REVIEW',
         metadata: {
           rawText: textContent,
-          reason:
-            parsedText.reviewRecommended
-              ? 'Structured price lines were parsed from Telegram text, but review is recommended.'
-              : 'Structured price lines were parsed from Telegram text with high confidence and kept review-first.',
+          reason: parsedText.reviewRecommended
+            ? 'Structured price lines were parsed from Telegram text, but review is recommended.'
+            : 'Structured price lines were parsed from Telegram text with high confidence and kept review-first.',
           textParsing: parsedText,
           updateId: update.update_id ?? null,
         },
@@ -301,7 +338,10 @@ export function createTelegramInboundService(
 
       await dependencies.acknowledge(
         telegramChatId,
-        buildTextParseAck(parsedText.parsedRows.length, parsedText.reviewRecommended),
+        buildTextParseAck(
+          parsedText.parsedRows.length,
+          parsedText.reviewRecommended,
+        ),
         message.message_id,
       );
 
@@ -339,7 +379,10 @@ export function createTelegramInboundService(
       },
     });
 
-    if (decision.processingStatus === 'REVIEW_REQUIRED' || decision.processingStatus === 'NEEDS_REVIEW') {
+    if (
+      decision.processingStatus === 'REVIEW_REQUIRED' ||
+      decision.processingStatus === 'NEEDS_REVIEW'
+    ) {
       await dependencies.acknowledge(
         telegramChatId,
         decision.processingStatus === 'REVIEW_REQUIRED'
@@ -356,10 +399,19 @@ export function createTelegramInboundService(
     }
 
     try {
-      const filePath = await dependencies.fetchTelegramFilePath(attachment.telegramFileId);
+      const filePath = await dependencies.fetchTelegramFilePath(
+        attachment.telegramFileId,
+      );
       const buffer = await dependencies.downloadTelegramFile(filePath);
-      const uploadFile = createUploadFile(attachment.fileName, attachment.mimeType, buffer);
-      const importResult = await dependencies.runImport(decision.inferredImportType!, uploadFile);
+      const uploadFile = createUploadFile(
+        attachment.fileName,
+        attachment.mimeType,
+        buffer,
+      );
+      const importResult = await dependencies.runImport(
+        decision.inferredImportType!,
+        uploadFile,
+      );
 
       await dependencies.updateInboundRecord(inbound.id, {
         linkedImportBatch: {
@@ -396,7 +448,10 @@ export function createTelegramInboundService(
         processingStatus: 'IMPORTED',
       };
     } catch (error) {
-      const messageText = error instanceof Error ? error.message : 'Inbound Telegram processing failed.';
+      const messageText =
+        error instanceof Error
+          ? error.message
+          : 'Inbound Telegram processing failed.';
 
       await dependencies.updateInboundRecord(inbound.id, {
         processingStatus: 'FAILED',
@@ -423,9 +478,9 @@ export function createTelegramInboundService(
     }
   }
 
-  async function listInboundItems(
-    filters: { processingStatus?: string },
-  ): Promise<TelegramInboundListItem[]> {
+  async function listInboundItems(filters: {
+    processingStatus?: string;
+  }): Promise<TelegramInboundListItem[]> {
     return dependencies.listInboundItems(filters);
   }
 

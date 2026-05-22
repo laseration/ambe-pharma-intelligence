@@ -207,7 +207,12 @@ type OfferRecord = {
 type FeedbackRecord = {
   id: string;
   emailDerivedOfferId: string | null;
-  feedbackType: 'EXTRACTION' | 'SUPPLIER_RESOLUTION' | 'SIGNAL' | 'DEAL' | 'DRAFT';
+  feedbackType:
+    | 'EXTRACTION'
+    | 'SUPPLIER_RESOLUTION'
+    | 'SIGNAL'
+    | 'DEAL'
+    | 'DRAFT';
   verdict:
     | 'CORRECT'
     | 'PARTIALLY_CORRECT'
@@ -249,7 +254,9 @@ type SourceReliabilityProfileFilters = {
 };
 
 type OfferCorrectionRepository = {
-  transaction: <T>(callback: (repository: OfferCorrectionRepository) => Promise<T>) => Promise<T>;
+  transaction: <T>(
+    callback: (repository: OfferCorrectionRepository) => Promise<T>,
+  ) => Promise<T>;
   findOfferById: (emailDerivedOfferId: string) => Promise<OfferRecord | null>;
   listOffersByIds: (emailDerivedOfferIds: string[]) => Promise<OfferRecord[]>;
   listOffersForSourceProfile: (input: {
@@ -258,8 +265,12 @@ type OfferCorrectionRepository = {
     senderDomain: string | null;
     templateFingerprint: string | null;
   }) => Promise<OfferRecord[]>;
-  listCorrections: (filters: OfferCorrectionFilters) => Promise<OfferCorrectionRecord[]>;
-  findCorrectionById: (correctionId: string) => Promise<OfferCorrectionRecord | null>;
+  listCorrections: (
+    filters: OfferCorrectionFilters,
+  ) => Promise<OfferCorrectionRecord[]>;
+  findCorrectionById: (
+    correctionId: string,
+  ) => Promise<OfferCorrectionRecord | null>;
   findEquivalentActiveCorrection: (input: {
     emailDerivedOfferId: string;
     correctionStatus: OfferCorrectionStatus;
@@ -268,14 +279,31 @@ type OfferCorrectionRepository = {
     payloadHash: string;
     createdAfter: Date;
   }) => Promise<OfferCorrectionRecord | null>;
-  createCorrection: (data: Record<string, unknown>) => Promise<OfferCorrectionRecord>;
-  updateCorrection: (correctionId: string, data: Record<string, unknown>) => Promise<OfferCorrectionRecord>;
-  createCorrectionEvent: (data: Record<string, unknown>) => Promise<OfferCorrectionEventRecord>;
-  listFeedbackByOfferIds: (emailDerivedOfferIds: string[]) => Promise<FeedbackRecord[]>;
-  findSourceProfileByKey: (profileKey: string) => Promise<SourceReliabilityProfileRecord | null>;
-  findSourceProfileById: (sourceProfileId: string) => Promise<SourceReliabilityProfileRecord | null>;
-  listSourceProfiles: (filters: SourceReliabilityProfileFilters) => Promise<SourceReliabilityProfileRecord[]>;
-  createSourceProfile: (data: Record<string, unknown>) => Promise<SourceReliabilityProfileRecord>;
+  createCorrection: (
+    data: Record<string, unknown>,
+  ) => Promise<OfferCorrectionRecord>;
+  updateCorrection: (
+    correctionId: string,
+    data: Record<string, unknown>,
+  ) => Promise<OfferCorrectionRecord>;
+  createCorrectionEvent: (
+    data: Record<string, unknown>,
+  ) => Promise<OfferCorrectionEventRecord>;
+  listFeedbackByOfferIds: (
+    emailDerivedOfferIds: string[],
+  ) => Promise<FeedbackRecord[]>;
+  findSourceProfileByKey: (
+    profileKey: string,
+  ) => Promise<SourceReliabilityProfileRecord | null>;
+  findSourceProfileById: (
+    sourceProfileId: string,
+  ) => Promise<SourceReliabilityProfileRecord | null>;
+  listSourceProfiles: (
+    filters: SourceReliabilityProfileFilters,
+  ) => Promise<SourceReliabilityProfileRecord[]>;
+  createSourceProfile: (
+    data: Record<string, unknown>,
+  ) => Promise<SourceReliabilityProfileRecord>;
   updateSourceProfile: (
     sourceProfileId: string,
     data: Record<string, unknown>,
@@ -283,16 +311,27 @@ type OfferCorrectionRepository = {
   listSourceProfilesForLookup: (
     input: SourceProfileLookupInput,
   ) => Promise<SourceReliabilityProfileRecord[]>;
-  findSupplierById: (supplierId: string) => Promise<{ id: string; name: string } | null>;
-  findProductById: (productId: string) => Promise<{ id: string; name: string } | null>;
+  findSupplierById: (
+    supplierId: string,
+  ) => Promise<{ id: string; name: string } | null>;
+  findProductById: (
+    productId: string,
+  ) => Promise<{ id: string; name: string } | null>;
   findAliasByRawName: (
     rawProductText: string,
-  ) => Promise<(ProductAliasRecord & { product: { id: string; name: string } }) | null>;
+  ) => Promise<
+    (ProductAliasRecord & { product: { id: string; name: string } }) | null
+  >;
   listAliasesForProduct: (productId: string) => Promise<ProductAliasRecord[]>;
-  createProductAlias: (data: Record<string, unknown>) => Promise<ProductAliasRecord>;
+  createProductAlias: (
+    data: Record<string, unknown>,
+  ) => Promise<ProductAliasRecord>;
 };
 
-function normalizeActor(actor?: CorrectionActor): { actorType: string; actorIdentifier: string | null } {
+function normalizeActor(actor?: CorrectionActor): {
+  actorType: string;
+  actorIdentifier: string | null;
+} {
   return {
     actorType: actor?.actorType?.trim() || 'OPERATOR',
     actorIdentifier: actor?.actorIdentifier?.trim() || null,
@@ -304,7 +343,9 @@ function normalizeString(value: string | null | undefined): string | null {
   return normalized || null;
 }
 
-function normalizeCurrencyCode(value: string | null | undefined): string | null {
+function normalizeCurrencyCode(
+  value: string | null | undefined,
+): string | null {
   return normalizeString(value)?.toUpperCase() ?? null;
 }
 
@@ -322,7 +363,12 @@ function toNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
 
-  if (typeof value === 'object' && value && 'toString' in value && typeof value.toString === 'function') {
+  if (
+    typeof value === 'object' &&
+    value &&
+    'toString' in value &&
+    typeof value.toString === 'function'
+  ) {
     const parsed = Number(value.toString());
     return Number.isFinite(parsed) ? parsed : null;
   }
@@ -343,7 +389,9 @@ function isMissingSourceLearningTableError(error: unknown): boolean {
   return (
     error instanceof Error &&
     /does not exist/i.test(error.message) &&
-    /(OfferCorrection|OfferCorrectionEvent|SourceReliabilityProfile)/i.test(error.message)
+    /(OfferCorrection|OfferCorrectionEvent|SourceReliabilityProfile)/i.test(
+      error.message,
+    )
   );
 }
 
@@ -398,7 +446,9 @@ function manufacturerHintKey(input: {
   return value || null;
 }
 
-function latestByOfferId<T extends { emailDerivedOfferId: string | null; createdAt: Date }>(records: T[]): Map<string, T> {
+function latestByOfferId<
+  T extends { emailDerivedOfferId: string | null; createdAt: Date },
+>(records: T[]): Map<string, T> {
   const map = new Map<string, T>();
 
   for (const record of records) {
@@ -416,7 +466,10 @@ function latestByOfferId<T extends { emailDerivedOfferId: string | null; created
 }
 
 function parseProfileMetadata(metadata: unknown): {
-  learnedManufacturerHints: Record<string, { manufacturer: string; count: number }>;
+  learnedManufacturerHints: Record<
+    string,
+    { manufacturer: string; count: number }
+  >;
 } {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
     return {
@@ -429,7 +482,10 @@ function parseProfileMetadata(metadata: unknown): {
     record.learnedManufacturerHints &&
     typeof record.learnedManufacturerHints === 'object' &&
     !Array.isArray(record.learnedManufacturerHints)
-      ? (record.learnedManufacturerHints as Record<string, { manufacturer: string; count: number }>)
+      ? (record.learnedManufacturerHints as Record<
+          string,
+          { manufacturer: string; count: number }
+        >)
       : {};
 
   return {
@@ -447,16 +503,27 @@ function calculateReliabilityScore(input: {
   aiAssistCount: number;
   reviewRequiredCount: number;
 }): { score: number; tier: SourceReliabilityTier } {
-  const extractionDenominator = input.acceptedExtractionCount + input.rejectedExtractionCount;
+  const extractionDenominator =
+    input.acceptedExtractionCount + input.rejectedExtractionCount;
   const supplierDenominator =
-    input.acceptedSupplierResolutionCount + input.rejectedSupplierResolutionCount;
+    input.acceptedSupplierResolutionCount +
+    input.rejectedSupplierResolutionCount;
   const extractionPrecision =
-    extractionDenominator > 0 ? input.acceptedExtractionCount / extractionDenominator : 0.5;
+    extractionDenominator > 0
+      ? input.acceptedExtractionCount / extractionDenominator
+      : 0.5;
   const supplierPrecision =
-    supplierDenominator > 0 ? input.acceptedSupplierResolutionCount / supplierDenominator : 0.5;
-  const correctionBurden = input.sampleCount > 0 ? input.correctedExtractionCount / input.sampleCount : 0;
-  const reviewBurden = input.sampleCount > 0 ? input.reviewRequiredCount / input.sampleCount : 0;
-  const aiAssistBurden = input.sampleCount > 0 ? input.aiAssistCount / input.sampleCount : 0;
+    supplierDenominator > 0
+      ? input.acceptedSupplierResolutionCount / supplierDenominator
+      : 0.5;
+  const correctionBurden =
+    input.sampleCount > 0
+      ? input.correctedExtractionCount / input.sampleCount
+      : 0;
+  const reviewBurden =
+    input.sampleCount > 0 ? input.reviewRequiredCount / input.sampleCount : 0;
+  const aiAssistBurden =
+    input.sampleCount > 0 ? input.aiAssistCount / input.sampleCount : 0;
   const score = Math.max(
     0,
     Math.min(
@@ -484,14 +551,18 @@ function calculateReliabilityScore(input: {
   return { score, tier: 'RISKY' };
 }
 
-function correctionDataFromInput(input: OfferCorrectionCreateInput | OfferCorrectionUpdateInput) {
+function correctionDataFromInput(
+  input: OfferCorrectionCreateInput | OfferCorrectionUpdateInput,
+) {
   return {
     correctionStatus: input.correctionStatus ?? 'APPLIED',
     correctedSupplierId: normalizeString(input.correctedSupplierId),
     correctedSupplierName: normalizeString(input.correctedSupplierName),
     correctedProductId: normalizeString(input.correctedProductId),
     correctedRawProductText: normalizeString(input.correctedRawProductText),
-    correctedNormalizedProductName: normalizeString(input.correctedNormalizedProductName),
+    correctedNormalizedProductName: normalizeString(
+      input.correctedNormalizedProductName,
+    ),
     correctedStrength: normalizeString(input.correctedStrength),
     correctedDosageForm: normalizeString(input.correctedDosageForm),
     correctedPackSize: normalizeString(input.correctedPackSize),
@@ -518,7 +589,9 @@ function createOfferCorrectionRepository(
         return callback(createOfferCorrectionRepository(client, true));
       }
 
-      return db.$transaction(async (tx) => callback(createOfferCorrectionRepository(tx as never, true)));
+      return db.$transaction(async (tx) =>
+        callback(createOfferCorrectionRepository(tx as never, true)),
+      );
     },
     findOfferById: async (emailDerivedOfferId) =>
       client.emailDerivedOffer.findUnique({
@@ -637,20 +710,19 @@ function createOfferCorrectionRepository(
         throw error;
       }
     },
-    findCorrectionById: async (correctionId) =>
-      {
-        try {
-          return (await client.offerCorrection.findUnique({
-            where: { id: correctionId },
-          })) as OfferCorrectionRecord | null;
-        } catch (error) {
-          if (isMissingSourceLearningTableError(error)) {
-            return null;
-          }
-
-          throw error;
+    findCorrectionById: async (correctionId) => {
+      try {
+        return (await client.offerCorrection.findUnique({
+          where: { id: correctionId },
+        })) as OfferCorrectionRecord | null;
+      } catch (error) {
+        if (isMissingSourceLearningTableError(error)) {
+          return null;
         }
-      },
+
+        throw error;
+      }
+    },
     findEquivalentActiveCorrection: async (input) => {
       const existing = await client.offerCorrection.findFirst({
         where: {
@@ -687,7 +759,9 @@ function createOfferCorrectionRepository(
         note: existing.note,
       });
 
-      return currentHash === input.payloadHash ? (existing as OfferCorrectionRecord) : null;
+      return currentHash === input.payloadHash
+        ? (existing as OfferCorrectionRecord)
+        : null;
     },
     createCorrection: async (data) =>
       client.offerCorrection.create({
@@ -711,50 +785,48 @@ function createOfferCorrectionRepository(
         },
         orderBy: { createdAt: 'desc' },
       })) as FeedbackRecord[],
-    findSourceProfileByKey: async (profileKey) =>
-      {
-        try {
-          return (await client.sourceReliabilityProfile.findUnique({
-            where: { profileKey },
-            include: {
-              supplier: {
-                select: {
-                  id: true,
-                  name: true,
-                },
+    findSourceProfileByKey: async (profileKey) => {
+      try {
+        return (await client.sourceReliabilityProfile.findUnique({
+          where: { profileKey },
+          include: {
+            supplier: {
+              select: {
+                id: true,
+                name: true,
               },
             },
-          })) as SourceReliabilityProfileRecord | null;
-        } catch (error) {
-          if (isMissingSourceLearningTableError(error)) {
-            return null;
-          }
-
-          throw error;
+          },
+        })) as SourceReliabilityProfileRecord | null;
+      } catch (error) {
+        if (isMissingSourceLearningTableError(error)) {
+          return null;
         }
-      },
-    findSourceProfileById: async (sourceProfileId) =>
-      {
-        try {
-          return (await client.sourceReliabilityProfile.findUnique({
-            where: { id: sourceProfileId },
-            include: {
-              supplier: {
-                select: {
-                  id: true,
-                  name: true,
-                },
+
+        throw error;
+      }
+    },
+    findSourceProfileById: async (sourceProfileId) => {
+      try {
+        return (await client.sourceReliabilityProfile.findUnique({
+          where: { id: sourceProfileId },
+          include: {
+            supplier: {
+              select: {
+                id: true,
+                name: true,
               },
             },
-          })) as SourceReliabilityProfileRecord | null;
-        } catch (error) {
-          if (isMissingSourceLearningTableError(error)) {
-            return null;
-          }
-
-          throw error;
+          },
+        })) as SourceReliabilityProfileRecord | null;
+      } catch (error) {
+        if (isMissingSourceLearningTableError(error)) {
+          return null;
         }
-      },
+
+        throw error;
+      }
+    },
     listSourceProfiles: async (filters) => {
       const where: Record<string, unknown> = {};
       if (filters.reliabilityTier) {
@@ -781,7 +853,11 @@ function createOfferCorrectionRepository(
               },
             },
           },
-          orderBy: [{ reliabilityScore: 'desc' }, { sampleCount: 'desc' }, { updatedAt: 'desc' }],
+          orderBy: [
+            { reliabilityScore: 'desc' },
+            { sampleCount: 'desc' },
+            { updatedAt: 'desc' },
+          ],
           take: filters.take ?? 100,
         })) as SourceReliabilityProfileRecord[];
       } catch (error) {
@@ -817,56 +893,66 @@ function createOfferCorrectionRepository(
           },
         },
       }) as Promise<SourceReliabilityProfileRecord>,
-    listSourceProfilesForLookup: async (input) =>
-      {
-        try {
-          return (await client.sourceReliabilityProfile.findMany({
-            where: {
-              sourceSystem: normalizeString(input.sourceSystem) ?? undefined,
-              OR: [
-                input.templateFingerprint
-                  ? {
-                      senderEmail: normalizeString(input.senderEmail) ?? undefined,
-                      templateFingerprint: normalizeString(input.templateFingerprint) ?? undefined,
-                    }
-                  : undefined,
-                input.templateFingerprint
-                  ? {
-                      senderDomain:
-                        normalizeString(input.senderDomain ?? extractSenderDomain(input.senderEmail)) ??
-                        undefined,
-                      templateFingerprint: normalizeString(input.templateFingerprint) ?? undefined,
-                    }
-                  : undefined,
-                {
-                  senderEmail: normalizeString(input.senderEmail) ?? undefined,
-                },
-                {
-                  senderDomain:
-                    normalizeString(input.senderDomain ?? extractSenderDomain(input.senderEmail)) ??
-                    undefined,
-                },
-              ].filter(Boolean) as Array<Record<string, unknown>>,
-            },
-            include: {
-              supplier: {
-                select: {
-                  id: true,
-                  name: true,
-                },
+    listSourceProfilesForLookup: async (input) => {
+      try {
+        return (await client.sourceReliabilityProfile.findMany({
+          where: {
+            sourceSystem: normalizeString(input.sourceSystem) ?? undefined,
+            OR: [
+              input.templateFingerprint
+                ? {
+                    senderEmail:
+                      normalizeString(input.senderEmail) ?? undefined,
+                    templateFingerprint:
+                      normalizeString(input.templateFingerprint) ?? undefined,
+                  }
+                : undefined,
+              input.templateFingerprint
+                ? {
+                    senderDomain:
+                      normalizeString(
+                        input.senderDomain ??
+                          extractSenderDomain(input.senderEmail),
+                      ) ?? undefined,
+                    templateFingerprint:
+                      normalizeString(input.templateFingerprint) ?? undefined,
+                  }
+                : undefined,
+              {
+                senderEmail: normalizeString(input.senderEmail) ?? undefined,
+              },
+              {
+                senderDomain:
+                  normalizeString(
+                    input.senderDomain ??
+                      extractSenderDomain(input.senderEmail),
+                  ) ?? undefined,
+              },
+            ].filter(Boolean) as Array<Record<string, unknown>>,
+          },
+          include: {
+            supplier: {
+              select: {
+                id: true,
+                name: true,
               },
             },
-            orderBy: [{ reliabilityScore: 'desc' }, { sampleCount: 'desc' }, { updatedAt: 'desc' }],
-            take: 10,
-          })) as SourceReliabilityProfileRecord[];
-        } catch (error) {
-          if (isMissingSourceLearningTableError(error)) {
-            return [];
-          }
-
-          throw error;
+          },
+          orderBy: [
+            { reliabilityScore: 'desc' },
+            { sampleCount: 'desc' },
+            { updatedAt: 'desc' },
+          ],
+          take: 10,
+        })) as SourceReliabilityProfileRecord[];
+      } catch (error) {
+        if (isMissingSourceLearningTableError(error)) {
+          return [];
         }
-      },
+
+        throw error;
+      }
+    },
     findSupplierById: async (supplierId) =>
       client.supplier.findUnique({
         where: { id: supplierId },
@@ -896,7 +982,9 @@ function createOfferCorrectionRepository(
             },
           },
         },
-      }) as Promise<(ProductAliasRecord & { product: { id: string; name: string } }) | null>,
+      }) as Promise<
+        (ProductAliasRecord & { product: { id: string; name: string } }) | null
+      >,
     listAliasesForProduct: async (productId) =>
       (await client.productAlias.findMany({
         where: { productId },
@@ -910,14 +998,22 @@ function createOfferCorrectionRepository(
 
 async function ensureCorrectedProductAlias(
   repository: OfferCorrectionRepository,
-  correction: Pick<OfferCorrectionRecord, 'correctedProductId' | 'correctedRawProductText'>,
+  correction: Pick<
+    OfferCorrectionRecord,
+    'correctedProductId' | 'correctedRawProductText'
+  >,
 ) {
   if (!correction.correctedProductId || !correction.correctedRawProductText) {
     return;
   }
 
-  const existingAliases = await repository.listAliasesForProduct(correction.correctedProductId);
-  const existingVariant = findMatchingAliasVariant(existingAliases, correction.correctedRawProductText);
+  const existingAliases = await repository.listAliasesForProduct(
+    correction.correctedProductId,
+  );
+  const existingVariant = findMatchingAliasVariant(
+    existingAliases,
+    correction.correctedRawProductText,
+  );
 
   if (existingVariant.alias) {
     return;
@@ -942,7 +1038,9 @@ async function refreshSourceReliabilityProfileByTuple(
   const offers = await repository.listOffersForSourceProfile(input);
   const emailDerivedOfferIds = offers.map((offer) => offer.id);
   const feedbacks =
-    emailDerivedOfferIds.length > 0 ? await repository.listFeedbackByOfferIds(emailDerivedOfferIds) : [];
+    emailDerivedOfferIds.length > 0
+      ? await repository.listFeedbackByOfferIds(emailDerivedOfferIds)
+      : [];
   const corrections =
     emailDerivedOfferIds.length > 0
       ? await repository.listCorrections({
@@ -963,17 +1061,25 @@ async function refreshSourceReliabilityProfileByTuple(
   let reviewRequiredCount = 0;
   let lastSeenAt: Date | null = null;
 
-  const supplierCounts = new Map<string, { supplierId: string; supplierName: string | null; count: number }>();
-  const learnedManufacturerHints = new Map<string, { manufacturer: string; count: number }>();
+  const supplierCounts = new Map<
+    string,
+    { supplierId: string; supplierName: string | null; count: number }
+  >();
+  const learnedManufacturerHints = new Map<
+    string,
+    { manufacturer: string; count: number }
+  >();
 
   for (const offer of offers) {
     const extractionFeedback = feedbacks.find(
       (feedback) =>
-        feedback.emailDerivedOfferId === offer.id && feedback.feedbackType === 'EXTRACTION',
+        feedback.emailDerivedOfferId === offer.id &&
+        feedback.feedbackType === 'EXTRACTION',
     );
     const supplierFeedback = feedbacks.find(
       (feedback) =>
-        feedback.emailDerivedOfferId === offer.id && feedback.feedbackType === 'SUPPLIER_RESOLUTION',
+        feedback.emailDerivedOfferId === offer.id &&
+        feedback.feedbackType === 'SUPPLIER_RESOLUTION',
     );
     const latestCorrection = latestCorrections.get(offer.id);
 
@@ -983,7 +1089,8 @@ async function refreshSourceReliabilityProfileByTuple(
     if (offer.status === 'REVIEW_REQUIRED') {
       reviewRequiredCount += 1;
     }
-    const seenAt = offer.inboundEmail?.receivedAt ?? offer.inboundEmail?.createdAt ?? null;
+    const seenAt =
+      offer.inboundEmail?.receivedAt ?? offer.inboundEmail?.createdAt ?? null;
     if (seenAt && (!lastSeenAt || seenAt > lastSeenAt)) {
       lastSeenAt = seenAt;
     }
@@ -1003,7 +1110,9 @@ async function refreshSourceReliabilityProfileByTuple(
     if (latestCorrection?.correctionStatus === 'APPLIED') {
       correctedExtractionCount += 1;
       if (latestCorrection.correctedSupplierId) {
-        const existingSupplier = supplierCounts.get(latestCorrection.correctedSupplierId);
+        const existingSupplier = supplierCounts.get(
+          latestCorrection.correctedSupplierId,
+        );
         supplierCounts.set(latestCorrection.correctedSupplierId, {
           supplierId: latestCorrection.correctedSupplierId,
           supplierName: latestCorrection.correctedSupplierName,
@@ -1012,13 +1121,15 @@ async function refreshSourceReliabilityProfileByTuple(
       }
 
       const manufacturerKey = manufacturerHintKey({
-        correctedNormalizedProductName: latestCorrection.correctedNormalizedProductName,
+        correctedNormalizedProductName:
+          latestCorrection.correctedNormalizedProductName,
         correctedRawProductText: latestCorrection.correctedRawProductText,
         normalizedProductNameCandidate: offer.normalizedProductNameCandidate,
         rawProductText: offer.rawProductText,
       });
       if (manufacturerKey && latestCorrection.correctedManufacturer) {
-        const existingManufacturerHint = learnedManufacturerHints.get(manufacturerKey);
+        const existingManufacturerHint =
+          learnedManufacturerHints.get(manufacturerKey);
         learnedManufacturerHints.set(manufacturerKey, {
           manufacturer: latestCorrection.correctedManufacturer,
           count: (existingManufacturerHint?.count ?? 0) + 1,
@@ -1027,7 +1138,10 @@ async function refreshSourceReliabilityProfileByTuple(
     }
   }
 
-  const dominantSupplier = Array.from(supplierCounts.values()).sort((left, right) => right.count - left.count)[0] ?? null;
+  const dominantSupplier =
+    Array.from(supplierCounts.values()).sort(
+      (left, right) => right.count - left.count,
+    )[0] ?? null;
   const scoring = calculateReliabilityScore({
     sampleCount: offers.length,
     acceptedExtractionCount,
@@ -1058,7 +1172,9 @@ async function refreshSourceReliabilityProfileByTuple(
     reliabilityScore: scoring.score,
     reliabilityTier: scoring.tier,
     metadata: {
-      learnedManufacturerHints: Object.fromEntries(learnedManufacturerHints.entries()),
+      learnedManufacturerHints: Object.fromEntries(
+        learnedManufacturerHints.entries(),
+      ),
     },
     lastSeenAt,
   };
@@ -1083,7 +1199,10 @@ async function refreshSourceReliabilityProfileByTuple(
   }
 
   try {
-    return await repository.updateSourceProfile(existingProfile.id, profileData);
+    return await repository.updateSourceProfile(
+      existingProfile.id,
+      profileData,
+    );
   } catch (error) {
     if (!isMissingSourceLearningTableError(error)) {
       throw error;
@@ -1112,7 +1231,8 @@ function sourceTupleFromOffer(offer: OfferRecord): {
     sourceSystem: offer.inboundEmail.sourceSystem,
     senderEmail: offer.inboundEmail.fromEmail,
     senderDomain:
-      offer.inboundEmail.senderDomain ?? extractSenderDomain(offer.inboundEmail.fromEmail),
+      offer.inboundEmail.senderDomain ??
+      extractSenderDomain(offer.inboundEmail.fromEmail),
     templateFingerprint:
       offer.inboundEmail.sourceTemplateFingerprint ??
       buildSourceTemplateFingerprint({
@@ -1137,23 +1257,27 @@ function chooseProfileForHintLookup(
     .map((profile) => {
       let matchWeight = 0;
       if (
-        normalizeFingerprintText(profile.senderEmail) === normalizeFingerprintText(input.senderEmail) &&
+        normalizeFingerprintText(profile.senderEmail) ===
+          normalizeFingerprintText(input.senderEmail) &&
         normalizeFingerprintText(profile.templateFingerprint) ===
           normalizeFingerprintText(input.templateFingerprint)
       ) {
         matchWeight = 4;
       } else if (
-        normalizeFingerprintText(profile.senderDomain) === normalizeFingerprintText(input.senderDomain) &&
+        normalizeFingerprintText(profile.senderDomain) ===
+          normalizeFingerprintText(input.senderDomain) &&
         normalizeFingerprintText(profile.templateFingerprint) ===
           normalizeFingerprintText(input.templateFingerprint)
       ) {
         matchWeight = 3;
       } else if (
-        normalizeFingerprintText(profile.senderEmail) === normalizeFingerprintText(input.senderEmail)
+        normalizeFingerprintText(profile.senderEmail) ===
+        normalizeFingerprintText(input.senderEmail)
       ) {
         matchWeight = 2;
       } else if (
-        normalizeFingerprintText(profile.senderDomain) === normalizeFingerprintText(input.senderDomain)
+        normalizeFingerprintText(profile.senderDomain) ===
+        normalizeFingerprintText(input.senderDomain)
       ) {
         matchWeight = 1;
       }
@@ -1200,14 +1324,18 @@ async function buildOfferLearningSummary(
         manufacturerSuggestion: null,
         shouldForceReview: false,
       };
-  const aliasMatch =
-    offer.rawProductText ? await repository.findAliasByRawName(offer.rawProductText) : null;
+  const aliasMatch = offer.rawProductText
+    ? await repository.findAliasByRawName(offer.rawProductText)
+    : null;
 
   const recommendedNextAction: OfferLearningSummary['recommendedNextAction'] =
     learnedHints.sourceReliabilityTier === 'RISKY'
       ? 'downgrade source'
       : latestCorrection?.correctionStatus === 'APPLIED' &&
-          Boolean(latestCorrection.correctedProductId && latestCorrection.correctedRawProductText)
+          Boolean(
+            latestCorrection.correctedProductId &&
+            latestCorrection.correctedRawProductText,
+          )
         ? 'trust but verify'
         : learnedHints.supplierSuggestion && !offer.supplierCandidate
           ? 'apply learned mapping'
@@ -1223,18 +1351,27 @@ async function buildOfferLearningSummary(
     hasCorrection: Boolean(latestCorrection),
     latestCorrectionStatus: latestCorrection?.correctionStatus ?? null,
     latestCorrectionId: latestCorrection?.id ?? null,
-    sourceReliabilityTier: profile?.reliabilityTier ?? learnedHints.sourceReliabilityTier,
+    sourceReliabilityTier:
+      profile?.reliabilityTier ?? learnedHints.sourceReliabilityTier,
     sourceReliabilityScore:
-      toNumber(profile?.reliabilityScore) ?? learnedHints.sourceReliabilityScore ?? null,
+      toNumber(profile?.reliabilityScore) ??
+      learnedHints.sourceReliabilityScore ??
+      null,
     sourceProfileId: profile?.id ?? null,
     hasLearnedSupplierSuggestion: Boolean(learnedHints.supplierSuggestion),
     learnedSupplierId: learnedHints.supplierSuggestion?.supplierId ?? null,
     learnedSupplierName: learnedHints.supplierSuggestion?.supplierName ?? null,
-    hasLearnedProductSuggestion: Boolean(aliasMatch || latestCorrection?.correctedProductId),
-    learnedProductId: aliasMatch?.product.id ?? latestCorrection?.correctedProductId ?? null,
+    hasLearnedProductSuggestion: Boolean(
+      aliasMatch || latestCorrection?.correctedProductId,
+    ),
+    learnedProductId:
+      aliasMatch?.product.id ?? latestCorrection?.correctedProductId ?? null,
     learnedProductName: aliasMatch?.product.name ?? null,
-    hasLearnedManufacturerSuggestion: Boolean(learnedHints.manufacturerSuggestion),
-    learnedManufacturer: learnedHints.manufacturerSuggestion?.manufacturer ?? null,
+    hasLearnedManufacturerSuggestion: Boolean(
+      learnedHints.manufacturerSuggestion,
+    ),
+    learnedManufacturer:
+      learnedHints.manufacturerSuggestion?.manufacturer ?? null,
     recommendedNextAction,
   };
 }
@@ -1249,7 +1386,9 @@ export async function getLearnedResolutionHintsWithRepository(
   const sourceSystem = normalizeString(input.sourceSystem) ?? 'MICROSOFT_GRAPH';
   const senderEmail = normalizeString(input.senderEmail);
   const senderDomain =
-    normalizeString(input.senderDomain) ?? extractSenderDomain(input.senderEmail) ?? null;
+    normalizeString(input.senderDomain) ??
+    extractSenderDomain(input.senderEmail) ??
+    null;
   const templateFingerprint = normalizeString(input.templateFingerprint);
   const profiles = await repository.listSourceProfilesForLookup({
     sourceSystem,
@@ -1303,7 +1442,7 @@ export async function getLearnedResolutionHintsWithRepository(
     correctedRawProductText: input.rawProductText,
   });
   const manufacturerEvidence = manufacturerKey
-    ? metadata.learnedManufacturerHints[manufacturerKey] ?? null
+    ? (metadata.learnedManufacturerHints[manufacturerKey] ?? null)
     : null;
   const manufacturerHint =
     manufacturerEvidence && manufacturerEvidence.count >= 2
@@ -1323,28 +1462,39 @@ export async function getLearnedResolutionHintsWithRepository(
   };
 }
 
-export async function getLearnedResolutionHints(input: SourceProfileLookupInput & {
-  rawProductText?: string | null;
-  normalizedProductNameCandidate?: string | null;
-}): Promise<LearnedResolutionHints> {
-  return getLearnedResolutionHintsWithRepository(createOfferCorrectionRepository(), input);
+export async function getLearnedResolutionHints(
+  input: SourceProfileLookupInput & {
+    rawProductText?: string | null;
+    normalizedProductNameCandidate?: string | null;
+  },
+): Promise<LearnedResolutionHints> {
+  return getLearnedResolutionHintsWithRepository(
+    createOfferCorrectionRepository(),
+    input,
+  );
 }
 
 export function createOfferCorrectionService(
   repository: OfferCorrectionRepository = createOfferCorrectionRepository(),
 ) {
   return {
-    async listCorrections(filters: OfferCorrectionFilters = {}): Promise<OfferCorrectionRecord[]> {
+    async listCorrections(
+      filters: OfferCorrectionFilters = {},
+    ): Promise<OfferCorrectionRecord[]> {
       return repository.listCorrections(filters);
     },
 
-    async createCorrection(input: OfferCorrectionCreateInput): Promise<OfferCorrectionRecord> {
+    async createCorrection(
+      input: OfferCorrectionCreateInput,
+    ): Promise<OfferCorrectionRecord> {
       if (!normalizeString(input.emailDerivedOfferId)) {
         throw new Error('emailDerivedOfferId is required.');
       }
 
       return repository.transaction(async (txRepository) => {
-        const offer = await txRepository.findOfferById(input.emailDerivedOfferId);
+        const offer = await txRepository.findOfferById(
+          input.emailDerivedOfferId,
+        );
         if (!offer) {
           throw new Error('Email-derived offer not found.');
         }
@@ -1352,14 +1502,15 @@ export function createOfferCorrectionService(
         const actor = normalizeActor(input);
         const correctionData = correctionDataFromInput(input);
         const payloadHash = buildCorrectionPayloadHash(correctionData);
-        const existingEquivalent = await txRepository.findEquivalentActiveCorrection({
-          emailDerivedOfferId: input.emailDerivedOfferId,
-          correctionStatus: correctionData.correctionStatus,
-          actorType: actor.actorType,
-          actorIdentifier: actor.actorIdentifier,
-          payloadHash,
-          createdAfter: new Date(Date.now() - 5 * 60 * 1000),
-        });
+        const existingEquivalent =
+          await txRepository.findEquivalentActiveCorrection({
+            emailDerivedOfferId: input.emailDerivedOfferId,
+            correctionStatus: correctionData.correctionStatus,
+            actorType: actor.actorType,
+            actorIdentifier: actor.actorIdentifier,
+            payloadHash,
+            createdAfter: new Date(Date.now() - 5 * 60 * 1000),
+          });
 
         if (existingEquivalent) {
           return existingEquivalent;
@@ -1389,8 +1540,12 @@ export function createOfferCorrectionService(
 
         const created = await txRepository.createCorrection({
           emailDerivedOfferId: offer.id,
-          offerWorkflowItemId: normalizeString(input.offerWorkflowItemId) ?? offer.workflowItem?.id ?? null,
-          inboundEmailId: normalizeString(input.inboundEmailId) ?? offer.inboundEmailId,
+          offerWorkflowItemId:
+            normalizeString(input.offerWorkflowItemId) ??
+            offer.workflowItem?.id ??
+            null,
+          inboundEmailId:
+            normalizeString(input.inboundEmailId) ?? offer.inboundEmailId,
           ...correctionData,
           actorType: actor.actorType,
           actorIdentifier: actor.actorIdentifier,
@@ -1406,7 +1561,8 @@ export function createOfferCorrectionService(
         });
         await txRepository.createCorrectionEvent({
           offerCorrectionId: created.id,
-          actionType: created.correctionStatus === 'REJECTED' ? 'REJECTED' : 'APPLIED',
+          actionType:
+            created.correctionStatus === 'REJECTED' ? 'REJECTED' : 'APPLIED',
           previousStatus: null,
           newStatus: created.correctionStatus,
           actorType: actor.actorType,
@@ -1417,7 +1573,10 @@ export function createOfferCorrectionService(
         await ensureCorrectedProductAlias(txRepository, created);
         const sourceTuple = sourceTupleFromOffer(offer);
         if (sourceTuple) {
-          await refreshSourceReliabilityProfileByTuple(txRepository, sourceTuple);
+          await refreshSourceReliabilityProfileByTuple(
+            txRepository,
+            sourceTuple,
+          );
         }
 
         return created;
@@ -1495,7 +1654,10 @@ export function createOfferCorrectionService(
             actorIdentifier: actor.actorIdentifier,
             note: correctionData.note,
           });
-        } else if (correctionData.note && correctionData.note !== existing.note) {
+        } else if (
+          correctionData.note &&
+          correctionData.note !== existing.note
+        ) {
           await txRepository.createCorrectionEvent({
             offerCorrectionId: correctionId,
             actionType: 'NOTE_ADDED',
@@ -1508,10 +1670,15 @@ export function createOfferCorrectionService(
         }
 
         await ensureCorrectedProductAlias(txRepository, updated);
-        const offer = await txRepository.findOfferById(updated.emailDerivedOfferId);
+        const offer = await txRepository.findOfferById(
+          updated.emailDerivedOfferId,
+        );
         const sourceTuple = offer ? sourceTupleFromOffer(offer) : null;
         if (sourceTuple) {
-          await refreshSourceReliabilityProfileByTuple(txRepository, sourceTuple);
+          await refreshSourceReliabilityProfileByTuple(
+            txRepository,
+            sourceTuple,
+          );
         }
 
         return updated;
@@ -1546,7 +1713,9 @@ export function createOfferCorrectionService(
       return refreshedProfiles;
     },
 
-    async getSourceProfile(sourceProfileId: string): Promise<SourceReliabilityProfileRecord | null> {
+    async getSourceProfile(
+      sourceProfileId: string,
+    ): Promise<SourceReliabilityProfileRecord | null> {
       const profile = await repository.findSourceProfileById(sourceProfileId);
       if (!profile) {
         return null;
@@ -1573,7 +1742,9 @@ export function createOfferCorrectionService(
         take: 500,
       });
       const latestCorrections = latestByOfferId(
-        corrections.filter((correction) => emailDerivedOfferIds.includes(correction.emailDerivedOfferId)),
+        corrections.filter((correction) =>
+          emailDerivedOfferIds.includes(correction.emailDerivedOfferId),
+        ),
       );
 
       const summaries: Record<string, OfferLearningSummary> = {};

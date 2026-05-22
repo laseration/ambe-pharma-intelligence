@@ -47,7 +47,8 @@ test('timeout or transport error is handled cleanly', async () => {
   });
 
   const result = await parser.parseText({
-    rawText: 'Messy offer text with pricing context that should still attempt fallback.',
+    rawText:
+      'Messy offer text with pricing context that should still attempt fallback.',
     source: 'TELEGRAM_TEXT',
   });
 
@@ -110,7 +111,8 @@ test('null-heavy AI output is rejected as unusable', async () => {
   });
 
   const result = await parser.parseText({
-    rawText: 'Hello there, please review this vague commercial note for a possible offer.',
+    rawText:
+      'Hello there, please review this vague commercial note for a possible offer.',
     source: 'EMAIL_BODY',
   });
 
@@ -156,7 +158,13 @@ test('obvious noisy forwarded text is reduced before AI call', async () => {
             notes: [],
           }),
         }),
-        { status: 200, headers: { 'Content-Type': 'application/json', 'x-request-id': 'req-reduced' } },
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'x-request-id': 'req-reduced',
+          },
+        },
       );
     },
     logger: createLogger(),

@@ -15,17 +15,25 @@ type RootLayoutProps = {
 };
 
 export default async function RootLayout({ children }: RootLayoutProps) {
-  const recentInboxEmails = await listInboundEmails({ take: 25 }).catch(() => []);
+  const recentInboxEmails = await listInboundEmails({ take: 25 }).catch(
+    () => [],
+  );
   const recentEmailTimestamps = recentInboxEmails
     .map((email) => {
-      const createdAt = email.createdAt ? Date.parse(email.createdAt) : Number.NaN;
-      const receivedAt = email.receivedAt ? Date.parse(email.receivedAt) : Number.NaN;
+      const createdAt = email.createdAt
+        ? Date.parse(email.createdAt)
+        : Number.NaN;
+      const receivedAt = email.receivedAt
+        ? Date.parse(email.receivedAt)
+        : Number.NaN;
       const newestTimestamp = Math.max(
         Number.isNaN(createdAt) ? 0 : createdAt,
         Number.isNaN(receivedAt) ? 0 : receivedAt,
       );
 
-      return newestTimestamp > 0 ? new Date(newestTimestamp).toISOString() : null;
+      return newestTimestamp > 0
+        ? new Date(newestTimestamp).toISOString()
+        : null;
     })
     .filter((value): value is string => Boolean(value));
 

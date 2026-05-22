@@ -179,7 +179,10 @@ function buildPrompt(source: AiParsingSource, rawText: string): string {
   ].join('\n');
 }
 
-function reduceAiInputText(rawText: string, maxChars: number): {
+function reduceAiInputText(
+  rawText: string,
+  maxChars: number,
+): {
   reducedText: string;
   changed: boolean;
   reasons: string[];
@@ -220,7 +223,8 @@ function reduceAiInputText(rawText: string, maxChars: number): {
     reasons.push('truncated_to_max_chars');
   }
 
-  const noiseOnly = !/[a-z0-9]/i.test(reducedText) || /^[\W_]+$/.test(reducedText);
+  const noiseOnly =
+    !/[a-z0-9]/i.test(reducedText) || /^[\W_]+$/.test(reducedText);
 
   return {
     reducedText,
@@ -237,7 +241,10 @@ function extractOutputText(payload: unknown): string | null {
 
   const candidate = payload as Record<string, unknown>;
 
-  if (typeof candidate.output_text === 'string' && candidate.output_text.trim()) {
+  if (
+    typeof candidate.output_text === 'string' &&
+    candidate.output_text.trim()
+  ) {
     return candidate.output_text;
   }
 
@@ -257,7 +264,11 @@ function extractOutputText(payload: unknown): string | null {
     }
 
     for (const contentItem of content) {
-      if (!contentItem || typeof contentItem !== 'object' || Array.isArray(contentItem)) {
+      if (
+        !contentItem ||
+        typeof contentItem !== 'object' ||
+        Array.isArray(contentItem)
+      ) {
         continue;
       }
 
@@ -303,7 +314,8 @@ export function createOpenAiOfferParser(
       if (!dependencies.apiKey) {
         return {
           status: 'disabled',
-          reason: 'OpenAI fallback parsing is disabled because OPENAI_API_KEY is missing.',
+          reason:
+            'OpenAI fallback parsing is disabled because OPENAI_API_KEY is missing.',
           decision: 'disabled',
         };
       }
@@ -313,7 +325,8 @@ export function createOpenAiOfferParser(
       if (!reduction.reducedText) {
         return {
           status: 'disabled',
-          reason: 'OpenAI fallback parsing was skipped because the reduced text was empty.',
+          reason:
+            'OpenAI fallback parsing was skipped because the reduced text was empty.',
           decision: 'skipped_empty_after_reduction',
         };
       }
@@ -321,7 +334,8 @@ export function createOpenAiOfferParser(
       if (reduction.reducedText.length < dependencies.minChars) {
         return {
           status: 'disabled',
-          reason: 'OpenAI fallback parsing was skipped because the text was too short to help.',
+          reason:
+            'OpenAI fallback parsing was skipped because the text was too short to help.',
           decision: 'skipped_too_short',
         };
       }
@@ -329,56 +343,62 @@ export function createOpenAiOfferParser(
       if (reduction.noiseOnly) {
         return {
           status: 'disabled',
-          reason: 'OpenAI fallback parsing was skipped because the text was mostly noise.',
+          reason:
+            'OpenAI fallback parsing was skipped because the text was mostly noise.',
           decision: 'skipped_too_noisy',
         };
       }
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), dependencies.timeoutMs);
+      const timeout = setTimeout(
+        () => controller.abort(),
+        dependencies.timeoutMs,
+      );
 
       try {
-        const response = await dependencies.fetchImpl('https://api.openai.com/v1/responses', {
-          method: 'POST',
-          signal: controller.signal,
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${dependencies.apiKey}`,
-          },
-          body: JSON.stringify({
-            model: dependencies.model,
-            store: false,
-            input: [
-              {
-                role: 'system',
-                content: [
-                  {
-                    type: 'input_text',
-                    text:
-                      'You are extracting structured commercial facts for an internal UK pharmaceutical wholesale workflow. Only return explicitly supported facts. Never invent missing details.',
-                  },
-                ],
-              },
-              {
-                role: 'user',
-                content: [
-                  {
-                    type: 'input_text',
-                    text: buildPrompt(input.source, reduction.reducedText),
-                  },
-                ],
-              },
-            ],
-            text: {
-              format: {
-                type: 'json_schema',
-                name: 'supplier_offer_parse',
-                strict: true,
-                schema: AI_PARSER_RESPONSE_SCHEMA,
-              },
+        const response = await dependencies.fetchImpl(
+          'https://api.openai.com/v1/responses',
+          {
+            method: 'POST',
+            signal: controller.signal,
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${dependencies.apiKey}`,
             },
-          }),
-        });
+            body: JSON.stringify({
+              model: dependencies.model,
+              store: false,
+              input: [
+                {
+                  role: 'system',
+                  content: [
+                    {
+                      type: 'input_text',
+                      text: 'You are extracting structured commercial facts for an internal UK pharmaceutical wholesale workflow. Only return explicitly supported facts. Never invent missing details.',
+                    },
+                  ],
+                },
+                {
+                  role: 'user',
+                  content: [
+                    {
+                      type: 'input_text',
+                      text: buildPrompt(input.source, reduction.reducedText),
+                    },
+                  ],
+                },
+              ],
+              text: {
+                format: {
+                  type: 'json_schema',
+                  name: 'supplier_offer_parse',
+                  strict: true,
+                  schema: AI_PARSER_RESPONSE_SCHEMA,
+                },
+              },
+            }),
+          },
+        );
 
         const requestId = response.headers.get('x-request-id');
 
@@ -405,7 +425,8 @@ export function createOpenAiOfferParser(
         if (!outputText) {
           return {
             status: 'unusable',
-            reason: 'OpenAI fallback parser did not return structured output text.',
+            reason:
+              'OpenAI fallback parser did not return structured output text.',
             decision: 'response_missing_text',
             issues: ['Missing output_text in OpenAI response.'],
             requestId,
@@ -455,7 +476,9 @@ export function createOpenAiOfferParser(
         };
       } catch (error) {
         const issue =
-          error instanceof Error ? error.message : 'OpenAI fallback parser failed unexpectedly.';
+          error instanceof Error
+            ? error.message
+            : 'OpenAI fallback parser failed unexpectedly.';
         dependencies.logger.warn('OpenAI fallback parser errored', {
           error: issue,
           source: input.source,

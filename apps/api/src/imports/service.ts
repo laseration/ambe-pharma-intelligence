@@ -25,7 +25,11 @@ import type {
   ProductCandidates,
   ProductPriceIntelligence,
 } from './types';
-import { validateInventoryRows, validateSalesRows, validateSupplierPriceRows } from './validators';
+import {
+  validateInventoryRows,
+  validateSalesRows,
+  validateSupplierPriceRows,
+} from './validators';
 
 type DbClient = typeof db | Prisma.TransactionClient;
 const MILLISECONDS_PER_DAY = 1000 * 60 * 60 * 24;
@@ -88,11 +92,16 @@ function extractWarnings(
   }
 
   return warnings
-    .filter((warning): warning is string => typeof warning === 'string' && warning.trim().length > 0)
+    .filter(
+      (warning): warning is string =>
+        typeof warning === 'string' && warning.trim().length > 0,
+    )
     .slice(0, take);
 }
 
-export async function listRecentImportBatches(take = 20): Promise<ImportBatchListItem[]> {
+export async function listRecentImportBatches(
+  take = 20,
+): Promise<ImportBatchListItem[]> {
   const batches = await db.importBatch.findMany({
     orderBy: { uploadedAt: 'desc' },
     take,
@@ -249,7 +258,9 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function toNumber(value: Prisma.Decimal | number | null | undefined): number | null {
+function toNumber(
+  value: Prisma.Decimal | number | null | undefined,
+): number | null {
   if (value === null || value === undefined) {
     return null;
   }
@@ -289,13 +300,15 @@ function calculateVolatilityScore(prices: number[]): number | null {
     return 0;
   }
 
-  const averagePrice = prices.reduce((total, price) => total + price, 0) / prices.length;
+  const averagePrice =
+    prices.reduce((total, price) => total + price, 0) / prices.length;
   if (averagePrice <= 0) {
     return null;
   }
 
   const variance =
-    prices.reduce((total, price) => total + (price - averagePrice) ** 2, 0) / prices.length;
+    prices.reduce((total, price) => total + (price - averagePrice) ** 2, 0) /
+    prices.length;
   return roundNumber(clamp(Math.sqrt(variance) / averagePrice, 0, 1));
 }
 
@@ -316,7 +329,8 @@ function calculateMarketConfidence(
   );
   const latestAgeDays = Math.max(
     0,
-    (referenceDate.getTime() - latestObservedAt.getTime()) / MILLISECONDS_PER_DAY,
+    (referenceDate.getTime() - latestObservedAt.getTime()) /
+      MILLISECONDS_PER_DAY,
   );
   const recencyScore = clamp(
     1 - latestAgeDays / Math.max(1, opportunityConfig.marketLookbackDays),
@@ -325,11 +339,16 @@ function calculateMarketConfidence(
   );
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
-  const averagePrice = prices.reduce((total, price) => total + price, 0) / prices.length;
+  const averagePrice =
+    prices.reduce((total, price) => total + price, 0) / prices.length;
   const spreadConsistency =
-    averagePrice > 0 ? clamp(1 - (maxPrice - minPrice) / averagePrice, 0, 1) : 0;
+    averagePrice > 0
+      ? clamp(1 - (maxPrice - minPrice) / averagePrice, 0, 1)
+      : 0;
 
-  return roundNumber(sampleScore * (0.5 + 0.3 * recencyScore + 0.2 * spreadConsistency));
+  return roundNumber(
+    sampleScore * (0.5 + 0.3 * recencyScore + 0.2 * spreadConsistency),
+  );
 }
 
 function buildProductPriceIntelligence(
@@ -340,19 +359,28 @@ function buildProductPriceIntelligence(
   const prices = observations.map((observation) => observation.unitPrice);
   const latestObservedPrice = observations[0]?.unitPrice ?? null;
   const rollingAveragePrice =
-    prices.length > 0 ? roundNumber(prices.reduce((total, price) => total + price, 0) / prices.length) : null;
-  const bestObservedPrice = prices.length > 0 ? roundNumber(Math.min(...prices)) : null;
+    prices.length > 0
+      ? roundNumber(
+          prices.reduce((total, price) => total + price, 0) / prices.length,
+        )
+      : null;
+  const bestObservedPrice =
+    prices.length > 0 ? roundNumber(Math.min(...prices)) : null;
   const weightedTotals = observations.reduce(
     (totals, observation) => {
       const ageDays = Math.max(
         0,
-        (referenceDate.getTime() - observation.createdAt.getTime()) / MILLISECONDS_PER_DAY,
+        (referenceDate.getTime() - observation.createdAt.getTime()) /
+          MILLISECONDS_PER_DAY,
       );
-      const weight = 1 / (1 + ageDays / Math.max(1, opportunityConfig.marketRecentWeightDays));
+      const weight =
+        1 /
+        (1 + ageDays / Math.max(1, opportunityConfig.marketRecentWeightDays));
 
       return {
         weightTotal: totals.weightTotal + weight,
-        weightedPriceTotal: totals.weightedPriceTotal + observation.unitPrice * weight,
+        weightedPriceTotal:
+          totals.weightedPriceTotal + observation.unitPrice * weight,
       };
     },
     {
@@ -362,7 +390,9 @@ function buildProductPriceIntelligence(
   );
   const simulatedMarketPrice =
     weightedTotals.weightTotal > 0
-      ? roundNumber(weightedTotals.weightedPriceTotal / weightedTotals.weightTotal)
+      ? roundNumber(
+          weightedTotals.weightedPriceTotal / weightedTotals.weightTotal,
+        )
       : null;
 
   return {
@@ -420,10 +450,17 @@ async function loadRecentProductPriceIntelligence(
   );
 }
 
-function getStructuredCompatibility(product: Product, candidates: ProductCandidates) {
+function getStructuredCompatibility(
+  product: Product,
+  candidates: ProductCandidates,
+) {
   const conflictFields: Array<'strength' | 'formulation' | 'packSize'> = [];
 
-  if (product.strength && candidates.strength && product.strength !== candidates.strength) {
+  if (
+    product.strength &&
+    candidates.strength &&
+    product.strength !== candidates.strength
+  ) {
     conflictFields.push('strength');
   }
 
@@ -435,7 +472,11 @@ function getStructuredCompatibility(product: Product, candidates: ProductCandida
     conflictFields.push('formulation');
   }
 
-  if (product.packSize && candidates.packSize && product.packSize !== candidates.packSize) {
+  if (
+    product.packSize &&
+    candidates.packSize &&
+    product.packSize !== candidates.packSize
+  ) {
     conflictFields.push('packSize');
   }
 
@@ -445,13 +486,20 @@ function getStructuredCompatibility(product: Product, candidates: ProductCandida
   };
 }
 
-function countStructuredMatches(product: Product, candidates: ProductCandidates): number {
+function countStructuredMatches(
+  product: Product,
+  candidates: ProductCandidates,
+): number {
   return [
-    product.strength && candidates.strength && product.strength === candidates.strength,
+    product.strength &&
+      candidates.strength &&
+      product.strength === candidates.strength,
     product.dosageForm &&
       candidates.formulation &&
       product.dosageForm === candidates.formulation,
-    product.packSize && candidates.packSize && product.packSize === candidates.packSize,
+    product.packSize &&
+      candidates.packSize &&
+      product.packSize === candidates.packSize,
   ].filter(Boolean).length;
 }
 
@@ -460,9 +508,11 @@ async function findStructuredBaseNameProductMatch(
   client: DbClient = db,
 ): Promise<Product | null> {
   const candidateBaseName = candidates.baseName.trim();
-  const structuredSignalCount = [candidates.strength, candidates.formulation, candidates.packSize].filter(
-    Boolean,
-  ).length;
+  const structuredSignalCount = [
+    candidates.strength,
+    candidates.formulation,
+    candidates.packSize,
+  ].filter(Boolean).length;
 
   if (!candidateBaseName || structuredSignalCount === 0) {
     return null;
@@ -472,7 +522,10 @@ async function findStructuredBaseNameProductMatch(
     where: {
       // Prefer baseName for current records, but keep normalizedName base-name lookup
       // for compatibility with products created before baseName was populated consistently.
-      OR: [{ baseName: candidateBaseName }, { normalizedName: candidateBaseName }],
+      OR: [
+        { baseName: candidateBaseName },
+        { normalizedName: candidateBaseName },
+      ],
     },
   });
 
@@ -484,11 +537,16 @@ async function findStructuredBaseNameProductMatch(
       prefersBaseNameField: product.baseName === candidateBaseName,
     }))
     .filter(
-      (entry) => entry.compatibility.compatible && entry.exactStructuredMatches > 0,
+      (entry) =>
+        entry.compatibility.compatible && entry.exactStructuredMatches > 0,
     )
     .sort((left, right) => {
-      if (Number(left.prefersBaseNameField) !== Number(right.prefersBaseNameField)) {
-        return Number(right.prefersBaseNameField) - Number(left.prefersBaseNameField);
+      if (
+        Number(left.prefersBaseNameField) !== Number(right.prefersBaseNameField)
+      ) {
+        return (
+          Number(right.prefersBaseNameField) - Number(left.prefersBaseNameField)
+        );
       }
 
       return right.exactStructuredMatches - left.exactStructuredMatches;
@@ -547,7 +605,10 @@ async function applySupplierReliabilityFeedback(
       productId,
       currencyCode,
       createdAt: {
-        gte: new Date(saleDate.getTime() - opportunityConfig.marketLookbackDays * MILLISECONDS_PER_DAY),
+        gte: new Date(
+          saleDate.getTime() -
+            opportunityConfig.marketLookbackDays * MILLISECONDS_PER_DAY,
+        ),
         lte: saleDate,
       },
     },
@@ -570,7 +631,8 @@ async function applySupplierReliabilityFeedback(
     return;
   }
 
-  const realizedMarginPct = (saleUnitPriceNumber - supplierUnitPrice) / saleUnitPriceNumber;
+  const realizedMarginPct =
+    (saleUnitPriceNumber - supplierUnitPrice) / saleUnitPriceNumber;
   const marketPriceEstimate = toNumber(recentSupplierPrice.marketPriceEstimate);
   const priceDeltaFromMarketPct =
     recentSupplierPrice.priceDeltaFromMarketPct ??
@@ -585,7 +647,8 @@ async function applySupplierReliabilityFeedback(
     adjustment = opportunityConfig.supplierReliabilityAdjustmentStep;
   } else if (
     realizedMarginPct < 0 &&
-    (recentSupplierPrice.marketPriceConfidence ?? 0) >= opportunityConfig.marketConfidenceMinForBuy
+    (recentSupplierPrice.marketPriceConfidence ?? 0) >=
+      opportunityConfig.marketConfidenceMinForBuy
   ) {
     adjustment = -opportunityConfig.supplierReliabilityAdjustmentStep;
   }
@@ -609,7 +672,10 @@ async function applySupplierReliabilityFeedback(
     clamp(supplier.reliabilityScore + adjustment, 0, 1),
   );
 
-  if (nextReliabilityScore === null || nextReliabilityScore === supplier.reliabilityScore) {
+  if (
+    nextReliabilityScore === null ||
+    nextReliabilityScore === supplier.reliabilityScore
+  ) {
     return;
   }
 
@@ -621,7 +687,10 @@ async function applySupplierReliabilityFeedback(
   });
 }
 
-export async function findOrCreateSupplier(rawSupplierName: string, client: DbClient = db) {
+export async function findOrCreateSupplier(
+  rawSupplierName: string,
+  client: DbClient = db,
+) {
   const normalizedName = normalizeText(rawSupplierName);
 
   const existing = await client.supplier.findUnique({
@@ -640,7 +709,10 @@ export async function findOrCreateSupplier(rawSupplierName: string, client: DbCl
   });
 }
 
-async function findOrCreateCustomer(rawCustomerName: string, client: DbClient = db) {
+async function findOrCreateCustomer(
+  rawCustomerName: string,
+  client: DbClient = db,
+) {
   const normalizedName = normalizeText(rawCustomerName);
 
   const existing = await client.customer.findUnique({
@@ -681,7 +753,10 @@ async function ensureProductAlias(
       productId,
     },
   });
-  const existingAliasVariant = findMatchingAliasVariant(existingAliasesForProduct, rawProductName);
+  const existingAliasVariant = findMatchingAliasVariant(
+    existingAliasesForProduct,
+    rawProductName,
+  );
 
   if (existingAliasVariant.alias) {
     return existingAliasVariant.alias;
@@ -710,9 +785,12 @@ function logProductMatchDecision(
     confidence: decision.confidence,
     matchedProductId,
     aliasMatchType: decision.aliasMatchType ?? null,
-    structuredCompatibilityChecked: decision.structuredCompatibility?.checked ?? false,
-    structuredCompatibilityPassed: decision.structuredCompatibility?.compatible ?? true,
-    structuredCompatibilityConflictFields: decision.structuredCompatibility?.conflictFields ?? [],
+    structuredCompatibilityChecked:
+      decision.structuredCompatibility?.checked ?? false,
+    structuredCompatibilityPassed:
+      decision.structuredCompatibility?.compatible ?? true,
+    structuredCompatibilityConflictFields:
+      decision.structuredCompatibility?.conflictFields ?? [],
     rulesApplied,
   });
 }
@@ -754,7 +832,9 @@ export async function findOrCreateProduct(
     });
 
     if (!existingProduct) {
-      throw new Error(`Matched product ${decision.matchedProductId} was not found during persistence.`);
+      throw new Error(
+        `Matched product ${decision.matchedProductId} was not found during persistence.`,
+      );
     }
 
     const existing = await updateProductCanonicalFields(
@@ -765,11 +845,18 @@ export async function findOrCreateProduct(
     );
 
     await ensureProductAlias(existing.id, rawProductName, sourceSystem, client);
-    logProductMatchDecision(decision, existing.id, candidates.explanation.rulesApplied);
+    logProductMatchDecision(
+      decision,
+      existing.id,
+      candidates.explanation.rulesApplied,
+    );
     return existing;
   }
 
-  const structuredBaseNameMatch = await findStructuredBaseNameProductMatch(candidates, client);
+  const structuredBaseNameMatch = await findStructuredBaseNameProductMatch(
+    candidates,
+    client,
+  );
 
   if (structuredBaseNameMatch) {
     const matchedProduct = await updateProductCanonicalFields(
@@ -779,7 +866,12 @@ export async function findOrCreateProduct(
       client,
     );
 
-    await ensureProductAlias(matchedProduct.id, rawProductName, sourceSystem, client);
+    await ensureProductAlias(
+      matchedProduct.id,
+      rawProductName,
+      sourceSystem,
+      client,
+    );
     logProductMatchDecision(
       {
         outcome: 'EXISTING_PRODUCT',
@@ -808,7 +900,11 @@ export async function findOrCreateProduct(
   });
 
   if (!autoCreationEligibility.allowed) {
-    logProductMatchDecision(decision, null, candidates.explanation.rulesApplied);
+    logProductMatchDecision(
+      decision,
+      null,
+      candidates.explanation.rulesApplied,
+    );
     logger.warn('Import product auto-creation blocked', {
       rawProductName,
       normalizedKey: candidates.normalizedKey,
@@ -917,7 +1013,10 @@ async function persistSupplierPriceRows(
   }
 }
 
-async function persistInventoryRows(importBatchId: string, rows: InventoryRowInput[]) {
+async function persistInventoryRows(
+  importBatchId: string,
+  rows: InventoryRowInput[],
+) {
   for (const row of rows) {
     const product = await findOrCreateProduct(
       row.rawProductName,
@@ -926,7 +1025,9 @@ async function persistInventoryRows(importBatchId: string, rows: InventoryRowInp
       row.manufacturer,
     );
 
-    const supplier = row.rawSupplierName ? await findOrCreateSupplier(row.rawSupplierName) : null;
+    const supplier = row.rawSupplierName
+      ? await findOrCreateSupplier(row.rawSupplierName)
+      : null;
 
     await db.inventorySnapshot.create({
       data: {
@@ -961,7 +1062,9 @@ async function persistSalesRows(importBatchId: string, rows: SalesRowInput[]) {
       row.manufacturer,
     );
     const customer = await findOrCreateCustomer(row.rawCustomerName);
-    const supplier = row.rawSupplierName ? await findOrCreateSupplier(row.rawSupplierName) : null;
+    const supplier = row.rawSupplierName
+      ? await findOrCreateSupplier(row.rawSupplierName)
+      : null;
 
     await db.salesRecord.create({
       data: {
@@ -997,10 +1100,15 @@ async function persistSalesRows(importBatchId: string, rows: SalesRowInput[]) {
   }
 }
 
-function mapUnexpectedError(error: unknown, rawRow: ParsedTableRow, rowNumber: number): RowIssue {
+function mapUnexpectedError(
+  error: unknown,
+  rawRow: ParsedTableRow,
+  rowNumber: number,
+): RowIssue {
   return {
     rowNumber,
-    message: error instanceof Error ? error.message : 'Unexpected import error.',
+    message:
+      error instanceof Error ? error.message : 'Unexpected import error.',
     rawRow,
   };
 }
@@ -1010,18 +1118,35 @@ export async function importSupplierPriceList(
 ): Promise<ImportResponse> {
   const parsed = parseUploadedFile(request.file);
   const currencyCode = request.currencyCode?.trim() || 'USD';
-  const { validRows, errors } = validateSupplierPriceRows(parsed.rows, currencyCode);
-  const summary = buildSummary(parsed.rows.length, validRows.length, errors.length, parsed.warnings);
-  const importBatch = await createImportBatch('SUPPLIER_PRICE_LIST', request.file, summary, errors);
+  const { validRows, errors } = validateSupplierPriceRows(
+    parsed.rows,
+    currencyCode,
+  );
+  const summary = buildSummary(
+    parsed.rows.length,
+    validRows.length,
+    errors.length,
+    parsed.warnings,
+  );
+  const importBatch = await createImportBatch(
+    'SUPPLIER_PRICE_LIST',
+    request.file,
+    summary,
+    errors,
+  );
 
-  const firstRowSupplierName = parsed.rows.find((row) => row.supplierName || row.SupplierName)?.supplierName;
-  const supplierName = request.supplierName?.trim() || firstRowSupplierName?.trim();
+  const firstRowSupplierName = parsed.rows.find(
+    (row) => row.supplierName || row.SupplierName,
+  )?.supplierName;
+  const supplierName =
+    request.supplierName?.trim() || firstRowSupplierName?.trim();
 
   if (!supplierName) {
     await db.importError.create({
       data: {
         importBatchId: importBatch.id,
-        message: 'supplierName is required as a form field or row column for supplier price list imports.',
+        message:
+          'supplierName is required as a form field or row column for supplier price list imports.',
       },
     });
 
@@ -1035,7 +1160,8 @@ export async function importSupplierPriceList(
         ...errors,
         {
           rowNumber: 0,
-          message: 'supplierName is required as a form field or row column for supplier price list imports.',
+          message:
+            'supplierName is required as a form field or row column for supplier price list imports.',
           rawRow: {},
         },
       ],
@@ -1060,7 +1186,9 @@ export async function importSupplierPriceList(
     try {
       await persistSupplierPriceRows(supplierPriceList.id, supplier.id, [row]);
     } catch (error) {
-      persistenceErrors.push(mapUnexpectedError(error, row.rawRow, row.rowNumber));
+      persistenceErrors.push(
+        mapUnexpectedError(error, row.rawRow, row.rowNumber),
+      );
     }
   }
 
@@ -1102,18 +1230,32 @@ export async function importSupplierPriceList(
   };
 }
 
-export async function importInventory(request: InventoryImportRequest): Promise<ImportResponse> {
+export async function importInventory(
+  request: InventoryImportRequest,
+): Promise<ImportResponse> {
   const parsed = parseUploadedFile(request.file);
   const { validRows, errors } = validateInventoryRows(parsed.rows);
-  const summary = buildSummary(parsed.rows.length, validRows.length, errors.length, parsed.warnings);
-  const importBatch = await createImportBatch('INVENTORY', request.file, summary, errors);
+  const summary = buildSummary(
+    parsed.rows.length,
+    validRows.length,
+    errors.length,
+    parsed.warnings,
+  );
+  const importBatch = await createImportBatch(
+    'INVENTORY',
+    request.file,
+    summary,
+    errors,
+  );
 
   const persistenceErrors: RowIssue[] = [];
   for (const row of validRows) {
     try {
       await persistInventoryRows(importBatch.id, [row]);
     } catch (error) {
-      persistenceErrors.push(mapUnexpectedError(error, row.rawRow, row.rowNumber));
+      persistenceErrors.push(
+        mapUnexpectedError(error, row.rawRow, row.rowNumber),
+      );
     }
   }
 
@@ -1155,18 +1297,32 @@ export async function importInventory(request: InventoryImportRequest): Promise<
   };
 }
 
-export async function importSales(request: SalesImportRequest): Promise<ImportResponse> {
+export async function importSales(
+  request: SalesImportRequest,
+): Promise<ImportResponse> {
   const parsed = parseUploadedFile(request.file);
   const { validRows, errors } = validateSalesRows(parsed.rows);
-  const summary = buildSummary(parsed.rows.length, validRows.length, errors.length, parsed.warnings);
-  const importBatch = await createImportBatch('SALES', request.file, summary, errors);
+  const summary = buildSummary(
+    parsed.rows.length,
+    validRows.length,
+    errors.length,
+    parsed.warnings,
+  );
+  const importBatch = await createImportBatch(
+    'SALES',
+    request.file,
+    summary,
+    errors,
+  );
 
   const persistenceErrors: RowIssue[] = [];
   for (const row of validRows) {
     try {
       await persistSalesRows(importBatch.id, [row]);
     } catch (error) {
-      persistenceErrors.push(mapUnexpectedError(error, row.rawRow, row.rowNumber));
+      persistenceErrors.push(
+        mapUnexpectedError(error, row.rawRow, row.rowNumber),
+      );
     }
   }
 

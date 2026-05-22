@@ -14,6 +14,7 @@ import {
   type DemandMatchedTradeOpportunityOutcome,
   syncTradeOpportunityCommercialState,
 } from '../deals/service';
+import { buildSideEffectAuditMetadata } from '../safety/sideEffectPolicy';
 import type { SupplierQualificationStatus } from '../suppliers/qualificationService';
 
 type WorkflowStatus =
@@ -135,7 +136,10 @@ export type WorkflowActionInput = WorkflowActor & {
   confirmedAvailability?: boolean | null;
   expectedDeliveryDate?: Date | null;
   supplierDetails?: SupplierReviewDetails | null;
-  feedback?: Omit<OperatorValidationFeedbackCreateInput, 'offerWorkflowItemId' | 'emailDerivedOfferId'> | null;
+  feedback?: Omit<
+    OperatorValidationFeedbackCreateInput,
+    'offerWorkflowItemId' | 'emailDerivedOfferId'
+  > | null;
 };
 
 export type AssignWorkflowItemInput = WorkflowActionInput & {
@@ -248,26 +252,30 @@ type SupplierContactDetails = {
 };
 
 type WorkflowDetailRecord = WorkflowRecord & {
-  emailDerivedOffer?: (NonNullable<WorkflowRecord['emailDerivedOffer']> & {
-    strengthCandidate: string | null;
-    dosageFormCandidate: string | null;
-    packSizeCandidate: string | null;
-    supplierCandidate: string | null;
-    sourceTrustScore: number | null;
-    structureConfidence: number | null;
-    fieldConfidence: number | null;
-    entityResolutionConfidence: number | null;
-    promotionConfidence: number | null;
-    sourceDocument?: WorkflowInboundEmailDocumentRecord | null;
-  }) | null;
-  inboundEmail?: (NonNullable<WorkflowRecord['inboundEmail']> & {
-    rawHtml: string | null;
-    rawText: string | null;
-    triageStatus: string | null;
-    processingStatus: string;
-    reviewReason: string | null;
-    documents: WorkflowInboundEmailDocumentRecord[];
-  }) | null;
+  emailDerivedOffer?:
+    | (NonNullable<WorkflowRecord['emailDerivedOffer']> & {
+        strengthCandidate: string | null;
+        dosageFormCandidate: string | null;
+        packSizeCandidate: string | null;
+        supplierCandidate: string | null;
+        sourceTrustScore: number | null;
+        structureConfidence: number | null;
+        fieldConfidence: number | null;
+        entityResolutionConfidence: number | null;
+        promotionConfidence: number | null;
+        sourceDocument?: WorkflowInboundEmailDocumentRecord | null;
+      })
+    | null;
+  inboundEmail?:
+    | (NonNullable<WorkflowRecord['inboundEmail']> & {
+        rawHtml: string | null;
+        rawText: string | null;
+        triageStatus: string | null;
+        processingStatus: string;
+        reviewReason: string | null;
+        documents: WorkflowInboundEmailDocumentRecord[];
+      })
+    | null;
   supplierContact?: SupplierContactDetails | null;
 };
 
@@ -318,35 +326,89 @@ type BuyDecisionRecord = {
 };
 
 type WorkflowRepository = {
-  transaction: <T>(callback: (repository: WorkflowRepository) => Promise<T>) => Promise<T>;
-  findWorkflowItemByOfferId: (emailDerivedOfferId: string) => Promise<WorkflowRecord | null>;
-  findWorkflowItemById: (workflowItemId: string) => Promise<WorkflowRecord | null>;
-  findWorkflowDetailById: (workflowItemId: string) => Promise<WorkflowDetailRecord | null>;
-  createWorkflowItem: (data: Partial<WorkflowRecord> & Pick<WorkflowRecord, 'emailDerivedOfferId' | 'status' | 'priority' | 'createdByType' | 'supplierQualificationStatus' | 'hasUnknownSupplierQualification' | 'hasRestrictedSupplier' | 'hasBlockedSupplier'>) => Promise<WorkflowRecord>;
-  updateWorkflowItem: (workflowItemId: string, data: Partial<WorkflowRecord>) => Promise<WorkflowRecord>;
-  createWorkflowEvent: (data: Omit<WorkflowEventRecord, 'id' | 'createdAt'>) => Promise<WorkflowEventRecord>;
-  listWorkflowItems: (filters: WorkflowListFilters) => Promise<WorkflowRecord[]>;
-  listWorkflowEvents: (workflowItemId: string) => Promise<WorkflowEventRecord[]>;
-  findSupplierQualificationBySupplierId: (supplierId: string) => Promise<SupplierQualificationRecord | null>;
-  findBuyDecisionByOfferId: (emailDerivedOfferId: string) => Promise<BuyDecisionRecord | null>;
-  createBuyDecision: (data: Record<string, unknown>) => Promise<BuyDecisionRecord>;
-  updateBuyDecision: (buyDecisionId: string, data: Record<string, unknown>) => Promise<BuyDecisionRecord>;
+  transaction: <T>(
+    callback: (repository: WorkflowRepository) => Promise<T>,
+  ) => Promise<T>;
+  findWorkflowItemByOfferId: (
+    emailDerivedOfferId: string,
+  ) => Promise<WorkflowRecord | null>;
+  findWorkflowItemById: (
+    workflowItemId: string,
+  ) => Promise<WorkflowRecord | null>;
+  findWorkflowDetailById: (
+    workflowItemId: string,
+  ) => Promise<WorkflowDetailRecord | null>;
+  createWorkflowItem: (
+    data: Partial<WorkflowRecord> &
+      Pick<
+        WorkflowRecord,
+        | 'emailDerivedOfferId'
+        | 'status'
+        | 'priority'
+        | 'createdByType'
+        | 'supplierQualificationStatus'
+        | 'hasUnknownSupplierQualification'
+        | 'hasRestrictedSupplier'
+        | 'hasBlockedSupplier'
+      >,
+  ) => Promise<WorkflowRecord>;
+  updateWorkflowItem: (
+    workflowItemId: string,
+    data: Partial<WorkflowRecord>,
+  ) => Promise<WorkflowRecord>;
+  createWorkflowEvent: (
+    data: Omit<WorkflowEventRecord, 'id' | 'createdAt'>,
+  ) => Promise<WorkflowEventRecord>;
+  listWorkflowItems: (
+    filters: WorkflowListFilters,
+  ) => Promise<WorkflowRecord[]>;
+  listWorkflowEvents: (
+    workflowItemId: string,
+  ) => Promise<WorkflowEventRecord[]>;
+  findSupplierQualificationBySupplierId: (
+    supplierId: string,
+  ) => Promise<SupplierQualificationRecord | null>;
+  findBuyDecisionByOfferId: (
+    emailDerivedOfferId: string,
+  ) => Promise<BuyDecisionRecord | null>;
+  createBuyDecision: (
+    data: Record<string, unknown>,
+  ) => Promise<BuyDecisionRecord>;
+  updateBuyDecision: (
+    buyDecisionId: string,
+    data: Record<string, unknown>,
+  ) => Promise<BuyDecisionRecord>;
   createBuyDecisionEvent: (data: Record<string, unknown>) => Promise<void>;
-  findBuyExecutionByDecisionId: (buyDecisionId: string) => Promise<BuyExecutionRecord | null>;
-  createBuyExecution: Parameters<typeof upsertExecutionForBuyDecision>[0]['create'];
-  updateBuyExecution: Parameters<typeof upsertExecutionForBuyDecision>[0]['update'];
-  createBuyExecutionEvent: Parameters<typeof upsertExecutionForBuyDecision>[0]['createEvent'];
+  findBuyExecutionByDecisionId: (
+    buyDecisionId: string,
+  ) => Promise<BuyExecutionRecord | null>;
+  createBuyExecution: Parameters<
+    typeof upsertExecutionForBuyDecision
+  >[0]['create'];
+  updateBuyExecution: Parameters<
+    typeof upsertExecutionForBuyDecision
+  >[0]['update'];
+  createBuyExecutionEvent: Parameters<
+    typeof upsertExecutionForBuyDecision
+  >[0]['createEvent'];
   findRecentMatchingFeedback: Parameters<
     typeof recordOperatorValidationFeedbackWithRepository
   >[0]['findRecentMatchingFeedback'];
-  createFeedback: Parameters<typeof recordOperatorValidationFeedbackWithRepository>[0]['createFeedback'];
+  createFeedback: Parameters<
+    typeof recordOperatorValidationFeedbackWithRepository
+  >[0]['createFeedback'];
   findTradeMessageDraftById?: Parameters<
     typeof recordOperatorValidationFeedbackWithRepository
   >[0]['findTradeMessageDraftById'];
-  listActiveTradeOpportunitiesByOfferId: (emailDerivedOfferId: string) => Promise<any[]>;
+  listActiveTradeOpportunitiesByOfferId: (
+    emailDerivedOfferId: string,
+  ) => Promise<any[]>;
   createTradeOpportunity: (data: Record<string, unknown>) => Promise<any>;
   createTradeOpportunityPolicy: (data: Record<string, unknown>) => Promise<any>;
-  updateTradeOpportunity: (tradeOpportunityId: string, data: Record<string, unknown>) => Promise<any>;
+  updateTradeOpportunity: (
+    tradeOpportunityId: string,
+    data: Record<string, unknown>,
+  ) => Promise<any>;
   createTradeOpportunityEvent: (data: Record<string, unknown>) => Promise<any>;
   listRecentSalesByProductId: (input: {
     productId: string;
@@ -402,7 +464,9 @@ function normalizeSupplierReviewDetails(
   return Object.values(normalized).some(Boolean) ? normalized : null;
 }
 
-function buildSupplierReviewDetailsNote(details: SupplierReviewDetails | null): string | null {
+function buildSupplierReviewDetailsNote(
+  details: SupplierReviewDetails | null,
+): string | null {
   if (!details) {
     return null;
   }
@@ -414,7 +478,9 @@ function buildSupplierReviewDetailsNote(details: SupplierReviewDetails | null): 
     details.phone ? `Phone: ${details.phone}` : null,
   ].filter((part): part is string => Boolean(part));
 
-  return parts.length > 0 ? `Supplier details entered: ${parts.join('; ')}` : null;
+  return parts.length > 0
+    ? `Supplier details entered: ${parts.join('; ')}`
+    : null;
 }
 
 function buildWorkflowActionNote(
@@ -435,7 +501,9 @@ function isOpenWorkflowStatus(status: WorkflowStatus): boolean {
   return OPEN_WORKFLOW_STATUSES.has(status);
 }
 
-function normalizeSupplierIdentityToken(value: string | null | undefined): string {
+function normalizeSupplierIdentityToken(
+  value: string | null | undefined,
+): string {
   return (value ?? '')
     .trim()
     .toLowerCase()
@@ -469,12 +537,15 @@ function isInternalSupplierDomain(domain: string | null | undefined): boolean {
     const normalizedEntry = normalizeEmailDomain(entry);
     return (
       Boolean(normalizedEntry) &&
-      (normalizedDomain === normalizedEntry || normalizedDomain.endsWith(`.${normalizedEntry}`))
+      (normalizedDomain === normalizedEntry ||
+        normalizedDomain.endsWith(`.${normalizedEntry}`))
     );
   });
 }
 
-function isInternalSupplierCompanyName(candidateName: string | null | undefined): boolean {
+function isInternalSupplierCompanyName(
+  candidateName: string | null | undefined,
+): boolean {
   const normalizedCandidate = normalizeSupplierIdentityToken(candidateName);
 
   if (!normalizedCandidate) {
@@ -506,7 +577,11 @@ function collectExternalEmails(
       const normalizedEmail = match.trim().toLowerCase();
       const domain = extractEmailDomain(normalizedEmail);
 
-      if (!normalizedEmail || isInternalSupplierDomain(domain) || seen.has(normalizedEmail)) {
+      if (
+        !normalizedEmail ||
+        isInternalSupplierDomain(domain) ||
+        seen.has(normalizedEmail)
+      ) {
         continue;
       }
 
@@ -533,7 +608,12 @@ function collectPhoneNumbers(
 
     for (const line of lines) {
       const trimmed = line.trim();
-      if (!trimmed || !/(?:^|\b)(?:m|mob|mobile|tel|telephone|phone|fax)\s*:|\+\d/.test(trimmed)) {
+      if (
+        !trimmed ||
+        !/(?:^|\b)(?:m|mob|mobile|tel|telephone|phone|fax)\s*:|\+\d/.test(
+          trimmed,
+        )
+      ) {
         continue;
       }
 
@@ -556,11 +636,15 @@ function collectPhoneNumbers(
   return phones;
 }
 
-function extractContactName(documents: WorkflowInboundEmailDocumentRecord[]): string | null {
+function extractContactName(
+  documents: WorkflowInboundEmailDocumentRecord[],
+): string | null {
   const preferredDocuments = documents.filter((document) =>
     ['BODY_FORWARDED', 'SIGNATURE'].includes(document.kind),
   );
-  const text = preferredDocuments.map((document) => document.textContent).join('\n\n');
+  const text = preferredDocuments
+    .map((document) => document.textContent)
+    .join('\n\n');
 
   const signoffMatch = text.match(
     /(?:kind regards|best regards|regards|thanks|many thanks|best)[,\s]*\n+([A-Z][A-Za-z'’-]+(?:[ \t]+[A-Z][A-Za-z'’-]+){1,2})/i,
@@ -574,14 +658,19 @@ function extractContactName(documents: WorkflowInboundEmailDocumentRecord[]): st
   return candidate;
 }
 
-function deriveSupplierContact(detail: WorkflowDetailRecord): SupplierContactDetails | null {
+function deriveSupplierContact(
+  detail: WorkflowDetailRecord,
+): SupplierContactDetails | null {
   const documents = detail.inboundEmail?.documents ?? [];
   const externalEmails = collectExternalEmails(documents);
   const externalPhones = collectPhoneNumbers(documents);
-  const supplierCandidates = (detail.emailDerivedOffer?.resolutionCandidates ?? [])
+  const supplierCandidates = (
+    detail.emailDerivedOffer?.resolutionCandidates ?? []
+  )
     .filter(
       (candidate) =>
-        candidate.entityType === 'SUPPLIER' && !isInternalSupplierCompanyName(candidate.candidateName),
+        candidate.entityType === 'SUPPLIER' &&
+        !isInternalSupplierCompanyName(candidate.candidateName),
     )
     .sort(
       (left, right) =>
@@ -590,7 +679,11 @@ function deriveSupplierContact(detail: WorkflowDetailRecord): SupplierContactDet
         left.candidateName.localeCompare(right.candidateName),
     );
   const companyNames = Array.from(
-    new Set(supplierCandidates.map((candidate) => candidate.candidateName.trim()).filter(Boolean)),
+    new Set(
+      supplierCandidates
+        .map((candidate) => candidate.candidateName.trim())
+        .filter(Boolean),
+    ),
   ).slice(0, 2);
   const email = externalEmails[0] ?? null;
   const phone = externalPhones[0] ?? null;
@@ -599,10 +692,18 @@ function deriveSupplierContact(detail: WorkflowDetailRecord): SupplierContactDet
     ...externalEmails.map((item) => item.kind),
     ...externalPhones.map((item) => item.kind),
   ]);
-  if (supplierCandidates.some((candidate) => candidate.reason.startsWith('forwarded_'))) {
+  if (
+    supplierCandidates.some((candidate) =>
+      candidate.reason.startsWith('forwarded_'),
+    )
+  ) {
     sourceKinds.add('BODY_FORWARDED');
   }
-  if (supplierCandidates.some((candidate) => candidate.reason === 'attachment_filename_company_cue')) {
+  if (
+    supplierCandidates.some(
+      (candidate) => candidate.reason === 'attachment_filename_company_cue',
+    )
+  ) {
     sourceKinds.add('ATTACHMENT_FILENAME');
   }
   const source =
@@ -610,9 +711,9 @@ function deriveSupplierContact(detail: WorkflowDetailRecord): SupplierContactDet
       ? 'Forwarded email'
       : sourceKinds.has('ATTACHMENT_FILENAME')
         ? 'Attachment filename'
-      : sourceKinds.size > 0
-        ? 'Email body'
-        : null;
+        : sourceKinds.size > 0
+          ? 'Email body'
+          : null;
 
   const supplierContact: SupplierContactDetails = {
     companyName: companyNames.length > 0 ? companyNames.join(' / ') : null,
@@ -623,17 +724,24 @@ function deriveSupplierContact(detail: WorkflowDetailRecord): SupplierContactDet
     source,
   };
 
-  return Object.values(supplierContact).some((value) => Boolean(value)) ? supplierContact : null;
+  return Object.values(supplierContact).some((value) => Boolean(value))
+    ? supplierContact
+    : null;
 }
 
-function createWorkflowRepository(client: typeof db = db, inTransaction = false): WorkflowRepository {
+function createWorkflowRepository(
+  client: typeof db = db,
+  inTransaction = false,
+): WorkflowRepository {
   return {
     transaction: async (callback) => {
       if (inTransaction) {
         return callback(createWorkflowRepository(client, true));
       }
 
-      return db.$transaction(async (tx) => callback(createWorkflowRepository(tx as never, true)));
+      return db.$transaction(async (tx) =>
+        callback(createWorkflowRepository(tx as never, true)),
+      );
     },
     findWorkflowItemByOfferId: async (emailDerivedOfferId) =>
       client.offerWorkflowItem.findUnique({
@@ -802,12 +910,16 @@ function createWorkflowRepository(client: typeof db = db, inTransaction = false)
         where.hasUnknownSupplierQualification = true;
       }
       if (typeof filters.hasBuyDecision === 'boolean') {
-        where.buyDecision = filters.hasBuyDecision ? { isNot: null } : { is: null };
+        where.buyDecision = filters.hasBuyDecision
+          ? { isNot: null }
+          : { is: null };
       }
 
-      const orderBy = (filters.staleFirst
-        ? [{ priority: 'asc' }, { createdAt: 'asc' }]
-        : [{ priority: 'asc' }, { updatedAt: 'desc' }]) as never;
+      const orderBy = (
+        filters.staleFirst
+          ? [{ priority: 'asc' }, { createdAt: 'asc' }]
+          : [{ priority: 'asc' }, { updatedAt: 'desc' }]
+      ) as never;
 
       return (await client.offerWorkflowItem.findMany({
         where,
@@ -955,35 +1067,41 @@ function createWorkflowRepository(client: typeof db = db, inTransaction = false)
       client.tradeOpportunityEvent.create({
         data: data as never,
       }) as Promise<any>,
-    listRecentSalesByProductId: async ({ productId, windowStart, currencyCode }) =>
-      client.salesRecord.findMany({
-        where: {
-          productId,
-          saleDate: {
-            gte: windowStart,
+    listRecentSalesByProductId: async ({
+      productId,
+      windowStart,
+      currencyCode,
+    }) =>
+      client.salesRecord
+        .findMany({
+          where: {
+            productId,
+            saleDate: {
+              gte: windowStart,
+            },
+            currencyCode,
           },
-          currencyCode,
-        },
-        include: {
-          customer: {
-            select: {
-              id: true,
-              name: true,
+          include: {
+            customer: {
+              select: {
+                id: true,
+                name: true,
+              },
             },
           },
-        },
-        orderBy: [{ saleDate: 'desc' }],
-      }).then((items) =>
-        items.map((item) => ({
-          customerId: item.customerId,
-          customerName: item.customer.name,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          totalRevenue: item.totalRevenue,
-          saleDate: item.saleDate,
-          currencyCode: item.currencyCode,
-        })),
-      ) as Promise<any>,
+          orderBy: [{ saleDate: 'desc' }],
+        })
+        .then((items) =>
+          items.map((item) => ({
+            customerId: item.customerId,
+            customerName: item.customer.name,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            totalRevenue: item.totalRevenue,
+            saleDate: item.saleDate,
+            currencyCode: item.currencyCode,
+          })),
+        ) as Promise<any>,
   };
 }
 
@@ -995,12 +1113,19 @@ function buildWorkflowFlags(input: SyncWorkflowItemInput): {
   const selectedSuppliers = input.resolutionCandidates.filter(
     (candidate) => candidate.entityType === 'SUPPLIER' && candidate.selected,
   );
-  const selectedResolvedSuppliers = selectedSuppliers.filter((candidate) => Boolean(candidate.candidateId));
+  const selectedResolvedSuppliers = selectedSuppliers.filter((candidate) =>
+    Boolean(candidate.candidateId),
+  );
   const supplierCandidates = input.resolutionCandidates.filter(
     (candidate) => candidate.entityType === 'SUPPLIER',
   );
   const primaryConflictSupplierCandidates = supplierCandidates.filter(
-    (candidate) => !['body_company_cue', 'attachment_text_company_cue', 'attachment_filename_company_cue'].includes(candidate.reason),
+    (candidate) =>
+      ![
+        'body_company_cue',
+        'attachment_text_company_cue',
+        'attachment_filename_company_cue',
+      ].includes(candidate.reason),
   );
   const manufacturerCandidates = input.resolutionCandidates.filter(
     (candidate) => candidate.entityType === 'MANUFACTURER',
@@ -1011,16 +1136,24 @@ function buildWorkflowFlags(input: SyncWorkflowItemInput): {
     hasConflictingSupplierCues:
       input.reviewReason === 'conflicting_supplier_cues' ||
       supplierCandidates.some((candidate) => {
-        if (!candidate.metadata || typeof candidate.metadata !== 'object' || Array.isArray(candidate.metadata)) {
+        if (
+          !candidate.metadata ||
+          typeof candidate.metadata !== 'object' ||
+          Array.isArray(candidate.metadata)
+        ) {
           return false;
         }
 
-        return (candidate.metadata as { ambiguous?: boolean }).ambiguous === true;
+        return (
+          (candidate.metadata as { ambiguous?: boolean }).ambiguous === true
+        );
       }) ||
-      (primaryConflictSupplierCandidates.length > 1 && selectedResolvedSuppliers.length === 0),
+      (primaryConflictSupplierCandidates.length > 1 &&
+        selectedResolvedSuppliers.length === 0),
     hasManufacturerAmbiguity:
       !input.manufacturerCandidate &&
-      manufacturerCandidates.filter((candidate) => candidate.confidence >= 50).length > 1,
+      manufacturerCandidates.filter((candidate) => candidate.confidence >= 50)
+        .length > 1,
   };
 }
 
@@ -1034,8 +1167,9 @@ function buildQualificationSnapshot(
   hasBlockedSupplier: boolean;
   qualificationRiskNote: string | null;
 } {
-  const normalizedStatus =
-    hasUnresolvedSupplier ? 'UNKNOWN' : qualificationStatus ?? 'UNKNOWN';
+  const normalizedStatus = hasUnresolvedSupplier
+    ? 'UNKNOWN'
+    : (qualificationStatus ?? 'UNKNOWN');
 
   if (normalizedStatus === 'BLOCKED') {
     return {
@@ -1043,7 +1177,8 @@ function buildQualificationSnapshot(
       hasUnknownSupplierQualification: false,
       hasRestrictedSupplier: false,
       hasBlockedSupplier: true,
-      qualificationRiskNote: 'Supplier is blocked and cannot be approved under the normal buying flow.',
+      qualificationRiskNote:
+        'Supplier is blocked and cannot be approved under the normal buying flow.',
     };
   }
 
@@ -1053,7 +1188,8 @@ function buildQualificationSnapshot(
       hasUnknownSupplierQualification: false,
       hasRestrictedSupplier: true,
       hasBlockedSupplier: false,
-      qualificationRiskNote: 'Supplier is restricted and requires explicit operator approval.',
+      qualificationRiskNote:
+        'Supplier is restricted and requires explicit operator approval.',
     };
   }
 
@@ -1079,14 +1215,17 @@ function buildQualificationSnapshot(
   };
 }
 
-function resolveSelectedEntityIds(resolutionCandidates: ResolutionCandidate[]): {
+function resolveSelectedEntityIds(
+  resolutionCandidates: ResolutionCandidate[],
+): {
   supplierId: string | null;
   productId: string | null;
 } {
   return {
     supplierId:
       resolutionCandidates.find(
-        (candidate) => candidate.entityType === 'SUPPLIER' && candidate.selected,
+        (candidate) =>
+          candidate.entityType === 'SUPPLIER' && candidate.selected,
       )?.candidateId ?? null,
     productId:
       resolutionCandidates.find(
@@ -1117,7 +1256,8 @@ export function determineWorkflowPriority(input: SyncWorkflowItemInput): {
   if (qualification.hasBlockedSupplier) {
     return {
       priority: 'HIGH',
-      priorityReason: 'blocked supplier requires immediate operator resolution before any buying action.',
+      priorityReason:
+        'blocked supplier requires immediate operator resolution before any buying action.',
       ...flags,
       ...qualification,
     };
@@ -1126,7 +1266,8 @@ export function determineWorkflowPriority(input: SyncWorkflowItemInput): {
   if (qualification.hasRestrictedSupplier) {
     return {
       priority: 'HIGH',
-      priorityReason: 'restricted supplier requires explicit internal approval and careful handling.',
+      priorityReason:
+        'restricted supplier requires explicit internal approval and careful handling.',
       ...flags,
       ...qualification,
     };
@@ -1135,7 +1276,8 @@ export function determineWorkflowPriority(input: SyncWorkflowItemInput): {
   if (flags.hasConflictingSupplierCues) {
     return {
       priority: 'HIGH',
-      priorityReason: 'conflicting supplier cues require operator review before buying.',
+      priorityReason:
+        'conflicting supplier cues require operator review before buying.',
       ...flags,
       ...qualification,
     };
@@ -1144,16 +1286,22 @@ export function determineWorkflowPriority(input: SyncWorkflowItemInput): {
   if (flags.hasUnresolvedSupplier && input.pricePresent) {
     return {
       priority: 'HIGH',
-      priorityReason: 'explicit pricing is present but supplier resolution is still unresolved.',
+      priorityReason:
+        'explicit pricing is present but supplier resolution is still unresolved.',
       ...flags,
       ...qualification,
     };
   }
 
-  if (!input.aiAssisted && input.pricePresent && (input.promotionConfidence ?? 0) >= 70) {
+  if (
+    !input.aiAssisted &&
+    input.pricePresent &&
+    (input.promotionConfidence ?? 0) >= 70
+  ) {
     return {
       priority: 'HIGH',
-      priorityReason: 'clear deterministic offer is close to promotion threshold but still needs review.',
+      priorityReason:
+        'clear deterministic offer is close to promotion threshold but still needs review.',
       ...flags,
       ...qualification,
     };
@@ -1169,7 +1317,8 @@ export function determineWorkflowPriority(input: SyncWorkflowItemInput): {
   ) {
     return {
       priority: 'MEDIUM',
-      priorityReason: 'commercially relevant offer should be reviewed in the normal operator queue.',
+      priorityReason:
+        'commercially relevant offer should be reviewed in the normal operator queue.',
       ...flags,
       ...qualification,
     };
@@ -1177,7 +1326,8 @@ export function determineWorkflowPriority(input: SyncWorkflowItemInput): {
 
   return {
     priority: 'LOW',
-    priorityReason: 'offer remains reviewable but the extraction signal is weaker than higher-priority items.',
+    priorityReason:
+      'offer remains reviewable but the extraction signal is weaker than higher-priority items.',
     ...flags,
     ...qualification,
   };
@@ -1235,21 +1385,31 @@ async function buildPriorityForSync(
   repository: WorkflowRepository,
   input: SyncWorkflowItemInput,
 ): Promise<ReturnType<typeof determineWorkflowPriority>> {
-  const selectedSupplierId = resolveSelectedEntityIds(input.resolutionCandidates).supplierId;
-  const supplierQualification =
-    selectedSupplierId ? await repository.findSupplierQualificationBySupplierId(selectedSupplierId) : null;
+  const selectedSupplierId = resolveSelectedEntityIds(
+    input.resolutionCandidates,
+  ).supplierId;
+  const supplierQualification = selectedSupplierId
+    ? await repository.findSupplierQualificationBySupplierId(selectedSupplierId)
+    : null;
 
   return determineWorkflowPriority({
     ...input,
     supplierQualificationStatus:
-      input.supplierQualificationStatus ?? supplierQualification?.qualificationStatus ?? null,
+      input.supplierQualificationStatus ??
+      supplierQualification?.qualificationStatus ??
+      null,
   });
 }
 
-function buildBuyDecisionSnapshot(workflow: WorkflowRecord, qualification: ReturnType<typeof buildQualificationSnapshot>) {
+function buildBuyDecisionSnapshot(
+  workflow: WorkflowRecord,
+  qualification: ReturnType<typeof buildQualificationSnapshot>,
+) {
   const offer = workflow.emailDerivedOffer;
   if (!offer) {
-    throw new Error('Offer workflow item is missing its staged email-derived offer.');
+    throw new Error(
+      'Offer workflow item is missing its staged email-derived offer.',
+    );
   }
 
   const selectedIds = resolveSelectedEntityIds(offer.resolutionCandidates);
@@ -1283,7 +1443,9 @@ function buildBuyDecisionSnapshot(workflow: WorkflowRecord, qualification: Retur
   };
 }
 
-function buildExecutionUpdateFromWorkflow(input: WorkflowActionInput): BuyExecutionUpdateInput {
+function buildExecutionUpdateFromWorkflow(
+  input: WorkflowActionInput,
+): BuyExecutionUpdateInput {
   return {
     actorType: input.actorType,
     actorIdentifier: input.actorIdentifier,
@@ -1303,7 +1465,9 @@ function buildExecutionUpdateFromWorkflow(input: WorkflowActionInput): BuyExecut
 async function recordWorkflowFeedbackIfPresent(
   repository: Pick<
     WorkflowRepository,
-    'findRecentMatchingFeedback' | 'createFeedback' | 'findTradeMessageDraftById'
+    | 'findRecentMatchingFeedback'
+    | 'createFeedback'
+    | 'findTradeMessageDraftById'
   >,
   workflowItem: WorkflowRecord,
   input: WorkflowActionInput,
@@ -1321,7 +1485,9 @@ async function recordWorkflowFeedbackIfPresent(
   });
 }
 
-export function createOfferWorkflowService(overrides?: Partial<WorkflowRepository>) {
+export function createOfferWorkflowService(
+  overrides?: Partial<WorkflowRepository>,
+) {
   const repository: WorkflowRepository = {
     ...createWorkflowRepository(),
     ...overrides,
@@ -1331,23 +1497,29 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
     input: WorkflowActionInput,
   ): Promise<WorkflowApprovalResult> => {
     return repository.transaction(async (txRepository) => {
-      const existing = await txRepository.findWorkflowItemById(input.workflowItemId);
+      const existing = await txRepository.findWorkflowItemById(
+        input.workflowItemId,
+      );
       if (!existing || !existing.emailDerivedOffer) {
         throw new Error('Offer workflow item not found.');
       }
 
       const actor = normalizeActor(input);
-      const supplierDetails = normalizeSupplierReviewDetails(input.supplierDetails);
+      const supplierDetails = normalizeSupplierReviewDetails(
+        input.supplierDetails,
+      );
       const actionNote = buildWorkflowActionNote(input.note, supplierDetails);
       const selectedSupplierId = resolveSelectedEntityIds(
         existing.emailDerivedOffer.resolutionCandidates,
       ).supplierId;
-      const supplierQualification =
-        selectedSupplierId
-          ? await txRepository.findSupplierQualificationBySupplierId(selectedSupplierId)
-          : null;
+      const supplierQualification = selectedSupplierId
+        ? await txRepository.findSupplierQualificationBySupplierId(
+            selectedSupplierId,
+          )
+        : null;
       const qualification = buildQualificationSnapshot(
-        supplierQualification?.qualificationStatus ?? existing.supplierQualificationStatus,
+        supplierQualification?.qualificationStatus ??
+          existing.supplierQualificationStatus,
         existing.hasUnresolvedSupplier,
       );
 
@@ -1359,7 +1531,8 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
         await txRepository.updateWorkflowItem(existing.id, {
           latestNote: blockedNote,
           hasBlockedSupplier: true,
-          supplierQualificationStatus: qualification.supplierQualificationStatus,
+          supplierQualificationStatus:
+            qualification.supplierQualificationStatus,
           qualificationRiskNote: qualification.qualificationRiskNote,
         });
         await logWorkflowEvent(
@@ -1375,7 +1548,8 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
       }
 
       if (
-        (qualification.hasRestrictedSupplier || qualification.hasUnknownSupplierQualification) &&
+        (qualification.hasRestrictedSupplier ||
+          qualification.hasUnknownSupplierQualification) &&
         input.allowQualificationRisk !== true
       ) {
         throw new Error(
@@ -1383,16 +1557,21 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
         );
       }
 
-      const updatedWorkflow = await txRepository.updateWorkflowItem(existing.id, {
-        status: 'APPROVED_TO_BUY',
-        latestNote: actionNote || existing.latestNote,
-        completedAt: null,
-        supplierQualificationStatus: qualification.supplierQualificationStatus,
-        hasUnknownSupplierQualification: qualification.hasUnknownSupplierQualification,
-        hasRestrictedSupplier: qualification.hasRestrictedSupplier,
-        hasBlockedSupplier: qualification.hasBlockedSupplier,
-        qualificationRiskNote: qualification.qualificationRiskNote,
-      });
+      const updatedWorkflow = await txRepository.updateWorkflowItem(
+        existing.id,
+        {
+          status: 'APPROVED_TO_BUY',
+          latestNote: actionNote || existing.latestNote,
+          completedAt: null,
+          supplierQualificationStatus:
+            qualification.supplierQualificationStatus,
+          hasUnknownSupplierQualification:
+            qualification.hasUnknownSupplierQualification,
+          hasRestrictedSupplier: qualification.hasRestrictedSupplier,
+          hasBlockedSupplier: qualification.hasBlockedSupplier,
+          qualificationRiskNote: qualification.qualificationRiskNote,
+        },
+      );
 
       await logWorkflowEvent(
         txRepository,
@@ -1402,14 +1581,16 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
         'APPROVED_TO_BUY',
         actor,
         actionNote,
-        {
+        buildSideEffectAuditMetadata('REVIEW_QUEUE_APPROVE_TO_BUY', {
           allowQualificationRisk: input.allowQualificationRisk === true,
           supplierDetails,
-        },
+        }),
       );
 
       const snapshot = buildBuyDecisionSnapshot(updatedWorkflow, qualification);
-      const existingDecision = await txRepository.findBuyDecisionByOfferId(existing.emailDerivedOfferId);
+      const existingDecision = await txRepository.findBuyDecisionByOfferId(
+        existing.emailDerivedOfferId,
+      );
       let decisionForTradeSync: BuyDecisionRecord;
       const buyDecisionCreated = !existingDecision;
 
@@ -1434,22 +1615,25 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
           'NOT_ORDERED',
           actor,
           actionNote,
-          {
+          buildSideEffectAuditMetadata('REVIEW_QUEUE_APPROVE_TO_BUY', {
             qualificationRiskNote: qualification.qualificationRiskNote,
             supplierDetails,
-          },
+          }),
         );
 
         decisionForTradeSync = createdDecision;
       } else {
-        const updatedDecision = await txRepository.updateBuyDecision(existingDecision.id, {
-          ...snapshot,
-          approvalStatus: 'APPROVED',
-          approvalNote: actionNote || existingDecision.approvalNote,
-          approvedByType: actor.actorType,
-          approvedByIdentifier: actor.actorIdentifier,
-          approvedAt: existingDecision.approvedAt ?? new Date(),
-        });
+        const updatedDecision = await txRepository.updateBuyDecision(
+          existingDecision.id,
+          {
+            ...snapshot,
+            approvalStatus: 'APPROVED',
+            approvalNote: actionNote || existingDecision.approvalNote,
+            approvedByType: actor.actorType,
+            approvedByIdentifier: actor.actorIdentifier,
+            approvedAt: existingDecision.approvedAt ?? new Date(),
+          },
+        );
 
         if (existingDecision.approvalStatus !== 'APPROVED') {
           await logBuyDecisionEvent(
@@ -1462,10 +1646,10 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
             updatedDecision.orderStatus,
             actor,
             actionNote,
-            {
+            buildSideEffectAuditMetadata('REVIEW_QUEUE_APPROVE_TO_BUY', {
               qualificationRiskNote: qualification.qualificationRiskNote,
               supplierDetails,
-            },
+            }),
           );
         }
 
@@ -1474,7 +1658,8 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
 
       await syncTradeOpportunityCommercialState(
         {
-          listActiveByOfferId: txRepository.listActiveTradeOpportunitiesByOfferId,
+          listActiveByOfferId:
+            txRepository.listActiveTradeOpportunitiesByOfferId,
           updateTradeOpportunity: txRepository.updateTradeOpportunity,
           createTradeOpportunityEvent: txRepository.createTradeOpportunityEvent,
         },
@@ -1490,26 +1675,34 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
       const demandMatchedTradeOpportunityResult =
         await createDemandMatchedTradeOpportunityFromApprovedBuyDecision(
           {
-            listActiveByOfferId: txRepository.listActiveTradeOpportunitiesByOfferId,
+            listActiveByOfferId:
+              txRepository.listActiveTradeOpportunitiesByOfferId,
             create: txRepository.createTradeOpportunity,
             createPolicy: txRepository.createTradeOpportunityPolicy,
-            createTradeOpportunityEvent: txRepository.createTradeOpportunityEvent,
+            createTradeOpportunityEvent:
+              txRepository.createTradeOpportunityEvent,
             listRecentSalesByProductId: txRepository.listRecentSalesByProductId,
           },
           {
             buyDecision: decisionForTradeSync,
-            sourceSupplierNameSnapshot: existing.emailDerivedOffer?.supplierCandidate ?? null,
+            sourceSupplierNameSnapshot:
+              existing.emailDerivedOffer?.supplierCandidate ?? null,
             actor,
           },
         );
-      await recordWorkflowFeedbackIfPresent(txRepository, updatedWorkflow, input);
+      await recordWorkflowFeedbackIfPresent(
+        txRepository,
+        updatedWorkflow,
+        input,
+      );
 
       return {
         item: updatedWorkflow,
         outcome: {
           buyDecisionId: decisionForTradeSync.id,
           buyDecisionCreated,
-          tradeOpportunityId: demandMatchedTradeOpportunityResult.tradeOpportunity?.id ?? null,
+          tradeOpportunityId:
+            demandMatchedTradeOpportunityResult.tradeOpportunity?.id ?? null,
           tradeOpportunityOutcome: demandMatchedTradeOpportunityResult.outcome,
         },
       };
@@ -1523,7 +1716,9 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
     ): Promise<WorkflowRecord | null> {
       return repository.transaction(async (txRepository) => {
         const actor = normalizeActor(actorInput);
-        const existing = await txRepository.findWorkflowItemByOfferId(input.emailDerivedOfferId);
+        const existing = await txRepository.findWorkflowItemByOfferId(
+          input.emailDerivedOfferId,
+        );
 
         if (input.offerStatus !== 'REVIEW_REQUIRED') {
           if (!existing || !isOpenWorkflowStatus(existing.status)) {
@@ -1567,7 +1762,8 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
           hasConflictingSupplierCues: priority.hasConflictingSupplierCues,
           hasManufacturerAmbiguity: priority.hasManufacturerAmbiguity,
           supplierQualificationStatus: priority.supplierQualificationStatus,
-          hasUnknownSupplierQualification: priority.hasUnknownSupplierQualification,
+          hasUnknownSupplierQualification:
+            priority.hasUnknownSupplierQualification,
           hasRestrictedSupplier: priority.hasRestrictedSupplier,
           hasBlockedSupplier: priority.hasBlockedSupplier,
           qualificationRiskNote: priority.qualificationRiskNote,
@@ -1628,15 +1824,21 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
       });
     },
 
-    async listWorkflowItems(filters: WorkflowListFilters = {}): Promise<WorkflowRecord[]> {
+    async listWorkflowItems(
+      filters: WorkflowListFilters = {},
+    ): Promise<WorkflowRecord[]> {
       return repository.listWorkflowItems(filters);
     },
 
-    async listWorkflowEvents(workflowItemId: string): Promise<WorkflowEventRecord[]> {
+    async listWorkflowEvents(
+      workflowItemId: string,
+    ): Promise<WorkflowEventRecord[]> {
       return repository.listWorkflowEvents(workflowItemId);
     },
 
-    async getWorkflowItem(workflowItemId: string): Promise<WorkflowDetailRecord | null> {
+    async getWorkflowItem(
+      workflowItemId: string,
+    ): Promise<WorkflowDetailRecord | null> {
       const detail = await repository.findWorkflowDetailById(workflowItemId);
       if (!detail) {
         return null;
@@ -1648,19 +1850,26 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
       };
     },
 
-    async assignWorkflowItem(input: AssignWorkflowItemInput): Promise<WorkflowRecord> {
+    async assignWorkflowItem(
+      input: AssignWorkflowItemInput,
+    ): Promise<WorkflowRecord> {
       return repository.transaction(async (txRepository) => {
-        const existing = await txRepository.findWorkflowItemById(input.workflowItemId);
+        const existing = await txRepository.findWorkflowItemById(
+          input.workflowItemId,
+        );
         if (!existing) {
           throw new Error('Offer workflow item not found.');
         }
 
         const actor = normalizeActor(input);
-        const updated = await txRepository.updateWorkflowItem(input.workflowItemId, {
-          assigneeUserId: input.assigneeUserId?.trim() || null,
-          assigneeLabel: input.assigneeLabel?.trim() || null,
-          latestNote: input.note?.trim() || existing.latestNote,
-        });
+        const updated = await txRepository.updateWorkflowItem(
+          input.workflowItemId,
+          {
+            assigneeUserId: input.assigneeUserId?.trim() || null,
+            assigneeLabel: input.assigneeLabel?.trim() || null,
+            latestNote: input.note?.trim() || existing.latestNote,
+          },
+        );
 
         await logWorkflowEvent(
           txRepository,
@@ -1682,15 +1891,20 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
 
     async addWorkflowNote(input: WorkflowActionInput): Promise<WorkflowRecord> {
       return repository.transaction(async (txRepository) => {
-        const existing = await txRepository.findWorkflowItemById(input.workflowItemId);
+        const existing = await txRepository.findWorkflowItemById(
+          input.workflowItemId,
+        );
         if (!existing) {
           throw new Error('Offer workflow item not found.');
         }
 
         const actor = normalizeActor(input);
-        const updated = await txRepository.updateWorkflowItem(input.workflowItemId, {
-          latestNote: input.note?.trim() || existing.latestNote,
-        });
+        const updated = await txRepository.updateWorkflowItem(
+          input.workflowItemId,
+          {
+            latestNote: input.note?.trim() || existing.latestNote,
+          },
+        );
 
         await logWorkflowEvent(
           txRepository,
@@ -1708,16 +1922,21 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
 
     async markInReview(input: WorkflowActionInput): Promise<WorkflowRecord> {
       return repository.transaction(async (txRepository) => {
-        const existing = await txRepository.findWorkflowItemById(input.workflowItemId);
+        const existing = await txRepository.findWorkflowItemById(
+          input.workflowItemId,
+        );
         if (!existing) {
           throw new Error('Offer workflow item not found.');
         }
 
-        const updated = await txRepository.updateWorkflowItem(input.workflowItemId, {
-          status: 'IN_REVIEW',
-          latestNote: input.note?.trim() || existing.latestNote,
-          completedAt: null,
-        });
+        const updated = await txRepository.updateWorkflowItem(
+          input.workflowItemId,
+          {
+            status: 'IN_REVIEW',
+            latestNote: input.note?.trim() || existing.latestNote,
+            completedAt: null,
+          },
+        );
 
         await logWorkflowEvent(
           txRepository,
@@ -1735,16 +1954,21 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
 
     async markNeedsInfo(input: WorkflowActionInput): Promise<WorkflowRecord> {
       return repository.transaction(async (txRepository) => {
-        const existing = await txRepository.findWorkflowItemById(input.workflowItemId);
+        const existing = await txRepository.findWorkflowItemById(
+          input.workflowItemId,
+        );
         if (!existing) {
           throw new Error('Offer workflow item not found.');
         }
 
-        const updated = await txRepository.updateWorkflowItem(input.workflowItemId, {
-          status: 'NEEDS_INFO',
-          latestNote: input.note?.trim() || existing.latestNote,
-          completedAt: null,
-        });
+        const updated = await txRepository.updateWorkflowItem(
+          input.workflowItemId,
+          {
+            status: 'NEEDS_INFO',
+            latestNote: input.note?.trim() || existing.latestNote,
+            completedAt: null,
+          },
+        );
 
         await logWorkflowEvent(
           txRepository,
@@ -1760,7 +1984,9 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
       });
     },
 
-    async approveToBuyWithOutcome(input: WorkflowActionInput): Promise<WorkflowApprovalResult> {
+    async approveToBuyWithOutcome(
+      input: WorkflowActionInput,
+    ): Promise<WorkflowApprovalResult> {
       return approveToBuyWithOutcome(input);
     },
 
@@ -1769,19 +1995,26 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
       return result.item;
     },
 
-    async rejectWorkflowItem(input: WorkflowActionInput): Promise<WorkflowRecord> {
+    async rejectWorkflowItem(
+      input: WorkflowActionInput,
+    ): Promise<WorkflowRecord> {
       return repository.transaction(async (txRepository) => {
-        const existing = await txRepository.findWorkflowItemById(input.workflowItemId);
+        const existing = await txRepository.findWorkflowItemById(
+          input.workflowItemId,
+        );
         if (!existing) {
           throw new Error('Offer workflow item not found.');
         }
 
         const actor = normalizeActor(input);
-        const updatedWorkflow = await txRepository.updateWorkflowItem(input.workflowItemId, {
-          status: 'REJECTED',
-          latestNote: input.note?.trim() || existing.latestNote,
-          completedAt: new Date(),
-        });
+        const updatedWorkflow = await txRepository.updateWorkflowItem(
+          input.workflowItemId,
+          {
+            status: 'REJECTED',
+            latestNote: input.note?.trim() || existing.latestNote,
+            completedAt: new Date(),
+          },
+        );
 
         await logWorkflowEvent(
           txRepository,
@@ -1793,23 +2026,31 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
           input.note,
         );
 
-        const existingDecision = await txRepository.findBuyDecisionByOfferId(existing.emailDerivedOfferId);
+        const existingDecision = await txRepository.findBuyDecisionByOfferId(
+          existing.emailDerivedOfferId,
+        );
         if (existingDecision) {
           const nextApprovalStatus: BuyDecisionApprovalStatus =
-            existingDecision.orderStatus === 'NOT_ORDERED' ? 'REJECTED' : 'CANCELLED';
+            existingDecision.orderStatus === 'NOT_ORDERED'
+              ? 'REJECTED'
+              : 'CANCELLED';
           const nextOrderStatus: BuyDecisionOrderStatus =
             existingDecision.orderStatus === 'NOT_ORDERED'
               ? existingDecision.orderStatus
               : 'CANCELLED';
 
-          const updatedDecision = await txRepository.updateBuyDecision(existingDecision.id, {
-            approvalStatus: nextApprovalStatus,
-            approvalNote: input.note?.trim() || existingDecision.approvalNote,
-            orderStatus: nextOrderStatus,
-          });
+          const updatedDecision = await txRepository.updateBuyDecision(
+            existingDecision.id,
+            {
+              approvalStatus: nextApprovalStatus,
+              approvalNote: input.note?.trim() || existingDecision.approvalNote,
+              orderStatus: nextOrderStatus,
+            },
+          );
 
           if (
-            existingDecision.approvalStatus !== updatedDecision.approvalStatus ||
+            existingDecision.approvalStatus !==
+              updatedDecision.approvalStatus ||
             existingDecision.orderStatus !== updatedDecision.orderStatus
           ) {
             await logBuyDecisionEvent(
@@ -1829,7 +2070,8 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
             updatedDecision.orderStatus === 'CANCELLED'
               ? await upsertExecutionForBuyDecision(
                   {
-                    findByBuyDecisionId: txRepository.findBuyExecutionByDecisionId,
+                    findByBuyDecisionId:
+                      txRepository.findBuyExecutionByDecisionId,
                     create: txRepository.createBuyExecution,
                     update: txRepository.updateBuyExecution,
                     createEvent: txRepository.createBuyExecutionEvent,
@@ -1842,13 +2084,15 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
                     fulfillmentStatus: 'CANCELLED',
                   },
                 )
-              : updatedDecision.execution ?? null;
+              : (updatedDecision.execution ?? null);
 
           await syncTradeOpportunityCommercialState(
             {
-              listActiveByOfferId: txRepository.listActiveTradeOpportunitiesByOfferId,
+              listActiveByOfferId:
+                txRepository.listActiveTradeOpportunitiesByOfferId,
               updateTradeOpportunity: txRepository.updateTradeOpportunity,
-              createTradeOpportunityEvent: txRepository.createTradeOpportunityEvent,
+              createTradeOpportunityEvent:
+                txRepository.createTradeOpportunityEvent,
             },
             {
               emailDerivedOfferId: existing.emailDerivedOfferId,
@@ -1859,7 +2103,11 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
             },
           );
         }
-        await recordWorkflowFeedbackIfPresent(txRepository, updatedWorkflow, input);
+        await recordWorkflowFeedbackIfPresent(
+          txRepository,
+          updatedWorkflow,
+          input,
+        );
 
         return updatedWorkflow;
       });
@@ -1867,17 +2115,22 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
 
     async markOrdered(input: WorkflowActionInput): Promise<WorkflowRecord> {
       return repository.transaction(async (txRepository) => {
-        const existing = await txRepository.findWorkflowItemById(input.workflowItemId);
+        const existing = await txRepository.findWorkflowItemById(
+          input.workflowItemId,
+        );
         if (!existing || !existing.emailDerivedOffer) {
           throw new Error('Offer workflow item not found.');
         }
 
         const actor = normalizeActor(input);
-        const updatedWorkflow = await txRepository.updateWorkflowItem(input.workflowItemId, {
-          status: 'ORDERED',
-          latestNote: input.note?.trim() || existing.latestNote,
-          completedAt: null,
-        });
+        const updatedWorkflow = await txRepository.updateWorkflowItem(
+          input.workflowItemId,
+          {
+            status: 'ORDERED',
+            latestNote: input.note?.trim() || existing.latestNote,
+            completedAt: null,
+          },
+        );
 
         await logWorkflowEvent(
           txRepository,
@@ -1887,23 +2140,31 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
           'ORDERED',
           actor,
           input.note,
-          {
-            externalOrderReference: input.externalOrderReference?.trim() || null,
-          },
+          buildSideEffectAuditMetadata('REVIEW_QUEUE_MARK_ORDERED', {
+            externalOrderReference:
+              input.externalOrderReference?.trim() || null,
+          }),
         );
 
-        const existingDecision = await txRepository.findBuyDecisionByOfferId(existing.emailDerivedOfferId);
+        const existingDecision = await txRepository.findBuyDecisionByOfferId(
+          existing.emailDerivedOfferId,
+        );
         if (!existingDecision) {
           throw new Error('Cannot mark ordered before a buy decision exists.');
         }
 
-        const externalOrderReference = input.externalOrderReference?.trim() || existingDecision.externalOrderReference;
+        const externalOrderReference =
+          input.externalOrderReference?.trim() ||
+          existingDecision.externalOrderReference;
         const nextOrderedAt = existingDecision.orderedAt ?? new Date();
-        const updatedDecision = await txRepository.updateBuyDecision(existingDecision.id, {
-          orderStatus: 'ORDERED',
-          orderedAt: nextOrderedAt,
-          externalOrderReference,
-        });
+        const updatedDecision = await txRepository.updateBuyDecision(
+          existingDecision.id,
+          {
+            orderStatus: 'ORDERED',
+            orderedAt: nextOrderedAt,
+            externalOrderReference,
+          },
+        );
 
         if (
           existingDecision.orderStatus !== 'ORDERED' ||
@@ -1919,9 +2180,9 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
             updatedDecision.orderStatus,
             actor,
             input.note,
-            {
+            buildSideEffectAuditMetadata('REVIEW_QUEUE_MARK_ORDERED', {
               externalOrderReference,
-            },
+            }),
           );
         }
 
@@ -1944,9 +2205,11 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
 
         await syncTradeOpportunityCommercialState(
           {
-            listActiveByOfferId: txRepository.listActiveTradeOpportunitiesByOfferId,
+            listActiveByOfferId:
+              txRepository.listActiveTradeOpportunitiesByOfferId,
             updateTradeOpportunity: txRepository.updateTradeOpportunity,
-            createTradeOpportunityEvent: txRepository.createTradeOpportunityEvent,
+            createTradeOpportunityEvent:
+              txRepository.createTradeOpportunityEvent,
           },
           {
             emailDerivedOfferId: existing.emailDerivedOfferId,
@@ -1961,18 +2224,25 @@ export function createOfferWorkflowService(overrides?: Partial<WorkflowRepositor
       });
     },
 
-    async closeWorkflowItem(input: WorkflowActionInput): Promise<WorkflowRecord> {
+    async closeWorkflowItem(
+      input: WorkflowActionInput,
+    ): Promise<WorkflowRecord> {
       return repository.transaction(async (txRepository) => {
-        const existing = await txRepository.findWorkflowItemById(input.workflowItemId);
+        const existing = await txRepository.findWorkflowItemById(
+          input.workflowItemId,
+        );
         if (!existing) {
           throw new Error('Offer workflow item not found.');
         }
 
-        const updated = await txRepository.updateWorkflowItem(input.workflowItemId, {
-          status: 'CLOSED',
-          latestNote: input.note?.trim() || existing.latestNote,
-          completedAt: new Date(),
-        });
+        const updated = await txRepository.updateWorkflowItem(
+          input.workflowItemId,
+          {
+            status: 'CLOSED',
+            latestNote: input.note?.trim() || existing.latestNote,
+            completedAt: new Date(),
+          },
+        );
 
         await logWorkflowEvent(
           txRepository,

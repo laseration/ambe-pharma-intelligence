@@ -55,7 +55,9 @@ export function parseXlsxFile(file: UploadFile): ParsedFileResult {
     }
 
     if (current.parsed.rows.length !== best.parsed.rows.length) {
-      return current.parsed.rows.length > best.parsed.rows.length ? current : best;
+      return current.parsed.rows.length > best.parsed.rows.length
+        ? current
+        : best;
     }
 
     return current;
@@ -71,7 +73,9 @@ export function parseXlsxFile(file: UploadFile): ParsedFileResult {
         `Selected worksheet "${selectedSheet.sheetName}" instead of the first sheet because it looked like the best tabular data.`,
       );
     } else {
-      warnings.unshift('Imported the worksheet that looked most like tabular data.');
+      warnings.unshift(
+        'Imported the worksheet that looked most like tabular data.',
+      );
     }
   }
 

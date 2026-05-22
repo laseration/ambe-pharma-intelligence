@@ -17,7 +17,11 @@ function parseTimestamp(value: string): number | null {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
-export function InboxNavBadge({ href, label, recentEmailTimestamps }: InboxNavBadgeProps) {
+export function InboxNavBadge({
+  href,
+  label,
+  recentEmailTimestamps,
+}: InboxNavBadgeProps) {
   const pathname = usePathname();
   const [lastSeenAt, setLastSeenAt] = useState<number | null>(null);
   const isInboxPage = pathname === '/dashboard/inbox';
@@ -26,7 +30,9 @@ export function InboxNavBadge({ href, label, recentEmailTimestamps }: InboxNavBa
     try {
       const rawValue = window.localStorage.getItem(LAST_INBOX_SEEN_AT_KEY);
       const parsedValue = rawValue ? Number(rawValue) : null;
-      setLastSeenAt(parsedValue && Number.isFinite(parsedValue) ? parsedValue : null);
+      setLastSeenAt(
+        parsedValue && Number.isFinite(parsedValue) ? parsedValue : null,
+      );
     } catch {
       setLastSeenAt(null);
     }
@@ -66,10 +72,13 @@ export function InboxNavBadge({ href, label, recentEmailTimestamps }: InboxNavBa
 
   return (
     <Link href={href}>
-        <span className="nav-link-content">
+      <span className="nav-link-content">
         <span>{label}</span>
         {unreadCount > 0 ? (
-          <span className="nav-badge" aria-label={`${unreadCount > 9 ? '9+' : unreadCount} unread inbox emails`}>
+          <span
+            className="nav-badge"
+            aria-label={`${unreadCount > 9 ? '9+' : unreadCount} unread inbox emails`}
+          >
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         ) : null}

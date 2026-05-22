@@ -27,8 +27,56 @@ const ROLE_RANK: Record<InternalApiRole, number> = {
   admin: 2,
 };
 
-function isAuthEnforced(): boolean {
-  return env.nodeEnv === 'production' || Boolean(env.internalApiKey) || Boolean(env.internalAdminApiKey);
+function isLocalDatabaseHost(host: string): boolean {
+  const normalizedHost = host.trim().toLowerCase();
+
+  return (
+    normalizedHost === 'localhost' ||
+    normalizedHost === '127.0.0.1' ||
+    normalizedHost === '::1' ||
+    normalizedHost.endsWith('.local')
+  );
+}
+
+function hasLiveLookingDatabaseConfig(): boolean {
+  return Boolean(
+    env.databaseUrl &&
+    env.databaseHost &&
+    !isLocalDatabaseHost(env.databaseHost),
+  );
+}
+
+function hasSideEffectIntegrationConfig(): boolean {
+  return Boolean(
+    env.telegramBotToken ||
+    env.telegramInternalChatId ||
+    env.telegramPollingEnabled ||
+    env.emailAlertsEnabled ||
+    env.emailInboundPollingEnabled ||
+    env.microsoftMailTenantId ||
+    env.microsoftMailClientId ||
+    env.microsoftMailClientSecret ||
+    env.microsoftGraphRefreshToken ||
+    env.microsoftGraphSenderMailbox ||
+    env.microsoftStorageTenantId ||
+    env.microsoftStorageClientId ||
+    env.microsoftStorageClientSecret ||
+    env.sharePointAccountOpeningEnabled ||
+    env.oneDriveAccountOpeningEnabled ||
+    env.openAiApiKey ||
+    env.openAiParserEnabled ||
+    env.openAiEmailReviewEnabled,
+  );
+}
+
+export function isInternalAuthEnforced(): boolean {
+  return (
+    env.nodeEnv === 'production' ||
+    Boolean(env.internalApiKey) ||
+    Boolean(env.internalAdminApiKey) ||
+    hasLiveLookingDatabaseConfig() ||
+    hasSideEffectIntegrationConfig()
+  );
 }
 
 function constantTimeEqual(left: string, right: string): boolean {
@@ -42,12 +90,20 @@ function constantTimeEqual(left: string, right: string): boolean {
   return crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function deriveRoleFromApiKey(providedApiKey: string): InternalAuthenticatedRole | null {
-  if (env.internalAdminApiKey && constantTimeEqual(env.internalAdminApiKey, providedApiKey)) {
+function deriveRoleFromApiKey(
+  providedApiKey: string,
+): InternalAuthenticatedRole | null {
+  if (
+    env.internalAdminApiKey &&
+    constantTimeEqual(env.internalAdminApiKey, providedApiKey)
+  ) {
     return 'admin';
   }
 
-  if (env.internalApiKey && constantTimeEqual(env.internalApiKey, providedApiKey)) {
+  if (
+    env.internalApiKey &&
+    constantTimeEqual(env.internalApiKey, providedApiKey)
+  ) {
     return 'operator';
   }
 
@@ -56,7 +112,9 @@ function deriveRoleFromApiKey(providedApiKey: string): InternalAuthenticatedRole
 
 function normalizeCallerLabel(request: Request): string | null {
   const rawValue =
-    request.header('x-internal-caller-name') ?? request.header('x-internal-client-id') ?? null;
+    request.header('x-internal-caller-name') ??
+    request.header('x-internal-client-id') ??
+    null;
   const normalized = rawValue?.trim();
 
   if (!normalized) {
@@ -66,11 +124,16 @@ function normalizeCallerLabel(request: Request): string | null {
   return normalized.slice(0, 128);
 }
 
-function buildAuditActorIdentifier(role: InternalAuthenticatedRole, callerLabel: string | null): string {
+function buildAuditActorIdentifier(
+  role: InternalAuthenticatedRole,
+  callerLabel: string | null,
+): string {
   return callerLabel ? `internal-${role}:${callerLabel}` : `internal-${role}`;
 }
 
-export function getInternalAuthContext(request: Request): InternalAuthContext | null {
+export function getInternalAuthContext(
+  request: Request,
+): InternalAuthContext | null {
   return request.internalAuth ?? null;
 }
 
@@ -85,13 +148,17 @@ export function resolveInternalActor(
   return {
     actorType: actor.actorType?.trim() || defaultActorType,
     actorIdentifier:
-      actor.actorIdentifier?.trim() || getInternalAuthContext(request)?.auditActorIdentifier || null,
+      actor.actorIdentifier?.trim() ||
+      getInternalAuthContext(request)?.auditActorIdentifier ||
+      null,
   };
 }
 
-export function requireInternalAccess(minimumRole: InternalApiRole = 'viewer'): RequestHandler {
+export function requireInternalAccess(
+  minimumRole: InternalApiRole = 'viewer',
+): RequestHandler {
   return (request, _response, next) => {
-    if (!isAuthEnforced()) {
+    if (!isInternalAuthEnforced()) {
       next();
       return;
     }
