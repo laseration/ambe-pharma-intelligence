@@ -11,6 +11,7 @@ import { logger } from '../../lib/logger';
 import { offerWorkflowService } from '../../reviewQueue/workflowService';
 import { getLearnedResolutionHints } from '../../corrections/service';
 import { extractAttachmentText } from '../attachmentTextExtraction';
+import { classifyInboundDocument } from './documentClassifier';
 import {
   normalizeEmailTextForParsing,
   parseStructuredPriceEmailBody,
@@ -113,6 +114,28 @@ const GENERIC_ATTACHMENT_SUPPLIER_WORDS = new Set([
   'wholesale',
 ]);
 
+function tableHeadersFromDocumentText(text: string): string[] {
+  const firstLine = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+
+  if (!firstLine) {
+    return [];
+  }
+
+  return firstLine
+    .split(/,|\t|;/)
+    .map((header) => header.trim())
+    .filter(Boolean);
+}
+
+function classifierAttachmentId(input: {
+  label: string | null;
+  documentIndex: number;
+}) {
+  return input.label || `document-${input.documentIndex}`;
+}
 function buildSupplierFamilyKey(value: string | null | undefined): string {
   let normalized = normalizeSupplierIdentityToken(value);
 
@@ -754,6 +777,7 @@ export async function decomposeEmail(
         size: attachment.size ?? content.byteLength,
         contentId: attachment.contentId ?? null,
         disposition: attachment.disposition ?? null,
+        graphAttachmentId: attachment.graphAttachmentId ?? null,
       }));
 
     if (extractedAttachmentText?.text) {
@@ -1963,6 +1987,52 @@ export async function stageInboundEmail(
     ),
   );
 
+  const documentClassification = classifyInboundDocument({
+    fromEmail: message.from,
+    fromName: message.fromName ?? null,
+    senderEmail: message.sender ?? null,
+    senderName: message.senderName ?? null,
+    replyTo: message.replyTo ?? null,
+    senderDomain: extractSenderDomain(message.from),
+    subject: message.subject ?? null,
+    bodyText: message.bodyText ?? null,
+    internetMessageHeaders: message.internetMessageHeaders ?? null,
+    attachments: (message.attachments ?? []).map((attachment, index) => ({
+      attachmentId:
+        attachment.graphAttachmentId ??
+        attachment.contentId ??
+        attachment.fileName ??
+        `attachment-${index + 1}`,
+      fileName: attachment.fileName ?? null,
+      mimeType: attachment.mimeType ?? null,
+      disposition: attachment.disposition ?? null,
+    })),
+    attachmentTexts: documents
+      .filter((document) => document.kind === 'ATTACHMENT_TEXT')
+      .map((document) => ({
+        attachmentId: classifierAttachmentId({
+          label: document.label,
+          documentIndex: document.documentIndex,
+        }),
+        fileName: document.label,
+        text: document.textContent,
+        method: 'PDF_TEXT',
+      })),
+    tables: documents
+      .filter((document) => document.kind === 'ATTACHMENT_TABLE')
+      .map((document) => ({
+        attachmentId: classifierAttachmentId({
+          label: document.label,
+          documentIndex: document.documentIndex,
+        }),
+        fileName: document.label,
+        headers: tableHeadersFromDocumentText(document.textContent),
+      })),
+    trustedSender: sourceTrustScore >= 55,
+    knownSupplierMappings: env.emailInboundSupplierMappings,
+    sourceTemplateFingerprint,
+  });
+
   const deterministicRun = await db.emailExtractionRun.create({
     data: {
       inboundEmailId: inboundEmail.id,
@@ -1972,9 +2042,37 @@ export async function stageInboundEmail(
       notes: {
         ignored: result.ignored,
         triageStatus,
+        documentClassification: {
+          runnerVersion: documentClassification.runnerVersion,
+          primaryClass: documentClassification.primaryClass,
+          routing: documentClassification.routing,
+          confidence: documentClassification.confidence,
+          score: documentClassification.score,
+          safeToAutoRoute: documentClassification.safeToAutoRoute,
+          conflicts: documentClassification.conflicts,
+          attachmentDecisions: documentClassification.attachmentDecisions,
+        },
       },
     },
   });
+
+  if (
+    documentClassification.conflicts.length > 0 ||
+    [
+      'ACCOUNT_OPENING_REVIEW',
+      'SUPPLIER_CONTACT_REVIEW',
+      'SUPPLIER_ONBOARDING_REVIEW',
+    ].includes(documentClassification.routing)
+  ) {
+    await db.inboundEmail.update({
+      where: { id: inboundEmail.id },
+      data: {
+        processingStatus: result.ignored ? 'REJECTED' : 'REVIEW_REQUIRED',
+        reviewReason: documentClassification.reason,
+      },
+    });
+    return;
+  }
 
   const deterministicOffers = dedupeOffers(
     documents.flatMap((document) => {

@@ -6,7 +6,6 @@ import {
   upsertAccountOpeningCase,
 } from '../../accountOpening/service';
 import { env } from '../../config/env';
-import { classifyEmailRoute } from '../classification';
 import { extractAttachmentText } from '../attachmentTextExtraction';
 import {
   parseStructuredPriceEmailBody,
@@ -40,6 +39,11 @@ import {
   type EmailTriageParserConfidence,
 } from './triage';
 import { stageInboundEmailSafely } from './pipeline';
+import {
+  classifyInboundDocument,
+  type ClassificationDecision,
+  type DocumentClassifierTable,
+} from './documentClassifier';
 import type {
   EmailInboundDependencies,
   EmailInboundItemResult,
@@ -89,6 +93,94 @@ function createUploadFile(
     mimetype: attachment.mimeType || 'application/octet-stream',
     originalname: attachment.fileName || 'email-attachment',
     size: attachment.size ?? attachment.buffer.byteLength,
+  };
+}
+
+function extractSenderDomain(senderEmail: string): string | null {
+  if (!senderEmail.includes('@')) {
+    return null;
+  }
+
+  return senderEmail.split('@').pop()?.trim().toLowerCase() || null;
+}
+
+function buildClassifierTables(input: {
+  attachments: NormalizedEmailAttachment[];
+  dependencies: Pick<EmailInboundDependencies, 'parseUploadedFile' | 'logger'>;
+  correlationId: string | null;
+}): DocumentClassifierTable[] {
+  const tables: DocumentClassifierTable[] = [];
+
+  for (const attachment of input.attachments) {
+    if (attachment.fileType !== 'CSV' && attachment.fileType !== 'XLSX') {
+      continue;
+    }
+
+    const uploadFile = createUploadFile(attachment);
+    if (!uploadFile) {
+      continue;
+    }
+
+    try {
+      const parsed = input.dependencies.parseUploadedFile(uploadFile);
+      const headers = Array.from(
+        new Set(parsed.rows.flatMap((row) => Object.keys(row))),
+      );
+
+      tables.push({
+        fileName: attachment.fileName,
+        headers,
+        rows: parsed.rows.slice(0, 5),
+      });
+    } catch (error) {
+      input.dependencies.logger.warn(
+        'Skipped attachment table extraction for inbound document classification',
+        {
+          ...(input.correlationId
+            ? { correlationId: input.correlationId }
+            : {}),
+          fileName: attachment.fileName,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
+  }
+
+  return tables;
+}
+
+function buildDocumentClassificationReviewItem(input: {
+  message: EmailInboundMessage;
+  senderEmail: string;
+  subject: string;
+  bodyText: string;
+  attachments: NormalizedEmailAttachment[];
+  classification: ClassificationDecision;
+}): EmailInboundItemResult {
+  const firstAttachment = input.attachments[0] ?? null;
+
+  return {
+    processingStatus:
+      input.classification.routing === 'MANUAL_REVIEW'
+        ? 'NEEDS_REVIEW'
+        : 'REVIEW_REQUIRED',
+    inferredImportType: null,
+    confidence: input.classification.confidence === 'LOW' ? 'LOW' : 'HIGH',
+    reason: input.classification.reason,
+    fileType: firstAttachment?.fileType ?? 'UNKNOWN',
+    attachment: {
+      fileName: firstAttachment?.fileName ?? null,
+      mimeType: firstAttachment?.mimeType ?? null,
+      size: firstAttachment?.size ?? null,
+      contentId: firstAttachment?.contentId ?? null,
+      disposition: firstAttachment?.disposition ?? null,
+    },
+    email: {
+      messageId: input.message.messageId ?? null,
+      from: input.senderEmail,
+      subject: input.subject,
+      bodyText: input.bodyText,
+    },
   };
 }
 
@@ -449,16 +541,55 @@ export function createEmailInboundService(
         });
       }
 
-      const routeClassification = classifyEmailRoute({
+      const classifierTables = buildClassifierTables({
+        attachments: normalizedAttachments,
+        dependencies,
+        correlationId,
+      });
+      const senderDomain = extractSenderDomain(senderEmail);
+      const mappedSupplierName =
+        resolveSupplierNameFromSender(
+          senderEmail,
+          dependencies.supplierMappings,
+        ) ?? undefined;
+      const documentClassification = classifyInboundDocument({
+        fromEmail: senderEmail,
+        fromName: message.fromName ?? null,
+        senderDomain,
         subject,
         bodyText,
-        attachmentFileNames: normalizedAttachments.map(
-          (attachment) => attachment.fileName,
-        ),
-        attachmentTexts: accountOpeningAttachmentTexts.map((item) => item.text),
+        attachments: normalizedAttachments.map((attachment) => ({
+          attachmentId:
+            attachment.graphAttachmentId ??
+            attachment.contentId ??
+            attachment.fileName,
+          fileName: attachment.fileName,
+          mimeType: attachment.mimeType,
+          fileType: attachment.fileType,
+          disposition: attachment.disposition,
+        })),
+        attachmentTexts: accountOpeningAttachmentTexts.map((item) => ({
+          attachmentId:
+            item.attachment.graphAttachmentId ??
+            item.attachment.contentId ??
+            item.attachment.fileName,
+          fileName: item.attachment.fileName,
+          text: item.text,
+          method: item.method,
+        })),
+        tables: classifierTables,
+        trustedSender,
+        knownSupplierMappings: dependencies.supplierMappings.map((mapping) => ({
+          pattern: mapping.pattern,
+          supplierName: mapping.supplierName,
+        })),
       });
 
-      if (routeClassification.accountOpeningDetected) {
+      if (
+        documentClassification.primaryClass === 'ACCOUNT_OPENING_FORM' &&
+        documentClassification.routing === 'ACCOUNT_OPENING_REVIEW' &&
+        documentClassification.safeToAutoRoute
+      ) {
         const accountOpeningItem = buildAccountOpeningReviewItem({
           message,
           senderEmail,
@@ -466,8 +597,11 @@ export function createEmailInboundService(
           bodyText,
           attachments: normalizedAttachments,
           attachmentTexts: accountOpeningAttachmentTexts,
-          supplierName: payloadSupplierName ?? extractedSupplierName,
-          matchedTerms: routeClassification.matchedTerms,
+          supplierName:
+            payloadSupplierName ?? extractedSupplierName ?? mappedSupplierName,
+          matchedTerms: documentClassification.evidence.map(
+            (evidence) => evidence.signal,
+          ),
           correlationId,
         });
         const accountOpeningCorrelationId =
@@ -480,7 +614,7 @@ export function createEmailInboundService(
         await dependencies.persistAccountOpeningCase?.({
           accountCase: accountOpeningItem.accountOpeningCase!,
           messageId: message.messageId ?? message.externalMessageId ?? null,
-          detectedFormType: routeClassification.matchedTerms[0] ?? null,
+          detectedFormType: documentClassification.evidence[0]?.signal ?? null,
           correlationId: accountOpeningCorrelationId,
         });
         recordEmailReviewItems([accountOpeningItem]);
@@ -492,13 +626,16 @@ export function createEmailInboundService(
               : {}),
             senderEmail,
             subject,
-            classifierVersion: routeClassification.classifierVersion,
-            route: routeClassification.route,
-            confidence: routeClassification.confidence,
-            evidenceUsed: routeClassification.evidenceUsed,
-            matchedTerms: routeClassification.matchedTerms,
-            matchedAttachmentNames: routeClassification.matchedAttachmentNames,
-            classificationReason: routeClassification.classificationReason,
+            classifierVersion: documentClassification.runnerVersion,
+            route: documentClassification.routing,
+            confidence: documentClassification.confidence,
+            primaryClass: documentClassification.primaryClass,
+            score: documentClassification.score,
+            evidenceUsed: documentClassification.evidence.map(
+              (evidence) => evidence.signal,
+            ),
+            conflicts: documentClassification.conflicts,
+            classificationReason: documentClassification.reason,
             attachmentCount: normalizedAttachments.length,
           },
         );
@@ -509,6 +646,40 @@ export function createEmailInboundService(
         };
       }
 
+      if (
+        documentClassification.routing === 'SUPPLIER_CONTACT_REVIEW' ||
+        documentClassification.routing === 'SUPPLIER_ONBOARDING_REVIEW' ||
+        documentClassification.conflicts.length > 0
+      ) {
+        const reviewItem = buildDocumentClassificationReviewItem({
+          message,
+          senderEmail,
+          subject,
+          bodyText,
+          attachments: normalizedAttachments,
+          classification: documentClassification,
+        });
+
+        recordEmailReviewItems([reviewItem]);
+        dependencies.logger.info(
+          'Inbound document queued for manual review by document classifier',
+          {
+            ...(correlationId ? { correlationId } : {}),
+            senderEmail,
+            subject,
+            primaryClass: documentClassification.primaryClass,
+            route: documentClassification.routing,
+            confidence: documentClassification.confidence,
+            score: documentClassification.score,
+            conflicts: documentClassification.conflicts,
+          },
+        );
+
+        return {
+          ignored: false,
+          items: [reviewItem],
+        };
+      }
       const storedReviewItems = dependencies.listStoredReviewItems?.() ?? [];
       const now = Date.now();
       const last24Hours = storedReviewItems.filter(

@@ -330,6 +330,16 @@ export const env = {
     process.env.EMAIL_INBOUND_POLLING_INTERVAL_MS,
     30000,
   ),
+  graphUseMessageDelta: readBoolean(process.env.GRAPH_USE_MESSAGE_DELTA, true),
+  graphUseImmutableIds: readBoolean(process.env.GRAPH_USE_IMMUTABLE_IDS, true),
+  inboundClassifierEnabled: readBoolean(
+    process.env.INBOUND_CLASSIFIER_ENABLED,
+    true,
+  ),
+  inboundClassifierShadowMode: readBoolean(
+    process.env.INBOUND_CLASSIFIER_SHADOW_MODE,
+    false,
+  ),
   emailInboundAllowedSenders: readIdList(
     process.env.EMAIL_INBOUND_ALLOWED_SENDERS,
   ),
@@ -343,6 +353,30 @@ export const env = {
   emailInboundInternalCompanyNames: readStringListWithDefaults(
     process.env.EMAIL_INBOUND_INTERNAL_COMPANY_NAMES,
     DEFAULT_EMAIL_INBOUND_INTERNAL_COMPANY_NAMES,
+  ),
+  supplierContactAutoAcceptEnabled: readBoolean(
+    process.env.SUPPLIER_CONTACT_AUTO_ACCEPT_ENABLED,
+    false,
+  ),
+  accountOpeningOriginalUploadEnabled: readBoolean(
+    process.env.ACCOUNT_OPENING_ORIGINAL_UPLOAD_ENABLED,
+    false,
+  ),
+  accountOpeningAutofillEnabled: readBoolean(
+    process.env.ACCOUNT_OPENING_AUTOFILL_ENABLED,
+    false,
+  ),
+  accountOpeningAutoFileSharePointEnabled: readBoolean(
+    process.env.ACCOUNT_OPENING_AUTO_FILE_SHAREPOINT_ENABLED,
+    false,
+  ),
+  accountOpeningForbiddenFieldsEnforced: readBoolean(
+    process.env.ACCOUNT_OPENING_FORBIDDEN_FIELDS_ENFORCED,
+    true,
+  ),
+  accountOpeningMinClassifierScore: readPort(
+    process.env.ACCOUNT_OPENING_MIN_CLASSIFIER_SCORE,
+    75,
   ),
   openAiApiKey: process.env.OPENAI_API_KEY?.trim() || '',
   openAiParserEnabled: readBoolean(process.env.OPENAI_PARSER_ENABLED, false),

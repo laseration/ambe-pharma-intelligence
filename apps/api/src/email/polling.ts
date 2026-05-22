@@ -29,6 +29,12 @@ type GraphMessage = {
   conversationId?: string | null;
   receivedDateTime?: string | null;
   from?: GraphRecipient | null;
+  sender?: GraphRecipient | null;
+  replyTo?: GraphRecipient[] | null;
+  internetMessageHeaders?: Array<{
+    name?: string | null;
+    value?: string | null;
+  }> | null;
   body?: {
     contentType?: string | null;
     content?: string | null;
@@ -42,6 +48,7 @@ type GraphAttachment = {
   contentType?: string | null;
   size?: number | null;
   contentId?: string | null;
+  id?: string | null;
   isInline?: boolean | null;
   contentBytes?: string | null;
 };
@@ -100,6 +107,22 @@ function toInboundMessage(message: GraphMessage): EmailInboundMessage | null {
     conversationId: message.conversationId?.trim() || null,
     from,
     fromName: message.from?.emailAddress?.name?.trim() || null,
+    sender: message.sender?.emailAddress?.address?.trim().toLowerCase() || null,
+    senderName: message.sender?.emailAddress?.name?.trim() || null,
+    replyTo:
+      message.replyTo
+        ?.map((recipient) => ({
+          email: recipient.emailAddress?.address?.trim().toLowerCase() || '',
+          name: recipient.emailAddress?.name?.trim() || null,
+        }))
+        .filter((recipient) => recipient.email) ?? null,
+    internetMessageHeaders:
+      message.internetMessageHeaders
+        ?.map((header) => ({
+          name: header.name?.trim() || '',
+          value: header.value?.trim() || '',
+        }))
+        .filter((header) => header.name && header.value) ?? null,
     subject: message.subject?.trim() || '',
     bodyText,
     rawHtml:
@@ -120,6 +143,7 @@ async function graphRequest<T>(path: string, init?: RequestInit): Promise<T> {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
+      ...(env.graphUseImmutableIds ? { Prefer: 'IdType="ImmutableId"' } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -141,7 +165,7 @@ async function graphRequest<T>(path: string, init?: RequestInit): Promise<T> {
 async function listUnreadInboxMessages(): Promise<GraphMessage[]> {
   const mailbox = encodeURIComponent(env.microsoftGraphSenderMailbox);
   const query =
-    '/mailFolders/inbox/messages?$select=id,isRead,subject,internetMessageId,conversationId,receivedDateTime,from,body,hasAttachments' +
+    '/mailFolders/inbox/messages?$select=id,isRead,subject,internetMessageId,conversationId,receivedDateTime,from,sender,replyTo,internetMessageHeaders,body,hasAttachments' +
     '&$filter=isRead eq false&$orderby=receivedDateTime asc&$top=10';
 
   const payload = await graphRequest<GraphListResponse<GraphMessage>>(
@@ -246,6 +270,7 @@ async function processMessage(
         content: attachment.contentBytes ?? null,
         size: attachment.size ?? null,
         contentId: attachment.contentId ?? null,
+        graphAttachmentId: attachment.id ?? null,
         disposition: attachment.isInline ? 'inline' : 'attachment',
       }));
   }

@@ -23,6 +23,81 @@ export type EmailInboundImportType =
 
 export type EmailInboundConfidence = 'HIGH' | 'LOW';
 
+export type InboundDocumentClass =
+  | 'ACCOUNT_OPENING_FORM'
+  | 'SUPPLIER_PRICE_LIST'
+  | 'SUPPLIER_CONTACT_FORM'
+  | 'SUPPLIER_ONBOARDING_OR_KYC'
+  | 'INVENTORY_REPORT'
+  | 'SALES_REPORT'
+  | 'INVOICE'
+  | 'STATEMENT'
+  | 'ORDER_CONFIRMATION'
+  | 'DELIVERY_NOTE'
+  | 'UNKNOWN_OR_AMBIGUOUS';
+
+export type ClassificationConfidence = 'HIGH' | 'MEDIUM' | 'LOW';
+
+export type ClassificationRouting =
+  | 'ACCOUNT_OPENING_REVIEW'
+  | 'SUPPLIER_IMPORT'
+  | 'SUPPLIER_CONTACT_REVIEW'
+  | 'SUPPLIER_ONBOARDING_REVIEW'
+  | 'INVENTORY_IMPORT'
+  | 'SALES_IMPORT'
+  | 'MANUAL_REVIEW'
+  | 'ARCHIVE_OR_IGNORE';
+
+export type ClassificationEvidenceSource =
+  | 'TRUSTED_MAPPING'
+  | 'FROM'
+  | 'SENDER'
+  | 'REPLY_TO'
+  | 'RFC5322_HEADER'
+  | 'SUBJECT'
+  | 'BODY'
+  | 'ATTACHMENT_NAME'
+  | 'MIME_TYPE'
+  | 'TABLE_HEADER'
+  | 'TABLE_VALUE'
+  | 'PDF_TEXT'
+  | 'OCR_TEXT'
+  | 'FORM_STRUCTURE';
+
+export type ClassificationEvidence = {
+  source: ClassificationEvidenceSource;
+  signal: string;
+  weight: number;
+  snippet?: string;
+  attachmentId?: string;
+  page?: number;
+};
+
+export type ClassificationDecision = {
+  primaryClass: InboundDocumentClass;
+  confidence: ClassificationConfidence;
+  score: number;
+  runnerVersion: string;
+  routing: ClassificationRouting;
+  safeToAutoRoute: boolean;
+  evidence: ClassificationEvidence[];
+  negativeEvidence: ClassificationEvidence[];
+  conflicts: string[];
+  attachmentDecisions: Array<{
+    attachmentId: string;
+    class: InboundDocumentClass;
+    confidence: ClassificationConfidence;
+    score: number;
+    conflicts: string[];
+  }>;
+  reason: string;
+};
+
+export type Rfc5322Header = {
+  name: string;
+  value: string;
+};
+
 export type EmailAttachmentInput = {
   fileName?: string | null;
   mimeType?: string | null;
@@ -30,6 +105,7 @@ export type EmailAttachmentInput = {
   size?: number | null;
   contentId?: string | null;
   disposition?: string | null;
+  graphAttachmentId?: string | null;
 };
 
 export type EmailInboundMessage = {
@@ -39,6 +115,10 @@ export type EmailInboundMessage = {
   conversationId?: string | null;
   from: string;
   fromName?: string | null;
+  sender?: string | null;
+  senderName?: string | null;
+  replyTo?: Array<{ email: string; name?: string | null }> | null;
+  internetMessageHeaders?: Rfc5322Header[] | null;
   subject?: string | null;
   bodyText?: string | null;
   rawHtml?: string | null;
@@ -55,6 +135,7 @@ export type NormalizedEmailAttachment = {
   size: number | null;
   contentId: string | null;
   disposition: string | null;
+  graphAttachmentId: string | null;
 };
 
 export type EmailInboundDecision = {

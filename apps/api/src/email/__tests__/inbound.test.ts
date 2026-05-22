@@ -912,6 +912,101 @@ test('mixed ambiguous signals do not auto-import', async () => {
   assert.equal(result.items[0]?.inferredImportType, null);
 });
 
+test('supplier contact forms are routed to review rather than import', async () => {
+  const service = createEmailInboundService({
+    allowedSenders: ['supplier@example.com'],
+    logger: createLogger(),
+    importSupplierPriceList: async () => {
+      throw new Error('supplier import should not run');
+    },
+    importInventory: async () => {
+      throw new Error('inventory import should not run');
+    },
+    importSales: async () => {
+      throw new Error('sales import should not run');
+    },
+    parseUploadedFile: () => ({
+      rows: [
+        {
+          Supplier: 'Acme Labs',
+          'Contact Email': 'buyer@example.com',
+          Telephone: '02000000000',
+        },
+      ],
+      warnings: [],
+    }),
+  });
+
+  const result = await service.ingestMessage({
+    from: 'supplier@example.com',
+    subject: 'Supplier contact details form',
+    attachments: [
+      {
+        fileName: 'supplier-contact-details.xlsx',
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        content: Buffer.from('x').toString('base64'),
+      },
+    ],
+  });
+
+  assert.equal(result.ignored, false);
+  assert.equal(result.items[0]?.processingStatus, 'REVIEW_REQUIRED');
+  assert.equal(result.items[0]?.inferredImportType, null);
+  assert.match(result.items[0]?.reason ?? '', /requires operator review/i);
+});
+
+test('mixed account-opening and supplier price-list signals stay in manual review', async () => {
+  const service = createEmailInboundService({
+    allowedSenders: ['supplier@example.com'],
+    logger: createLogger(),
+    importSupplierPriceList: async () => {
+      throw new Error('supplier import should not run');
+    },
+    importInventory: async () => {
+      throw new Error('inventory import should not run');
+    },
+    importSales: async () => {
+      throw new Error('sales import should not run');
+    },
+    parseUploadedFile: () => ({
+      rows: [
+        {
+          Product: 'Aspirin',
+          'Unit Price': '1.50',
+          'Available Qty': '20',
+        },
+      ],
+      warnings: [],
+    }),
+  });
+
+  const result = await service.ingestMessage({
+    from: 'supplier@example.com',
+    subject: 'Account opening form and price list',
+    bodyText: 'Please review the account opening form and weekly stock offer.',
+    attachments: [
+      {
+        fileName: 'account-opening-form.pdf',
+        mimeType: 'application/pdf',
+        content: Buffer.from('pdf').toString('base64'),
+      },
+      {
+        fileName: 'price-list.csv',
+        mimeType: 'text/csv',
+        content: Buffer.from('Product,Unit Price,Available Qty').toString(
+          'base64',
+        ),
+      },
+    ],
+  });
+
+  assert.equal(result.ignored, false);
+  assert.equal(result.items[0]?.processingStatus, 'NEEDS_REVIEW');
+  assert.equal(result.items[0]?.inferredImportType, null);
+  assert.match(result.items[0]?.reason ?? '', /conflicting signals/i);
+});
+
 test('missing inferredImportType does not crash import flow', async () => {
   const service = createEmailInboundService({
     allowedSenders: ['ops@ambe.test'],

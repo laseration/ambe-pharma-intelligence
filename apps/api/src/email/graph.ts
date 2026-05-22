@@ -16,8 +16,7 @@ export async function getMicrosoftGraphAccessToken(): Promise<string> {
       ? {
           client_id: env.microsoftMailClientId,
           refresh_token: env.microsoftGraphRefreshToken,
-          scope:
-            'https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send offline_access',
+          scope: 'https://graph.microsoft.com/Mail.ReadWrite offline_access',
           grant_type: 'refresh_token',
         }
       : {

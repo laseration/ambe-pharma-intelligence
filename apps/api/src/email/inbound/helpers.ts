@@ -190,6 +190,7 @@ export function normalizeEmailAttachment(
     size: input.size ?? buffer?.byteLength ?? null,
     contentId: input.contentId?.trim() || null,
     disposition: input.disposition?.trim() || null,
+    graphAttachmentId: input.graphAttachmentId?.trim() || null,
   };
 }
 
