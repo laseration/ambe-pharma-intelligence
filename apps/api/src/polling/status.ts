@@ -158,8 +158,14 @@ function mergePersistedStatus(
     running: memoryStatus.running,
     inFlight: memoryStatus.inFlight,
     intervalMs: memoryStatus.intervalMs ?? persistedStatus.intervalMs,
-    startedAt: pickLatestTimestamp(memoryStatus.startedAt, persistedStatus.startedAt),
-    stoppedAt: pickLatestTimestamp(memoryStatus.stoppedAt, persistedStatus.stoppedAt),
+    startedAt: pickLatestTimestamp(
+      memoryStatus.startedAt,
+      persistedStatus.startedAt,
+    ),
+    stoppedAt: pickLatestTimestamp(
+      memoryStatus.stoppedAt,
+      persistedStatus.stoppedAt,
+    ),
     lastRunStartedAt: pickLatestTimestamp(
       memoryStatus.lastRunStartedAt,
       persistedStatus.lastRunStartedAt,

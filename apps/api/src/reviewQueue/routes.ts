@@ -202,7 +202,9 @@ async function createWorkflowCorrectionAndFeedback(input: {
     ...correctionFeedbackMetadata(input.correction),
     workflowItemStatus: workflowItem.status,
     sourceKind:
-      workflowItem.sourceKind ?? workflowItem.emailDerivedOffer?.sourceKind ?? null,
+      workflowItem.sourceKind ??
+      workflowItem.emailDerivedOffer?.sourceKind ??
+      null,
     reviewReason:
       workflowItem.sourceReviewReason ??
       workflowItem.emailDerivedOffer?.reviewReason ??
@@ -232,8 +234,7 @@ async function createWorkflowCorrectionAndFeedback(input: {
       input.correction.correctedUnitPrice !== undefined ? false : null,
     currencyCorrect: input.correction.correctedCurrencyCode ? false : null,
     manufacturerCorrect: input.correction.correctedManufacturer ? false : null,
-    availabilityCorrect:
-      input.correction.correctedAvailability ? false : null,
+    availabilityCorrect: input.correction.correctedAvailability ? false : null,
     moqCorrect:
       input.correction.correctedMinimumOrderQuantity !== undefined
         ? false

@@ -45,8 +45,7 @@ function formatError(error: unknown): string {
 function readinessCounts(report: SystemReadinessReport) {
   return {
     ready: report.checks.filter((check) => check.status === 'ready').length,
-    warning: report.checks.filter((check) => check.status === 'warning')
-      .length,
+    warning: report.checks.filter((check) => check.status === 'warning').length,
     notConfigured: report.checks.filter(
       (check) => check.status === 'not_configured',
     ).length,
@@ -120,7 +119,10 @@ function WorkerDiagnostics({ workers }: { workers: PollingWorkerStatus[] }) {
   }
 
   return workers.map((worker) => (
-    <article className="dashboard-opportunity-card setup-card" key={worker.name}>
+    <article
+      className="dashboard-opportunity-card setup-card"
+      key={worker.name}
+    >
       <div className="dashboard-opportunity-top">
         <div>
           <p className="dashboard-opportunity-title">
@@ -253,9 +255,7 @@ export default async function DiagnosticsPage() {
               </p>
             </article>
             <article className="dashboard-summary-card">
-              <p className="dashboard-summary-value">
-                {counts.notConfigured}
-              </p>
+              <p className="dashboard-summary-value">{counts.notConfigured}</p>
               <p className="dashboard-summary-label">Not configured</p>
               <p className="dashboard-summary-note">
                 Missing optional or required pilot setup.

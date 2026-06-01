@@ -84,9 +84,7 @@ export function sortReviewItemsForAction(
       return leftPriority - rightPriority;
     }
 
-    return (
-      (parseTime(right.updatedAt) ?? 0) - (parseTime(left.updatedAt) ?? 0)
-    );
+    return (parseTime(right.updatedAt) ?? 0) - (parseTime(left.updatedAt) ?? 0);
   });
 }
 
@@ -140,7 +138,8 @@ export function buildNextActions(input: {
           ? 'Check the top signals, then mark them reviewed, actioned, or dismissed.'
           : 'Refresh opportunities after supplier, inventory, or sales data changes.',
       href: '/dashboard/opportunities?type=BUY',
-      cta: bestBuyingSignals.length > 0 ? 'Check signals' : 'View opportunities',
+      cta:
+        bestBuyingSignals.length > 0 ? 'Check signals' : 'View opportunities',
       priority: bestBuyingSignals.length > 0 ? 'high' : 'normal',
     },
     {

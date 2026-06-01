@@ -111,7 +111,9 @@ test('polling worker status can persist safe snapshots through an optional store
   assert.doesNotMatch(JSON.stringify(persistedSnapshot), /secret-value/);
 
   const statuses = await listPollingWorkerStatusesWithStore();
-  const emailStatus = statuses.find((status) => status.name === 'email-inbound');
+  const emailStatus = statuses.find(
+    (status) => status.name === 'email-inbound',
+  );
 
   assert.equal(emailStatus?.totalRuns, 7);
   assert.equal(emailStatus?.totalItemsProcessed, 8);

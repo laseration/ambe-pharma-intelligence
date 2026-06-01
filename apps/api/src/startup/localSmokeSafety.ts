@@ -55,7 +55,7 @@ type LocalSmokeIntegrationConfig = Pick<
 
 const SAFE_LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 const SAFE_DOCKER_LOCAL_HOSTS = new Set(['postgres']);
-const SAFE_DATABASE_NAME_PATTERN = /(test|dev|local)/i;
+const SAFE_DATABASE_NAME_PATTERN = /(test|dev|local|demo|smoke|ci)/i;
 
 function normalizeHost(hostname: string): string {
   return hostname.trim().toLowerCase().replace(/^\[/, '').replace(/\]$/, '');
@@ -125,7 +125,7 @@ export function classifyDatabaseUrlForLocalSmoke(
           ? 'local'
           : classifyExternalHost(host),
       reason:
-        'Database name must clearly contain dev, test, or local for local runtime smoke.',
+        'Database name must clearly contain local, dev, test, demo, smoke, or ci for local runtime smoke.',
       host,
       databaseName,
     };

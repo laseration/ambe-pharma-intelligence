@@ -170,8 +170,7 @@ function WorkerStatusCard({ status }: { status: PollingWorkerStatus }) {
 function countByStatus(report: SystemReadinessReport) {
   return {
     ready: report.checks.filter((check) => check.status === 'ready').length,
-    warning: report.checks.filter((check) => check.status === 'warning')
-      .length,
+    warning: report.checks.filter((check) => check.status === 'warning').length,
     notConfigured: report.checks.filter(
       (check) => check.status === 'not_configured',
     ).length,
@@ -284,9 +283,7 @@ export default async function SetupPage() {
               </p>
             </article>
             <article className="dashboard-summary-card">
-              <p className="dashboard-summary-value">
-                {counts.notConfigured}
-              </p>
+              <p className="dashboard-summary-value">{counts.notConfigured}</p>
               <p className="dashboard-summary-label">Not configured</p>
               <p className="dashboard-summary-note">
                 Missing optional or required setup for pilot use.

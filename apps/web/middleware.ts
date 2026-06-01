@@ -1,9 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-import {
-  readWebSession,
-  WEB_AUTH_COOKIE_NAME,
-} from './lib/internalWebAuth';
+import { readWebSession, WEB_AUTH_COOKIE_NAME } from './lib/internalWebAuth';
 
 export async function middleware(request: NextRequest) {
   const session = await readWebSession(

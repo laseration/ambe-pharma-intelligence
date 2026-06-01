@@ -92,7 +92,10 @@ test('web auth creates readable signed sessions and rejects tampering or expiry'
     await readWebSession(`${created.cookieValue}tampered`, source, 1_001_000),
     null,
   );
-  assert.equal(await readWebSession(created.cookieValue, source, 1_061_000), null);
+  assert.equal(
+    await readWebSession(created.cookieValue, source, 1_061_000),
+    null,
+  );
 });
 
 test('web session cookie options use production secure cookies', () => {

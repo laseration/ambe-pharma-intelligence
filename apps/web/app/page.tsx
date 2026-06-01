@@ -60,12 +60,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <input name="next" type="hidden" value={next} />
         <label>
           Username
-          <input
-            autoComplete="username"
-            name="username"
-            required
-            type="text"
-          />
+          <input autoComplete="username" name="username" required type="text" />
         </label>
         <label>
           Password

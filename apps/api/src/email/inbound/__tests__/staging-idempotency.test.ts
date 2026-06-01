@@ -150,6 +150,7 @@ function installDbMocks(t: TestContext) {
     products: [] as Array<Record<string, any>>,
     priceLists: [] as Array<Record<string, any>>,
     priceItems: [] as Array<Record<string, any>>,
+    sourceReliabilityProfiles: [] as Array<Record<string, any>>,
   };
 
   let idCounter = 0;
@@ -704,6 +705,12 @@ function installDbMocks(t: TestContext) {
     id: nextId('alias'),
     ...data,
   }));
+
+  stubMethod(
+    db.sourceReliabilityProfile,
+    'findMany',
+    async () => state.sourceReliabilityProfiles,
+  );
 
   stubMethod(
     db.supplierPriceList,

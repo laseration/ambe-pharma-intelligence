@@ -1,6 +1,9 @@
 import { Prisma } from '@prisma/client';
 
-import { loadPilotDemoFixture, PILOT_DEMO_MARKER } from '../fixtures/demo/pilotDemo';
+import {
+  loadPilotDemoFixture,
+  PILOT_DEMO_MARKER,
+} from '../fixtures/demo/pilotDemo';
 import { env } from '../config/env';
 import { db } from '../lib/db';
 import { classifyDatabaseUrlForLocalSmoke } from '../startup/localSmokeSafety';
@@ -205,15 +208,13 @@ async function upsertEmailAndOffers(input: {
       rawText: fixture.inboundEmail.rawText,
       bodyHash: fixture.inboundEmail.bodyHash,
       senderDomain: fixture.inboundEmail.senderDomain,
-      sourceTemplateFingerprint:
-        fixture.inboundEmail.sourceTemplateFingerprint,
+      sourceTemplateFingerprint: fixture.inboundEmail.sourceTemplateFingerprint,
       attachmentSummary: fixture.inboundEmail.attachmentSummary,
       processingStatus: fixture.inboundEmail.processingStatus,
       triageStatus: fixture.inboundEmail.triageStatus,
       sourceTrustScore: fixture.inboundEmail.sourceTrustScore,
       structureConfidence: fixture.inboundEmail.structureConfidence,
-      businessWorthinessScore:
-        fixture.inboundEmail.businessWorthinessScore,
+      businessWorthinessScore: fixture.inboundEmail.businessWorthinessScore,
       parserConfidence: fixture.inboundEmail.parserConfidence,
       reviewReason: fixture.inboundEmail.reviewReason,
       receivedAt: fixture.inboundEmail.receivedAt,
@@ -231,15 +232,13 @@ async function upsertEmailAndOffers(input: {
       rawText: fixture.inboundEmail.rawText,
       bodyHash: fixture.inboundEmail.bodyHash,
       senderDomain: fixture.inboundEmail.senderDomain,
-      sourceTemplateFingerprint:
-        fixture.inboundEmail.sourceTemplateFingerprint,
+      sourceTemplateFingerprint: fixture.inboundEmail.sourceTemplateFingerprint,
       attachmentSummary: fixture.inboundEmail.attachmentSummary,
       processingStatus: fixture.inboundEmail.processingStatus,
       triageStatus: fixture.inboundEmail.triageStatus,
       sourceTrustScore: fixture.inboundEmail.sourceTrustScore,
       structureConfidence: fixture.inboundEmail.structureConfidence,
-      businessWorthinessScore:
-        fixture.inboundEmail.businessWorthinessScore,
+      businessWorthinessScore: fixture.inboundEmail.businessWorthinessScore,
       parserConfidence: fixture.inboundEmail.parserConfidence,
       reviewReason: fixture.inboundEmail.reviewReason,
       receivedAt: fixture.inboundEmail.receivedAt,
@@ -343,8 +342,7 @@ async function upsertOffer(input: {
       supplierCandidate: input.offer.supplierCandidate,
       priceCandidate: new Prisma.Decimal(input.offer.priceCandidate),
       currencyCandidate: input.offer.currencyCandidate,
-      minimumOrderQuantityCandidate:
-        input.offer.minimumOrderQuantityCandidate,
+      minimumOrderQuantityCandidate: input.offer.minimumOrderQuantityCandidate,
       availabilityCandidate: input.offer.availabilityCandidate,
       sourceTrustScore: 72,
       structureConfidence: 88,
@@ -373,8 +371,7 @@ async function upsertOffer(input: {
       supplierCandidate: input.offer.supplierCandidate,
       priceCandidate: new Prisma.Decimal(input.offer.priceCandidate),
       currencyCandidate: input.offer.currencyCandidate,
-      minimumOrderQuantityCandidate:
-        input.offer.minimumOrderQuantityCandidate,
+      minimumOrderQuantityCandidate: input.offer.minimumOrderQuantityCandidate,
       availabilityCandidate: input.offer.availabilityCandidate,
       sourceTrustScore: 72,
       structureConfidence: 88,

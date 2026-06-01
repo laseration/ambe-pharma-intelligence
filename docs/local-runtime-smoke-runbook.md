@@ -79,6 +79,7 @@ The database name must contain one of:
 - `test`
 - `demo`
 - `smoke`
+- `ci`
 
 Example safe local values:
 
@@ -86,6 +87,7 @@ Example safe local values:
 DATABASE_URL="postgresql://ambe:ambe@localhost:5432/ambe_local?schema=public"
 DATABASE_URL="postgresql://ambe:ambe@postgres:5432/ambe_dev?schema=public"
 DATABASE_URL="postgresql://ambe:ambe@localhost:5432/ambe_demo?schema=public"
+DATABASE_URL="postgresql://ci:ci@localhost:5432/ambe_ci?schema=public"
 ```
 
 Rejected examples include Neon, Supabase, AWS RDS, Azure PostgreSQL, invalid URLs, empty values, and any unknown public host. The guard reports only safe metadata such as host, database name, classification, and reason. It must not print credentials or a full connection string.
@@ -136,7 +138,7 @@ No secrets or full connection strings should appear in the output.
 Treat refusal as the expected safe behaviour. Common causes are:
 
 - `DATABASE_URL` points at Neon or another managed database;
-- the database name does not contain `local`, `dev`, or `test`;
+- the database name does not contain `local`, `dev`, `test`, `demo`, `smoke`, or `ci`;
 - OpenAI, Telegram polling, email sending, inbox polling, SharePoint filing, or OneDrive filing is enabled.
 
 Change only local disposable env values before re-running. Do not point this command at Neon or any production-like database.

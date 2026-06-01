@@ -2,10 +2,7 @@ import type { LocalSmokeDatabaseSafety } from '../startup/localSmokeSafety';
 
 import { PILOT_DEMO_MARKER } from '../fixtures/demo/pilotDemo';
 import { db } from '../lib/db';
-import {
-  assertSafePilotDemoDatabase,
-  seedPilotDemo,
-} from './seedPilotDemo';
+import { assertSafePilotDemoDatabase, seedPilotDemo } from './seedPilotDemo';
 import { env } from '../config/env';
 
 export type PilotDemoSmokeVerification = {

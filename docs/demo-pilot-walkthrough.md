@@ -14,7 +14,7 @@ pnpm --filter @ambe/api demo:seed-pilot
 
 The command is intentionally non-destructive. It upserts deterministic demo records instead of resetting the database, so it can be run more than once without duplicating the demo path.
 
-The command refuses to run unless `DATABASE_URL` points at a clearly local disposable database. Allowed hosts are `localhost`, `127.0.0.1`, `[::1]`, or the Docker service name `postgres`. The database name must contain `local`, `dev`, `test`, `demo`, or `smoke`.
+The command refuses to run unless `DATABASE_URL` points at a clearly local disposable database. Allowed hosts are `localhost`, `127.0.0.1`, `[::1]`, or the Docker service name `postgres`. The database name must contain `local`, `dev`, `test`, `demo`, `smoke`, or `ci`.
 
 Do not run this command against a real pilot database. It is designed for fake local demo data only.
 

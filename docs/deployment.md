@@ -31,26 +31,26 @@ cp apps/web/.env.example apps/web/.env
 
 Required API values for a pilot:
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `NODE_ENV` | yes | Use `production` in the pilot environment. |
-| `PORT` | yes | API HTTP port, default `4000`. |
-| `DATABASE_URL` | yes | PostgreSQL connection string used by Prisma. |
-| `INTERNAL_API_KEY` | yes | Internal API key for protected operator routes. |
-| `INTERNAL_ADMIN_API_KEY` | recommended | Admin key for admin/debug-only internal calls. |
-| `ENABLE_DEBUG_ROUTES` | recommended | Use `false` in production-like pilot environments. |
+| Variable                 | Required    | Purpose                                            |
+| ------------------------ | ----------- | -------------------------------------------------- |
+| `NODE_ENV`               | yes         | Use `production` in the pilot environment.         |
+| `PORT`                   | yes         | API HTTP port, default `4000`.                     |
+| `DATABASE_URL`           | yes         | PostgreSQL connection string used by Prisma.       |
+| `INTERNAL_API_KEY`       | yes         | Internal API key for protected operator routes.    |
+| `INTERNAL_ADMIN_API_KEY` | recommended | Admin key for admin/debug-only internal calls.     |
+| `ENABLE_DEBUG_ROUTES`    | recommended | Use `false` in production-like pilot environments. |
 
 Required web values for a pilot:
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `WEB_AUTH_USERNAME` | yes | Internal dashboard username. |
-| `WEB_AUTH_PASSWORD` | yes | Internal dashboard password. |
-| `WEB_AUTH_ROLE` | yes | `viewer`, `operator`, or `admin`. |
-| `WEB_AUTH_SESSION_SECRET` | yes | At least 32 random characters. |
-| `WEB_AUTH_SESSION_TTL_SECONDS` | optional | Session duration, default is 8 hours. |
-| `INTERNAL_API_BASE_URL` | recommended | Server-side web URL for the API `/api` base. |
-| `ACCOUNT_OPENING_EXPORT_DOWNLOAD_TOKEN` | optional | Download token for account-opening export files. |
+| Variable                                | Required    | Purpose                                          |
+| --------------------------------------- | ----------- | ------------------------------------------------ |
+| `WEB_AUTH_USERNAME`                     | yes         | Internal dashboard username.                     |
+| `WEB_AUTH_PASSWORD`                     | yes         | Internal dashboard password.                     |
+| `WEB_AUTH_ROLE`                         | yes         | `viewer`, `operator`, or `admin`.                |
+| `WEB_AUTH_SESSION_SECRET`               | yes         | At least 32 random characters.                   |
+| `WEB_AUTH_SESSION_TTL_SECONDS`          | optional    | Session duration, default is 8 hours.            |
+| `INTERNAL_API_BASE_URL`                 | recommended | Server-side web URL for the API `/api` base.     |
+| `ACCOUNT_OPENING_EXPORT_DOWNLOAD_TOKEN` | optional    | Download token for account-opening export files. |
 
 Do not use `NEXT_PUBLIC_*` for secrets. The dashboard auth secret, dashboard
 password, internal API keys, Graph credentials, Telegram token, OpenAI key, and
@@ -124,14 +124,14 @@ inbox polling.
 
 Preferred env vars for the mail app:
 
-| Variable | Purpose |
-| --- | --- |
-| `MICROSOFT_MAIL_TENANT_ID` | Mail app tenant. |
-| `MICROSOFT_MAIL_CLIENT_ID` | Mail app client ID. |
-| `MICROSOFT_MAIL_CLIENT_SECRET` | Mail app client secret. |
-| `MICROSOFT_GRAPH_SENDER_MAILBOX` | Mailbox used for sendMail and inbox polling. |
-| `MICROSOFT_GRAPH_REFRESH_TOKEN` | Delegated token path for personal Outlook.com style setup. |
-| `INTERNAL_ALERT_EMAIL_RECIPIENTS` | Comma-separated internal recipients. |
+| Variable                          | Purpose                                                    |
+| --------------------------------- | ---------------------------------------------------------- |
+| `MICROSOFT_MAIL_TENANT_ID`        | Mail app tenant.                                           |
+| `MICROSOFT_MAIL_CLIENT_ID`        | Mail app client ID.                                        |
+| `MICROSOFT_MAIL_CLIENT_SECRET`    | Mail app client secret.                                    |
+| `MICROSOFT_GRAPH_SENDER_MAILBOX`  | Mailbox used for sendMail and inbox polling.               |
+| `MICROSOFT_GRAPH_REFRESH_TOKEN`   | Delegated token path for personal Outlook.com style setup. |
+| `INTERNAL_ALERT_EMAIL_RECIPIENTS` | Comma-separated internal recipients.                       |
 
 Legacy mail vars still exist for compatibility:
 

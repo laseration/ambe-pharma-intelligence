@@ -445,51 +445,41 @@ test('workflow correction route binds corrections to the reviewed offer and acto
 
   let capturedCorrection: any = null;
   const capturedFeedback: Record<string, unknown>[] = [];
-  stubMethod(
-    t,
-    offerCorrectionService,
-    'createCorrection',
-    (async (input) => {
-      capturedCorrection = input;
-      return {
-        id: 'correction-1',
-        emailDerivedOfferId: input.emailDerivedOfferId,
-        offerWorkflowItemId: input.offerWorkflowItemId,
-        inboundEmailId: input.inboundEmailId,
-        correctionStatus: 'APPLIED',
-        correctedSupplierId: null,
-        correctedSupplierName: input.correctedSupplierName ?? null,
-        correctedProductId: null,
-        correctedRawProductText: input.correctedRawProductText ?? null,
-        correctedNormalizedProductName:
-          input.correctedNormalizedProductName ?? null,
-        correctedStrength: null,
-        correctedDosageForm: null,
-        correctedPackSize: null,
-        correctedManufacturer: input.correctedManufacturer ?? null,
-        correctedUnitPrice: input.correctedUnitPrice ?? null,
-        correctedCurrencyCode: input.correctedCurrencyCode ?? null,
-        correctedMinimumOrderQuantity:
-          input.correctedMinimumOrderQuantity ?? null,
-        correctedAvailability: input.correctedAvailability ?? null,
-        actorType: input.actorType ?? 'OPERATOR',
-        actorIdentifier: input.actorIdentifier ?? null,
-        note: input.note ?? null,
-        metadata: input.metadata ?? null,
-        createdAt: new Date('2026-04-22T09:03:00.000Z'),
-        updatedAt: new Date('2026-04-22T09:03:00.000Z'),
-      };
-    }) as typeof offerCorrectionService.createCorrection,
-  );
-  stubMethod(
-    t,
-    automationService,
-    'recordFeedback',
-    (async (input) => {
-      capturedFeedback.push(input as Record<string, unknown>);
-      return { id: `feedback-${capturedFeedback.length}` } as any;
-    }) as typeof automationService.recordFeedback,
-  );
+  stubMethod(t, offerCorrectionService, 'createCorrection', (async (input) => {
+    capturedCorrection = input;
+    return {
+      id: 'correction-1',
+      emailDerivedOfferId: input.emailDerivedOfferId,
+      offerWorkflowItemId: input.offerWorkflowItemId,
+      inboundEmailId: input.inboundEmailId,
+      correctionStatus: 'APPLIED',
+      correctedSupplierId: null,
+      correctedSupplierName: input.correctedSupplierName ?? null,
+      correctedProductId: null,
+      correctedRawProductText: input.correctedRawProductText ?? null,
+      correctedNormalizedProductName:
+        input.correctedNormalizedProductName ?? null,
+      correctedStrength: null,
+      correctedDosageForm: null,
+      correctedPackSize: null,
+      correctedManufacturer: input.correctedManufacturer ?? null,
+      correctedUnitPrice: input.correctedUnitPrice ?? null,
+      correctedCurrencyCode: input.correctedCurrencyCode ?? null,
+      correctedMinimumOrderQuantity:
+        input.correctedMinimumOrderQuantity ?? null,
+      correctedAvailability: input.correctedAvailability ?? null,
+      actorType: input.actorType ?? 'OPERATOR',
+      actorIdentifier: input.actorIdentifier ?? null,
+      note: input.note ?? null,
+      metadata: input.metadata ?? null,
+      createdAt: new Date('2026-04-22T09:03:00.000Z'),
+      updatedAt: new Date('2026-04-22T09:03:00.000Z'),
+    };
+  }) as typeof offerCorrectionService.createCorrection);
+  stubMethod(t, automationService, 'recordFeedback', (async (input) => {
+    capturedFeedback.push(input as Record<string, unknown>);
+    return { id: `feedback-${capturedFeedback.length}` } as any;
+  }) as typeof automationService.recordFeedback);
 
   const baseUrl = await startServer(t);
   const response = await fetch(
