@@ -4,6 +4,7 @@ import test, { type TestContext } from 'node:test';
 
 import { createApp } from '../../app';
 import { env } from '../../config/env';
+import { graphMailDryRunService } from '../../email/graphPreflight';
 import {
   configurePollingWorkerStatusStore,
   configurePollingWorkerStatus,
@@ -111,7 +112,7 @@ test('system readiness report contains safe setup signals without secret values'
   const serialized = JSON.stringify(report);
 
   assert.equal(report.generatedAt, '2026-05-31T12:00:00.000Z');
-  assert.equal(report.status, 'ready');
+  assert.equal(report.status, 'warning');
   assert.equal(
     report.checks.some((check) => check.key === 'database'),
     true,
@@ -269,4 +270,105 @@ test('system worker status endpoint is protected and returns safe runtime counte
   assert.equal(emailWorker.duplicateItemsSkipped, 1);
   assert.equal(emailWorker.lastError, null);
   assert.doesNotMatch(JSON.stringify(payload), /secret/);
+});
+
+test('system readiness includes Graph mail preflight without secrets', async (t) => {
+  overrideEnv(t, {
+    microsoftMailTenantId: 'tenant-secret',
+    microsoftMailClientId: 'client-secret',
+    microsoftMailClientSecret: 'client-secret-value',
+    microsoftGraphRefreshToken: '',
+    microsoftGraphSenderMailbox: 'supplier-intake@example.test',
+    microsoftMailCredentialSource: 'mail-specific',
+    emailInboundPollingEnabled: false,
+    emailInboundAllowedSenders: ['supplier.example'],
+    emailInboundSupplierMappings: [
+      {
+        pattern: 'supplier.example',
+        supplierName: 'Supplier Example',
+      },
+    ],
+  });
+
+  const service = createSystemReadinessService({
+    pingDatabase: async () => undefined,
+  });
+  const report = await service.getReadinessReport();
+  const graphCheck = report.checks.find(
+    (check) => check.key === 'graph-mail-preflight',
+  );
+  const serialized = JSON.stringify(graphCheck);
+
+  assert.equal(graphCheck?.status, 'ready');
+  assert.equal(graphCheck?.details.mailbox, 'supplier-intake@example.test');
+  assert.equal(graphCheck?.details.credentialSource, 'mail-specific');
+  assert.equal(graphCheck?.details.credentialMode, 'client-secret');
+  assert.equal(graphCheck?.details.allowedSenderCount, 1);
+  assert.equal(graphCheck?.details.supplierMappingCount, 1);
+  assert.equal(graphCheck?.details.dryRunSafe, true);
+  assert.doesNotMatch(serialized, /tenant-secret/);
+  assert.doesNotMatch(serialized, /client-secret-value/);
+});
+
+test('Graph mail dry-run endpoint requires admin access and returns safe summaries', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
+  stubMethod(t, graphMailDryRunService, 'runDryRun', async () => ({
+    generatedAt: '2026-06-01T12:00:00.000Z',
+    liveReadOnlyGraphCall: true,
+    mailbox: 'supplier-intake@example.test',
+    requestedTake: 2,
+    messageCount: 1,
+    messages: [
+      {
+        messageIndex: 1,
+        receivedDateTime: '2026-06-01T11:59:00.000Z',
+        senderDomain: 'supplier.example',
+        senderPreview: '***@supplier.example',
+        subjectPreview: 'Price list',
+        subjectTruncated: false,
+        hasAttachments: true,
+        attachmentCount: 1,
+      },
+    ],
+    safety: {
+      markedRead: false,
+      ingested: false,
+      persistedContent: false,
+      downloadedAttachmentContent: false,
+      calledOpenAi: false,
+      calledTelegram: false,
+      sentEmail: false,
+    },
+  }));
+
+  const baseUrl = await startServer(t);
+  const viewerResponse = await fetch(
+    `${baseUrl}/api/system/graph-mail-dry-run?take=2`,
+    {
+      headers: {
+        'x-internal-api-key': 'test-secret',
+      },
+    },
+  );
+  assert.equal(viewerResponse.status, 403);
+
+  const adminResponse = await fetch(
+    `${baseUrl}/api/system/graph-mail-dry-run?take=2`,
+    {
+      headers: {
+        'x-internal-api-key': 'admin-secret',
+      },
+    },
+  );
+  assert.equal(adminResponse.status, 200);
+  const payload = await adminResponse.json();
+  assert.equal(payload.item.messageCount, 1);
+  assert.equal(payload.item.messages[0].senderPreview, '***@supplier.example');
+  assert.equal(payload.item.safety.markedRead, false);
+  assert.equal(payload.item.safety.ingested, false);
+  assert.doesNotMatch(JSON.stringify(payload), /test-secret|admin-secret/);
 });

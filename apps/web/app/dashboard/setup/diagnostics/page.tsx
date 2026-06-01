@@ -4,6 +4,7 @@ import {
   getPollingWorkerStatuses,
   getSystemReadinessReport,
   type PollingWorkerStatus,
+  type SystemReadinessCheck,
   type SystemReadinessReport,
 } from '../../../../lib/systemApi';
 
@@ -79,6 +80,101 @@ function workerNextAction(worker: PollingWorkerStatus): string {
   }
 
   return 'No action needed. Keep monitoring processed and failed counts during pilot runs.';
+}
+
+function formatDetailValue(
+  value: boolean | number | string | string[] | null | undefined,
+): string {
+  if (Array.isArray(value)) {
+    return value.length ? value.join(', ') : 'none';
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'yes' : 'no';
+  }
+
+  if (value === null || value === undefined || value === '') {
+    return 'n/a';
+  }
+
+  return String(value);
+}
+
+function GraphPreflightDiagnostics({
+  check,
+}: {
+  check: SystemReadinessCheck | undefined;
+}) {
+  if (!check) {
+    return null;
+  }
+
+  const warnings = Array.isArray(check.details.warnings)
+    ? check.details.warnings
+    : [];
+
+  return (
+    <article className="dashboard-opportunity-card setup-card">
+      <div className="dashboard-opportunity-top">
+        <div>
+          <p className="dashboard-opportunity-title">Graph inbox preflight</p>
+          <p className="dashboard-opportunity-meta">{check.key}</p>
+        </div>
+        <span
+          className={`pill ${
+            check.status === 'ready'
+              ? 'pill-high'
+              : check.status === 'warning'
+                ? 'pill-medium'
+                : 'pill-low'
+          }`}
+        >
+          {check.status.replace('_', ' ')}
+        </span>
+      </div>
+      <p className="dashboard-opportunity-copy">{check.meaning}</p>
+      <dl className="setup-detail-list">
+        <div>
+          <dt>mailbox</dt>
+          <dd>{formatDetailValue(check.details.mailbox)}</dd>
+        </div>
+        <div>
+          <dt>credential source</dt>
+          <dd>{formatDetailValue(check.details.credentialSource)}</dd>
+        </div>
+        <div>
+          <dt>credential mode</dt>
+          <dd>{formatDetailValue(check.details.credentialMode)}</dd>
+        </div>
+        <div>
+          <dt>polling enabled</dt>
+          <dd>{formatDetailValue(check.details.pollingEnabled)}</dd>
+        </div>
+        <div>
+          <dt>allowed senders</dt>
+          <dd>{formatDetailValue(check.details.allowedSenderCount)}</dd>
+        </div>
+        <div>
+          <dt>supplier mappings</dt>
+          <dd>{formatDetailValue(check.details.supplierMappingCount)}</dd>
+        </div>
+        <div>
+          <dt>dry-run safe</dt>
+          <dd>{formatDetailValue(check.details.dryRunSafe)}</dd>
+        </div>
+      </dl>
+      {warnings.length > 0 ? (
+        <div className="setup-next-action">
+          <p className="dashboard-summary-label">Warnings</p>
+          <p className="dashboard-summary-note">{warnings.join(' ')}</p>
+        </div>
+      ) : null}
+      <div className="setup-next-action">
+        <p className="dashboard-summary-label">What to check next</p>
+        <p className="dashboard-summary-note">{check.nextAction}</p>
+      </div>
+    </article>
+  );
 }
 
 function DiagnosticErrorCard({
@@ -188,6 +284,11 @@ export default async function DiagnosticsPage() {
       ? { ok: true, value: workersResult.value }
       : { ok: false, message: formatError(workersResult.reason) };
   const counts = readiness.ok ? readinessCounts(readiness.value) : null;
+  const graphPreflightCheck = readiness.ok
+    ? readiness.value.checks.find(
+        (check) => check.key === 'graph-mail-preflight',
+      )
+    : undefined;
   const readinessErrorMessage = readiness.ok ? null : readiness.message;
   const workersErrorMessage = workers.ok ? null : workers.message;
 
@@ -220,6 +321,12 @@ export default async function DiagnosticsPage() {
           </Link>
         </div>
       </section>
+
+      {readiness.ok ? (
+        <section className="setup-check-grid">
+          <GraphPreflightDiagnostics check={graphPreflightCheck} />
+        </section>
+      ) : null}
 
       <section className="panel dashboard-panel">
         <div className="dashboard-section-header">

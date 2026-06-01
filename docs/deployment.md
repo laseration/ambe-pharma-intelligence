@@ -170,6 +170,22 @@ Enable it only after configuring:
 - `EMAIL_INBOUND_SUPPLIER_MAPPINGS` where deterministic supplier mapping is
   safe
 
+Before enabling polling, run the read-only preflight:
+
+```bash
+pnpm --filter @ambe/api email:graph-preflight
+```
+
+The command reports mailbox configuration, credential source/mode, polling
+state, allowed sender count, supplier mapping count, and dry-run readiness. When
+credentials are present and polling is disabled, it clearly announces a live
+read-only Microsoft Graph call and lists redacted unread message summaries only.
+It does not mark messages read, ingest messages, persist content, download
+attachment contents, call OpenAI, call Telegram, send email, or upload files.
+
+Do not set `EMAIL_INBOUND_POLLING_ENABLED=true` until an operator has reviewed
+the dry-run output and confirmed the mailbox and sender allowlists.
+
 Related safety controls:
 
 - `GRAPH_USE_MESSAGE_DELTA=true`

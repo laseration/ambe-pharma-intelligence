@@ -252,6 +252,20 @@ EMAIL_INBOUND_POLLING_INTERVAL_MS=30000
 - `EMAIL_INBOUND_POLLING_ENABLED`: when `true`, the API polls unread inbox mail for `MICROSOFT_GRAPH_SENDER_MAILBOX`
 - `EMAIL_INBOUND_POLLING_INTERVAL_MS`: polling interval in milliseconds
 
+### Graph Inbox Preflight
+
+Before enabling inbox polling, run the read-only Graph preflight:
+
+```bash
+pnpm --filter @ambe/api email:graph-preflight
+```
+
+The command first reports safe configuration status: mailbox configured, credential source, credential mode, polling enabled/disabled, allowed sender count, supplier mapping count, and dry-run readiness. If Graph mail credentials are complete and polling is disabled, it clearly announces a live read-only Microsoft Graph call and lists a small number of unread inbox message summaries.
+
+The dry-run does not mark messages read, ingest messages, save inbound email rows, download attachment contents, call OpenAI, call Telegram, send email, or upload to SharePoint/OneDrive. It shows only message count, redacted sender/domain, truncated subject preview, received timestamp, and attachment count.
+
+Keep `EMAIL_INBOUND_POLLING_ENABLED=false` until the dry-run output, mailbox ownership, and allowed sender configuration have been manually signed off.
+
 Required Graph permission for this mode:
 
 - `Mail.ReadWrite` as an `Application` permission
