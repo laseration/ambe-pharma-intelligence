@@ -1,4 +1,4 @@
-import type { ParsedFileResult, ParsedTableRow } from '../types';
+import type { ParsedColumn, ParsedFileResult, ParsedTableRow } from '../types';
 
 type TableParseOptions = {
   sourceLabel: string;
@@ -23,7 +23,9 @@ const CANONICAL_HEADER_ALIASES: Record<string, string[]> = {
   ],
   unitPrice: ['unitprice', 'price', 'unitcost'],
   supplierName: ['suppliername', 'supplier', 'vendor', 'vendorname'],
+  manufacturer: ['manufacturer', 'manufacturername', 'mfr', 'brand'],
   packDescription: ['packdescription', 'packsize', 'pack'],
+  currencyCode: ['currencycode', 'currency', 'ccy'],
   minimumOrderQuantity: [
     'minimumorderquantity',
     'minimumorderqty',
@@ -48,6 +50,10 @@ const DIRECT_HEADER_KEYS = [
   'packSize',
   'unitPrice',
   'price',
+  'manufacturer',
+  'manufacturerName',
+  'mfr',
+  'brand',
   'currencyCode',
   'currency',
   'minimumOrderQuantity',
@@ -207,6 +213,13 @@ function getCanonicalAlias(header: string): string | null {
   return NORMALIZED_HEADER_TO_CANONICAL.get(normalized) ?? null;
 }
 
+function getDetectedColumns(headers: string[]): ParsedColumn[] {
+  return headers.map((header) => ({
+    sourceHeader: header,
+    canonicalField: getCanonicalAlias(header),
+  }));
+}
+
 function buildHeaders(
   rawHeaderRow: string[],
   warnings: string[],
@@ -280,6 +293,7 @@ export function parseTableRows(options: TableParseOptions): TableParseResult {
     return {
       rows: [],
       warnings: [`${options.sourceLabel}: no tabular data could be detected.`],
+      detectedColumns: [],
       headerRowIndex: null,
       recognizedHeaderScore,
     };
@@ -330,6 +344,7 @@ export function parseTableRows(options: TableParseOptions): TableParseResult {
   return {
     rows: parsedRows,
     warnings,
+    detectedColumns: getDetectedColumns(headers),
     headerRowIndex,
     recognizedHeaderScore,
   };

@@ -1905,6 +1905,9 @@ export function createTradeOpportunityRepository(
               hasAvailabilityDrift: true,
             },
           },
+          events: {
+            orderBy: { createdAt: 'asc' },
+          },
         },
         orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }] as never,
         take: filters.take ?? 100,

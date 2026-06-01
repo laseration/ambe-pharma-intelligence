@@ -5,6 +5,7 @@ import test, { type TestContext } from 'node:test';
 import { createApp } from '../../app';
 import { env } from '../../config/env';
 import {
+  configurePollingWorkerStatusStore,
   configurePollingWorkerStatus,
   resetPollingWorkerStatusesForTests,
 } from '../../polling/status';
@@ -212,6 +213,38 @@ test('system worker status endpoint is protected and returns safe runtime counte
     active: true,
     intervalMs: 60000,
   });
+  configurePollingWorkerStatusStore({
+    async upsertStatus() {
+      // Route test only needs persisted read behavior.
+    },
+    async listStatuses() {
+      return [
+        {
+          name: 'email-inbound',
+          enabled: true,
+          configured: true,
+          active: true,
+          running: false,
+          inFlight: false,
+          intervalMs: 60000,
+          startedAt: '2026-05-31T10:00:00.000Z',
+          stoppedAt: null,
+          lastRunStartedAt: '2026-05-31T10:01:00.000Z',
+          lastRunFinishedAt: '2026-05-31T10:01:01.000Z',
+          lastSuccessAt: '2026-05-31T10:01:01.000Z',
+          lastErrorAt: null,
+          lastError: null,
+          consecutiveFailures: 0,
+          totalRuns: 4,
+          totalItemsSeen: 5,
+          totalItemsProcessed: 3,
+          totalItemsSkipped: 2,
+          totalItemsFailed: 0,
+          duplicateItemsSkipped: 1,
+        },
+      ];
+    },
+  });
 
   const baseUrl = await startServer(t);
   const unauthenticatedResponse = await fetch(`${baseUrl}/api/system/workers`);
@@ -231,6 +264,9 @@ test('system worker status endpoint is protected and returns safe runtime counte
   assert.equal(emailWorker.enabled, true);
   assert.equal(emailWorker.configured, true);
   assert.equal(emailWorker.intervalMs, 60000);
+  assert.equal(emailWorker.totalRuns, 4);
+  assert.equal(emailWorker.totalItemsProcessed, 3);
+  assert.equal(emailWorker.duplicateItemsSkipped, 1);
   assert.equal(emailWorker.lastError, null);
   assert.doesNotMatch(JSON.stringify(payload), /secret/);
 });

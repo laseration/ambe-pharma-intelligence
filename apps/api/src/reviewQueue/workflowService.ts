@@ -356,9 +356,42 @@ type BuyExecutionEventRecord = {
   createdAt: Date;
 };
 
+type OfferCorrectionEventRecord = {
+  id: string;
+  offerCorrectionId: string;
+  actionType: string;
+  previousStatus: string | null;
+  newStatus: string | null;
+  actorType: string;
+  actorIdentifier: string | null;
+  note: string | null;
+  metadata: unknown;
+  createdAt: Date;
+};
+
+type TradeOpportunityEventRecord = {
+  id: string;
+  tradeOpportunityId: string;
+  actionType: string;
+  previousStatus: string | null;
+  newStatus: string | null;
+  previousStage: string | null;
+  newStage: string | null;
+  actorType: string;
+  actorIdentifier: string | null;
+  note: string | null;
+  metadata: unknown;
+  createdAt: Date;
+};
+
 export type WorkflowAuditHistoryEntry = {
   id: string;
-  entityType: 'OFFER_WORKFLOW_ITEM' | 'BUY_DECISION' | 'BUY_EXECUTION';
+  entityType:
+    | 'OFFER_WORKFLOW_ITEM'
+    | 'BUY_DECISION'
+    | 'BUY_EXECUTION'
+    | 'OFFER_CORRECTION'
+    | 'TRADE_OPPORTUNITY';
   entityId: string;
   actionType: string;
   previousStatus: string | null;
@@ -476,6 +509,15 @@ type WorkflowRepository = {
   listBuyExecutionEvents: (
     buyExecutionId: string,
   ) => Promise<BuyExecutionEventRecord[]>;
+  listOfferCorrectionEventsForWorkflow: (
+    workflowItemId: string,
+  ) => Promise<OfferCorrectionEventRecord[]>;
+  listTradeOpportunityEventsForWorkflow: (input: {
+    workflowItemId: string;
+    emailDerivedOfferId: string;
+    buyDecisionId?: string | null;
+    buyExecutionId?: string | null;
+  }) => Promise<TradeOpportunityEventRecord[]>;
   findSupplierQualificationBySupplierId: (
     supplierId: string,
   ) => Promise<SupplierQualificationRecord | null>;
@@ -1139,6 +1181,57 @@ function createWorkflowRepository(
         where: { buyExecutionId },
         orderBy: { createdAt: 'asc' },
       })) as BuyExecutionEventRecord[],
+    listOfferCorrectionEventsForWorkflow: async (workflowItemId) => {
+      const corrections = await client.offerCorrection.findMany({
+        where: { offerWorkflowItemId: workflowItemId },
+        select: { id: true },
+      });
+      const correctionIds = corrections.map((correction) => correction.id);
+
+      if (correctionIds.length === 0) {
+        return [];
+      }
+
+      return (await client.offerCorrectionEvent.findMany({
+        where: {
+          offerCorrectionId: {
+            in: correctionIds,
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      })) as OfferCorrectionEventRecord[];
+    },
+    listTradeOpportunityEventsForWorkflow: async (input) => {
+      const tradeOpportunities = await client.tradeOpportunity.findMany({
+        where: {
+          OR: [
+            { offerWorkflowItemId: input.workflowItemId },
+            { emailDerivedOfferId: input.emailDerivedOfferId },
+            ...(input.buyDecisionId
+              ? [{ buyDecisionId: input.buyDecisionId }]
+              : []),
+            ...(input.buyExecutionId
+              ? [{ buyExecutionId: input.buyExecutionId }]
+              : []),
+          ],
+        },
+        select: { id: true },
+      });
+      const tradeOpportunityIds = tradeOpportunities.map((item) => item.id);
+
+      if (tradeOpportunityIds.length === 0) {
+        return [];
+      }
+
+      return (await client.tradeOpportunityEvent.findMany({
+        where: {
+          tradeOpportunityId: {
+            in: tradeOpportunityIds,
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      })) as TradeOpportunityEventRecord[];
+    },
     findSupplierQualificationBySupplierId: async (supplierId) =>
       client.supplierQualification.findUnique({
         where: { supplierId },
@@ -1840,6 +1933,45 @@ function mapBuyExecutionAuditEntry(
   };
 }
 
+function mapOfferCorrectionAuditEntry(
+  event: OfferCorrectionEventRecord,
+): WorkflowAuditHistoryEntry {
+  return {
+    id: event.id,
+    entityType: 'OFFER_CORRECTION',
+    entityId: event.offerCorrectionId,
+    actionType: event.actionType,
+    previousStatus: event.previousStatus,
+    newStatus: event.newStatus,
+    actorType: event.actorType,
+    actorIdentifier: event.actorIdentifier,
+    note: event.note,
+    metadata: event.metadata,
+    createdAt: event.createdAt,
+  };
+}
+
+function mapTradeOpportunityAuditEntry(
+  event: TradeOpportunityEventRecord,
+): WorkflowAuditHistoryEntry {
+  return {
+    id: event.id,
+    entityType: 'TRADE_OPPORTUNITY',
+    entityId: event.tradeOpportunityId,
+    actionType: event.actionType,
+    previousStatus:
+      [event.previousStatus, event.previousStage].filter(Boolean).join(' / ') ||
+      null,
+    newStatus:
+      [event.newStatus, event.newStage].filter(Boolean).join(' / ') || null,
+    actorType: event.actorType,
+    actorIdentifier: event.actorIdentifier,
+    note: event.note,
+    metadata: event.metadata,
+    createdAt: event.createdAt,
+  };
+}
+
 async function recordWorkflowFeedbackIfPresent(
   repository: Pick<
     WorkflowRepository,
@@ -2255,11 +2387,22 @@ export function createOfferWorkflowService(
       const buyExecutionEvents = buyExecutionId
         ? await repository.listBuyExecutionEvents(buyExecutionId)
         : [];
+      const correctionEvents =
+        await repository.listOfferCorrectionEventsForWorkflow(workflowItemId);
+      const tradeOpportunityEvents =
+        await repository.listTradeOpportunityEventsForWorkflow({
+          workflowItemId,
+          emailDerivedOfferId: detail.emailDerivedOfferId,
+          buyDecisionId,
+          buyExecutionId,
+        });
 
       return [
         ...workflowEvents.map(mapWorkflowAuditEntry),
         ...buyDecisionEvents.map(mapBuyDecisionAuditEntry),
         ...buyExecutionEvents.map(mapBuyExecutionAuditEntry),
+        ...correctionEvents.map(mapOfferCorrectionAuditEntry),
+        ...tradeOpportunityEvents.map(mapTradeOpportunityAuditEntry),
       ].sort(
         (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
       );

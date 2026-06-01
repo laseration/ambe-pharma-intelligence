@@ -166,7 +166,12 @@ export type ReviewWorkflowEvent = {
 
 export type ReviewWorkflowAuditEntry = {
   id: string;
-  entityType: 'OFFER_WORKFLOW_ITEM' | 'BUY_DECISION' | 'BUY_EXECUTION';
+  entityType:
+    | 'OFFER_WORKFLOW_ITEM'
+    | 'BUY_DECISION'
+    | 'BUY_EXECUTION'
+    | 'OFFER_CORRECTION'
+    | 'TRADE_OPPORTUNITY';
   entityId: string;
   actionType: string;
   previousStatus: string | null;

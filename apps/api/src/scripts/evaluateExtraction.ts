@@ -15,6 +15,7 @@ function printSummary(summary: Awaited<ReturnType<typeof runExtractionEval>>) {
   console.log(`False negatives: ${summary.falseNegatives}`);
   console.log(`Review-required cases: ${summary.reviewRequiredCount}`);
   console.log(`Auto-promotion eligible cases: ${summary.autoPromotionCount}`);
+  console.log(`AI-used cases: ${summary.aiUsedCount}`);
   console.log('');
 
   console.log('Case results');
@@ -32,7 +33,7 @@ function printSummary(summary: Awaited<ReturnType<typeof runExtractionEval>>) {
     }
     for (const offer of result.extractedOffers) {
       console.log(
-        `  Offer: ${offer.productText} | ${offer.price} ${offer.currencyCode ?? ''} | ${offer.confidence} | ${offer.sourceLabel}`.trim(),
+        `  Offer: ${offer.productText} | ${offer.price} ${offer.currencyCode ?? ''} | ${offer.confidence} | ${offer.sourceLabel}`,
       );
     }
     for (const mismatch of result.mismatches) {
@@ -54,9 +55,25 @@ function printSummary(summary: Awaited<ReturnType<typeof runExtractionEval>>) {
 }
 
 async function main() {
-  const fixturePath = process.argv[2];
-  const summary = await runExtractionEval(fixturePath);
+  const args = process.argv.slice(2);
+  const allowLiveAi =
+    process.env.AMBE_EXTRACTION_EVAL_LIVE_AI === '1' ||
+    args.includes('--live-ai');
+  const fixturePath = args.find((arg) => !arg.startsWith('--'));
+  const summary = await runExtractionEval({
+    fixturePath,
+    allowLiveAi,
+  });
+  if (allowLiveAi) {
+    console.log(
+      'Live AI evaluation mode is enabled. Results may be non-deterministic and should not be used as CI gates.',
+    );
+    console.log('');
+  }
   printSummary(summary);
+  if (summary.failedCases > 0) {
+    process.exitCode = 1;
+  }
 }
 
 main().catch((error) => {

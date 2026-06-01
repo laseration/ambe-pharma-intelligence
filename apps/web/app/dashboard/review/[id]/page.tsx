@@ -223,6 +223,10 @@ function formatAuditEntityType(
       return 'Buy decision';
     case 'BUY_EXECUTION':
       return 'Execution';
+    case 'OFFER_CORRECTION':
+      return 'Correction';
+    case 'TRADE_OPPORTUNITY':
+      return 'Deal';
   }
 }
 

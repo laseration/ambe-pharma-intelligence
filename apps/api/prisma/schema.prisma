@@ -510,6 +510,7 @@ model ImportBatch {
   validRows            Int                   @default(0)
   invalidRows          Int                   @default(0)
   warnings             Json?
+  diagnostics          Json?
   errors               ImportError[]
   telegramInboundItems TelegramInboundItem[]
   inventorySnapshots   InventorySnapshot[]

@@ -9,6 +9,7 @@ import {
   normalizeFingerprintText,
 } from '../email/inbound/sourceFingerprint';
 import { findMatchingAliasVariant } from '../imports/productMatching';
+import { buildCommercialAuditMetadata } from '../audit/commercialAudit';
 
 export type OfferCorrectionStatus = 'APPLIED' | 'SUPERSEDED' | 'REJECTED';
 export type OfferCorrectionActionType =
@@ -577,6 +578,59 @@ function correctionDataFromInput(
     note: normalizeString(input.note),
     metadata: input.metadata ?? null,
   };
+}
+
+function correctedFieldNames(correction: OfferCorrectionRecord): string[] {
+  return [
+    ['correctedSupplierId', correction.correctedSupplierId],
+    ['correctedSupplierName', correction.correctedSupplierName],
+    ['correctedProductId', correction.correctedProductId],
+    ['correctedRawProductText', correction.correctedRawProductText],
+    [
+      'correctedNormalizedProductName',
+      correction.correctedNormalizedProductName,
+    ],
+    ['correctedStrength', correction.correctedStrength],
+    ['correctedDosageForm', correction.correctedDosageForm],
+    ['correctedPackSize', correction.correctedPackSize],
+    ['correctedManufacturer', correction.correctedManufacturer],
+    ['correctedUnitPrice', correction.correctedUnitPrice],
+    ['correctedCurrencyCode', correction.correctedCurrencyCode],
+    [
+      'correctedMinimumOrderQuantity',
+      correction.correctedMinimumOrderQuantity,
+    ],
+    ['correctedAvailability', correction.correctedAvailability],
+  ]
+    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .map(([field]) => String(field));
+}
+
+function buildCorrectionEventMetadata(input: {
+  correction: OfferCorrectionRecord;
+  actionType: OfferCorrectionActionType;
+  previousStatus: OfferCorrectionStatus | null;
+  newStatus: OfferCorrectionStatus | null;
+  metadata?: unknown;
+}) {
+  return buildCommercialAuditMetadata(
+    {
+      entityType: 'OFFER_CORRECTION',
+      entityId: input.correction.id,
+      action: input.actionType,
+      status: {
+        previous: input.previousStatus,
+        next: input.newStatus,
+      },
+      source: {
+        inboundEmailId: input.correction.inboundEmailId,
+        emailDerivedOfferId: input.correction.emailDerivedOfferId,
+        offerWorkflowItemId: input.correction.offerWorkflowItemId,
+      },
+      changedFields: correctedFieldNames(input.correction),
+    },
+    input.metadata ?? input.correction.metadata,
+  );
 }
 
 function createOfferCorrectionRepository(
@@ -1534,6 +1588,12 @@ export function createOfferCorrectionService(
               actorType: actor.actorType,
               actorIdentifier: actor.actorIdentifier,
               note: 'Superseded by a newer operator correction.',
+              metadata: buildCorrectionEventMetadata({
+                correction: activeCorrection,
+                actionType: 'SUPERSEDED',
+                previousStatus: activeCorrection.correctionStatus,
+                newStatus: 'SUPERSEDED',
+              }),
             });
           }
         }
@@ -1558,6 +1618,12 @@ export function createOfferCorrectionService(
           actorType: actor.actorType,
           actorIdentifier: actor.actorIdentifier,
           note: created.note,
+          metadata: buildCorrectionEventMetadata({
+            correction: created,
+            actionType: 'CREATED',
+            previousStatus: null,
+            newStatus: created.correctionStatus,
+          }),
         });
         await txRepository.createCorrectionEvent({
           offerCorrectionId: created.id,
@@ -1568,6 +1634,15 @@ export function createOfferCorrectionService(
           actorType: actor.actorType,
           actorIdentifier: actor.actorIdentifier,
           note: created.note,
+          metadata: buildCorrectionEventMetadata({
+            correction: created,
+            actionType:
+              created.correctionStatus === 'REJECTED'
+                ? 'REJECTED'
+                : 'APPLIED',
+            previousStatus: null,
+            newStatus: created.correctionStatus,
+          }),
         });
 
         await ensureCorrectedProductAlias(txRepository, created);
@@ -1622,6 +1697,12 @@ export function createOfferCorrectionService(
               actorType: actor.actorType,
               actorIdentifier: actor.actorIdentifier,
               note: 'Superseded by a newer operator correction.',
+              metadata: buildCorrectionEventMetadata({
+                correction: activeCorrection,
+                actionType: 'SUPERSEDED',
+                previousStatus: activeCorrection.correctionStatus,
+                newStatus: 'SUPERSEDED',
+              }),
             });
           }
         }
@@ -1637,6 +1718,13 @@ export function createOfferCorrectionService(
           actorType: actor.actorType,
           actorIdentifier: actor.actorIdentifier,
           note: correctionData.note,
+          metadata: buildCorrectionEventMetadata({
+            correction: updated,
+            actionType: 'UPDATED',
+            previousStatus,
+            newStatus: updated.correctionStatus,
+            metadata: correctionData.metadata,
+          }),
         });
 
         if (previousStatus !== updated.correctionStatus) {
@@ -1653,6 +1741,18 @@ export function createOfferCorrectionService(
             actorType: actor.actorType,
             actorIdentifier: actor.actorIdentifier,
             note: correctionData.note,
+            metadata: buildCorrectionEventMetadata({
+              correction: updated,
+              actionType:
+                updated.correctionStatus === 'REJECTED'
+                  ? 'REJECTED'
+                  : updated.correctionStatus === 'SUPERSEDED'
+                    ? 'SUPERSEDED'
+                    : 'APPLIED',
+              previousStatus,
+              newStatus: updated.correctionStatus,
+              metadata: correctionData.metadata,
+            }),
           });
         } else if (
           correctionData.note &&
@@ -1666,6 +1766,13 @@ export function createOfferCorrectionService(
             actorType: actor.actorType,
             actorIdentifier: actor.actorIdentifier,
             note: correctionData.note,
+            metadata: buildCorrectionEventMetadata({
+              correction: updated,
+              actionType: 'NOTE_ADDED',
+              previousStatus,
+              newStatus: updated.correctionStatus,
+              metadata: correctionData.metadata,
+            }),
           });
         }
 

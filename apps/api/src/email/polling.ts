@@ -79,6 +79,46 @@ type EmailInboundPollingDependencies = {
 
 type EmailPollingMessageOutcome = 'processed' | 'skipped' | 'duplicate';
 
+function safeGraphErrorCode(errorText: string): string | null {
+  try {
+    const payload = JSON.parse(errorText) as {
+      error?: { code?: unknown };
+    };
+    const code = payload.error?.code;
+
+    return typeof code === 'string' && code.trim() ? code.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildGraphRequestError(response: Response, errorText: string): Error {
+  const retryAfter = response.headers.get('retry-after');
+  const requestId = response.headers.get('request-id');
+  const code = safeGraphErrorCode(errorText);
+  const parts = [
+    `Microsoft Graph request failed with status ${response.status}.`,
+  ];
+
+  if (response.status === 429) {
+    parts.push('Rate limited by Microsoft Graph.');
+  }
+
+  if (retryAfter) {
+    parts.push(`retryAfterSeconds=${retryAfter}.`);
+  }
+
+  if (code) {
+    parts.push(`graphErrorCode=${code}.`);
+  }
+
+  if (requestId) {
+    parts.push(`requestId=${requestId}.`);
+  }
+
+  return new Error(parts.join(' '));
+}
+
 function stripHtml(html: string): string {
   return html
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -161,9 +201,7 @@ async function graphRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(
-      `Microsoft Graph request failed with status ${response.status}. ${errorText}`,
-    );
+    throw buildGraphRequestError(response, errorText);
   }
 
   if (response.status === 204) {

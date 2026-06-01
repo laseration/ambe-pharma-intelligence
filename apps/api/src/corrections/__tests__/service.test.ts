@@ -357,6 +357,18 @@ test('creating a correction stores corrected fields and writes source profile st
     harness.correctionEvents.map((event) => event.actionType),
     ['CREATED', 'APPLIED'],
   );
+  assert.equal(
+    harness.correctionEvents[0]?.metadata?.commercialAudit?.entityType,
+    'OFFER_CORRECTION',
+  );
+  assert.deepEqual(
+    harness.correctionEvents[0]?.metadata?.commercialAudit?.source,
+    {
+      inboundEmailId: 'email-offer-1',
+      emailDerivedOfferId: 'offer-1',
+      offerWorkflowItemId: 'workflow-offer-1',
+    },
+  );
   assert.equal(harness.sourceProfiles.length, 1);
   assert.equal(harness.sourceProfiles[0]?.sampleCount, 1);
   assert.equal(harness.sourceProfiles[0]?.correctedExtractionCount, 1);

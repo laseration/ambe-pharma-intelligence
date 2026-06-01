@@ -24,6 +24,11 @@ export type PollingWorkerSnapshot = {
   duplicateItemsSkipped: number;
 };
 
+export type PollingWorkerStatusStore = {
+  upsertStatus: (snapshot: PollingWorkerSnapshot) => Promise<void>;
+  listStatuses: () => Promise<PollingWorkerSnapshot[]>;
+};
+
 type PollingWorkerUpdate = Partial<
   Pick<
     PollingWorkerSnapshot,
@@ -42,6 +47,7 @@ type PollingRunResult = {
 const WORKER_NAMES: PollingWorkerName[] = ['email-inbound', 'telegram'];
 
 const statuses = new Map<PollingWorkerName, PollingWorkerSnapshot>();
+let statusStore: PollingWorkerStatusStore | null = null;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -98,13 +104,120 @@ function getMutableStatus(name: PollingWorkerName): PollingWorkerSnapshot {
   return created;
 }
 
+function snapshotStatus(status: PollingWorkerSnapshot): PollingWorkerSnapshot {
+  return { ...status };
+}
+
+function persistStatus(snapshot: PollingWorkerSnapshot): void {
+  if (!statusStore) {
+    return;
+  }
+
+  void statusStore.upsertStatus(snapshot).catch(() => {
+    // Worker status must never make polling fail. Operational logs still carry
+    // the live failure, and the next status update can repair the durable row.
+  });
+}
+
+function snapshotAndPersist(
+  status: PollingWorkerSnapshot,
+): PollingWorkerSnapshot {
+  const snapshot = snapshotStatus(status);
+  persistStatus(snapshot);
+  return snapshot;
+}
+
+function pickLatestTimestamp(
+  left: string | null,
+  right: string | null,
+): string | null {
+  if (!left) {
+    return right;
+  }
+
+  if (!right) {
+    return left;
+  }
+
+  return new Date(left).getTime() >= new Date(right).getTime() ? left : right;
+}
+
+function mergePersistedStatus(
+  memoryStatus: PollingWorkerSnapshot,
+  persistedStatus: PollingWorkerSnapshot | undefined,
+): PollingWorkerSnapshot {
+  if (!persistedStatus) {
+    return snapshotStatus(memoryStatus);
+  }
+
+  return {
+    ...persistedStatus,
+    enabled: memoryStatus.enabled,
+    configured: memoryStatus.configured,
+    active: memoryStatus.active,
+    running: memoryStatus.running,
+    inFlight: memoryStatus.inFlight,
+    intervalMs: memoryStatus.intervalMs ?? persistedStatus.intervalMs,
+    startedAt: pickLatestTimestamp(memoryStatus.startedAt, persistedStatus.startedAt),
+    stoppedAt: pickLatestTimestamp(memoryStatus.stoppedAt, persistedStatus.stoppedAt),
+    lastRunStartedAt: pickLatestTimestamp(
+      memoryStatus.lastRunStartedAt,
+      persistedStatus.lastRunStartedAt,
+    ),
+    lastRunFinishedAt: pickLatestTimestamp(
+      memoryStatus.lastRunFinishedAt,
+      persistedStatus.lastRunFinishedAt,
+    ),
+    lastSuccessAt: pickLatestTimestamp(
+      memoryStatus.lastSuccessAt,
+      persistedStatus.lastSuccessAt,
+    ),
+    lastErrorAt: pickLatestTimestamp(
+      memoryStatus.lastErrorAt,
+      persistedStatus.lastErrorAt,
+    ),
+    lastError: memoryStatus.lastError ?? persistedStatus.lastError,
+    consecutiveFailures: Math.max(
+      memoryStatus.consecutiveFailures,
+      persistedStatus.consecutiveFailures,
+    ),
+    totalRuns: Math.max(memoryStatus.totalRuns, persistedStatus.totalRuns),
+    totalItemsSeen: Math.max(
+      memoryStatus.totalItemsSeen,
+      persistedStatus.totalItemsSeen,
+    ),
+    totalItemsProcessed: Math.max(
+      memoryStatus.totalItemsProcessed,
+      persistedStatus.totalItemsProcessed,
+    ),
+    totalItemsSkipped: Math.max(
+      memoryStatus.totalItemsSkipped,
+      persistedStatus.totalItemsSkipped,
+    ),
+    totalItemsFailed: Math.max(
+      memoryStatus.totalItemsFailed,
+      persistedStatus.totalItemsFailed,
+    ),
+    duplicateItemsSkipped: Math.max(
+      memoryStatus.duplicateItemsSkipped,
+      persistedStatus.duplicateItemsSkipped,
+    ),
+  };
+}
+
+export function configurePollingWorkerStatusStore(
+  store: PollingWorkerStatusStore | null,
+): void {
+  statusStore = store;
+}
+
 export function configurePollingWorkerStatus(
   name: PollingWorkerName,
   update: PollingWorkerUpdate,
 ): PollingWorkerSnapshot {
   const status = getMutableStatus(name);
   Object.assign(status, update);
-  return { ...status };
+  return snapshotAndPersist(status);
 }
 
 export function markPollingWorkerStarted(
@@ -114,7 +227,7 @@ export function markPollingWorkerStarted(
   status.running = true;
   status.startedAt = nowIso();
   status.stoppedAt = null;
-  return { ...status };
+  return snapshotAndPersist(status);
 }
 
 export function markPollingWorkerStopped(
@@ -124,7 +237,7 @@ export function markPollingWorkerStopped(
   status.running = false;
   status.inFlight = false;
   status.stoppedAt = nowIso();
-  return { ...status };
+  return snapshotAndPersist(status);
 }
 
 export function markPollingRunStarted(
@@ -133,7 +246,7 @@ export function markPollingRunStarted(
   const status = getMutableStatus(name);
   status.inFlight = true;
   status.lastRunStartedAt = nowIso();
-  return { ...status };
+  return snapshotAndPersist(status);
 }
 
 export function markPollingRunFinished(
@@ -157,7 +270,7 @@ export function markPollingRunFinished(
     status.lastSuccessAt = status.lastRunFinishedAt;
   }
 
-  return { ...status };
+  return snapshotAndPersist(status);
 }
 
 export function recordPollingWorkerError(
@@ -167,19 +280,41 @@ export function recordPollingWorkerError(
   const status = getMutableStatus(name);
   status.lastErrorAt = nowIso();
   status.lastError = sanitizePollingErrorMessage(error);
-  return { ...status };
+  return snapshotAndPersist(status);
 }
 
 export function getPollingWorkerStatus(
   name: PollingWorkerName,
 ): PollingWorkerSnapshot {
-  return { ...getMutableStatus(name) };
+  return snapshotStatus(getMutableStatus(name));
 }
 
 export function listPollingWorkerStatuses(): PollingWorkerSnapshot[] {
   return WORKER_NAMES.map(getPollingWorkerStatus);
 }
 
+export async function listPollingWorkerStatusesWithStore(): Promise<
+  PollingWorkerSnapshot[]
+> {
+  if (!statusStore) {
+    return listPollingWorkerStatuses();
+  }
+
+  try {
+    const persistedStatuses = await statusStore.listStatuses();
+    const persistedByName = new Map(
+      persistedStatuses.map((status) => [status.name, status]),
+    );
+
+    return WORKER_NAMES.map((name) =>
+      mergePersistedStatus(getMutableStatus(name), persistedByName.get(name)),
+    );
+  } catch {
+    return listPollingWorkerStatuses();
+  }
+}
+
 export function resetPollingWorkerStatusesForTests(): void {
   statuses.clear();
+  statusStore = null;
 }

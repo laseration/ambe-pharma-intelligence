@@ -1,7 +1,7 @@
 import { Router } from 'express';
 
 import { asyncHandler } from '../http/errors';
-import { listPollingWorkerStatuses } from '../polling/status';
+import { listPollingWorkerStatusesWithStore } from '../polling/status';
 import { systemReadinessService } from './readiness';
 
 export const systemRouter = Router();
@@ -19,7 +19,7 @@ systemRouter.get(
   '/workers',
   asyncHandler(async (_request, response) => {
     response.json({
-      items: listPollingWorkerStatuses(),
+      items: await listPollingWorkerStatusesWithStore(),
     });
   }),
 );

@@ -71,6 +71,13 @@ function humanizeValue(value: string | null | undefined) {
     .join(' ');
 }
 
+function formatAuditAction(actionType: string): string {
+  return actionType
+    .replace(/[_-]+/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function stageLabel(stage: TradeOpportunityListItem['stage']) {
   switch (stage) {
     case 'REVIEW':
@@ -324,6 +331,61 @@ export default async function DealsPage() {
                         ? ' | Linked to approved supplier offer'
                         : ''}
                     </p>
+
+                    {deal.events?.length ? (
+                      <details className="document-card technical-details-card">
+                        <summary>Audit history</summary>
+                        <ol className="audit-history-list">
+                          {deal.events.slice(-6).map((event) => (
+                            <li className="audit-history-item" key={event.id}>
+                              <div className="audit-history-topline">
+                                <span>
+                                  {formatAuditAction(event.actionType)}
+                                </span>
+                                <span className="pill pill-neutral">Deal</span>
+                              </div>
+                              <p className="copy audit-history-meta">
+                                {formatDateTime(event.createdAt) ??
+                                  event.createdAt}{' '}
+                                by{' '}
+                                {event.actorIdentifier ??
+                                  event.actorType ??
+                                  'Unknown actor'}
+                              </p>
+                              {event.previousStatus ||
+                              event.newStatus ||
+                              event.previousStage ||
+                              event.newStage ? (
+                                <p className="copy audit-history-meta">
+                                  {[
+                                    event.previousStatus,
+                                    event.previousStage,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' / ') || 'No previous status'}{' '}
+                                  {'->'}{' '}
+                                  {[
+                                    event.newStatus,
+                                    event.newStage,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' / ') || 'No new status'}
+                                </p>
+                              ) : null}
+                              {event.note ? (
+                                <p className="copy audit-history-note">
+                                  {event.note}
+                                </p>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ol>
+                      </details>
+                    ) : (
+                      <p className="dashboard-triage-meta">
+                        No deal audit events recorded yet.
+                      </p>
+                    )}
                   </article>
                 );
               })}

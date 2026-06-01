@@ -9,9 +9,15 @@ export type ImportSummary = {
 
 export type ParsedTableRow = Record<string, string>;
 
+export type ParsedColumn = {
+  sourceHeader: string;
+  canonicalField: string | null;
+};
+
 export type ParsedFileResult = {
   rows: ParsedTableRow[];
   warnings: string[];
+  detectedColumns: ParsedColumn[];
 };
 
 export type UploadFile = {

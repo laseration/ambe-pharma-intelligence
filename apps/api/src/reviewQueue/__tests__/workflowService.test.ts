@@ -17,6 +17,7 @@ function createRepositoryHarness() {
   const tradeOpportunities: Array<Record<string, any>> = [];
   const tradeOpportunityEvents: Array<Record<string, any>> = [];
   const tradeOpportunityPolicies: Array<Record<string, any>> = [];
+  const offerCorrectionEvents: Array<Record<string, any>> = [];
   const feedbacks: Array<Record<string, any>> = [];
   const supplierQualifications: Array<Record<string, any>> = [];
   const customers: Array<Record<string, any>> = [];
@@ -155,6 +156,7 @@ function createRepositoryHarness() {
     tradeOpportunityPolicies: tradeOpportunityPolicies.map((item) => ({
       ...item,
     })),
+    offerCorrectionEvents: offerCorrectionEvents.map((item) => ({ ...item })),
     feedbacks: feedbacks.map((item) => ({ ...item })),
     customers: customers.map((item) => ({ ...item })),
     salesRecords: salesRecords.map((item) => ({ ...item })),
@@ -190,6 +192,11 @@ function createRepositoryHarness() {
       tradeOpportunityPolicies.length,
       ...snapshot.tradeOpportunityPolicies,
     );
+    offerCorrectionEvents.splice(
+      0,
+      offerCorrectionEvents.length,
+      ...snapshot.offerCorrectionEvents,
+    );
     feedbacks.splice(0, feedbacks.length, ...snapshot.feedbacks);
     customers.splice(0, customers.length, ...snapshot.customers);
     salesRecords.splice(0, salesRecords.length, ...snapshot.salesRecords);
@@ -205,6 +212,7 @@ function createRepositoryHarness() {
     tradeOpportunities,
     tradeOpportunityEvents,
     tradeOpportunityPolicies,
+    offerCorrectionEvents,
     feedbacks,
     supplierQualifications,
     customers,
@@ -340,6 +348,38 @@ function createRepositoryHarness() {
       async listBuyExecutionEvents(buyExecutionId: string) {
         return buyExecutionEvents.filter(
           (item) => item.buyExecutionId === buyExecutionId,
+        ) as never;
+      },
+      async listOfferCorrectionEventsForWorkflow(workflowItemId: string) {
+        const correctionIds = workflowItems
+          .filter((item) => item.id === workflowItemId)
+          .flatMap((item) => item.emailDerivedOffer?.offerCorrections ?? [])
+          .map((correction) => correction.id);
+
+        return offerCorrectionEvents.filter((event) =>
+          correctionIds.includes(event.offerCorrectionId),
+        ) as never;
+      },
+      async listTradeOpportunityEventsForWorkflow(input: {
+        workflowItemId: string;
+        emailDerivedOfferId: string;
+        buyDecisionId?: string | null;
+        buyExecutionId?: string | null;
+      }) {
+        const matchingTradeIds = tradeOpportunities
+          .filter(
+            (item) =>
+              item.offerWorkflowItemId === input.workflowItemId ||
+              item.emailDerivedOfferId === input.emailDerivedOfferId ||
+              (input.buyDecisionId &&
+                item.buyDecisionId === input.buyDecisionId) ||
+              (input.buyExecutionId &&
+                item.buyExecutionId === input.buyExecutionId),
+          )
+          .map((item) => item.id);
+
+        return tradeOpportunityEvents.filter((event) =>
+          matchingTradeIds.includes(event.tradeOpportunityId),
         ) as never;
       },
       async findSupplierQualificationBySupplierId(supplierId: string) {
@@ -1208,6 +1248,49 @@ test('workflow audit history combines workflow buy decision and execution events
     actorIdentifier: 'buyer-1',
     externalOrderReference: 'PO-001',
   });
+  const correctionId = 'correction-audit-1';
+  harness.workflowItems[0]!.emailDerivedOffer.offerCorrections.push({
+    id: correctionId,
+    correctionStatus: 'APPLIED',
+    createdAt: new Date('2026-05-01T10:00:00.000Z'),
+    updatedAt: new Date('2026-05-01T10:00:00.000Z'),
+  });
+  harness.offerCorrectionEvents.push({
+    id: 'correction-event-audit-1',
+    offerCorrectionId: correctionId,
+    actionType: 'APPLIED',
+    previousStatus: null,
+    newStatus: 'APPLIED',
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+    note: 'Corrected supplier and price.',
+    metadata: null,
+    createdAt: new Date('2026-05-01T10:01:00.000Z'),
+  });
+  const tradeOpportunityId = 'trade-audit-1';
+  harness.tradeOpportunities.push({
+    id: tradeOpportunityId,
+    emailDerivedOfferId: harness.workflowItems[0]!.emailDerivedOfferId,
+    offerWorkflowItemId: harness.workflowItems[0]!.id,
+    buyDecisionId: harness.buyDecisions[0]!.id,
+    buyExecutionId: harness.buyExecutions[0]!.id,
+    status: 'OPEN',
+    stage: 'BUY_ORDERED',
+  });
+  harness.tradeOpportunityEvents.push({
+    id: 'trade-event-audit-1',
+    tradeOpportunityId,
+    actionType: 'STAGE_CHANGED',
+    previousStatus: 'OPEN',
+    newStatus: 'OPEN',
+    previousStage: 'BUY_APPROVED',
+    newStage: 'BUY_ORDERED',
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+    note: 'Order moved the deal forward.',
+    metadata: null,
+    createdAt: new Date('2026-05-01T10:02:00.000Z'),
+  });
 
   const history = await service.getWorkflowAuditHistory(
     harness.workflowItems[0]!.id,
@@ -1224,6 +1307,14 @@ test('workflow audit history combines workflow buy decision and execution events
   );
   assert.equal(
     history.some((event) => event.entityType === 'BUY_EXECUTION'),
+    true,
+  );
+  assert.equal(
+    history.some((event) => event.entityType === 'OFFER_CORRECTION'),
+    true,
+  );
+  assert.equal(
+    history.some((event) => event.entityType === 'TRADE_OPPORTUNITY'),
     true,
   );
   assert.deepEqual(

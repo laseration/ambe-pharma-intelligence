@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  configurePollingWorkerStatusStore,
   configurePollingWorkerStatus,
   getPollingWorkerStatus,
+  listPollingWorkerStatusesWithStore,
   markPollingRunFinished,
   markPollingRunStarted,
   markPollingWorkerStarted,
@@ -55,4 +57,63 @@ test('polling worker status records lifecycle counters and safe errors', () => {
     true,
   );
   assert.ok((status.lastError?.length ?? 0) <= 500);
+});
+
+test('polling worker status can persist safe snapshots through an optional store', async () => {
+  resetPollingWorkerStatusesForTests();
+  let persistedSnapshot: unknown;
+  let resolvePersisted: (() => void) | null = null;
+  const persisted = new Promise<void>((resolve) => {
+    resolvePersisted = resolve;
+  });
+
+  configurePollingWorkerStatusStore({
+    async upsertStatus(snapshot) {
+      persistedSnapshot = snapshot;
+      resolvePersisted?.();
+    },
+    async listStatuses() {
+      return [
+        {
+          name: 'email-inbound',
+          enabled: true,
+          configured: true,
+          active: true,
+          running: true,
+          inFlight: false,
+          intervalMs: 30000,
+          startedAt: '2026-05-31T10:00:00.000Z',
+          stoppedAt: null,
+          lastRunStartedAt: '2026-05-31T10:01:00.000Z',
+          lastRunFinishedAt: '2026-05-31T10:01:01.000Z',
+          lastSuccessAt: '2026-05-31T10:01:01.000Z',
+          lastErrorAt: '2026-05-31T10:02:00.000Z',
+          lastError: 'previous safe error',
+          consecutiveFailures: 1,
+          totalRuns: 7,
+          totalItemsSeen: 10,
+          totalItemsProcessed: 8,
+          totalItemsSkipped: 1,
+          totalItemsFailed: 1,
+          duplicateItemsSkipped: 1,
+        },
+      ];
+    },
+  });
+
+  recordPollingWorkerError(
+    'email-inbound',
+    new Error('Graph failed authorization=secret-value'),
+  );
+  await persisted;
+
+  assert.match(JSON.stringify(persistedSnapshot), /authorization=\[redacted\]/);
+  assert.doesNotMatch(JSON.stringify(persistedSnapshot), /secret-value/);
+
+  const statuses = await listPollingWorkerStatusesWithStore();
+  const emailStatus = statuses.find((status) => status.name === 'email-inbound');
+
+  assert.equal(emailStatus?.totalRuns, 7);
+  assert.equal(emailStatus?.totalItemsProcessed, 8);
+  assert.equal(emailStatus?.lastError?.includes('redacted'), true);
 });

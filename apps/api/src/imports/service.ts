@@ -13,8 +13,10 @@ import { logger } from '../lib/logger';
 import type {
   ImportResponse,
   ImportSummary,
+  ParsedColumn,
   InventoryImportRequest,
   InventoryRowInput,
+  ParsedFileResult,
   ParsedTableRow,
   RowIssue,
   SalesImportRequest,
@@ -60,10 +62,55 @@ export type ImportBatchErrorItem = {
   createdAt: Date;
 };
 
+export type ImportWarningCategory = {
+  category:
+    | 'header'
+    | 'worksheet'
+    | 'empty-data'
+    | 'duplicate-header'
+    | 'format'
+    | 'other';
+  count: number;
+  messages: string[];
+};
+
+export type ImportProductMatchingSummary = {
+  candidateConfidence: {
+    high: number;
+    medium: number;
+    low: number;
+  };
+  duplicateCandidateGroups: Array<{
+    normalizedKey: string;
+    rowNumbers: number[];
+    rawProductNames: string[];
+  }>;
+};
+
+export type ImportDataQualityMetrics = {
+  invalidRows: number;
+  unresolvedProducts: number;
+  duplicateCandidates: number;
+};
+
+export type ImportDiagnostics = {
+  detectedColumns: ParsedColumn[];
+  warningCategories: ImportWarningCategory[];
+  suggestedFixes: string[];
+  dataQualityMetrics: ImportDataQualityMetrics;
+  productMatchingSummary: ImportProductMatchingSummary;
+};
+
 export type ImportBatchDetail = ImportBatchListItem & {
   warnings: string[];
   errors: ImportBatchErrorItem[];
+  diagnostics: ImportDiagnostics;
 };
+
+type ImportDataRow =
+  | SupplierPriceListRowInput
+  | InventoryRowInput
+  | SalesRowInput;
 
 function buildSummary(
   totalRows: number,
@@ -99,6 +146,268 @@ function extractWarnings(
     .slice(0, take);
 }
 
+function categorizeWarning(message: string): ImportWarningCategory['category'] {
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes('worksheet')) {
+    return 'worksheet';
+  }
+  if (normalized.includes('blank header') || normalized.includes('header row')) {
+    return 'header';
+  }
+  if (normalized.includes('duplicate header')) {
+    return 'duplicate-header';
+  }
+  if (normalized.includes('no tabular data')) {
+    return 'empty-data';
+  }
+  if (normalized.includes('could not confidently')) {
+    return 'format';
+  }
+
+  return 'other';
+}
+
+function buildWarningCategories(warnings: string[]): ImportWarningCategory[] {
+  const grouped = new Map<ImportWarningCategory['category'], string[]>();
+
+  for (const warning of warnings) {
+    const category = categorizeWarning(warning);
+    const existing = grouped.get(category) ?? [];
+    existing.push(warning);
+    grouped.set(category, existing);
+  }
+
+  return Array.from(grouped.entries()).map(([category, messages]) => ({
+    category,
+    count: messages.length,
+    messages: messages.slice(0, 3),
+  }));
+}
+
+function buildProductMatchingSummary(
+  rows: ImportDataRow[],
+): ImportProductMatchingSummary {
+  const confidence = {
+    high: 0,
+    medium: 0,
+    low: 0,
+  };
+  const byNormalizedKey = new Map<
+    string,
+    { rowNumbers: number[]; rawProductNames: Set<string> }
+  >();
+
+  for (const row of rows) {
+    switch (row.productCandidates.confidence) {
+      case 'HIGH':
+        confidence.high += 1;
+        break;
+      case 'MEDIUM':
+        confidence.medium += 1;
+        break;
+      case 'LOW':
+        confidence.low += 1;
+        break;
+    }
+
+    const existing = byNormalizedKey.get(row.productCandidates.normalizedKey) ?? {
+      rowNumbers: [],
+      rawProductNames: new Set<string>(),
+    };
+    existing.rowNumbers.push(row.rowNumber);
+    existing.rawProductNames.add(row.rawProductName);
+    byNormalizedKey.set(row.productCandidates.normalizedKey, existing);
+  }
+
+  return {
+    candidateConfidence: confidence,
+    duplicateCandidateGroups: Array.from(byNormalizedKey.entries())
+      .filter(([, value]) => value.rowNumbers.length > 1)
+      .map(([normalizedKey, value]) => ({
+        normalizedKey,
+        rowNumbers: value.rowNumbers.slice(0, 10),
+        rawProductNames: Array.from(value.rawProductNames).slice(0, 5),
+      }))
+      .slice(0, 10),
+  };
+}
+
+function isUnresolvedProductError(message: string): boolean {
+  const normalized = message.toLowerCase();
+
+  return (
+    normalized.includes('needs product review') ||
+    normalized.includes('no safe existing product match') ||
+    normalized.includes('auto-creation blocked') ||
+    normalized.includes('matched product') ||
+    normalized.includes('product review')
+  );
+}
+
+function buildSuggestedFixes(
+  kind: ImportBatchListItem['kind'],
+  parsed: ParsedFileResult,
+  errors: RowIssue[],
+  productMatchingSummary: ImportProductMatchingSummary,
+): string[] {
+  const fixes = new Set<string>();
+  const fields = new Set(
+    errors
+      .map((error) => error.fieldName)
+      .filter((field): field is string => Boolean(field)),
+  );
+  const warnings = parsed.warnings.join(' ').toLowerCase();
+
+  if (parsed.detectedColumns.length === 0) {
+    fixes.add(
+      'Use a CSV or XLSX file with one clear header row and at least one data row.',
+    );
+  }
+  if (warnings.includes('could not confidently identify a header row')) {
+    fixes.add(
+      'Rename columns to one of the documented template headers so the parser can map fields confidently.',
+    );
+  }
+  if (fields.has('productName')) {
+    fixes.add(
+      'Add a product name/description column and make sure every data row has a value.',
+    );
+  }
+  if (fields.has('unitPrice')) {
+    fixes.add('Use numeric unit prices without currency symbols or text.');
+  }
+  if (fields.has('quantity') || fields.has('quantityOnHand')) {
+    fixes.add('Use whole numbers for quantity fields.');
+  }
+  if (fields.has('snapshotDate') || fields.has('saleDate')) {
+    fixes.add('Use ISO dates such as 2026-04-30 for date columns.');
+  }
+  if (fields.has('warehouseCode')) {
+    fixes.add('Add a warehouseCode column for inventory imports.');
+  }
+  if (fields.has('customerName')) {
+    fixes.add('Add a customerName column for sales imports.');
+  }
+  if (errors.some((error) => isUnresolvedProductError(error.message))) {
+    fixes.add(
+      'Review product names that could not be safely matched; add clearer strength, form, pack size, or a known alias before re-importing.',
+    );
+  }
+  if (productMatchingSummary.duplicateCandidateGroups.length > 0) {
+    fixes.add(
+      'Check duplicate product candidate groups before re-importing; repeated normalized product keys may indicate duplicate rows or aliases.',
+    );
+  }
+  if (kind === 'SUPPLIER_PRICE_LIST') {
+    fixes.add(
+      'For supplier price lists, provide supplierName in the upload form or include a supplierName column.',
+    );
+  }
+
+  return Array.from(fixes).slice(0, 8);
+}
+
+export function buildImportDiagnostics(
+  kind: ImportBatchListItem['kind'],
+  parsed: ParsedFileResult,
+  validRows: ImportDataRow[],
+  errors: RowIssue[],
+): ImportDiagnostics {
+  const productMatchingSummary = buildProductMatchingSummary(validRows);
+  const unresolvedProducts = errors.filter((error) =>
+    isUnresolvedProductError(error.message),
+  ).length;
+
+  return {
+    detectedColumns: parsed.detectedColumns,
+    warningCategories: buildWarningCategories(parsed.warnings),
+    suggestedFixes: buildSuggestedFixes(
+      kind,
+      parsed,
+      errors,
+      productMatchingSummary,
+    ),
+    dataQualityMetrics: {
+      invalidRows: errors.length,
+      unresolvedProducts,
+      duplicateCandidates:
+        productMatchingSummary.duplicateCandidateGroups.reduce(
+          (total, group) => total + group.rowNumbers.length,
+          0,
+        ),
+    },
+    productMatchingSummary,
+  };
+}
+
+const SENSITIVE_KEY_PATTERN =
+  /(password|secret|token|api[_-]?key|access[_-]?key|client[_-]?secret|authorization|connection|string)/i;
+
+const SENSITIVE_VALUE_PATTERN =
+  /(bearer\s+[a-z0-9._-]+|sk-[a-z0-9_-]{8,}|password\s*=|api[_-]?key\s*=|client_secret\s*=)/i;
+
+function redactImportValue(key: string, value: unknown): unknown {
+  if (SENSITIVE_KEY_PATTERN.test(key)) {
+    return '[REDACTED]';
+  }
+  if (typeof value === 'string' && SENSITIVE_VALUE_PATTERN.test(value)) {
+    return '[REDACTED]';
+  }
+  return value;
+}
+
+export function redactImportRawRow(value: Prisma.JsonValue | null): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, rawValue]) => [
+      key,
+      redactImportValue(key, rawValue),
+    ]),
+  );
+}
+
+function fallbackImportDiagnostics(
+  batch: Pick<
+    ImportBatchDetail,
+    'kind' | 'invalidRows' | 'errors' | 'warnings'
+  > & { diagnostics?: Prisma.JsonValue | null },
+): ImportDiagnostics {
+  if (
+    batch.diagnostics &&
+    typeof batch.diagnostics === 'object' &&
+    !Array.isArray(batch.diagnostics)
+  ) {
+    return batch.diagnostics as unknown as ImportDiagnostics;
+  }
+
+  return {
+    detectedColumns: [],
+    warningCategories: buildWarningCategories(batch.warnings),
+    suggestedFixes: batch.errors.length
+      ? ['Open the row error samples, fix the invalid fields, then re-import.']
+      : [],
+    dataQualityMetrics: {
+      invalidRows: batch.invalidRows,
+      unresolvedProducts: batch.errors.filter((error) =>
+        isUnresolvedProductError(error.message),
+      ).length,
+      duplicateCandidates: 0,
+    },
+    productMatchingSummary: {
+      candidateConfidence: {
+        high: 0,
+        medium: 0,
+        low: 0,
+      },
+      duplicateCandidateGroups: [],
+    },
+  };
+}
+
 export async function listRecentImportBatches(
   take = 20,
 ): Promise<ImportBatchListItem[]> {
@@ -116,6 +425,7 @@ export async function listRecentImportBatches(
       validRows: true,
       invalidRows: true,
       warnings: true,
+      diagnostics: true,
       uploadedAt: true,
       createdAt: true,
       updatedAt: true,
@@ -162,6 +472,7 @@ export async function getImportBatchDetail(
       validRows: true,
       invalidRows: true,
       warnings: true,
+      diagnostics: true,
       uploadedAt: true,
       createdAt: true,
       updatedAt: true,
@@ -210,9 +521,23 @@ export async function getImportBatchDetail(
       rowNumber: error.rowNumber,
       fieldName: error.fieldName,
       message: error.message,
-      rawRow: error.rawRow,
+      rawRow: redactImportRawRow(error.rawRow) as Prisma.JsonValue,
       createdAt: error.createdAt,
     })),
+    diagnostics: fallbackImportDiagnostics({
+      kind: batch.kind,
+      invalidRows: batch.invalidRows,
+      warnings: extractWarnings(batch.warnings, 100),
+      errors: batch.errors.map((error) => ({
+        id: error.id,
+        rowNumber: error.rowNumber,
+        fieldName: error.fieldName,
+        message: error.message,
+        rawRow: redactImportRawRow(error.rawRow) as Prisma.JsonValue,
+        createdAt: error.createdAt,
+      })),
+      diagnostics: batch.diagnostics,
+    }),
   };
 }
 
@@ -221,6 +546,7 @@ async function createImportBatch(
   file: SupplierPriceListImportRequest['file'],
   summary: ImportSummary,
   errors: RowIssue[],
+  diagnostics: ImportDiagnostics,
 ) {
   return db.importBatch.create({
     data: {
@@ -233,6 +559,7 @@ async function createImportBatch(
       validRows: summary.validRows,
       invalidRows: summary.invalidRows,
       warnings: summary.warnings,
+      diagnostics: diagnostics as unknown as Prisma.InputJsonValue,
       errors: {
         create: errors.map((error) => ({
           rowNumber: error.rowNumber,
@@ -1128,11 +1455,18 @@ export async function importSupplierPriceList(
     errors.length,
     parsed.warnings,
   );
+  const initialDiagnostics = buildImportDiagnostics(
+    'SUPPLIER_PRICE_LIST',
+    parsed,
+    validRows,
+    errors,
+  );
   const importBatch = await createImportBatch(
     'SUPPLIER_PRICE_LIST',
     request.file,
     summary,
     errors,
+    initialDiagnostics,
   );
 
   const firstRowSupplierName = parsed.rows.find(
@@ -1142,29 +1476,43 @@ export async function importSupplierPriceList(
     request.supplierName?.trim() || firstRowSupplierName?.trim();
 
   if (!supplierName) {
+    const supplierNameError: RowIssue = {
+      rowNumber: 0,
+      message:
+        'supplierName is required as a form field or row column for supplier price list imports.',
+      rawRow: {},
+    };
+    const finalErrors = [...errors, supplierNameError];
+    const finalSummary = {
+      ...summary,
+      invalidRows: summary.invalidRows + 1,
+    };
+    const finalDiagnostics = buildImportDiagnostics(
+      'SUPPLIER_PRICE_LIST',
+      parsed,
+      validRows,
+      finalErrors,
+    );
+
     await db.importError.create({
       data: {
         importBatchId: importBatch.id,
-        message:
-          'supplierName is required as a form field or row column for supplier price list imports.',
+        message: supplierNameError.message,
+      },
+    });
+    await db.importBatch.update({
+      where: { id: importBatch.id },
+      data: {
+        status: 'COMPLETED_WITH_ERRORS',
+        invalidRows: finalSummary.invalidRows,
+        diagnostics: finalDiagnostics as unknown as Prisma.InputJsonValue,
       },
     });
 
     return {
       importBatchId: importBatch.id,
-      summary: {
-        ...summary,
-        invalidRows: summary.invalidRows + 1,
-      },
-      errors: [
-        ...errors,
-        {
-          rowNumber: 0,
-          message:
-            'supplierName is required as a form field or row column for supplier price list imports.',
-          rawRow: {},
-        },
-      ],
+      summary: finalSummary,
+      errors: finalErrors,
     };
   }
 
@@ -1211,6 +1559,12 @@ export async function importSupplierPriceList(
     finalErrors.length,
     parsed.warnings,
   );
+  const finalDiagnostics = buildImportDiagnostics(
+    'SUPPLIER_PRICE_LIST',
+    parsed,
+    validRows,
+    finalErrors,
+  );
 
   await db.importBatch.update({
     where: { id: importBatch.id },
@@ -1220,6 +1574,7 @@ export async function importSupplierPriceList(
       validRows: finalSummary.validRows,
       invalidRows: finalSummary.invalidRows,
       warnings: finalSummary.warnings,
+      diagnostics: finalDiagnostics as unknown as Prisma.InputJsonValue,
     },
   });
 
@@ -1241,11 +1596,18 @@ export async function importInventory(
     errors.length,
     parsed.warnings,
   );
+  const initialDiagnostics = buildImportDiagnostics(
+    'INVENTORY',
+    parsed,
+    validRows,
+    errors,
+  );
   const importBatch = await createImportBatch(
     'INVENTORY',
     request.file,
     summary,
     errors,
+    initialDiagnostics,
   );
 
   const persistenceErrors: RowIssue[] = [];
@@ -1278,6 +1640,12 @@ export async function importInventory(
     finalErrors.length,
     parsed.warnings,
   );
+  const finalDiagnostics = buildImportDiagnostics(
+    'INVENTORY',
+    parsed,
+    validRows,
+    finalErrors,
+  );
 
   await db.importBatch.update({
     where: { id: importBatch.id },
@@ -1287,6 +1655,7 @@ export async function importInventory(
       validRows: finalSummary.validRows,
       invalidRows: finalSummary.invalidRows,
       warnings: finalSummary.warnings,
+      diagnostics: finalDiagnostics as unknown as Prisma.InputJsonValue,
     },
   });
 
@@ -1308,11 +1677,18 @@ export async function importSales(
     errors.length,
     parsed.warnings,
   );
+  const initialDiagnostics = buildImportDiagnostics(
+    'SALES',
+    parsed,
+    validRows,
+    errors,
+  );
   const importBatch = await createImportBatch(
     'SALES',
     request.file,
     summary,
     errors,
+    initialDiagnostics,
   );
 
   const persistenceErrors: RowIssue[] = [];
@@ -1345,6 +1721,12 @@ export async function importSales(
     finalErrors.length,
     parsed.warnings,
   );
+  const finalDiagnostics = buildImportDiagnostics(
+    'SALES',
+    parsed,
+    validRows,
+    finalErrors,
+  );
 
   await db.importBatch.update({
     where: { id: importBatch.id },
@@ -1354,6 +1736,7 @@ export async function importSales(
       validRows: finalSummary.validRows,
       invalidRows: finalSummary.invalidRows,
       warnings: finalSummary.warnings,
+      diagnostics: finalDiagnostics as unknown as Prisma.InputJsonValue,
     },
   });
 

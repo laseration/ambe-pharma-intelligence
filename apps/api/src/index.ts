@@ -6,6 +6,8 @@ import {
 } from './email/polling';
 import { db } from './lib/db';
 import { logger } from './lib/logger';
+import { configurePollingWorkerStatusStore } from './polling/status';
+import { createAppSettingPollingWorkerStatusStore } from './polling/statusStore';
 import { verifyDatabaseReadiness } from './startup/databaseHealth';
 import {
   createTelegramPollingWorker,
@@ -25,6 +27,9 @@ async function start() {
 
   await db.$connect();
   await verifyDatabaseReadiness();
+  configurePollingWorkerStatusStore(
+    createAppSettingPollingWorkerStatusStore(db),
+  );
   const telegramPollingWorker = createTelegramPollingWorker();
   const emailInboundPollingWorker = createEmailInboundPollingWorker();
 

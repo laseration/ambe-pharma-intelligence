@@ -11,6 +11,7 @@ export function parseXlsxFile(file: UploadFile): ParsedFileResult {
     return {
       rows: [],
       warnings: ['No worksheet found in uploaded XLSX file.'],
+      detectedColumns: [],
     };
   }
 
@@ -43,6 +44,7 @@ export function parseXlsxFile(file: UploadFile): ParsedFileResult {
     return {
       rows: [],
       warnings: ['No readable worksheet found in uploaded XLSX file.'],
+      detectedColumns: [],
     };
   }
 
@@ -82,5 +84,6 @@ export function parseXlsxFile(file: UploadFile): ParsedFileResult {
   return {
     rows: selectedSheet.parsed.rows,
     warnings,
+    detectedColumns: selectedSheet.parsed.detectedColumns,
   };
 }

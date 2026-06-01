@@ -72,6 +72,19 @@ export type TradeOpportunityListItem = {
     supplierQualificationStatus: string;
     hasQualificationRisk: boolean;
   } | null;
+  events?: Array<{
+    id: string;
+    actionType: string;
+    previousStatus: string | null;
+    newStatus: string | null;
+    previousStage: string | null;
+    newStage: string | null;
+    actorType: string;
+    actorIdentifier: string | null;
+    note: string | null;
+    metadata: unknown;
+    createdAt: string;
+  }>;
 };
 
 const CALLER_NAME = 'web-deals-dashboard';

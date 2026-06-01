@@ -11,6 +11,7 @@
     "lint": "eslint src --ext .ts",
     "test": "tsx --test src/**/*.test.ts",
     "eval:extraction": "tsx src/scripts/evaluateExtraction.ts",
+    "demo:seed-pilot": "tsx src/scripts/seedPilotDemo.ts",
     "telegram:replay": "tsx scripts/replay-telegram-fixture.ts",
     "email:device-code": "tsx scripts/microsoft-device-code.ts",
     "email:reprocess": "tsx src/scripts/reprocessEmail.ts",

@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   buildInternalApiHeaders,
   getInternalApiBaseUrl,
+  InternalApiError,
   redactInternalApiSecrets,
   requestInternalJson,
   requestInternalTextFile,
@@ -127,6 +128,47 @@ test('internal API request helper redacts known secrets and live-looking URLs fr
       assert.doesNotMatch(error.message, /postgresql:\/\//);
       assert.doesNotMatch(error.message, /sk-live-looking-key/);
       assert.match(error.message, /\[redacted\]/);
+      return true;
+    },
+  );
+});
+
+test('internal API request helper preserves safe diagnostics from standardized API errors', async () => {
+  const fetchImpl: typeof fetch = async () =>
+    Response.json(
+      {
+        error: {
+          message: 'Request validation failed.',
+          code: 'VALIDATION_ERROR',
+          requestId: 'request-abcdef12',
+          nextAction: 'Check the submitted fields and try again.',
+        },
+      },
+      {
+        status: 422,
+        headers: {
+          'x-request-id': 'request-abcdef12',
+        },
+      },
+    );
+
+  await assert.rejects(
+    requestInternalJson('/unsafe-error', {
+      callerName: 'web-dashboard',
+      source,
+      fetchImpl,
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof InternalApiError);
+      assert.equal(error.status, 422);
+      assert.equal(error.code, 'VALIDATION_ERROR');
+      assert.equal(error.requestId, 'request-abcdef12');
+      assert.equal(
+        error.nextAction,
+        'Check the submitted fields and try again.',
+      );
+      assert.match(error.message, /Request ID: request-abcdef12/);
+      assert.match(error.message, /What to check next:/);
       return true;
     },
   );

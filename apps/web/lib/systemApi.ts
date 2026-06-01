@@ -21,6 +21,30 @@ export type SystemReadinessReport = {
   checks: SystemReadinessCheck[];
 };
 
+export type PollingWorkerStatus = {
+  name: 'email-inbound' | 'telegram';
+  enabled: boolean;
+  configured: boolean;
+  active: boolean;
+  running: boolean;
+  inFlight: boolean;
+  intervalMs: number | null;
+  startedAt: string | null;
+  stoppedAt: string | null;
+  lastRunStartedAt: string | null;
+  lastRunFinishedAt: string | null;
+  lastSuccessAt: string | null;
+  lastErrorAt: string | null;
+  lastError: string | null;
+  consecutiveFailures: number;
+  totalRuns: number;
+  totalItemsSeen: number;
+  totalItemsProcessed: number;
+  totalItemsSkipped: number;
+  totalItemsFailed: number;
+  duplicateItemsSkipped: number;
+};
+
 const CALLER_NAME = 'web-setup-readiness';
 
 export async function getSystemReadinessReport(): Promise<SystemReadinessReport> {
@@ -32,4 +56,17 @@ export async function getSystemReadinessReport(): Promise<SystemReadinessReport>
   );
 
   return payload.item;
+}
+
+export async function getPollingWorkerStatuses(): Promise<
+  PollingWorkerStatus[]
+> {
+  const payload = await requestInternalJson<{ items: PollingWorkerStatus[] }>(
+    '/system/workers',
+    {
+      callerName: CALLER_NAME,
+    },
+  );
+
+  return payload.items;
 }

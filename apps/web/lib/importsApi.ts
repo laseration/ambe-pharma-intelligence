@@ -28,9 +28,40 @@ export type ImportBatchErrorItem = {
   createdAt: string;
 };
 
+export type ImportDiagnostics = {
+  detectedColumns: Array<{
+    sourceHeader: string;
+    canonicalField: string | null;
+  }>;
+  warningCategories: Array<{
+    category: string;
+    count: number;
+    messages: string[];
+  }>;
+  suggestedFixes: string[];
+  dataQualityMetrics: {
+    invalidRows: number;
+    unresolvedProducts: number;
+    duplicateCandidates: number;
+  };
+  productMatchingSummary: {
+    candidateConfidence: {
+      high: number;
+      medium: number;
+      low: number;
+    };
+    duplicateCandidateGroups: Array<{
+      normalizedKey: string;
+      rowNumbers: number[];
+      rawProductNames: string[];
+    }>;
+  };
+};
+
 export type ImportBatchDetail = ImportBatchListItem & {
   warnings: string[];
   errors: ImportBatchErrorItem[];
+  diagnostics: ImportDiagnostics;
 };
 
 const CALLER_NAME = 'web-imports';

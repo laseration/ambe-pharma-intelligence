@@ -6,6 +6,10 @@ import XLSX from 'xlsx';
 
 import { parseUploadedFile } from '../parsers';
 import {
+  buildImportDiagnostics,
+  redactImportRawRow,
+} from '../service';
+import {
   validateInventoryRows,
   validateSalesRows,
   validateSupplierPriceRows,
@@ -68,6 +72,19 @@ test('parses CSV with title rows before the real header', () => {
   assert.equal(parsed.rows[0]?.minimumOrderQuantity, '50');
   assert.equal(parsed.rows[0]?.quantityAvailable, '120');
   assert.equal(parsed.rows[0]?.supplierName, 'Acme Labs');
+  assert.deepEqual(
+    parsed.detectedColumns.map((column) => [
+      column.sourceHeader,
+      column.canonicalField,
+    ]),
+    [
+      ['Description', 'productName'],
+      ['Unit Cost', 'unitPrice'],
+      ['MOQ', 'minimumOrderQuantity'],
+      ['Stock', 'quantityAvailable'],
+      ['Supplier', 'supplierName'],
+    ],
+  );
   assert.match(parsed.warnings.join(' '), /skipped 2 title rows/i);
 });
 
@@ -146,6 +163,60 @@ test('adds safe canonical aliases for Description / Unit Cost / MOQ / Stock', ()
   );
   assert.equal(validation.validRows[0]?.unitPrice.toString(), '2.35');
   assert.equal(validation.validRows[0]?.minimumOrderQuantity, 50);
+});
+
+test('diagnostics summarize invalid rows, columns, fixes, and duplicate product candidates', () => {
+  const csv = [
+    'Description,Unit Cost,MOQ,Stock,Supplier',
+    'Paracetamol 500mg Tablets,2.35,50,120,Acme Labs',
+    'Paracetamol 500mg Tablets,2.40,50,100,Acme Labs',
+    'Missing Price,,20,80,Acme Labs',
+  ].join('\n');
+
+  const parsed = parseUploadedFile({
+    buffer: Buffer.from(csv, 'utf8'),
+    mimetype: 'text/csv',
+    originalname: 'supplier-diagnostics.csv',
+    size: Buffer.byteLength(csv),
+  });
+  const validation = validateSupplierPriceRows(parsed.rows, 'GBP');
+  const diagnostics = buildImportDiagnostics(
+    'SUPPLIER_PRICE_LIST',
+    parsed,
+    validation.validRows,
+    validation.errors,
+  );
+
+  assert.equal(diagnostics.detectedColumns.length, 5);
+  assert.equal(diagnostics.dataQualityMetrics.invalidRows, 1);
+  assert.equal(
+    diagnostics.productMatchingSummary.candidateConfidence.high,
+    2,
+  );
+  assert.equal(
+    diagnostics.productMatchingSummary.duplicateCandidateGroups.length,
+    1,
+  );
+  assert.equal(
+    diagnostics.productMatchingSummary.duplicateCandidateGroups[0]
+      ?.rowNumbers.length,
+    2,
+  );
+  assert.match(diagnostics.suggestedFixes.join(' '), /unit prices/i);
+});
+
+test('import raw row redaction removes obvious secrets from API previews', () => {
+  const redacted = redactImportRawRow({
+    productName: 'Amlodipine 5mg',
+    apiKey: 'sk-live-secret',
+    Notes: 'Bearer abcdef12345',
+  });
+
+  assert.deepEqual(redacted, {
+    productName: 'Amlodipine 5mg',
+    apiKey: '[REDACTED]',
+    Notes: '[REDACTED]',
+  });
 });
 
 test('validates inventory CSV fixture', async () => {

@@ -178,5 +178,43 @@ test('summary aggregates extraction quality metrics', () => {
   assert.equal(summary.failedCases, 1);
   assert.equal(summary.extractedOffersCount, 1);
   assert.equal(summary.falseNegatives, 1);
+  assert.equal(summary.aiUsedCount, 0);
   assert.equal(summary.keyMismatches[0]?.caseId, 'case-2');
+});
+
+test('summary counts AI fallback cases separately', () => {
+  const aiCase = evaluateCaseMetrics({
+    fixture: fixture({
+      id: 'ai-case',
+      title: 'AI Case',
+      expected: {
+        commerciallyRelevant: true,
+        offerCount: 1,
+        reviewRequired: true,
+        parsingSource: 'OPENAI_FALLBACK',
+        offers: [
+          {
+            productIncludes: 'Amlodipine',
+            price: 8.4,
+            currencyCode: 'GBP',
+          },
+        ],
+      },
+    }),
+    evaluations: [
+      {
+        sourceLabel: 'email body',
+        result: result([row()], {
+          reviewRecommended: true,
+          reviewRequired: true,
+          parsingSource: 'OPENAI_FALLBACK',
+        }),
+      },
+    ],
+  });
+
+  const summary = summarizeExtractionEvalResults([aiCase]);
+
+  assert.equal(summary.aiUsedCount, 1);
+  assert.equal(summary.reviewRequiredCount, 1);
 });

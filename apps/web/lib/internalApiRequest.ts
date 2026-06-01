@@ -24,8 +24,35 @@ type InternalBinaryFile = {
   content: ArrayBuffer;
 };
 
+type ApiErrorPayload = {
+  error?:
+    | string
+    | {
+        message?: string;
+        code?: string;
+        requestId?: string;
+        nextAction?: string;
+      };
+  code?: string;
+  requestId?: string;
+  nextAction?: string;
+};
+
 const DEFAULT_INTERNAL_API_BASE_URL = 'http://127.0.0.1:4000/api';
 const REDACTED = '[redacted]';
+
+export class InternalApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+    readonly requestId?: string,
+    readonly nextAction?: string,
+  ) {
+    super(message);
+    this.name = 'InternalApiError';
+  }
+}
 
 export function getInternalApiBaseUrl(
   source: InternalApiEnv = process.env,
@@ -116,20 +143,68 @@ export function redactInternalApiSecrets(
 async function safeErrorMessage(
   response: Response,
   source: InternalApiEnv,
-): Promise<string> {
+): Promise<{
+  message: string;
+  code?: string;
+  requestId?: string;
+  nextAction?: string;
+}> {
   let message = `Request failed with status ${response.status}.`;
+  let code: string | undefined;
+  let requestId =
+    response.headers.get('x-request-id') ??
+    response.headers.get('x-correlation-id') ??
+    undefined;
+  let nextAction: string | undefined;
 
   try {
-    const payload = (await response.json()) as { error?: string };
+    const payload = (await response.json()) as ApiErrorPayload;
 
-    if (payload.error) {
+    if (typeof payload.error === 'string') {
       message = payload.error;
+      code = payload.code;
+      requestId = payload.requestId ?? requestId;
+      nextAction = payload.nextAction;
+    } else if (payload.error) {
+      message = payload.error.message ?? message;
+      code = payload.error.code;
+      requestId = payload.error.requestId ?? requestId;
+      nextAction = payload.error.nextAction;
     }
   } catch {
     // Keep the generic status-based message.
   }
 
-  return redactInternalApiSecrets(message, source);
+  return {
+    message: redactInternalApiSecrets(message, source),
+    code,
+    requestId,
+    nextAction: nextAction
+      ? redactInternalApiSecrets(nextAction, source)
+      : undefined,
+  };
+}
+
+function buildInternalApiError(
+  response: Response,
+  safeError: Awaited<ReturnType<typeof safeErrorMessage>>,
+): InternalApiError {
+  const diagnosticParts = [
+    safeError.requestId ? `Request ID: ${safeError.requestId}` : null,
+    safeError.nextAction ? `What to check next: ${safeError.nextAction}` : null,
+  ].filter((value): value is string => Boolean(value));
+  const message =
+    diagnosticParts.length > 0
+      ? `${safeError.message} ${diagnosticParts.join(' ')}`
+      : safeError.message;
+
+  return new InternalApiError(
+    message,
+    response.status,
+    safeError.code,
+    safeError.requestId,
+    safeError.nextAction,
+  );
 }
 
 function buildUrl(path: string, source: InternalApiEnv): string {
@@ -154,7 +229,7 @@ export async function requestInternalJson<T>(
   });
 
   if (!response.ok) {
-    throw new Error(await safeErrorMessage(response, source));
+    throw buildInternalApiError(response, await safeErrorMessage(response, source));
   }
 
   return (await response.json()) as T;
@@ -186,7 +261,7 @@ export async function requestInternalTextFile(
   });
 
   if (!response.ok) {
-    throw new Error(await safeErrorMessage(response, source));
+    throw buildInternalApiError(response, await safeErrorMessage(response, source));
   }
 
   return {
@@ -217,7 +292,7 @@ export async function requestInternalBinaryFile(
   });
 
   if (!response.ok) {
-    throw new Error(await safeErrorMessage(response, source));
+    throw buildInternalApiError(response, await safeErrorMessage(response, source));
   }
 
   return {

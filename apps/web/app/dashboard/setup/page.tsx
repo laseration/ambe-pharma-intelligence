@@ -1,7 +1,9 @@
 import Link from 'next/link';
 
 import {
+  getPollingWorkerStatuses,
   getSystemReadinessReport,
+  type PollingWorkerStatus,
   type SystemReadinessCheck,
   type SystemReadinessReport,
   type SystemReadinessStatus,
@@ -45,6 +47,10 @@ function formatDateTime(value: string): string {
   }).format(parsed);
 }
 
+function formatOptionalDateTime(value: string | null): string {
+  return value ? formatDateTime(value) : 'n/a';
+}
+
 function formatDetailValue(
   value: boolean | number | string | string[] | null,
 ): string {
@@ -61,6 +67,104 @@ function formatDetailValue(
   }
 
   return String(value);
+}
+
+function workerTitle(name: PollingWorkerStatus['name']): string {
+  switch (name) {
+    case 'email-inbound':
+      return 'Email Inbox Polling';
+    case 'telegram':
+      return 'Telegram Polling';
+  }
+}
+
+function workerStatus(status: PollingWorkerStatus): SystemReadinessStatus {
+  if (!status.enabled) {
+    return 'not_configured';
+  }
+
+  if (!status.configured || !status.running || status.consecutiveFailures > 0) {
+    return 'warning';
+  }
+
+  return 'ready';
+}
+
+function workerMeaning(status: PollingWorkerStatus): string {
+  if (!status.enabled) {
+    return 'Polling is disabled for this worker.';
+  }
+
+  if (!status.configured) {
+    return 'Polling is enabled, but required credentials or allowlists are incomplete.';
+  }
+
+  if (!status.running) {
+    return 'Polling is configured, but the worker is not running in this API process.';
+  }
+
+  if (status.consecutiveFailures > 0) {
+    return 'The worker is running, but recent polling attempts recorded failures.';
+  }
+
+  return 'The worker is configured and running.';
+}
+
+function WorkerStatusCard({ status }: { status: PollingWorkerStatus }) {
+  const readinessStatus = workerStatus(status);
+
+  return (
+    <article className="dashboard-opportunity-card setup-card">
+      <div className="dashboard-opportunity-top">
+        <div>
+          <p className="dashboard-opportunity-title">
+            {workerTitle(status.name)}
+          </p>
+          <p className="dashboard-opportunity-meta">{status.name}</p>
+        </div>
+        <span className={`pill ${statusPillClass(readinessStatus)}`}>
+          {statusLabel(readinessStatus)}
+        </span>
+      </div>
+
+      <p className="dashboard-opportunity-copy">{workerMeaning(status)}</p>
+
+      <dl className="setup-detail-list">
+        <div>
+          <dt>running</dt>
+          <dd>{formatDetailValue(status.running)}</dd>
+        </div>
+        <div>
+          <dt>in flight</dt>
+          <dd>{formatDetailValue(status.inFlight)}</dd>
+        </div>
+        <div>
+          <dt>last run</dt>
+          <dd>{formatOptionalDateTime(status.lastRunFinishedAt)}</dd>
+        </div>
+        <div>
+          <dt>last success</dt>
+          <dd>{formatOptionalDateTime(status.lastSuccessAt)}</dd>
+        </div>
+        <div>
+          <dt>last error</dt>
+          <dd>{status.lastError ?? 'none'}</dd>
+        </div>
+        <div>
+          <dt>processed</dt>
+          <dd>{status.totalItemsProcessed}</dd>
+        </div>
+        <div>
+          <dt>failed</dt>
+          <dd>{status.totalItemsFailed}</dd>
+        </div>
+        <div>
+          <dt>duplicates skipped</dt>
+          <dd>{status.duplicateItemsSkipped}</dd>
+        </div>
+      </dl>
+    </article>
+  );
 }
 
 function countByStatus(report: SystemReadinessReport) {
@@ -128,7 +232,10 @@ export default async function SetupPage() {
   const session = await getCurrentWebSession();
 
   try {
-    const report = await getSystemReadinessReport();
+    const [report, workers] = await Promise.all([
+      getSystemReadinessReport(),
+      getPollingWorkerStatuses().catch(() => []),
+    ]);
     const counts = countByStatus(report);
 
     return (
@@ -145,6 +252,9 @@ export default async function SetupPage() {
             </div>
             <Link className="button" href="/dashboard">
               Back to dashboard
+            </Link>
+            <Link className="button" href="/dashboard/setup/diagnostics">
+              Diagnostics
             </Link>
           </div>
           <div className="actions">
@@ -198,6 +308,37 @@ export default async function SetupPage() {
           {report.checks.map((check) => (
             <ReadinessCard check={check} key={check.key} />
           ))}
+        </section>
+
+        <section className="panel dashboard-panel">
+          <div className="dashboard-section-header">
+            <div>
+              <p className="eyebrow">Ingestion Workers</p>
+              <h2 className="title">Polling Status</h2>
+              <p className="copy">
+                Durable safe status for email and Telegram polling. Errors are
+                redacted and message bodies are not shown.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="setup-check-grid">
+          {workers.length > 0 ? (
+            workers.map((worker) => (
+              <WorkerStatusCard key={worker.name} status={worker} />
+            ))
+          ) : (
+            <article className="dashboard-opportunity-card setup-card">
+              <p className="dashboard-opportunity-title">
+                Worker status unavailable
+              </p>
+              <p className="dashboard-opportunity-copy">
+                The readiness checks loaded, but the worker status endpoint did
+                not return data.
+              </p>
+            </article>
+          )}
         </section>
       </section>
     );

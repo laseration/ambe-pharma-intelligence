@@ -77,6 +77,7 @@ export type ExtractionEvalSummary = {
   falseNegatives: number;
   reviewRequiredCount: number;
   autoPromotionCount: number;
+  aiUsedCount: number;
   keyMismatches: Array<{
     caseId: string;
     title: string;
@@ -88,6 +89,11 @@ export type ExtractionEvalSummary = {
 type SourceEvaluation = {
   sourceLabel: string;
   result: ParsedEmailBodyResult;
+};
+
+export type ExtractionEvalOptions = {
+  fixturePath?: string;
+  allowLiveAi?: boolean;
 };
 
 const DEFAULT_FIXTURE_PATH = path.resolve(
@@ -248,6 +254,7 @@ function classifyFixtureDocuments(
 
 async function evaluateFixtureSources(
   fixture: ExtractionEvalCase,
+  options: Pick<ExtractionEvalOptions, 'allowLiveAi'> = {},
 ): Promise<SourceEvaluation[]> {
   const sources: Array<{ label: string; text: string }> = [];
 
@@ -265,14 +272,26 @@ async function evaluateFixtureSources(
     });
   }
 
-  const aiOfferParser = buildMockAiParser(fixture) ?? disabledEvalAiParser;
+  const aiOfferParser = buildMockAiParser(fixture);
   const evaluations: SourceEvaluation[] = [];
 
   for (const source of sources) {
-    const result = await parseStructuredPriceText(source.text, {
-      aiOfferParser,
-      source: 'EMAIL_BODY',
-    });
+    const result = await parseStructuredPriceText(
+      source.text,
+      aiOfferParser
+        ? {
+            aiOfferParser,
+            source: 'EMAIL_BODY',
+          }
+        : options.allowLiveAi
+          ? {
+              source: 'EMAIL_BODY',
+            }
+          : {
+              aiOfferParser: disabledEvalAiParser,
+              source: 'EMAIL_BODY',
+            },
+    );
     evaluations.push({
       sourceLabel: source.label,
       result,
@@ -424,6 +443,9 @@ export function summarizeExtractionEvalResults(
     autoPromotionCount: caseResults.filter(
       (result) => result.autoPromotionEligible,
     ).length,
+    aiUsedCount: caseResults.filter((result) =>
+      result.parsingSources.includes('OPENAI_FALLBACK'),
+    ).length,
     keyMismatches: caseResults
       .filter((result) => result.mismatches.length > 0)
       .map((result) => ({
@@ -436,13 +458,20 @@ export function summarizeExtractionEvalResults(
 }
 
 export async function runExtractionEval(
-  fixturePath = DEFAULT_FIXTURE_PATH,
+  fixturePathOrOptions: string | ExtractionEvalOptions = DEFAULT_FIXTURE_PATH,
 ): Promise<ExtractionEvalSummary> {
+  const options =
+    typeof fixturePathOrOptions === 'string'
+      ? { fixturePath: fixturePathOrOptions, allowLiveAi: false }
+      : fixturePathOrOptions;
+  const fixturePath = options.fixturePath ?? DEFAULT_FIXTURE_PATH;
   const fixtures = await loadExtractionEvalCases(fixturePath);
   const caseResults: ExtractionEvalCaseResult[] = [];
 
   for (const fixture of fixtures) {
-    const evaluations = await evaluateFixtureSources(fixture);
+    const evaluations = await evaluateFixtureSources(fixture, {
+      allowLiveAi: options.allowLiveAi === true,
+    });
     const documentClassification = classifyFixtureDocuments(fixture);
     caseResults.push(
       evaluateCaseMetrics({
