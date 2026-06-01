@@ -123,6 +123,8 @@ pnpm build
 
 CI uses safe placeholder environment variables and a dummy local `DATABASE_URL` for Prisma validation/generation only. It does not run migrations, connect to Neon, send email, call Telegram, use Microsoft Graph, or call OpenAI.
 
+Latest local safe verification report: [docs/test-runs/full-safe-bot-verification-2026-06-01.md](docs/test-runs/full-safe-bot-verification-2026-06-01.md).
+
 ### Deployment and pilot operations
 
 Deployment setup is documented in [docs/deployment.md](docs/deployment.md).
