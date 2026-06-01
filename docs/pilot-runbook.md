@@ -199,18 +199,21 @@ Safe demo/eval commands:
 
 - `pnpm --filter @ambe/api eval:extraction`
 - `pnpm --filter @ambe/api demo:account-opening`
-- `pnpm --filter @ambe/api demo:seed-pilot` only with a local or disposable
-  pilot-demo database
+- `pnpm --filter @ambe/api demo:seed-pilot` only with a guarded local or
+  disposable pilot-demo database
+- `pnpm --filter @ambe/api demo:smoke-pilot` only with a guarded local or
+  disposable pilot-demo database
 - `pnpm --filter @ambe/api smoke:local-runtime` only with a disposable local
   PostgreSQL database
 
 Demo and fixture files must not contain real supplier, customer, patient,
 credential, or bank data.
 
-The pilot demo seed upserts fake supplier-email, review, buy decision,
-execution, and trade-opportunity records marked with `AMBE_FAKE_PILOT_DEMO`.
-It is non-destructive, but it writes database rows and should not be run against
-real pilot data unless demo rows are acceptable. See
+The pilot demo seed and smoke commands upsert fake supplier-email, review, buy
+decision, execution, and trade-opportunity records marked with
+`AMBE_FAKE_PILOT_DEMO`. They are non-destructive, but they write database rows
+and refuse managed/live-looking database URLs by default. They should not be run
+against real pilot data. See
 [demo-pilot-walkthrough.md](demo-pilot-walkthrough.md).
 
 The local account-opening demo writes artifacts under `apps/api/tmp/`, uses fake

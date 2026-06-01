@@ -1,7 +1,9 @@
 import { Prisma } from '@prisma/client';
 
 import { loadPilotDemoFixture, PILOT_DEMO_MARKER } from '../fixtures/demo/pilotDemo';
+import { env } from '../config/env';
 import { db } from '../lib/db';
+import { classifyDatabaseUrlForLocalSmoke } from '../startup/localSmokeSafety';
 
 const fixture = loadPilotDemoFixture();
 
@@ -1098,7 +1100,19 @@ async function upsertCommercialContext(input: {
   };
 }
 
-async function seedPilotDemo() {
+export function assertSafePilotDemoDatabase(databaseUrl: string) {
+  const database = classifyDatabaseUrlForLocalSmoke(databaseUrl);
+
+  if (!database.safe) {
+    throw new Error(
+      `Unsafe DATABASE_URL for pilot demo seed: ${database.reason}`,
+    );
+  }
+
+  return database;
+}
+
+export async function seedPilotDemo() {
   const base = await upsertBaseRecords();
   const email = await upsertEmailAndOffers({
     supplierId: base.supplier.id,
@@ -1138,10 +1152,13 @@ async function seedPilotDemo() {
 
 async function run() {
   try {
+    const database = assertSafePilotDemoDatabase(env.databaseUrl);
     const result = await seedPilotDemo();
 
     console.log('Fake pilot demo dataset seeded.');
     console.log(`Marker: ${PILOT_DEMO_MARKER}`);
+    console.log(`Database host: ${database.host ?? 'unknown'}`);
+    console.log(`Database name: ${database.databaseName ?? 'unknown'}`);
     console.log(`Pending review workflow: ${result.pendingWorkflowId}`);
     console.log(`Completed review workflow: ${result.completedWorkflowId}`);
     console.log(`Buy decision: ${result.buyDecisionId}`);
@@ -1157,4 +1174,6 @@ async function run() {
   }
 }
 
-void run();
+if (require.main === module) {
+  void run();
+}
