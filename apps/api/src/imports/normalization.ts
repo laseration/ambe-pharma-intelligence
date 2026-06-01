@@ -127,7 +127,9 @@ function extractStrength(cleaned: string): string | null {
     return canonicalizeStrength(compoundMatch[0]);
   }
 
-  const match = cleaned.match(/\b\d+(?:\.\d+)?\s?(?:mg|mcg|μg|ug|g|kg|ml|l|iu)\b/i);
+  const match = cleaned.match(
+    /\b\d+(?:\.\d+)?\s?(?:mg|mcg|μg|ug|g|kg|ml|l|iu)\b/i,
+  );
 
   return match ? canonicalizeStrength(match[0]) : null;
 }
@@ -143,7 +145,9 @@ function extractPackSize(cleaned: string, tokens: string[]): string | null {
     return canonicalizePackSize(compoundMatch[0]);
   }
 
-  const formulationIndex = tokens.findIndex((token) => FORMULATION_TOKENS.has(token));
+  const formulationIndex = tokens.findIndex((token) =>
+    FORMULATION_TOKENS.has(token),
+  );
 
   if (formulationIndex >= 0) {
     for (let index = formulationIndex + 1; index < tokens.length; index += 1) {
@@ -183,7 +187,9 @@ function extractPackSize(cleaned: string, tokens: string[]): string | null {
     return null;
   }
 
-  const trailingToken = [...tokens].reverse().find((token) => /^\d+$/.test(token));
+  const trailingToken = [...tokens]
+    .reverse()
+    .find((token) => /^\d+$/.test(token));
 
   return trailingToken ? canonicalizePackSize(trailingToken) : null;
 }
@@ -196,7 +202,11 @@ function isStrengthToken(token: string): boolean {
   );
 }
 
-function buildBaseNameTokens(tokens: string[], formulation: string | null, packSize: string | null): string[] {
+function buildBaseNameTokens(
+  tokens: string[],
+  formulation: string | null,
+  packSize: string | null,
+): string[] {
   const packTokens = packSize ? packSize.split('x') : [];
 
   return tokens.filter((token) => {
@@ -220,7 +230,11 @@ function buildBaseNameTokens(tokens: string[], formulation: string | null, packS
   });
 }
 
-function deriveConfidence(baseTokens: string[], strength: string | null, formulation: string | null): 'HIGH' | 'MEDIUM' | 'LOW' {
+function deriveConfidence(
+  baseTokens: string[],
+  strength: string | null,
+  formulation: string | null,
+): 'HIGH' | 'MEDIUM' | 'LOW' {
   if (baseTokens.length > 0 && strength && formulation) {
     return 'HIGH';
   }
@@ -247,7 +261,9 @@ export function buildCanonicalProductIdentity(rawProductName: string) {
   ];
 
   if (tokens.some((token) => ['tablet', 'capsule', 'caplet'].includes(token))) {
-    rulesApplied.push('mapped common formulation abbreviations to canonical formulation tokens');
+    rulesApplied.push(
+      'mapped common formulation abbreviations to canonical formulation tokens',
+    );
   }
 
   const strength = extractStrength(cleanedInput);
@@ -268,7 +284,9 @@ export function buildCanonicalProductIdentity(rawProductName: string) {
   const baseNameTokens = buildBaseNameTokens(tokens, formulation, packSize);
   const baseName = baseNameTokens.join(' ') || normalizedText;
 
-  rulesApplied.push('built canonical normalized key from base name and extracted attributes');
+  rulesApplied.push(
+    'built canonical normalized key from base name and extracted attributes',
+  );
 
   return {
     baseName,
@@ -283,7 +301,9 @@ export function buildCanonicalProductIdentity(rawProductName: string) {
   };
 }
 
-export function normalizeMedicineName(rawProductName: string): ProductCandidates {
+export function normalizeMedicineName(
+  rawProductName: string,
+): ProductCandidates {
   const canonicalIdentity = buildCanonicalProductIdentity(rawProductName);
   const normalizedKeyParts = [
     canonicalIdentity.baseName || canonicalIdentity.normalizedText,
@@ -298,7 +318,8 @@ export function normalizeMedicineName(rawProductName: string): ProductCandidates
   // - normalizedKey: richer composite key currently persisted into Product.normalizedName
   return {
     baseName: canonicalIdentity.baseName,
-    normalizedName: canonicalIdentity.baseName || canonicalIdentity.normalizedText,
+    normalizedName:
+      canonicalIdentity.baseName || canonicalIdentity.normalizedText,
     strength: canonicalIdentity.strength,
     formulation: canonicalIdentity.formulation,
     packSize: canonicalIdentity.packSize,
@@ -317,6 +338,8 @@ export function normalizeMedicineName(rawProductName: string): ProductCandidates
   };
 }
 
-export function buildProductCandidates(rawProductName: string): ProductCandidates {
+export function buildProductCandidates(
+  rawProductName: string,
+): ProductCandidates {
   return normalizeMedicineName(rawProductName);
 }

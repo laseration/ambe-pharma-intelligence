@@ -382,6 +382,14 @@ enum SupplierQualificationActionType {
   NOTE_ADDED
 }
 
+enum SupplierContactStatus {
+  STAGED
+  AUTO_ACCEPTED
+  APPROVED
+  REJECTED
+  SUPERSEDED
+}
+
 enum RegulatoryEventType {
   RECALL
   MEDICINE_DEFECT
@@ -502,6 +510,7 @@ model ImportBatch {
   validRows            Int                   @default(0)
   invalidRows          Int                   @default(0)
   warnings             Json?
+  diagnostics          Json?
   errors               ImportError[]
   telegramInboundItems TelegramInboundItem[]
   inventorySnapshots   InventorySnapshot[]
@@ -542,6 +551,7 @@ model Supplier {
   salesRecords              SalesRecord[]
   supplierPriceItems        SupplierPriceItem[]
   qualification             SupplierQualification?
+  supplierContacts          SupplierContact[]
   buyDecisions              BuyDecision[]
   buyExecutions             BuyExecution[]
   tradeOpportunities        TradeOpportunity[]
@@ -587,6 +597,8 @@ model InboundEmail {
   promotionDecisions        PromotionDecision[]
   promotedPriceLists        SupplierPriceList[]
   accountOpeningCases       AccountOpeningCase[]
+  supplierContacts          SupplierContact[]
+  accountOpeningOriginalDocuments AccountOpeningOriginalDocument[]
   createdAt                 DateTime                     @default(now())
   updatedAt                 DateTime                     @updatedAt
 
@@ -640,6 +652,7 @@ model AccountOpeningCase {
   fillPreviews          AccountOpeningFillPreview[]
   binaryFillPreviews    AccountOpeningBinaryFillPreview[]
   completedFormFilings  AccountOpeningCompletedFormFiling[]
+  originalDocuments     AccountOpeningOriginalDocument[]
   createdAt             DateTime                       @default(now())
   updatedAt             DateTime                       @updatedAt
 
@@ -846,6 +859,8 @@ model InboundEmailDocument {
   inboundEmail   InboundEmail                @relation(fields: [inboundEmailId], references: [id], onDelete: Cascade)
   derivedOffers  EmailDerivedOffer[]
   evidences      EmailDerivedOfferEvidence[]
+  supplierContacts SupplierContact[]
+  supplierContactEvidence SupplierContactEvidence[]
   createdAt      DateTime                    @default(now())
   updatedAt      DateTime                    @updatedAt
 
@@ -1476,6 +1491,118 @@ model PromotionDecision {
   @@index([emailDerivedOfferId, status, createdAt])
 }
 
+model SupplierContact {
+  id                    String                @id @default(cuid())
+  supplierId            String?
+  supplierNameCandidate String?
+  normalizedSupplierName String?
+  contactName           String?
+  contactEmail          String?
+  contactPhone          String?
+  contactPhoneRaw       String?
+  contactPhoneCanonical String?
+  contactRole           String?
+  sourceInboundEmailId  String?
+  sourceDocumentId      String?
+  sourceFingerprint     String                @unique
+  confidence            Int
+  status                SupplierContactStatus @default(STAGED)
+  autoAttached          Boolean               @default(false)
+  conflictFlags         Json?
+  evidence              Json?
+  extractionMetadata    Json?
+  supplier              Supplier?             @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  sourceInboundEmail    InboundEmail?         @relation(fields: [sourceInboundEmailId], references: [id], onDelete: SetNull)
+  sourceDocument        InboundEmailDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+  evidenceItems         SupplierContactEvidence[]
+  events                SupplierContactEvent[]
+  reviewedAt            DateTime?
+  reviewedByType        String?
+  reviewedByIdentifier  String?
+  reviewNote            String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  lastSeenAt            DateTime              @default(now())
+
+  @@index([supplierId])
+  @@index([supplierId, status])
+  @@index([normalizedSupplierName])
+  @@index([normalizedSupplierName, status])
+  @@index([contactEmail])
+  @@index([status, createdAt])
+  @@index([sourceInboundEmailId])
+  @@index([sourceDocumentId])
+}
+
+model SupplierContactEvidence {
+  id                         String                @id @default(cuid())
+  supplierContactId          String
+  sourceDocumentId           String?
+  sourceType                 String
+  fieldName                  String
+  rawValue                   String
+  normalizedValue            String?
+  confidenceContribution     Int
+  snippet                    String?
+  pageNumber                 Int?
+  boundingBox                Json?
+  supplierContact            SupplierContact       @relation(fields: [supplierContactId], references: [id], onDelete: Cascade)
+  sourceDocument             InboundEmailDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+  createdAt                  DateTime              @default(now())
+
+  @@index([supplierContactId])
+  @@index([sourceDocumentId])
+  @@index([fieldName])
+}
+
+model SupplierContactEvent {
+  id                   String                 @id @default(cuid())
+  supplierContactId    String
+  actionType           String
+  previousStatus       SupplierContactStatus?
+  newStatus            SupplierContactStatus?
+  actorType            String                 @default("SYSTEM")
+  actorIdentifier      String?
+  note                 String?
+  metadata             Json?
+  supplierContact      SupplierContact        @relation(fields: [supplierContactId], references: [id], onDelete: Cascade)
+  createdAt            DateTime               @default(now())
+
+  @@index([supplierContactId, createdAt])
+}
+
+model AccountOpeningOriginalDocument {
+  id                   String              @id @default(cuid())
+  accountOpeningCaseId String?
+  inboundEmailId       String?
+  immutableMessageId   String?
+  internetMessageId    String?
+  graphAttachmentId    String?
+  fileName             String
+  mimeType             String?
+  sizeBytes            Int?
+  sha256               String
+  sharePointSiteId     String?
+  driveId              String?
+  driveItemId          String?
+  folderUrl            String?
+  fileUrl              String?
+  uploadStatus         String              @default("PENDING")
+  sourceFingerprint    String              @unique
+  metadata             Json?
+  accountOpeningCase   AccountOpeningCase? @relation(fields: [accountOpeningCaseId], references: [id], onDelete: SetNull)
+  inboundEmail         InboundEmail?       @relation(fields: [inboundEmailId], references: [id], onDelete: SetNull)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([accountOpeningCaseId])
+  @@index([inboundEmailId])
+  @@index([immutableMessageId])
+  @@index([internetMessageId])
+  @@index([graphAttachmentId])
+  @@index([sha256])
+  @@index([uploadStatus, createdAt])
+}
 model SupplierPriceList {
   id                   String              @id @default(cuid())
   supplierId           String

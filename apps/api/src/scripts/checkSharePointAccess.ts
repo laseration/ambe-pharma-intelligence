@@ -50,7 +50,8 @@ type DiagnosticFetch = typeof fetch;
 
 const GRAPH_ROOT = 'https://graph.microsoft.com/v1.0';
 const HEALTH_CHECK_FILE_NAME = 'sharepoint-health-check.txt';
-const HEALTH_CHECK_FILE_CONTENT = 'AMBE bot SharePoint health check. Safe to delete.';
+const HEALTH_CHECK_FILE_CONTENT =
+  'AMBE bot SharePoint health check. Safe to delete.';
 const HEALTH_CHECK_FOLDER_SUFFIX = 'Ambe Bot/Health Checks';
 const REDACTED = '[redacted]';
 
@@ -80,11 +81,17 @@ function credentialSourceLabel(source: MicrosoftGraphCredentialSource): string {
   return source;
 }
 
-export function redactSensitiveLogText(value: string, secrets: string[] = []): string {
+export function redactSensitiveLogText(
+  value: string,
+  secrets: string[] = [],
+): string {
   let redacted = value;
 
   for (const secret of secrets.map((item) => item.trim()).filter(Boolean)) {
-    redacted = redacted.replace(new RegExp(escapeRegExp(secret), 'g'), REDACTED);
+    redacted = redacted.replace(
+      new RegExp(escapeRegExp(secret), 'g'),
+      REDACTED,
+    );
   }
 
   return redacted
@@ -167,9 +174,7 @@ function splitFolderPath(path: string): string[] {
 }
 
 function joinDrivePath(...parts: string[]): string {
-  return parts
-    .flatMap(splitFolderPath)
-    .join('/');
+  return parts.flatMap(splitFolderPath).join('/');
 }
 
 function parseJson<T>(text: string): T | null {
@@ -204,17 +209,22 @@ async function requestGraphToken(
     },
   );
   const text = await response.text();
-  const payload = parseJson<TokenErrorPayload & { access_token?: string }>(text);
+  const payload = parseJson<TokenErrorPayload & { access_token?: string }>(
+    text,
+  );
 
   if (!response.ok) {
     const code = payload?.error || `http_${response.status}`;
-    const description = payload?.error_description || 'Microsoft Graph token request failed.';
+    const description =
+      payload?.error_description || 'Microsoft Graph token request failed.';
 
     throw new DiagnosticError(description, code, response.status);
   }
 
   if (!payload?.access_token) {
-    throw new DiagnosticError('Microsoft Graph token response did not include an access token.');
+    throw new DiagnosticError(
+      'Microsoft Graph token response did not include an access token.',
+    );
   }
 
   return payload.access_token;
@@ -243,7 +253,10 @@ async function graphRequest<T>(
   };
 }
 
-function graphFailureMessage(result: GraphRequestResult<unknown>, fallback: string): string {
+function graphFailureMessage(
+  result: GraphRequestResult<unknown>,
+  fallback: string,
+): string {
   const graphError = parseJson<GraphErrorPayload>(result.text);
   const code = graphError?.error?.code;
   const message = graphError?.error?.message;
@@ -275,7 +288,12 @@ async function ensureFolderPath(
 
   for (const segment of splitFolderPath(folderPath)) {
     const nextPath = currentPath ? `${currentPath}/${segment}` : segment;
-    const getResult = await getFolder(accessToken, driveId, nextPath, fetchImpl);
+    const getResult = await getFolder(
+      accessToken,
+      driveId,
+      nextPath,
+      fetchImpl,
+    );
 
     if (getResult.ok) {
       latestFolder = getResult.payload;
@@ -285,7 +303,10 @@ async function ensureFolderPath(
 
     if (getResult.status !== 404) {
       throw new DiagnosticError(
-        graphFailureMessage(getResult, `Folder lookup failed with status ${getResult.status}.`),
+        graphFailureMessage(
+          getResult,
+          `Folder lookup failed with status ${getResult.status}.`,
+        ),
         undefined,
         getResult.status,
       );
@@ -311,7 +332,10 @@ async function ensureFolderPath(
 
     if (!createResult.ok) {
       throw new DiagnosticError(
-        graphFailureMessage(createResult, `Folder creation failed with status ${createResult.status}.`),
+        graphFailureMessage(
+          createResult,
+          `Folder creation failed with status ${createResult.status}.`,
+        ),
         undefined,
         createResult.status,
       );
@@ -344,7 +368,10 @@ async function uploadHealthCheckFile(
 
   if (!uploadResult.ok || !uploadResult.payload?.id) {
     throw new DiagnosticError(
-      graphFailureMessage(uploadResult, `Test upload failed with status ${uploadResult.status}.`),
+      graphFailureMessage(
+        uploadResult,
+        `Test upload failed with status ${uploadResult.status}.`,
+      ),
       undefined,
       uploadResult.status,
     );
@@ -369,19 +396,31 @@ async function deleteDriveItem(
 
 function printRedactedConfigSummary(config: SharePointAccessCheckConfig): void {
   console.log('SharePoint account-opening diagnostic');
-  console.log(`SHAREPOINT_ACCOUNT_OPENING_ENABLED: ${config.accountOpeningEnabled}`);
+  console.log(
+    `SHAREPOINT_ACCOUNT_OPENING_ENABLED: ${config.accountOpeningEnabled}`,
+  );
   console.log(`Storage tenant ID present: ${config.tenantId ? 'yes' : 'no'}`);
   console.log(`Storage client ID present: ${config.clientId ? 'yes' : 'no'}`);
-  console.log(`Storage client secret present: ${config.clientSecret ? 'yes' : 'no'}`);
-  console.log(`Credential source: ${credentialSourceLabel(config.credentialSource)}`);
+  console.log(
+    `Storage client secret present: ${config.clientSecret ? 'yes' : 'no'}`,
+  );
+  console.log(
+    `Credential source: ${credentialSourceLabel(config.credentialSource)}`,
+  );
   console.log(`Site ID present: ${config.siteId ? 'yes' : 'no'}`);
   console.log(`Drive ID present: ${config.driveId ? 'yes' : 'no'}`);
-  console.log(`Target folder path: ${config.accountOpeningFolder || '(missing)'}`);
+  console.log(
+    `Target folder path: ${config.accountOpeningFolder || '(missing)'}`,
+  );
   console.log('');
 }
 
-function printFailure(error: unknown, config: SharePointAccessCheckConfig): void {
-  const message = error instanceof Error ? error.message : 'SharePoint diagnostic failed.';
+function printFailure(
+  error: unknown,
+  config: SharePointAccessCheckConfig,
+): void {
+  const message =
+    error instanceof Error ? error.message : 'SharePoint diagnostic failed.';
   const code = error instanceof DiagnosticError ? error.code : undefined;
   const status = error instanceof DiagnosticError ? error.status : undefined;
   const statusText = status ? ` status ${status}` : '';
@@ -395,7 +434,9 @@ function printTokenFailureHint(error: unknown): void {
   const code = error instanceof DiagnosticError ? error.code : undefined;
 
   if (code === 'invalid_client') {
-    console.error('Hint: invalid_client usually means the client ID or client secret is wrong.');
+    console.error(
+      'Hint: invalid_client usually means the client ID or client secret is wrong.',
+    );
     return;
   }
 
@@ -420,7 +461,9 @@ async function runSharePointAccessCheck(writeTest: boolean): Promise<void> {
   const missing = validateSharePointAccessCheckConfig(config);
 
   if (missing.length > 0) {
-    throw new DiagnosticError(`Missing required env vars: ${missing.join(', ')}`);
+    throw new DiagnosticError(
+      `Missing required env vars: ${missing.join(', ')}`,
+    );
   }
 
   let accessToken: string;
@@ -441,7 +484,10 @@ async function runSharePointAccessCheck(writeTest: boolean): Promise<void> {
 
   if (!siteResult.ok) {
     throw new DiagnosticError(
-      graphFailureMessage(siteResult, `SharePoint site lookup failed with status ${siteResult.status}.`),
+      graphFailureMessage(
+        siteResult,
+        `SharePoint site lookup failed with status ${siteResult.status}.`,
+      ),
       undefined,
       siteResult.status,
     );
@@ -457,13 +503,18 @@ async function runSharePointAccessCheck(writeTest: boolean): Promise<void> {
 
   if (!drivesResult.ok) {
     throw new DiagnosticError(
-      graphFailureMessage(drivesResult, `SharePoint drive list failed with status ${drivesResult.status}.`),
+      graphFailureMessage(
+        drivesResult,
+        `SharePoint drive list failed with status ${drivesResult.status}.`,
+      ),
       undefined,
       drivesResult.status,
     );
   }
 
-  const matchingDrive = drivesResult.payload?.value?.find((drive) => drive.id === config.driveId);
+  const matchingDrive = drivesResult.payload?.value?.find(
+    (drive) => drive.id === config.driveId,
+  );
 
   if (!matchingDrive) {
     throw new DiagnosticError(
@@ -472,7 +523,9 @@ async function runSharePointAccessCheck(writeTest: boolean): Promise<void> {
     );
   }
 
-  console.log(`PASS: Drive found${matchingDrive.name ? ` (${matchingDrive.name})` : ''}`);
+  console.log(
+    `PASS: Drive found${matchingDrive.name ? ` (${matchingDrive.name})` : ''}`,
+  );
 
   const folderResult = await getFolder(
     accessToken,
@@ -497,14 +550,19 @@ async function runSharePointAccessCheck(writeTest: boolean): Promise<void> {
     );
   } else {
     throw new DiagnosticError(
-      graphFailureMessage(folderResult, `Folder lookup failed with status ${folderResult.status}.`),
+      graphFailureMessage(
+        folderResult,
+        `Folder lookup failed with status ${folderResult.status}.`,
+      ),
       undefined,
       folderResult.status,
     );
   }
 
   if (!writeTest) {
-    console.log('SKIP: Write test disabled by default. Pass --write-test to upload the harmless health-check file.');
+    console.log(
+      'SKIP: Write test disabled by default. Pass --write-test to upload the harmless health-check file.',
+    );
     return;
   }
 
@@ -518,8 +576,15 @@ async function runSharePointAccessCheck(writeTest: boolean): Promise<void> {
     config.accountOpeningFolder,
     HEALTH_CHECK_FOLDER_SUFFIX,
   );
-  const folder = await ensureFolderPath(accessToken, config.driveId, healthCheckFolder, fetchImpl);
-  console.log(`PASS: Health-check folder available at ${folder?.webUrl || healthCheckFolder}`);
+  const folder = await ensureFolderPath(
+    accessToken,
+    config.driveId,
+    healthCheckFolder,
+    fetchImpl,
+  );
+  console.log(
+    `PASS: Health-check folder available at ${folder?.webUrl || healthCheckFolder}`,
+  );
 
   const uploadedFile = await uploadHealthCheckFile(
     accessToken,
@@ -527,9 +592,16 @@ async function runSharePointAccessCheck(writeTest: boolean): Promise<void> {
     healthCheckFolder,
     fetchImpl,
   );
-  console.log(`PASS: Test upload succeeded${uploadedFile.webUrl ? ` (${uploadedFile.webUrl})` : ''}`);
+  console.log(
+    `PASS: Test upload succeeded${uploadedFile.webUrl ? ` (${uploadedFile.webUrl})` : ''}`,
+  );
 
-  const deleteResult = await deleteDriveItem(accessToken, config.driveId, uploadedFile.id!, fetchImpl);
+  const deleteResult = await deleteDriveItem(
+    accessToken,
+    config.driveId,
+    uploadedFile.id!,
+    fetchImpl,
+  );
 
   if (deleteResult.ok || deleteResult.status === 204) {
     console.log('PASS: Test file deleted after upload');

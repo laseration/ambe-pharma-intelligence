@@ -170,7 +170,9 @@ test('blocked and unknown supplier states remain visible in scorecard context', 
       return [blockedSupplier, unknownSupplier] as never;
     },
     async findSupplierById(supplierId) {
-      return [blockedSupplier, unknownSupplier].find((item) => item.id === supplierId) as never;
+      return [blockedSupplier, unknownSupplier].find(
+        (item) => item.id === supplierId,
+      ) as never;
     },
   });
 

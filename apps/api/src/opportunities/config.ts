@@ -73,7 +73,9 @@ const modeSpecificOpportunityThresholds: Record<
   },
 };
 
-export function buildOpportunityConfig(businessMode: OpportunityBusinessMode): OpportunityConfig {
+export function buildOpportunityConfig(
+  businessMode: OpportunityBusinessMode,
+): OpportunityConfig {
   return {
     businessMode,
     ...sharedOpportunityThresholds,

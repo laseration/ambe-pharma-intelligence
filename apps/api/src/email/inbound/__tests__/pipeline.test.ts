@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { parseStructuredPriceEmailBody } from '../../parsing';
-import { buildAiOfferCandidates, decomposeEmail, extractLooseOfferCandidate } from '../pipeline';
+import {
+  buildAiOfferCandidates,
+  decomposeEmail,
+  extractLooseOfferCandidate,
+} from '../pipeline';
 
 test('decomposeEmail splits forwarded and signature segments', async () => {
   const segments = await decomposeEmail({
@@ -22,9 +26,18 @@ test('decomposeEmail splits forwarded and signature segments', async () => {
     ].join('\n'),
   });
 
-  assert.equal(segments.some((segment) => segment.kind === 'SUBJECT'), true);
-  assert.equal(segments.some((segment) => segment.kind === 'BODY_MAIN'), true);
-  assert.equal(segments.some((segment) => segment.kind === 'BODY_FORWARDED'), true);
+  assert.equal(
+    segments.some((segment) => segment.kind === 'SUBJECT'),
+    true,
+  );
+  assert.equal(
+    segments.some((segment) => segment.kind === 'BODY_MAIN'),
+    true,
+  );
+  assert.equal(
+    segments.some((segment) => segment.kind === 'BODY_FORWARDED'),
+    true,
+  );
 });
 
 test('decomposeEmail keeps forwarded supplier block even when wrapper text contains internal company details', async () => {
@@ -47,7 +60,9 @@ test('decomposeEmail keeps forwarded supplier block even when wrapper text conta
     bodyText,
   });
 
-  const forwardedSegment = segments.find((segment) => segment.kind === 'BODY_FORWARDED');
+  const forwardedSegment = segments.find(
+    (segment) => segment.kind === 'BODY_FORWARDED',
+  );
 
   assert.ok(forwardedSegment);
   assert.match(forwardedSegment?.textContent ?? '', /delta-pharma\.eu/i);
@@ -90,7 +105,9 @@ test('decomposeEmail includes extracted attachment text for PDF and image attach
     },
   );
 
-  const attachmentTextSegments = segments.filter((segment) => segment.kind === 'ATTACHMENT_TEXT');
+  const attachmentTextSegments = segments.filter(
+    (segment) => segment.kind === 'ATTACHMENT_TEXT',
+  );
 
   assert.equal(attachmentTextSegments.length, 2);
   assert.equal(attachmentTextSegments[0]?.label, 'quote.pdf');
@@ -112,7 +129,8 @@ test('decomposeEmail ignores inline image attachments when a spreadsheet attachm
         },
         {
           fileName: 'price-list.xlsx',
-          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           disposition: 'attachment',
           content: Buffer.from('fake-xlsx').toString('base64'),
         },
@@ -127,7 +145,10 @@ test('decomposeEmail ignores inline image attachments when a spreadsheet attachm
     },
   );
 
-  assert.equal(segments.some((segment) => segment.label === 'image002.png'), false);
+  assert.equal(
+    segments.some((segment) => segment.label === 'image002.png'),
+    false,
+  );
 });
 
 test('extractLooseOfferCandidate captures explicit manufacturer, moq, and availability', () => {
@@ -139,11 +160,17 @@ test('extractLooseOfferCandidate captures explicit manufacturer, moq, and availa
   );
 
   assert.ok(candidate);
-  assert.equal(candidate?.rawProductText?.includes('Amlodipine 5mg tablets 28'), true);
+  assert.equal(
+    candidate?.rawProductText?.includes('Amlodipine 5mg tablets 28'),
+    true,
+  );
   assert.equal(candidate?.manufacturerCandidate, 'Teva');
   assert.equal(candidate?.currencyCandidate, 'GBP');
   assert.equal(candidate?.minimumOrderQuantityCandidate, 20);
-  assert.equal(candidate?.availabilityCandidate?.toLowerCase().includes('available'), true);
+  assert.equal(
+    candidate?.availabilityCandidate?.toLowerCase().includes('available'),
+    true,
+  );
 });
 
 test('buildAiOfferCandidates preserves extracted AI fields and segment linkage', () => {
@@ -154,8 +181,10 @@ test('buildAiOfferCandidates preserves extracted AI fields and segment linkage',
       parsedRows: [
         {
           lineNumber: 1,
-          rawLine: 'Paracetamol 500mg caplets 16 at 1.25 GBP, MOQ 20. Limited stock.',
-          evidenceText: 'Paracetamol 500mg caplets 16 at 1.25 GBP, MOQ 20. Limited stock.',
+          rawLine:
+            'Paracetamol 500mg caplets 16 at 1.25 GBP, MOQ 20. Limited stock.',
+          evidenceText:
+            'Paracetamol 500mg caplets 16 at 1.25 GBP, MOQ 20. Limited stock.',
           rawProductName: 'Paracetamol 500mg caplets 16',
           rawProductText: 'Paracetamol 500mg caplets 16',
           strength: '500mg',
@@ -194,8 +223,10 @@ test('buildAiOfferCandidates preserves extracted AI fields and segment linkage',
       overallConfidence: 'MEDIUM',
       reviewRecommended: true,
       reviewRequired: true,
-      rawBodyText: 'Paracetamol 500mg caplets 16 at 1.25 GBP, MOQ 20. Limited stock.',
-      rawBody: 'Paracetamol 500mg caplets 16 at 1.25 GBP, MOQ 20. Limited stock.',
+      rawBodyText:
+        'Paracetamol 500mg caplets 16 at 1.25 GBP, MOQ 20. Limited stock.',
+      rawBody:
+        'Paracetamol 500mg caplets 16 at 1.25 GBP, MOQ 20. Limited stock.',
       parsingSource: 'OPENAI_FALLBACK',
       aiFallbackAttempted: true,
       aiFallbackUsed: true,
@@ -217,11 +248,15 @@ test('buildAiOfferCandidates preserves extracted AI fields and segment linkage',
   assert.equal(candidates[0]?.supplierCandidate, 'Acme Pharma Ltd');
   assert.equal(candidates[0]?.sourceDocumentIndex, 9);
   assert.equal(
-    candidates[0]?.evidences.some((evidence) => evidence.fieldName === 'manufacturerCandidate'),
+    candidates[0]?.evidences.some(
+      (evidence) => evidence.fieldName === 'manufacturerCandidate',
+    ),
     true,
   );
   assert.equal(
-    candidates[0]?.evidences.some((evidence) => evidence.fieldName === 'minimumOrderQuantityCandidate'),
+    candidates[0]?.evidences.some(
+      (evidence) => evidence.fieldName === 'minimumOrderQuantityCandidate',
+    ),
     true,
   );
 });

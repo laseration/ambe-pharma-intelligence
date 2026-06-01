@@ -2,11 +2,16 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Product, ProductAlias } from '@prisma/client';
 
-import { matchRegulatoryProductText, type RegulatoryProductMatchRepository } from '../matching';
+import {
+  matchRegulatoryProductText,
+  type RegulatoryProductMatchRepository,
+} from '../matching';
 import { buildProductCandidates } from '../../imports/normalization';
 
 function product(overrides: Partial<Product>): Product {
-  const candidates = buildProductCandidates(overrides.name ?? 'Amlodipine 5mg tablets 28');
+  const candidates = buildProductCandidates(
+    overrides.name ?? 'Amlodipine 5mg tablets 28',
+  );
 
   return {
     id: overrides.id ?? 'product-1',
@@ -24,15 +29,22 @@ function product(overrides: Partial<Product>): Product {
   };
 }
 
-function repository(products: Product[], aliases: Array<ProductAlias & { product: Product }> = []): RegulatoryProductMatchRepository {
+function repository(
+  products: Product[],
+  aliases: Array<ProductAlias & { product: Product }> = [],
+): RegulatoryProductMatchRepository {
   return {
     findProductByStoredCanonicalField: async (storedCanonicalField) =>
-      products.find((item) => item.normalizedName === storedCanonicalField) ?? null,
+      products.find((item) => item.normalizedName === storedCanonicalField) ??
+      null,
     findAliasByRawName: async (aliasName) =>
       aliases.find((alias) => alias.aliasName === aliasName) ?? null,
     listAliasesForCanonicalComparison: async () => aliases,
     listProductsByBaseName: async (baseName) =>
-      products.filter((item) => item.baseName === baseName || item.normalizedName === baseName),
+      products.filter(
+        (item) =>
+          item.baseName === baseName || item.normalizedName === baseName,
+      ),
   };
 }
 
@@ -45,12 +57,18 @@ test('returns confident match for exact normalized product key', async () => {
 
   assert.equal(result.status, 'CONFIDENT');
   assert.equal(result.productId, existing.id);
-  assert.equal(result.evidence.productMatchReasonCode, 'EXACT_NORMALIZED_KEY_MATCH');
+  assert.equal(
+    result.evidence.productMatchReasonCode,
+    'EXACT_NORMALIZED_KEY_MATCH',
+  );
 });
 
 test('keeps broad product text unclear when multiple products share a base name', async () => {
   const tablet = product({ id: 'tablet', name: 'Amlodipine 5mg tablets 28' });
-  const capsule = product({ id: 'capsule', name: 'Amlodipine 10mg tablets 28' });
+  const capsule = product({
+    id: 'capsule',
+    name: 'Amlodipine 10mg tablets 28',
+  });
   const result = await matchRegulatoryProductText(
     repository([tablet, capsule]),
     'Amlodipine tablets',
@@ -58,7 +76,10 @@ test('keeps broad product text unclear when multiple products share a base name'
 
   assert.equal(result.status, 'UNCLEAR');
   assert.equal(result.productId, null);
-  assert.match(result.reason, /No safe existing product match|Requires compliance review/);
+  assert.match(
+    result.reason,
+    /No safe existing product match|Requires compliance review/,
+  );
 });
 
 test('returns confident match for exact raw alias', async () => {

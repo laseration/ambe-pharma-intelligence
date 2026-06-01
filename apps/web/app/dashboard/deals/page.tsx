@@ -1,6 +1,9 @@
 import Link from 'next/link';
 
-import { listTradeOpportunities, type TradeOpportunityListItem } from '../../../lib/dealsApi';
+import {
+  listTradeOpportunities,
+  type TradeOpportunityListItem,
+} from '../../../lib/dealsApi';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +36,10 @@ function toNumber(value: number | string | null | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function formatMoney(value: number | string | null | undefined, currencyCode?: string | null) {
+function formatMoney(
+  value: number | string | null | undefined,
+  currencyCode?: string | null,
+) {
   const numericValue = toNumber(value);
   if (numericValue === null) {
     return 'Not set';
@@ -63,6 +69,13 @@ function humanizeValue(value: string | null | undefined) {
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+}
+
+function formatAuditAction(actionType: string): string {
+  return actionType
+    .replace(/[_-]+/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function stageLabel(stage: TradeOpportunityListItem['stage']) {
@@ -118,7 +131,9 @@ function statusPillClassName(status: TradeOpportunityListItem['status']) {
 }
 
 function getLikelyBuyers(item: TradeOpportunityListItem) {
-  return Array.isArray(item.metadata?.likelyBuyers) ? item.metadata.likelyBuyers.slice(0, 3) : [];
+  return Array.isArray(item.metadata?.likelyBuyers)
+    ? item.metadata.likelyBuyers.slice(0, 3)
+    : [];
 }
 
 function buildDealSignals(item: TradeOpportunityListItem): string[] {
@@ -134,7 +149,8 @@ function buildDealSignals(item: TradeOpportunityListItem): string[] {
       : null,
     quantityTarget !== null ? `Target quantity ${quantityTarget} units` : null,
     topBuyer ? `Top buyer ${topBuyer.name} (${topBuyer.units} units)` : null,
-    item.sourceType === 'BUY_DECISION' || item.metadata?.createdFrom === 'approved_buy_decision_demand_match'
+    item.sourceType === 'BUY_DECISION' ||
+    item.metadata?.createdFrom === 'approved_buy_decision_demand_match'
       ? 'Created from approved supplier offer'
       : null,
   ];
@@ -152,7 +168,11 @@ function resolveProductLabel(item: TradeOpportunityListItem) {
 }
 
 function resolveSupplierLabel(item: TradeOpportunityListItem) {
-  return item.supplier?.name ?? item.sourceSupplierNameSnapshot?.trim() ?? 'Supplier to confirm';
+  return (
+    item.supplier?.name ??
+    item.sourceSupplierNameSnapshot?.trim() ??
+    'Supplier to confirm'
+  );
 }
 
 export default async function DealsPage() {
@@ -180,7 +200,8 @@ export default async function DealsPage() {
           <section className="panel dashboard-panel">
             <h3 className="section-title">No trade opportunities yet</h3>
             <p className="copy">
-              Approved supplier offers with recent demand and positive margin will appear here.
+              Approved supplier offers with recent demand and positive margin
+              will appear here.
             </p>
           </section>
         ) : (
@@ -189,7 +210,8 @@ export default async function DealsPage() {
               <div>
                 <h3 className="section-title">Recent trade opportunities</h3>
                 <p className="copy">
-                  Review demand, likely buyers, and possible margin before taking any next step.
+                  Review demand, likely buyers, and possible margin before
+                  taking any next step.
                 </p>
               </div>
               <span className="pill pill-neutral">{deals.length} items</span>
@@ -202,35 +224,59 @@ export default async function DealsPage() {
                   deal.estimatedMarginAmount,
                   deal.targetSellCurrencyCode ?? deal.quotedBuyCurrencyCode,
                 );
-                const estimatedMarginPct = formatMarginPct(deal.estimatedMarginPct);
+                const estimatedMarginPct = formatMarginPct(
+                  deal.estimatedMarginPct,
+                );
 
                 return (
                   <article className="dashboard-opportunity-card" key={deal.id}>
                     <div className="dashboard-opportunity-top">
                       <div>
-                        <p className="dashboard-opportunity-title">{resolveProductLabel(deal)}</p>
-                        <p className="dashboard-opportunity-meta">{resolveSupplierLabel(deal)}</p>
+                        <p className="dashboard-opportunity-title">
+                          {resolveProductLabel(deal)}
+                        </p>
+                        <p className="dashboard-opportunity-meta">
+                          {resolveSupplierLabel(deal)}
+                        </p>
                       </div>
                       <div className="dashboard-opportunity-badges">
-                        <span className={`pill ${stagePillClassName(deal.stage)}`}>{stageLabel(deal.stage)}</span>
-                        <span className={`pill ${statusPillClassName(deal.status)}`}>
+                        <span
+                          className={`pill ${stagePillClassName(deal.stage)}`}
+                        >
+                          {stageLabel(deal.stage)}
+                        </span>
+                        <span
+                          className={`pill ${statusPillClassName(deal.status)}`}
+                        >
                           {humanizeValue(deal.status) ?? deal.status}
                         </span>
                       </div>
                     </div>
 
                     {deal.rationale ? (
-                      <p className="dashboard-opportunity-copy">{deal.rationale}</p>
+                      <p className="dashboard-opportunity-copy">
+                        {deal.rationale}
+                      </p>
                     ) : null}
 
                     <dl className="duplicate-product-details">
                       <div>
                         <dt>Buy price</dt>
-                        <dd>{formatMoney(deal.quotedBuyUnitPrice, deal.quotedBuyCurrencyCode)}</dd>
+                        <dd>
+                          {formatMoney(
+                            deal.quotedBuyUnitPrice,
+                            deal.quotedBuyCurrencyCode,
+                          )}
+                        </dd>
                       </div>
                       <div>
                         <dt>Expected sell price</dt>
-                        <dd>{formatMoney(deal.targetSellUnitPrice, deal.targetSellCurrencyCode)}</dd>
+                        <dd>
+                          {formatMoney(
+                            deal.targetSellUnitPrice,
+                            deal.targetSellCurrencyCode,
+                          )}
+                        </dd>
                       </div>
                       <div>
                         <dt>Estimated margin</dt>
@@ -257,14 +303,19 @@ export default async function DealsPage() {
                     </ul>
 
                     <div>
-                      <p className="dashboard-opportunity-meta">Likely buyers</p>
+                      <p className="dashboard-opportunity-meta">
+                        Likely buyers
+                      </p>
                       {likelyBuyers.length === 0 ? (
-                        <p className="dashboard-triage-meta">No recent buyer pattern recorded yet.</p>
+                        <p className="dashboard-triage-meta">
+                          No recent buyer pattern recorded yet.
+                        </p>
                       ) : (
                         <ul className="dashboard-signal-list">
                           {likelyBuyers.map((buyer) => (
                             <li key={`${deal.id}-${buyer.customerId}`}>
-                              {buyer.name} | {buyer.units} units | {buyer.orderCount} orders
+                              {buyer.name} | {buyer.units} units |{' '}
+                              {buyer.orderCount} orders
                               {buyer.lastSaleAt
                                 ? ` | last sale ${formatDateTime(buyer.lastSaleAt) ?? buyer.lastSaleAt}`
                                 : ''}
@@ -276,8 +327,65 @@ export default async function DealsPage() {
 
                     <p className="dashboard-triage-meta">
                       Updated {formatDateTime(deal.updatedAt) ?? 'recently'}
-                      {deal.buyDecision?.id ? ' | Linked to approved supplier offer' : ''}
+                      {deal.buyDecision?.id
+                        ? ' | Linked to approved supplier offer'
+                        : ''}
                     </p>
+
+                    {deal.events?.length ? (
+                      <details className="document-card technical-details-card">
+                        <summary>Audit history</summary>
+                        <ol className="audit-history-list">
+                          {deal.events.slice(-6).map((event) => (
+                            <li className="audit-history-item" key={event.id}>
+                              <div className="audit-history-topline">
+                                <span>
+                                  {formatAuditAction(event.actionType)}
+                                </span>
+                                <span className="pill pill-neutral">Deal</span>
+                              </div>
+                              <p className="copy audit-history-meta">
+                                {formatDateTime(event.createdAt) ??
+                                  event.createdAt}{' '}
+                                by{' '}
+                                {event.actorIdentifier ??
+                                  event.actorType ??
+                                  'Unknown actor'}
+                              </p>
+                              {event.previousStatus ||
+                              event.newStatus ||
+                              event.previousStage ||
+                              event.newStage ? (
+                                <p className="copy audit-history-meta">
+                                  {[
+                                    event.previousStatus,
+                                    event.previousStage,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' / ') || 'No previous status'}{' '}
+                                  {'->'}{' '}
+                                  {[
+                                    event.newStatus,
+                                    event.newStage,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' / ') || 'No new status'}
+                                </p>
+                              ) : null}
+                              {event.note ? (
+                                <p className="copy audit-history-note">
+                                  {event.note}
+                                </p>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ol>
+                      </details>
+                    ) : (
+                      <p className="dashboard-triage-meta">
+                        No deal audit events recorded yet.
+                      </p>
+                    )}
                   </article>
                 );
               })}
@@ -292,7 +400,9 @@ export default async function DealsPage() {
         <p className="eyebrow">Deals</p>
         <h2 className="title">Deal view unavailable</h2>
         <p className="copy">
-          {error instanceof Error ? error.message : 'Failed to load trade opportunities.'}
+          {error instanceof Error
+            ? error.message
+            : 'Failed to load trade opportunities.'}
         </p>
         <div className="actions">
           <Link className="button" href="/dashboard">

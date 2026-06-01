@@ -7,6 +7,8 @@ import { createEmailInboundService } from '../service';
 test('inbound email service queues account-opening forms for review before import handling', async () => {
   let importCalled = false;
   const persistedCases = new Map<string, unknown>();
+  const infoLogs: Array<{ message: string; meta?: Record<string, unknown> }> =
+    [];
   const service = createEmailInboundService({
     allowedSenders: ['supplier.co.uk'],
     isTrustedSender: () => true,
@@ -46,7 +48,9 @@ test('inbound email service queues account-opening forms for review before impor
       persistedCases.set(input.accountCase.sourceFingerprint, input);
     },
     logger: {
-      info: () => undefined,
+      info: (message, meta) => {
+        infoLogs.push({ message, meta });
+      },
       warn: () => undefined,
       error: () => undefined,
     },
@@ -83,6 +87,19 @@ test('inbound email service queues account-opening forms for review before impor
     result.items[0]?.accountOpeningCase?.signingSummary.signingExplanation ??
       '',
     /Aman Dhillon can sign this account-opening form by default/,
+  );
+  const persistedInput = Array.from(
+    persistedCases.values(),
+  )[0] as AccountOpeningCasePersistenceInput;
+  const expectedCorrelationId = `FINGERPRINT:${persistedInput.accountCase.sourceFingerprint.slice(0, 16)}`;
+
+  assert.equal(persistedInput.correlationId, expectedCorrelationId);
+  assert.ok(
+    infoLogs.some(
+      (log) =>
+        log.message === 'Inbound account opening form queued for review' &&
+        log.meta?.correlationId === expectedCorrelationId,
+    ),
   );
 });
 

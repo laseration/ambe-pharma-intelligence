@@ -22,10 +22,16 @@ function extractDomain(senderEmail: string): string {
 }
 
 export function isAllowedEmailSender(senderEmail: string): boolean {
-  return isAllowedEmailSenderForList(senderEmail, env.emailInboundAllowedSenders);
+  return isAllowedEmailSenderForList(
+    senderEmail,
+    env.emailInboundAllowedSenders,
+  );
 }
 
-export function isAllowedEmailSenderForList(senderEmail: string, allowedSenders: string[]): boolean {
+export function isAllowedEmailSenderForList(
+  senderEmail: string,
+  allowedSenders: string[],
+): boolean {
   const normalizedSender = lower(senderEmail);
   const senderDomain = extractDomain(normalizedSender);
 
@@ -46,7 +52,9 @@ export function isAllowedEmailSenderForList(senderEmail: string, allowedSenders:
       return normalizedEntry === normalizedSender;
     }
 
-    const entryDomain = normalizedEntry.startsWith('@') ? normalizedEntry.slice(1) : normalizedEntry;
+    const entryDomain = normalizedEntry.startsWith('@')
+      ? normalizedEntry.slice(1)
+      : normalizedEntry;
     return entryDomain !== '' && entryDomain === senderDomain;
   });
 }
@@ -87,7 +95,9 @@ export function resolveSupplierNameFromSender(
   return null;
 }
 
-function cleanSupplierOverride(value: string | null | undefined): string | null {
+function cleanSupplierOverride(
+  value: string | null | undefined,
+): string | null {
   const cleaned = value?.trim();
 
   return cleaned ? cleaned : null;
@@ -97,7 +107,9 @@ export function extractManualSupplierOverride(input: {
   subject: string | null;
   bodyText: string | null;
 }): string | null {
-  const subjectMatch = input.subject?.match(/\[\s*supplier\s*:\s*([^\]]+?)\s*\]/i);
+  const subjectMatch = input.subject?.match(
+    /\[\s*supplier\s*:\s*([^\]]+?)\s*\]/i,
+  );
   const subjectSupplier = cleanSupplierOverride(subjectMatch?.[1]);
 
   if (subjectSupplier) {
@@ -115,7 +127,11 @@ function detectAttachmentFileType(
   const extension = fileName ? path.extname(fileName).toLowerCase() : '';
   const mime = lower(mimeType);
 
-  if (extension === '.csv' || mime === 'text/csv' || mime === 'application/csv') {
+  if (
+    extension === '.csv' ||
+    mime === 'text/csv' ||
+    mime === 'application/csv'
+  ) {
     return 'CSV';
   }
 
@@ -130,14 +146,19 @@ function detectAttachmentFileType(
     return 'PDF';
   }
 
-  if (mime.startsWith('image/') || ['.jpg', '.jpeg', '.png', '.webp'].includes(extension)) {
+  if (
+    mime.startsWith('image/') ||
+    ['.jpg', '.jpeg', '.png', '.webp'].includes(extension)
+  ) {
     return 'IMAGE';
   }
 
   return 'UNKNOWN';
 }
 
-function decodeAttachmentContent(content: EmailAttachmentInput['content']): Buffer | null {
+function decodeAttachmentContent(
+  content: EmailAttachmentInput['content'],
+): Buffer | null {
   if (Buffer.isBuffer(content)) {
     return content;
   }
@@ -153,23 +174,29 @@ function decodeAttachmentContent(content: EmailAttachmentInput['content']): Buff
   }
 }
 
-export function normalizeEmailAttachment(input: EmailAttachmentInput): NormalizedEmailAttachment {
+export function normalizeEmailAttachment(
+  input: EmailAttachmentInput,
+): NormalizedEmailAttachment {
   const buffer = decodeAttachmentContent(input.content);
 
   return {
-    fileType: detectAttachmentFileType(input.fileName ?? null, input.mimeType ?? null),
+    fileType: detectAttachmentFileType(
+      input.fileName ?? null,
+      input.mimeType ?? null,
+    ),
     fileName: input.fileName?.trim() || null,
     mimeType: input.mimeType?.trim() || null,
     buffer,
     size: input.size ?? buffer?.byteLength ?? null,
     contentId: input.contentId?.trim() || null,
     disposition: input.disposition?.trim() || null,
+    graphAttachmentId: input.graphAttachmentId?.trim() || null,
   };
 }
 
-export function filterIgnorableEmailAttachments<T extends { fileType: EmailInboundFileType; disposition?: string | null }>(
-  attachments: T[],
-): T[] {
+export function filterIgnorableEmailAttachments<
+  T extends { fileType: EmailInboundFileType; disposition?: string | null },
+>(attachments: T[]): T[] {
   const hasPrimarySpreadsheetAttachment = attachments.some(
     (attachment) =>
       (attachment.fileType === 'CSV' || attachment.fileType === 'XLSX') &&
@@ -181,7 +208,11 @@ export function filterIgnorableEmailAttachments<T extends { fileType: EmailInbou
   }
 
   return attachments.filter(
-    (attachment) => !(attachment.fileType === 'IMAGE' && lower(attachment.disposition) === 'inline'),
+    (attachment) =>
+      !(
+        attachment.fileType === 'IMAGE' &&
+        lower(attachment.disposition) === 'inline'
+      ),
   );
 }
 
@@ -193,30 +224,66 @@ const IMPORT_SIGNALS: Record<
   }
 > = {
   'supplier-price-list': {
-    strongPhrases: ['supplier price list', 'price list', 'supplier quote', 'supplier quotation'],
-    weakKeywords: ['supplier', 'price', 'quote', 'quotation', 'catalog', 'offer'],
+    strongPhrases: [
+      'supplier price list',
+      'price list',
+      'supplier quote',
+      'supplier quotation',
+    ],
+    weakKeywords: [
+      'supplier',
+      'price',
+      'quote',
+      'quotation',
+      'catalog',
+      'offer',
+    ],
   },
   inventory: {
-    strongPhrases: ['inventory export', 'inventory report', 'stock report', 'inventory snapshot'],
+    strongPhrases: [
+      'inventory export',
+      'inventory report',
+      'stock report',
+      'inventory snapshot',
+    ],
     weakKeywords: ['inventory', 'stock', 'warehouse', 'availability'],
   },
   sales: {
-    strongPhrases: ['sales report', 'sales export', 'sales data', 'revenue report'],
+    strongPhrases: [
+      'sales report',
+      'sales export',
+      'sales data',
+      'revenue report',
+    ],
     weakKeywords: ['sales', 'revenue', 'orders'],
   },
 };
 
 function countDistinctMatches(haystack: string, keywords: string[]): number {
-  return keywords.reduce((count, keyword) => count + (haystack.includes(keyword) ? 1 : 0), 0);
+  return keywords.reduce(
+    (count, keyword) => count + (haystack.includes(keyword) ? 1 : 0),
+    0,
+  );
 }
 
 function scoreImportType(
   subject: string,
   fileName: string,
   signalSet: { strongPhrases: string[]; weakKeywords: string[] },
-): { score: number; subjectHits: number; fileHits: number; strongHits: number } {
-  const subjectStrongHits = countDistinctMatches(subject, signalSet.strongPhrases);
-  const fileStrongHits = countDistinctMatches(fileName, signalSet.strongPhrases);
+): {
+  score: number;
+  subjectHits: number;
+  fileHits: number;
+  strongHits: number;
+} {
+  const subjectStrongHits = countDistinctMatches(
+    subject,
+    signalSet.strongPhrases,
+  );
+  const fileStrongHits = countDistinctMatches(
+    fileName,
+    signalSet.strongPhrases,
+  );
   const subjectWeakHits = countDistinctMatches(subject, signalSet.weakKeywords);
   const fileWeakHits = countDistinctMatches(fileName, signalSet.weakKeywords);
   const strongHits = subjectStrongHits + fileStrongHits;
@@ -257,23 +324,34 @@ export function inferEmailImportDecision(input: {
 
   const normalizedSubject = lower(input.subject);
   const normalizedFileName = lower(input.fileName);
-  const scores = Object.entries(IMPORT_SIGNALS).map(([importType, signalSet]) => {
-    const details = scoreImportType(normalizedSubject, normalizedFileName, signalSet);
+  const scores = Object.entries(IMPORT_SIGNALS).map(
+    ([importType, signalSet]) => {
+      const details = scoreImportType(
+        normalizedSubject,
+        normalizedFileName,
+        signalSet,
+      );
 
-    return {
-      importType: importType as NonNullable<EmailInboundDecision['inferredImportType']>,
-      ...details,
-    };
-  });
+      return {
+        importType: importType as NonNullable<
+          EmailInboundDecision['inferredImportType']
+        >,
+        ...details,
+      };
+    },
+  );
 
   scores.sort((left, right) => right.score - left.score);
 
   const best = scores[0];
   const secondBest = scores[1];
   const hasStrongEvidence = best
-    ? best.strongHits >= 1 || (best.subjectHits >= 1 && best.fileHits >= 1) || best.score >= 6
+    ? best.strongHits >= 1 ||
+      (best.subjectHits >= 1 && best.fileHits >= 1) ||
+      best.score >= 6
     : false;
-  const hasMixedSignals = best && secondBest ? best.score > 0 && secondBest.score > 0 : false;
+  const hasMixedSignals =
+    best && secondBest ? best.score > 0 && secondBest.score > 0 : false;
 
   if (
     !best ||
@@ -286,7 +364,8 @@ export function inferEmailImportDecision(input: {
       processingStatus: 'NEEDS_REVIEW',
       inferredImportType: null,
       confidence: 'LOW',
-      reason: 'Import type is unclear from the subject and attachment filename.',
+      reason:
+        'Import type is unclear from the subject and attachment filename.',
     };
   }
 
@@ -294,6 +373,7 @@ export function inferEmailImportDecision(input: {
     processingStatus: 'RECEIVED',
     inferredImportType: best.importType,
     confidence: 'HIGH',
-    reason: 'Import type was inferred confidently from the subject and attachment filename.',
+    reason:
+      'Import type was inferred confidently from the subject and attachment filename.',
   };
 }

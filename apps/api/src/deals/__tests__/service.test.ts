@@ -23,14 +23,24 @@ function createRepositoryHarness() {
     items.map((item) => ({
       ...item,
       resolutionCandidates: Array.isArray(item.resolutionCandidates)
-        ? item.resolutionCandidates.map((candidate: Record<string, any>) => ({ ...candidate }))
+        ? item.resolutionCandidates.map((candidate: Record<string, any>) => ({
+            ...candidate,
+          }))
         : item.resolutionCandidates,
-      workflowItem: item.workflowItem ? { ...item.workflowItem } : item.workflowItem,
-      inboundEmail: item.inboundEmail ? { ...item.inboundEmail } : item.inboundEmail,
+      workflowItem: item.workflowItem
+        ? { ...item.workflowItem }
+        : item.workflowItem,
+      inboundEmail: item.inboundEmail
+        ? { ...item.inboundEmail }
+        : item.inboundEmail,
       execution: item.execution ? { ...item.execution } : item.execution,
       supplier: item.supplier ? { ...item.supplier } : item.supplier,
-      drafts: Array.isArray(item.drafts) ? item.drafts.map((draft: Record<string, any>) => ({ ...draft })) : item.drafts,
-      events: Array.isArray(item.events) ? item.events.map((event: Record<string, any>) => ({ ...event })) : item.events,
+      drafts: Array.isArray(item.drafts)
+        ? item.drafts.map((draft: Record<string, any>) => ({ ...draft }))
+        : item.drafts,
+      events: Array.isArray(item.events)
+        ? item.events.map((event: Record<string, any>) => ({ ...event }))
+        : item.events,
     }));
 
   const cloneState = () => ({
@@ -46,9 +56,21 @@ function createRepositoryHarness() {
   });
 
   const restoreState = (snapshot: ReturnType<typeof cloneState>) => {
-    tradeOpportunities.splice(0, tradeOpportunities.length, ...snapshot.tradeOpportunities);
-    tradeOpportunityEvents.splice(0, tradeOpportunityEvents.length, ...snapshot.tradeOpportunityEvents);
-    messagingPolicies.splice(0, messagingPolicies.length, ...snapshot.messagingPolicies);
+    tradeOpportunities.splice(
+      0,
+      tradeOpportunities.length,
+      ...snapshot.tradeOpportunities,
+    );
+    tradeOpportunityEvents.splice(
+      0,
+      tradeOpportunityEvents.length,
+      ...snapshot.tradeOpportunityEvents,
+    );
+    messagingPolicies.splice(
+      0,
+      messagingPolicies.length,
+      ...snapshot.messagingPolicies,
+    );
     drafts.splice(0, drafts.length, ...snapshot.drafts);
     feedbacks.splice(0, feedbacks.length, ...snapshot.feedbacks);
     offers.splice(0, offers.length, ...snapshot.offers);
@@ -60,15 +82,24 @@ function createRepositoryHarness() {
   const attachRelations = (tradeOpportunity: Record<string, any>) => ({
     ...tradeOpportunity,
     messagingPolicy:
-      messagingPolicies.find((item) => item.tradeOpportunityId === tradeOpportunity.id) ?? null,
+      messagingPolicies.find(
+        (item) => item.tradeOpportunityId === tradeOpportunity.id,
+      ) ?? null,
     drafts: drafts
       .filter((item) => item.tradeOpportunityId === tradeOpportunity.id)
-      .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime()),
+      .sort(
+        (left, right) => right.updatedAt.getTime() - left.updatedAt.getTime(),
+      ),
     events: tradeOpportunityEvents
       .filter((item) => item.tradeOpportunityId === tradeOpportunity.id)
-      .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime()),
+      .sort(
+        (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
+      ),
     supplier: tradeOpportunity.supplierId
-      ? { id: tradeOpportunity.supplierId, name: tradeOpportunity.sourceSupplierNameSnapshot ?? 'Supplier' }
+      ? {
+          id: tradeOpportunity.supplierId,
+          name: tradeOpportunity.sourceSupplierNameSnapshot ?? 'Supplier',
+        }
       : null,
     product: tradeOpportunity.productId
       ? {
@@ -79,42 +110,56 @@ function createRepositoryHarness() {
             'Product',
         }
       : null,
-    buyDecision:
-      tradeOpportunity.buyDecisionId
-        ? buyDecisions
-            .find((item) => item.id === tradeOpportunity.buyDecisionId)
-            ? {
-                id: buyDecisions.find((item) => item.id === tradeOpportunity.buyDecisionId)!.id,
-                approvalStatus: buyDecisions.find((item) => item.id === tradeOpportunity.buyDecisionId)!.approvalStatus,
-                orderStatus: buyDecisions.find((item) => item.id === tradeOpportunity.buyDecisionId)!.orderStatus,
-                supplierQualificationStatus:
-                  buyDecisions.find((item) => item.id === tradeOpportunity.buyDecisionId)!.supplierQualificationStatus,
-                hasQualificationRisk:
-                  buyDecisions.find((item) => item.id === tradeOpportunity.buyDecisionId)!.hasQualificationRisk,
-              }
-            : null
-        : null,
-    buyExecution:
-      tradeOpportunity.buyExecutionId
-        ? buyExecutions
-            .find((item) => item.id === tradeOpportunity.buyExecutionId)
-            ? {
-                id: buyExecutions.find((item) => item.id === tradeOpportunity.buyExecutionId)!.id,
-                fulfillmentStatus:
-                  buyExecutions.find((item) => item.id === tradeOpportunity.buyExecutionId)!.fulfillmentStatus,
-                reconciliationStatus:
-                  buyExecutions.find((item) => item.id === tradeOpportunity.buyExecutionId)!.reconciliationStatus,
-                hasPriceDrift:
-                  buyExecutions.find((item) => item.id === tradeOpportunity.buyExecutionId)!.hasPriceDrift,
-                hasQuantityDrift:
-                  buyExecutions.find((item) => item.id === tradeOpportunity.buyExecutionId)!.hasQuantityDrift,
-                hasCurrencyMismatch:
-                  buyExecutions.find((item) => item.id === tradeOpportunity.buyExecutionId)!.hasCurrencyMismatch,
-                hasAvailabilityDrift:
-                  buyExecutions.find((item) => item.id === tradeOpportunity.buyExecutionId)!.hasAvailabilityDrift,
-              }
-            : null
-        : null,
+    buyDecision: tradeOpportunity.buyDecisionId
+      ? buyDecisions.find((item) => item.id === tradeOpportunity.buyDecisionId)
+        ? {
+            id: buyDecisions.find(
+              (item) => item.id === tradeOpportunity.buyDecisionId,
+            )!.id,
+            approvalStatus: buyDecisions.find(
+              (item) => item.id === tradeOpportunity.buyDecisionId,
+            )!.approvalStatus,
+            orderStatus: buyDecisions.find(
+              (item) => item.id === tradeOpportunity.buyDecisionId,
+            )!.orderStatus,
+            supplierQualificationStatus: buyDecisions.find(
+              (item) => item.id === tradeOpportunity.buyDecisionId,
+            )!.supplierQualificationStatus,
+            hasQualificationRisk: buyDecisions.find(
+              (item) => item.id === tradeOpportunity.buyDecisionId,
+            )!.hasQualificationRisk,
+          }
+        : null
+      : null,
+    buyExecution: tradeOpportunity.buyExecutionId
+      ? buyExecutions.find(
+          (item) => item.id === tradeOpportunity.buyExecutionId,
+        )
+        ? {
+            id: buyExecutions.find(
+              (item) => item.id === tradeOpportunity.buyExecutionId,
+            )!.id,
+            fulfillmentStatus: buyExecutions.find(
+              (item) => item.id === tradeOpportunity.buyExecutionId,
+            )!.fulfillmentStatus,
+            reconciliationStatus: buyExecutions.find(
+              (item) => item.id === tradeOpportunity.buyExecutionId,
+            )!.reconciliationStatus,
+            hasPriceDrift: buyExecutions.find(
+              (item) => item.id === tradeOpportunity.buyExecutionId,
+            )!.hasPriceDrift,
+            hasQuantityDrift: buyExecutions.find(
+              (item) => item.id === tradeOpportunity.buyExecutionId,
+            )!.hasQuantityDrift,
+            hasCurrencyMismatch: buyExecutions.find(
+              (item) => item.id === tradeOpportunity.buyExecutionId,
+            )!.hasCurrencyMismatch,
+            hasAvailabilityDrift: buyExecutions.find(
+              (item) => item.id === tradeOpportunity.buyExecutionId,
+            )!.hasAvailabilityDrift,
+          }
+        : null
+      : null,
   });
 
   return {
@@ -138,7 +183,9 @@ function createRepositoryHarness() {
         }
       },
       async findById(tradeOpportunityId: string) {
-        const item = tradeOpportunities.find((tradeOpportunity) => tradeOpportunity.id === tradeOpportunityId);
+        const item = tradeOpportunities.find(
+          (tradeOpportunity) => tradeOpportunity.id === tradeOpportunityId,
+        );
         return item ? (attachRelations(item) as never) : null;
       },
       async list(filters: Record<string, any>) {
@@ -150,12 +197,16 @@ function createRepositoryHarness() {
             if (filters.stage && item.stage !== filters.stage) {
               return false;
             }
-            if (filters.emailDerivedOfferId && item.emailDerivedOfferId !== filters.emailDerivedOfferId) {
+            if (
+              filters.emailDerivedOfferId &&
+              item.emailDerivedOfferId !== filters.emailDerivedOfferId
+            ) {
               return false;
             }
             if (
               typeof filters.hasMessagingPolicyViolations === 'boolean' &&
-              item.hasMessagingPolicyViolations !== filters.hasMessagingPolicyViolations
+              item.hasMessagingPolicyViolations !==
+                filters.hasMessagingPolicyViolations
             ) {
               return false;
             }
@@ -195,7 +246,9 @@ function createRepositoryHarness() {
         return attachRelations(created) as never;
       },
       async update(tradeOpportunityId: string, data: Record<string, unknown>) {
-        const existing = tradeOpportunities.find((tradeOpportunity) => tradeOpportunity.id === tradeOpportunityId);
+        const existing = tradeOpportunities.find(
+          (tradeOpportunity) => tradeOpportunity.id === tradeOpportunityId,
+        );
         if (!existing) {
           throw new Error('Trade opportunity not found.');
         }
@@ -213,10 +266,14 @@ function createRepositoryHarness() {
         return created as never;
       },
       async listEvents(tradeOpportunityId: string) {
-        return tradeOpportunityEvents.filter((item) => item.tradeOpportunityId === tradeOpportunityId) as never;
+        return tradeOpportunityEvents.filter(
+          (item) => item.tradeOpportunityId === tradeOpportunityId,
+        ) as never;
       },
       async findPolicyByTradeOpportunityId(tradeOpportunityId: string) {
-        return (messagingPolicies.find((item) => item.tradeOpportunityId === tradeOpportunityId) ?? null) as never;
+        return (messagingPolicies.find(
+          (item) => item.tradeOpportunityId === tradeOpportunityId,
+        ) ?? null) as never;
       },
       async createPolicy(data: Record<string, unknown>) {
         const created = {
@@ -228,8 +285,13 @@ function createRepositoryHarness() {
         messagingPolicies.push(created);
         return created as never;
       },
-      async updatePolicy(tradeOpportunityId: string, data: Record<string, unknown>) {
-        const existing = messagingPolicies.find((item) => item.tradeOpportunityId === tradeOpportunityId);
+      async updatePolicy(
+        tradeOpportunityId: string,
+        data: Record<string, unknown>,
+      ) {
+        const existing = messagingPolicies.find(
+          (item) => item.tradeOpportunityId === tradeOpportunityId,
+        );
         if (!existing) {
           throw new Error('Trade opportunity messaging policy not found.');
         }
@@ -240,7 +302,10 @@ function createRepositoryHarness() {
       async listDrafts(tradeOpportunityId: string) {
         return drafts
           .filter((item) => item.tradeOpportunityId === tradeOpportunityId)
-          .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime()) as never;
+          .sort(
+            (left, right) =>
+              right.updatedAt.getTime() - left.updatedAt.getTime(),
+          ) as never;
       },
       async findDraftById(draftId: string) {
         return (drafts.find((item) => item.id === draftId) ?? null) as never;
@@ -251,16 +316,14 @@ function createRepositoryHarness() {
         direction: string,
         messagePurpose: string,
       ) {
-        return (
-          drafts.find(
-            (item) =>
-              item.tradeOpportunityId === tradeOpportunityId &&
-              item.contentHash === contentHash &&
-              item.direction === direction &&
-              item.messagePurpose === messagePurpose &&
-              !['REJECTED', 'CANCELLED'].includes(item.status),
-          ) ?? null
-        ) as never;
+        return (drafts.find(
+          (item) =>
+            item.tradeOpportunityId === tradeOpportunityId &&
+            item.contentHash === contentHash &&
+            item.direction === direction &&
+            item.messagePurpose === messagePurpose &&
+            !['REJECTED', 'CANCELLED'].includes(item.status),
+        ) ?? null) as never;
       },
       async createDraft(data: Record<string, unknown>) {
         const created = {
@@ -287,21 +350,21 @@ function createRepositoryHarness() {
         return existing as never;
       },
       async findRecentMatchingFeedback(input: Record<string, any>) {
-        return (
-          feedbacks
-            .filter((item) => item.createdAt.getTime() >= input.createdAfter.getTime())
-            .find(
-              (item) =>
-                item.emailDerivedOfferId === input.emailDerivedOfferId &&
-                item.offerWorkflowItemId === input.offerWorkflowItemId &&
-                item.tradeOpportunityId === input.tradeOpportunityId &&
-                item.tradeMessageDraftId === input.tradeMessageDraftId &&
-                item.feedbackType === input.feedbackType &&
-                item.verdict === input.verdict &&
-                item.actorType === input.actorType &&
-                item.actorIdentifier === input.actorIdentifier,
-            ) ?? null
-        ) as never;
+        return (feedbacks
+          .filter(
+            (item) => item.createdAt.getTime() >= input.createdAfter.getTime(),
+          )
+          .find(
+            (item) =>
+              item.emailDerivedOfferId === input.emailDerivedOfferId &&
+              item.offerWorkflowItemId === input.offerWorkflowItemId &&
+              item.tradeOpportunityId === input.tradeOpportunityId &&
+              item.tradeMessageDraftId === input.tradeMessageDraftId &&
+              item.feedbackType === input.feedbackType &&
+              item.verdict === input.verdict &&
+              item.actorType === input.actorType &&
+              item.actorIdentifier === input.actorIdentifier,
+          ) ?? null) as never;
       },
       async createFeedback(data: Record<string, unknown>) {
         const created = {
@@ -322,16 +385,20 @@ function createRepositoryHarness() {
           : null;
       },
       async findOfferById(emailDerivedOfferId: string) {
-        return (offers.find((offer) => offer.id === emailDerivedOfferId) ?? null) as never;
+        return (offers.find((offer) => offer.id === emailDerivedOfferId) ??
+          null) as never;
       },
       async findWorkflowById(workflowItemId: string) {
-        return (workflows.find((workflow) => workflow.id === workflowItemId) ?? null) as never;
+        return (workflows.find((workflow) => workflow.id === workflowItemId) ??
+          null) as never;
       },
       async findBuyDecisionById(buyDecisionId: string) {
-        return (buyDecisions.find((item) => item.id === buyDecisionId) ?? null) as never;
+        return (buyDecisions.find((item) => item.id === buyDecisionId) ??
+          null) as never;
       },
       async findBuyExecutionById(buyExecutionId: string) {
-        return (buyExecutions.find((item) => item.id === buyExecutionId) ?? null) as never;
+        return (buyExecutions.find((item) => item.id === buyExecutionId) ??
+          null) as never;
       },
       async listActiveByOfferIds(emailDerivedOfferIds: string[]) {
         return tradeOpportunities
@@ -355,7 +422,10 @@ function createRepositoryHarness() {
           )
           .map((item) => attachRelations(item)) as never;
       },
-      async updateTradeOpportunity(tradeOpportunityId: string, data: Record<string, unknown>) {
+      async updateTradeOpportunity(
+        tradeOpportunityId: string,
+        data: Record<string, unknown>,
+      ) {
         return this.update(tradeOpportunityId, data);
       },
     },
@@ -400,14 +470,34 @@ function createService(harness: ReturnType<typeof createRepositoryHarness>) {
         },
         evaluation: {},
         decisions: {
-          internalSignals: { eligible: false, blockedReasons: ['minimum sample size not met for extraction feedback'] },
-          supplierDrafts: { eligible: false, blockedReasons: ['policy mode is below drafts-only for supplier outreach drafts'] },
-          buyerDrafts: { eligible: false, blockedReasons: ['policy mode is below drafts-only for buyer outreach drafts'] },
+          internalSignals: {
+            eligible: false,
+            blockedReasons: [
+              'minimum sample size not met for extraction feedback',
+            ],
+          },
+          supplierDrafts: {
+            eligible: false,
+            blockedReasons: [
+              'policy mode is below drafts-only for supplier outreach drafts',
+            ],
+          },
+          buyerDrafts: {
+            eligible: false,
+            blockedReasons: [
+              'policy mode is below drafts-only for buyer outreach drafts',
+            ],
+          },
           assistedOutreach: { eligible: false, blockedReasons: [] },
-          actualSend: { eligible: false, blockedReasons: ['live autonomous sending remains blocked in this implementation pass'] },
+          actualSend: {
+            eligible: false,
+            blockedReasons: [
+              'live autonomous sending remains blocked in this implementation pass',
+            ],
+          },
         },
         recommendedAction: 'review more samples',
-      } as never),
+      }) as never,
   });
 }
 
@@ -507,7 +597,10 @@ test('creating a deal from the same staged offer reuses one active deal', async 
   assert.equal(first.summary.hasLearnedManufacturerSuggestion, true);
   assert.equal(first.summary.learningRecommendedAction, 'trust but verify');
   assert.equal(first.summary.automationMode, 'INTERNAL_SIGNALS_ONLY');
-  assert.equal(first.summary.automationRecommendedAction, 'review more samples');
+  assert.equal(
+    first.summary.automationRecommendedAction,
+    'review more samples',
+  );
 });
 
 test('supplier qualification risk and margin floor drive conservative deal flags', async () => {
@@ -537,9 +630,18 @@ test('supplier qualification risk and margin floor drive conservative deal flags
 
   assert.equal(tradeOpportunity.status, 'ON_HOLD');
   assert.equal(tradeOpportunity.isMarginFloorMet, false);
-  assert.match(JSON.stringify(tradeOpportunity.riskFlags), /restricted_supplier/);
-  assert.match(JSON.stringify(tradeOpportunity.riskFlags), /margin_below_floor/);
-  assert.equal(tradeOpportunity.summary.recommendedNextStep, 'qualify supplier');
+  assert.match(
+    JSON.stringify(tradeOpportunity.riskFlags),
+    /restricted_supplier/,
+  );
+  assert.match(
+    JSON.stringify(tradeOpportunity.riskFlags),
+    /margin_below_floor/,
+  );
+  assert.equal(
+    tradeOpportunity.summary.recommendedNextStep,
+    'qualify supplier',
+  );
 });
 
 test('buyer-facing and supplier-facing drafts are blocked when identity leakage is detected', async () => {
@@ -558,27 +660,39 @@ test('buyer-facing and supplier-facing drafts are blocked when identity leakage 
     actorIdentifier: 'buyer-1',
   });
 
-  const buyerDraft = await service.generateTradeMessageDraft(tradeOpportunity.id, {
-    direction: 'TO_BUYER',
-    messagePurpose: 'INITIAL_BUYER_OFFER',
-    body: 'Indicative stock is available from Supplier One at current terms.',
-    actorType: 'USER',
-    actorIdentifier: 'buyer-1',
-  });
-  const supplierDraft = await service.generateTradeMessageDraft(tradeOpportunity.id, {
-    direction: 'TO_SUPPLIER',
-    messagePurpose: 'INITIAL_SUPPLIER_ENQUIRY',
-    body: 'Buyer Ltd would like confirmation for this line.',
-    actorType: 'USER',
-    actorIdentifier: 'buyer-1',
-  });
+  const buyerDraft = await service.generateTradeMessageDraft(
+    tradeOpportunity.id,
+    {
+      direction: 'TO_BUYER',
+      messagePurpose: 'INITIAL_BUYER_OFFER',
+      body: 'Indicative stock is available from Supplier One at current terms.',
+      actorType: 'USER',
+      actorIdentifier: 'buyer-1',
+    },
+  );
+  const supplierDraft = await service.generateTradeMessageDraft(
+    tradeOpportunity.id,
+    {
+      direction: 'TO_SUPPLIER',
+      messagePurpose: 'INITIAL_SUPPLIER_ENQUIRY',
+      body: 'Buyer Ltd would like confirmation for this line.',
+      actorType: 'USER',
+      actorIdentifier: 'buyer-1',
+    },
+  );
 
   assert.equal(buyerDraft.status, 'DRAFT');
   assert.equal(buyerDraft.containsSupplierIdentity, true);
-  assert.match(JSON.stringify(buyerDraft.policyViolations), /supplier_identity_leak_detected/);
+  assert.match(
+    JSON.stringify(buyerDraft.policyViolations),
+    /supplier_identity_leak_detected/,
+  );
   assert.equal(supplierDraft.status, 'DRAFT');
   assert.equal(supplierDraft.containsBuyerIdentity, true);
-  assert.match(JSON.stringify(supplierDraft.policyViolations), /buyer_identity_leak_detected/);
+  assert.match(
+    JSON.stringify(supplierDraft.policyViolations),
+    /buyer_identity_leak_detected/,
+  );
 });
 
 test('forwarded raw header content is flagged in outward drafts', async () => {
@@ -603,7 +717,10 @@ test('forwarded raw header content is flagged in outward drafts', async () => {
   });
 
   assert.equal(draft.containsForwardedContent, true);
-  assert.match(JSON.stringify(draft.policyViolations), /forwarded_header_content_detected/);
+  assert.match(
+    JSON.stringify(draft.policyViolations),
+    /forwarded_header_content_detected/,
+  );
   assert.equal(draft.status, 'DRAFT');
 });
 
@@ -699,5 +816,8 @@ test('execution price drift propagates into deal summary and hold state', async 
   assert.equal(refreshed?.status, 'ON_HOLD');
   assert.equal(refreshed?.stage, 'BUY_ORDERED');
   assert.equal(refreshed?.summary.hasPriceDrift, true);
-  assert.equal(refreshed?.summary.recommendedNextStep, 'investigate price drift');
+  assert.equal(
+    refreshed?.summary.recommendedNextStep,
+    'investigate price drift',
+  );
 });

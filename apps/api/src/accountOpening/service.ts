@@ -2,7 +2,46 @@ import { createHash } from 'node:crypto';
 
 import { Prisma } from '@prisma/client';
 
+import type {
+  AccountOpeningBinaryFillPreviewDetail,
+  AccountOpeningCaseDetail,
+  AccountOpeningCompletedFormFilingDetail,
+  AccountOpeningDocumentLifecycleSummary,
+  AccountOpeningFillPreviewDetail,
+  AccountOpeningMissingInfoResponses,
+  AccountOpeningOriginalFormDetail,
+  AccountOpeningOriginalFormLifecycle,
+  AccountOpeningReadinessCheck,
+  AccountOpeningReadinessCheckKey,
+  AccountOpeningReadinessReport,
+  AccountOpeningReadinessStatus,
+  AccountOpeningSigningNotes,
+  AccountOpeningSourceEvidenceDetail,
+  AccountOpeningStatusAction,
+} from '@ambe/shared';
+export type {
+  AccountOpeningBinaryFillPreviewDetail,
+  AccountOpeningCaseDetail,
+  AccountOpeningCompletedFormFilingDetail,
+  AccountOpeningDocumentLifecycleSummary,
+  AccountOpeningFillPreviewDetail,
+  AccountOpeningMissingInfoResponses,
+  AccountOpeningOriginalFormDetail,
+  AccountOpeningOriginalFormLifecycle,
+  AccountOpeningReadinessCheck,
+  AccountOpeningReadinessCheckKey,
+  AccountOpeningReadinessReport,
+  AccountOpeningReadinessStatus,
+  AccountOpeningSigningNotes,
+  AccountOpeningSourceEvidenceDetail,
+  AccountOpeningStatusAction,
+} from '@ambe/shared';
 import { db } from '../lib/db';
+import { buildCorrelationId } from '../observability/correlation';
+import {
+  buildSideEffectAuditMetadata,
+  type SideEffectOperationName,
+} from '../safety/sideEffectPolicy';
 import {
   getAccountOpeningDriveArchiveConfig,
   getDriveArchiveSkippedReason,
@@ -79,237 +118,6 @@ export type AccountOpeningSigningSummary = {
   escalationNotes: string[];
 };
 
-export type AccountOpeningSigningNotes = {
-  title: 'Account opening signing notes';
-  recommendedSigner: 'Aman Dhillon';
-  defaultSigningStatement: 'Aman Dhillon can sign this account-opening form by default.';
-  detectedNames: string[];
-  detectedRolesOrSections: string[];
-  reviewerChecks: string[];
-  riskFlags: string[];
-  missingOrUnclear: string[];
-  signatureInstruction: 'Leave signature fields blank until approved by a human reviewer.';
-  summary: string;
-};
-
-export type AccountOpeningMissingInfoResponses = {
-  website?: string | null;
-  numberOfEmployees?: string | null;
-  businessHours?: string | null;
-  estimatedMonthlyPurchases?: string | null;
-  webOrdering?: string | null;
-  directDebitRequested?: string | null;
-  cdLicenceApplies?: string | null;
-  gphcPremisesNumber?: string | null;
-  cqcRegistration?: string | null;
-  reviewerNotes?: string | null;
-};
-
-export type AccountOpeningStatusAction =
-  | 'MARKED_NEEDS_INFO'
-  | 'APPROVED_FOR_COMPLETION'
-  | 'REJECTED';
-
-export type AccountOpeningCaseDetail = {
-  id: string;
-  sourceFingerprint: string;
-  messageId: string | null;
-  senderEmail: string | null;
-  senderDomain: string | null;
-  subject: string | null;
-  receivedAt: string | null;
-  companyName: string | null;
-  detectedFormType: string | null;
-  status: string;
-  recommendedSigner: string;
-  signingStatement: string;
-  signingExplanation: string | null;
-  detectedNames: string[];
-  detectedRoles: string[];
-  escalationNotes: string[];
-  riskFlags: string[];
-  missingFields: string[];
-  reviewerChecks: string[];
-  signingNotes: AccountOpeningSigningNotes;
-  missingInfoResponses: AccountOpeningMissingInfoResponses;
-  extractedTextSummary: string | null;
-  storageStatus: string | null;
-  storageNote: string | null;
-  storageSkippedReason: string | null;
-  storageLastAttemptAt: string | null;
-  storageFolderUrl: string | null;
-  sourceAttachmentNames: string[];
-  draftStatus: string | null;
-  draftVersion: string | null;
-  draftGeneratedAt: string | null;
-  sourceEvidence: AccountOpeningSourceEvidenceDetail[];
-  originalForms: AccountOpeningOriginalFormDetail[];
-  completionDraft: AccountOpeningCompletionDraft;
-  fieldMappings: AccountOpeningFieldMappingReview;
-  latestFillPreview: AccountOpeningFillPreviewDetail | null;
-  latestBinaryFillPreview: AccountOpeningBinaryFillPreviewDetail | null;
-  latestCompletedFormFiling: AccountOpeningCompletedFormFilingDetail | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type AccountOpeningSourceEvidenceDetail = {
-  id: string | null;
-  sourceType: string;
-  sourceLabel: string | null;
-  fileName: string | null;
-  mimeType: string | null;
-  sizeBytes: number | null;
-  contentId: string | null;
-  disposition: string | null;
-  extractionMethod: string | null;
-  extractedTextHash: string | null;
-  extractedTextChars: number | null;
-  safeSnippet: string | null;
-  rawFileAvailable: boolean;
-  storageProvider: string | null;
-  storageFolderUrl: string | null;
-  storageFileUrl: string | null;
-  storageDriveItemId: string | null;
-  createdAt: string | null;
-  updatedAt: string | null;
-};
-
-export type AccountOpeningOriginalFormDetail = {
-  id: string;
-  sourceEvidenceId: string | null;
-  fileName: string;
-  mimeType: string | null;
-  sizeBytes: number | null;
-  fileHash: string | null;
-  storageProvider: string | null;
-  storageFolderUrl: string | null;
-  storageFileUrl: string | null;
-  storageDriveItemId: string | null;
-  localBlobAvailable: boolean;
-  formType: string;
-  fillSupportStatus: string;
-  detectedFieldCount: number | null;
-  detectionSummary: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type AccountOpeningFillPreviewDetail = {
-  id: string;
-  originalFormId: string | null;
-  status: string;
-  previewVersion: string;
-  fileNames: string[];
-  summary: Record<string, unknown>;
-  safetySummary: Record<string, unknown>;
-  generatedAt: string;
-  createdByType: string | null;
-  createdByIdentifier: string | null;
-};
-
-export type AccountOpeningBinaryFillPreviewDetail = {
-  id: string;
-  originalFormId: string | null;
-  status: string;
-  previewVersion: string;
-  binaryPreviewFileName: string | null;
-  binaryPreviewContentType: string | null;
-  binaryPreviewHash: string | null;
-  binaryPreviewBytesAvailable: boolean;
-  filledFieldCount: number;
-  blankFieldCount: number;
-  unsupportedReason: string | null;
-  warnings: string[];
-  brandingPreservationCheck: Record<string, unknown>;
-  safetySummary: Record<string, unknown>;
-  generatedAt: string;
-  createdByType: string | null;
-  createdByIdentifier: string | null;
-};
-
-export type AccountOpeningCompletedFormFilingDetail = {
-  id: string;
-  binaryFillPreviewId: string;
-  status: string;
-  fileName: string;
-  contentType: string;
-  fileHash: string | null;
-  fileSizeBytes: number | null;
-  storageProvider: string | null;
-  storageFolderUrl: string | null;
-  storageFileUrl: string | null;
-  storageDriveItemId: string | null;
-  approvedByType: string | null;
-  approvedByIdentifier: string | null;
-  approvedAt: string | null;
-  approvalNote: string | null;
-  filedByType: string | null;
-  filedByIdentifier: string | null;
-  filedAt: string | null;
-  filingNote: string | null;
-  skippedReason: string | null;
-  safetySummary: Record<string, unknown>;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type AccountOpeningReadinessStatus = 'GREEN' | 'AMBER' | 'RED';
-
-export type AccountOpeningReadinessCheckKey =
-  | 'COMPLETION_DRAFT_STORED'
-  | 'REVIEWED_FIELD_MAPPINGS_SAVED'
-  | 'ORIGINAL_FORM_REFERENCE_PRESENT'
-  | 'ORIGINAL_BYTES_RETRIEVABLE'
-  | 'FORM_TYPE_SUPPORTED'
-  | 'PDF_ACROFORM_FIELD_COUNT'
-  | 'SAFE_MAPPED_FIELDS_COUNT'
-  | 'BLOCKED_FIELDS_COUNT'
-  | 'BINARY_PREVIEW_GENERATED'
-  | 'BINARY_PREVIEW_DOWNLOADED'
-  | 'BINARY_PREVIEW_APPROVED'
-  | 'SHAREPOINT_DRIVE_CONFIGURED'
-  | 'COMPLETED_UNSIGNED_FORM_FILED'
-  | 'MISSING_BLOCKERS';
-
-export type AccountOpeningReadinessCheck = {
-  key: AccountOpeningReadinessCheckKey;
-  label: string;
-  status: AccountOpeningReadinessStatus;
-  value: string;
-  blocker: string | null;
-  nextAction: string;
-};
-
-export type AccountOpeningReadinessReport = {
-  caseId: string;
-  status: AccountOpeningReadinessStatus;
-  readyForEndToEndFillingAndFiling: boolean;
-  nextAction: string;
-  checks: AccountOpeningReadinessCheck[];
-  blockerTexts: string[];
-  counts: {
-    pdfAcroFormFieldCount: number | null;
-    safeMappedFields: number;
-    blockedFields: number;
-  };
-  safety: {
-    diagnosticOnly: true;
-    internalSharePointFilingOnly: true;
-    notSigned: true;
-    notSent: true;
-    notSubmitted: true;
-    directDebitBankAuthorityNotCompleted: true;
-    guaranteeIndemnityDirectorOnlyNotCompleted: true;
-    purchaseWorkflowTriggered: false;
-    rawExtractedTextIncluded: false;
-    binaryBytesIncluded: false;
-    bankDetailsIncluded: false;
-    sortCodesIncluded: false;
-  };
-};
-
 export type AccountOpeningCase = {
   sourceFingerprint: string;
   status: 'pending_review' | 'approved' | 'rejected';
@@ -333,6 +141,7 @@ export type AccountOpeningCasePersistenceInput = {
   messageId?: string | null;
   inboundEmailId?: string | null;
   detectedFormType?: string | null;
+  correlationId?: string | null;
 };
 
 export type PersistedAccountOpeningReviewCase = {
@@ -505,6 +314,7 @@ export type AccountOpeningDetection = {
   detected: boolean;
   matchedTerms: string[];
   matchedAttachmentNames: string[];
+  classificationReason: string | null;
 };
 
 type AccountOpeningAttachmentInput = {
@@ -570,34 +380,62 @@ const STATUS_ACTIONS: Record<AccountOpeningStatusAction, string> = {
 };
 
 const ACCOUNT_OPENING_TERMS: Array<{ label: string; pattern: RegExp }> = [
-  { label: 'account opening form', pattern: /\baccount\s+opening\s+forms?\b/i },
-  { label: 'new account form', pattern: /\bnew\s+account\s+forms?\b/i },
-  { label: 'customer application', pattern: /\bcustomer\s+applications?\b/i },
-  { label: 'supplier onboarding', pattern: /\bsupplier\s+onboarding\b/i },
+  {
+    label: 'account opening form',
+    pattern:
+      /\baccount[-\s]+opening[-\s]+(?:forms?|applications?|documents?|packs?)\b/i,
+  },
+  {
+    label: 'new account application',
+    pattern: /\bnew[-\s]+account[-\s]+(?:applications?|forms?)\b/i,
+  },
+  {
+    label: 'customer account application',
+    pattern: /\bcustomer[-\s]+account[-\s]+(?:applications?|forms?)\b/i,
+  },
+  {
+    label: 'supplier account application',
+    pattern: /\bsupplier[-\s]+account[-\s]+(?:applications?|forms?)\b/i,
+  },
+  {
+    label: 'supplier onboarding',
+    pattern: /\bsupplier[-\s]+onboarding\b/i,
+  },
   {
     label: 'trade account application',
-    pattern: /\btrade\s+account\s+applications?\b/i,
+    pattern: /\btrade[-\s]+account[-\s]+applications?\b/i,
+  },
+  {
+    label: 'trading account application',
+    pattern: /\btrading[-\s]+account[-\s]+applications?\b/i,
   },
   {
     label: 'credit account application',
-    pattern: /\bcredit\s+account\s+applications?\b/i,
+    pattern: /\bcredit[-\s]+account[-\s]+applications?\b/i,
   },
-  { label: 'direct debit mandate', pattern: /\bdirect\s+debit\s+mandates?\b/i },
-  { label: 'personal guarantee', pattern: /\bpersonal\s+guarantees?\b/i },
   {
-    label: 'director guarantee',
-    pattern: /\bdirector(?:s?'?)?\s+guarantees?\b/i,
+    label: 'account application form',
+    pattern: /\baccount[-\s]+applications?[-\s]+forms?\b/i,
   },
   {
     label: 'wholesale account',
     pattern:
-      /\bwholesale\s+account\s+(?:applications?|forms?|opening|onboarding)\b|\b(?:applications?|forms?|opening|onboarding)\s+(?:for\s+)?(?:a\s+)?wholesale\s+account\b/i,
+      /\bwholesale[-\s]+account[-\s]+(?:applications?|forms?|opening|onboarding)\b|\b(?:applications?|forms?|opening|onboarding)[-\s]+(?:for\s+)?(?:a\s+)?wholesale[-\s]+account\b/i,
   },
   {
     label: 'onboarding questionnaire',
-    pattern: /\bonboarding\s+questionnaires?\b/i,
+    pattern: /\bonboarding[-\s]+questionnaires?\b/i,
   },
 ];
+
+const ACCOUNT_OPENING_CONTEXT_PATTERN =
+  /\b(?:account[-\s]+opening|account[-\s]+applications?|new[-\s]+account|credit[-\s]+account|trade[-\s]+account|trading[-\s]+account|customer[-\s]+account|supplier[-\s]+account|onboarding)\b/i;
+
+const DIRECT_DEBIT_ACCOUNT_OPENING_PATTERN =
+  /\b(?:direct\s+debit|dd\s+mandate|bank\s+mandate|payment\s+authority)\b/i;
+
+const COMPANY_DETAILS_ACCOUNT_OPENING_PATTERN =
+  /\b(?:company\s+details?|company\s+number|vat|registration\s+number|registered\s+address|wda|wholesale\s+dealer|mhra|responsible\s+person|gdp|gphc|cqc)\b/i;
 
 const RISK_TERMS: Array<{ label: string; pattern: RegExp }> = [
   {
@@ -774,17 +612,6 @@ function normalizeSourceEvidenceInput(
     storageFileUrl: sanitizeDashboardText(evidence.storageFileUrl) ?? null,
     storageDriveItemId:
       sanitizeDashboardText(evidence.storageDriveItemId) ?? null,
-  };
-}
-
-function buildSourceEvidenceDetailFromInput(
-  evidence: AccountOpeningSourceEvidenceInput,
-): AccountOpeningSourceEvidenceDetail {
-  return {
-    id: null,
-    createdAt: null,
-    updatedAt: null,
-    ...normalizeSourceEvidenceInput(evidence),
   };
 }
 
@@ -1323,25 +1150,73 @@ export function detectAccountOpeningEmail(input: {
   attachmentFileNames?: Array<string | null | undefined>;
   attachmentTexts?: Array<string | null | undefined>;
 }): AccountOpeningDetection {
-  const fileNameText = (input.attachmentFileNames ?? []).join('\n');
-  const contentText = textFromParts([
-    input.subject,
-    input.bodyText,
+  const subjectBodyText = textFromParts([input.subject, input.bodyText]);
+  const fileNameText = textFromParts(input.attachmentFileNames ?? []);
+  const attachmentText = textFromParts(input.attachmentTexts ?? []);
+  const combinedText = textFromParts([
+    subjectBodyText,
     fileNameText,
-    ...(input.attachmentTexts ?? []),
+    attachmentText,
   ]);
-  const matchedTerms = matchLabels(contentText, ACCOUNT_OPENING_TERMS);
+  const strongMatches = matchLabels(combinedText, ACCOUNT_OPENING_TERMS);
+  const combinedEvidenceMatches: string[] = [];
+
+  if (
+    ACCOUNT_OPENING_CONTEXT_PATTERN.test(combinedText) &&
+    DIRECT_DEBIT_ACCOUNT_OPENING_PATTERN.test(combinedText)
+  ) {
+    combinedEvidenceMatches.push(
+      'direct debit mandate with account application language',
+    );
+  }
+
+  if (
+    ACCOUNT_OPENING_CONTEXT_PATTERN.test(combinedText) &&
+    COMPANY_DETAILS_ACCOUNT_OPENING_PATTERN.test(combinedText)
+  ) {
+    combinedEvidenceMatches.push(
+      'company details with account-opening language',
+    );
+  }
+
+  const matchedTerms = compactUnique([
+    ...strongMatches,
+    ...combinedEvidenceMatches,
+  ]);
   const matchedAttachmentNames = compactUnique(
     (input.attachmentFileNames ?? []).filter(
       (fileName) =>
         matchLabels(fileName ?? '', ACCOUNT_OPENING_TERMS).length > 0,
     ),
   );
+  const detected = matchedTerms.length > 0;
+  const classificationReason = detected
+    ? [
+        matchLabels(subjectBodyText, ACCOUNT_OPENING_TERMS).length > 0
+          ? 'matched subject/body wording'
+          : null,
+        matchedAttachmentNames.length > 0
+          ? 'matched attachment filename wording'
+          : null,
+        matchLabels(attachmentText, ACCOUNT_OPENING_TERMS).length > 0 ||
+        (ACCOUNT_OPENING_CONTEXT_PATTERN.test(attachmentText) &&
+          (DIRECT_DEBIT_ACCOUNT_OPENING_PATTERN.test(attachmentText) ||
+            COMPANY_DETAILS_ACCOUNT_OPENING_PATTERN.test(attachmentText)))
+          ? 'matched extracted attachment text'
+          : null,
+        combinedEvidenceMatches.length > 0
+          ? 'matched combined account-opening evidence'
+          : null,
+      ]
+        .filter((part): part is string => Boolean(part))
+        .join('; ')
+    : null;
 
   return {
-    detected: matchedTerms.length > 0,
-    matchedTerms: compactUnique(matchedTerms),
+    detected,
+    matchedTerms,
     matchedAttachmentNames,
+    classificationReason,
   };
 }
 
@@ -1835,6 +1710,10 @@ export function buildAccountOpeningCaseDetail(
 
   return {
     id: accountCase.id,
+    diagnosticCorrelationId: buildCorrelationId({
+      messageId: accountCase.messageId,
+      sourceFingerprint: accountCase.sourceFingerprint,
+    }),
     sourceFingerprint: accountCase.sourceFingerprint,
     messageId: accountCase.messageId,
     senderEmail: accountCase.senderEmail,
@@ -1969,6 +1848,211 @@ function originalBytesRetrievalBlocker(input: {
   return skippedReason
     ? `Original form bytes are referenced in Microsoft Drive but cannot be read: ${skippedReason}`
     : null;
+}
+
+function originalBytesRetrievalStatus(input: {
+  originalForm: AccountOpeningOriginalFormDetail;
+  storageConfig: AccountOpeningDriveArchiveConfig;
+}): AccountOpeningOriginalFormLifecycle['originalBytesRetrievalStatus'] {
+  if (input.originalForm.localBlobAvailable) {
+    return 'LOCAL_BLOB_AVAILABLE';
+  }
+
+  if (!input.originalForm.storageDriveItemId) {
+    return 'MISSING_BYTES_REFERENCE';
+  }
+
+  return microsoftDriveOriginalFormReadSkippedReason(input.storageConfig)
+    ? 'DRIVE_REFERENCE_CONFIG_BLOCKED'
+    : 'DRIVE_REFERENCE_AVAILABLE';
+}
+
+function sourceTextExtractionStatus(
+  sourceEvidence: AccountOpeningSourceEvidenceDetail | null,
+): Pick<
+  AccountOpeningOriginalFormLifecycle,
+  'textExtractionStatus' | 'extractedTextChars'
+> {
+  const extractedTextChars = sourceEvidence?.extractedTextChars ?? null;
+
+  if (typeof extractedTextChars === 'number' && extractedTextChars > 0) {
+    return {
+      textExtractionStatus: 'TEXT_EXTRACTED',
+      extractedTextChars,
+    };
+  }
+
+  if (sourceEvidence?.extractionMethod) {
+    return {
+      textExtractionStatus: 'NO_TEXT_EXTRACTED',
+      extractedTextChars,
+    };
+  }
+
+  return {
+    textExtractionStatus: 'METADATA_ONLY',
+    extractedTextChars,
+  };
+}
+
+function buildOriginalFormLifecycle(input: {
+  form: AccountOpeningOriginalFormDetail;
+  sourceEvidence: AccountOpeningSourceEvidenceDetail | null;
+  storageConfig: AccountOpeningDriveArchiveConfig;
+  latestBinaryPreview: AccountOpeningBinaryFillPreviewDetail | null;
+  latestFiling: AccountOpeningCompletedFormFilingDetail | null;
+  filingMatchesLatestPreview: boolean;
+}): AccountOpeningOriginalFormLifecycle {
+  const bytesBlocker = originalBytesRetrievalBlocker({
+    originalForm: input.form,
+    storageConfig: input.storageConfig,
+  });
+  const matchingBinaryPreview =
+    input.latestBinaryPreview?.originalFormId === input.form.id
+      ? input.latestBinaryPreview
+      : null;
+  const matchingFiling =
+    input.filingMatchesLatestPreview &&
+    matchingBinaryPreview &&
+    input.latestFiling
+      ? input.latestFiling
+      : null;
+  const acroFieldCount =
+    input.form.detectedFieldCount ??
+    (matchingBinaryPreview
+      ? numberFromRecord(
+          matchingBinaryPreview.brandingPreservationCheck,
+          'originalAcroFieldCount',
+        )
+      : null);
+  const binaryPreviewDownloadable = Boolean(
+    matchingBinaryPreview?.status === 'GENERATED_FOR_REVIEW' &&
+    matchingBinaryPreview.binaryPreviewBytesAvailable,
+  );
+  const fillablePdfLikely =
+    input.form.formType === 'PDF' &&
+    input.form.fillSupportStatus === 'PREVIEW_SUPPORTED';
+  const sourceExtraction = sourceTextExtractionStatus(input.sourceEvidence);
+  let primaryBlocker: string | null = null;
+
+  if (bytesBlocker) {
+    primaryBlocker = bytesBlocker;
+  } else if (input.form.formType !== 'PDF') {
+    primaryBlocker =
+      'Only fillable PDF AcroForms are supported for binary preview.';
+  } else if (typeof acroFieldCount === 'number' && acroFieldCount <= 0) {
+    primaryBlocker = 'No PDF AcroForm fields are recorded.';
+  } else if (!matchingBinaryPreview) {
+    primaryBlocker =
+      'Binary PDF AcroForm preview has not been generated for review.';
+  } else if (!binaryPreviewDownloadable) {
+    primaryBlocker = 'Binary preview is not downloadable.';
+  } else if (
+    matchingFiling?.status !== 'FILED' &&
+    matchingFiling?.status !== 'APPROVED_FOR_FILING'
+  ) {
+    primaryBlocker =
+      'Completed unsigned form has not been approved for internal filing.';
+  }
+
+  return {
+    originalFormId: input.form.id,
+    fileName: input.form.fileName,
+    sourceEvidenceCaptured: Boolean(input.sourceEvidence),
+    ...sourceExtraction,
+    originalFormReferenceCaptured: true,
+    originalBytesRetrievable: !bytesBlocker,
+    originalBytesRetrievalStatus: originalBytesRetrievalStatus({
+      originalForm: input.form,
+      storageConfig: input.storageConfig,
+    }),
+    formType: input.form.formType,
+    binaryFillSupportStatus: input.form.fillSupportStatus,
+    fillablePdfLikely,
+    acroFieldCountKnown: typeof acroFieldCount === 'number',
+    acroFieldCount,
+    binaryPreviewStatus: matchingBinaryPreview?.status ?? null,
+    binaryPreviewDownloadable,
+    completedUnsignedFilingStatus: matchingFiling?.status ?? null,
+    primaryBlocker,
+    nextAction: primaryBlocker
+      ? primaryBlocker
+      : matchingFiling?.status === 'FILED'
+        ? 'Completed unsigned form has been filed internally.'
+        : matchingFiling?.status === 'APPROVED_FOR_FILING'
+          ? 'File the approved completed unsigned form to SharePoint/Microsoft Drive.'
+          : 'Continue operator review.',
+  };
+}
+
+function buildDocumentLifecycleSummary(input: {
+  item: AccountOpeningCaseDetail;
+  originalForm: AccountOpeningOriginalFormDetail | null;
+  storageConfig: AccountOpeningDriveArchiveConfig;
+  filingMatchesLatestPreview: boolean;
+  filingStatus: string | null;
+  binaryPreviewGenerated: boolean;
+  checks: AccountOpeningReadinessCheck[];
+  nextAction: string;
+}): AccountOpeningDocumentLifecycleSummary {
+  const sourceEvidenceById = new Map(
+    input.item.sourceEvidence
+      .filter((evidence) => evidence.id)
+      .map((evidence) => [evidence.id as string, evidence]),
+  );
+  const forms = input.item.originalForms.map((form) =>
+    buildOriginalFormLifecycle({
+      form,
+      sourceEvidence: form.sourceEvidenceId
+        ? (sourceEvidenceById.get(form.sourceEvidenceId) ?? null)
+        : null,
+      storageConfig: input.storageConfig,
+      latestBinaryPreview: input.item.latestBinaryFillPreview,
+      latestFiling: input.item.latestCompletedFormFiling,
+      filingMatchesLatestPreview: input.filingMatchesLatestPreview,
+    }),
+  );
+  const prePreviewGateKeys: AccountOpeningReadinessCheckKey[] = [
+    'COMPLETION_DRAFT_STORED',
+    'REVIEWED_FIELD_MAPPINGS_SAVED',
+    'ORIGINAL_FORM_REFERENCE_PRESENT',
+    'ORIGINAL_BYTES_RETRIEVABLE',
+    'FORM_TYPE_SUPPORTED',
+    'PDF_ACROFORM_FIELD_COUNT',
+    'SAFE_MAPPED_FIELDS_COUNT',
+  ];
+  const canAttemptBinaryPreview = input.checks
+    .filter((check) => prePreviewGateKeys.includes(check.key))
+    .every((check) => check.status !== 'RED');
+  const canFileCompletedUnsignedForm =
+    input.filingMatchesLatestPreview &&
+    input.filingStatus === 'APPROVED_FOR_FILING';
+  const primaryBlocker =
+    input.checks.find((check) => check.status === 'RED')?.blocker ??
+    input.checks.find((check) => check.status === 'AMBER')?.blocker ??
+    null;
+
+  return {
+    originalFormCount: input.item.originalForms.length,
+    primaryOriginalFormId: input.originalForm?.id ?? null,
+    canAttemptBinaryPreview,
+    canDownloadBinaryPreview: input.binaryPreviewGenerated,
+    canApproveCompletedUnsignedFiling: input.binaryPreviewGenerated,
+    canFileCompletedUnsignedForm,
+    completedUnsignedFilingStatus: input.filingStatus,
+    primaryBlocker,
+    nextAction: input.nextAction,
+    forms,
+    safety: {
+      metadataOnly: true,
+      rawExtractedTextIncluded: false,
+      binaryBytesIncluded: false,
+      bankDetailsIncluded: false,
+      directDebitMandateValuesIncluded: false,
+      signaturesIncluded: false,
+      guaranteesIncluded: false,
+    },
+  };
 }
 
 function readinessOverallStatus(
@@ -2181,15 +2265,27 @@ export async function getAccountOpeningReadinessReport(input: {
     }),
   ];
   const status = readinessOverallStatus(checks);
+  const nextAction =
+    checks.find((check) => check.status === 'RED')?.nextAction ??
+    checks.find((check) => check.status === 'AMBER')?.nextAction ??
+    'Pilot readiness checks are clear. Continue monitoring filed output.';
 
   return {
     caseId: item.id,
+    diagnosticCorrelationId: item.diagnosticCorrelationId,
     status,
     readyForEndToEndFillingAndFiling: status !== 'RED' && filed,
-    nextAction:
-      checks.find((check) => check.status === 'RED')?.nextAction ??
-      checks.find((check) => check.status === 'AMBER')?.nextAction ??
-      'Pilot readiness checks are clear. Continue monitoring filed output.',
+    nextAction,
+    documentLifecycle: buildDocumentLifecycleSummary({
+      item,
+      originalForm,
+      storageConfig,
+      filingMatchesLatestPreview,
+      filingStatus: filingStatus ?? null,
+      binaryPreviewGenerated,
+      checks,
+      nextAction,
+    }),
     checks,
     blockerTexts,
     counts: {
@@ -3409,6 +3505,7 @@ function completedFormFilingSafetySummary(input: {
 }
 
 function completedFormFilingMetadata(input: {
+  operation?: SideEffectOperationName;
   preview: PersistedAccountOpeningBinaryFillPreview;
   fileHash: string;
   fileSizeBytes: number;
@@ -3421,7 +3518,7 @@ function completedFormFilingMetadata(input: {
     skippedReason: string | null;
   };
 }): Prisma.InputJsonValue {
-  return jsonObject({
+  const metadata = {
     binaryFillPreviewId: input.preview.id,
     originalFormId: input.preview.originalFormId,
     previewVersion: input.preview.previewVersion,
@@ -3440,7 +3537,13 @@ function completedFormFilingMetadata(input: {
     supplierMessageIncluded: false,
     supplierSubmissionTriggered: false,
     purchaseWorkflowTriggered: false,
-  });
+  };
+
+  return jsonObject(
+    input.operation
+      ? buildSideEffectAuditMetadata(input.operation, metadata)
+      : metadata,
+  );
 }
 
 async function findCompletedFormFilingForPreview(input: {
@@ -3564,6 +3667,7 @@ export async function approveAccountOpeningCompletedFormFiling(input: {
       skippedReason: existingFiling?.skippedReason ?? null,
       safetySummary: completedFormFilingSafetySummary({ preview }),
       metadata: completedFormFilingMetadata({
+        operation: 'ACCOUNT_OPENING_APPROVE_COMPLETED_UNSIGNED_FORM',
         preview,
         fileHash,
         fileSizeBytes: bytes.byteLength,
@@ -3581,6 +3685,7 @@ export async function approveAccountOpeningCompletedFormFiling(input: {
       actorIdentifier,
       note: approvalNote,
       metadata: completedFormFilingMetadata({
+        operation: 'ACCOUNT_OPENING_APPROVE_COMPLETED_UNSIGNED_FORM',
         preview,
         fileHash,
         fileSizeBytes: bytes.byteLength,
@@ -3650,6 +3755,7 @@ async function persistCompletedFormFilingSkipped(input: {
         preview: input.preview,
       }),
       metadata: completedFormFilingMetadata({
+        operation: 'ACCOUNT_OPENING_FILE_COMPLETED_UNSIGNED_FORM',
         preview: input.preview,
         fileHash: fileHash ?? '',
         fileSizeBytes: fileSizeBytes ?? 0,
@@ -3675,6 +3781,7 @@ async function persistCompletedFormFilingSkipped(input: {
       actorIdentifier: input.actorIdentifier,
       note: input.reason,
       metadata: completedFormFilingMetadata({
+        operation: 'ACCOUNT_OPENING_FILE_COMPLETED_UNSIGNED_FORM',
         preview: input.preview,
         fileHash: fileHash ?? '',
         fileSizeBytes: fileSizeBytes ?? 0,
@@ -3811,6 +3918,7 @@ export async function fileAccountOpeningCompletedFormToSharePoint(input: {
       skippedReason: uploadResult.skippedReason,
       safetySummary: completedFormFilingSafetySummary({ preview }),
       metadata: completedFormFilingMetadata({
+        operation: 'ACCOUNT_OPENING_FILE_COMPLETED_UNSIGNED_FORM',
         preview,
         fileHash: uploadResult.fileHash,
         fileSizeBytes: uploadResult.fileSizeBytes,
@@ -3842,6 +3950,7 @@ export async function fileAccountOpeningCompletedFormToSharePoint(input: {
       actorIdentifier,
       note: sanitizeDashboardText(uploadResult.note),
       metadata: completedFormFilingMetadata({
+        operation: 'ACCOUNT_OPENING_FILE_COMPLETED_UNSIGNED_FORM',
         preview,
         fileHash: uploadResult.fileHash,
         fileSizeBytes: uploadResult.fileSizeBytes,
@@ -4057,6 +4166,12 @@ export async function upsertAccountOpeningCase(
   input: AccountOpeningCasePersistenceInput,
 ) {
   const data = buildAccountOpeningCasePersistenceData(input);
+  const correlationId =
+    input.correlationId ??
+    buildCorrelationId({
+      messageId: input.messageId,
+      sourceFingerprint: input.accountCase.sourceFingerprint,
+    });
   const evidenceRows = input.accountCase.sourceEvidence.map((evidence) => ({
     ...normalizeSourceEvidenceInput(evidence),
     metadata: evidence.metadata ? jsonObject(evidence.metadata) : undefined,
@@ -4140,6 +4255,7 @@ export async function upsertAccountOpeningCase(
           actorType: 'SYSTEM',
           actorIdentifier: 'email-account-opening-ingestion',
           metadata: jsonObject({
+            ...(correlationId ? { correlationId } : {}),
             evidenceCount: evidenceRows.length,
             rawFileBytesStored: false,
             rawExtractedTextStored: false,
@@ -4207,6 +4323,7 @@ export async function upsertAccountOpeningCase(
           actorType: 'SYSTEM',
           actorIdentifier: 'email-account-opening-ingestion',
           metadata: jsonObject({
+            ...(correlationId ? { correlationId } : {}),
             formCount: originalFormRows.length,
             rawFileBytesStored: false,
             rawExtractedTextStored: false,

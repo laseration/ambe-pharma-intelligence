@@ -1,0 +1,194 @@
+[
+  {
+    "id": "clear-supplier-offer",
+    "title": "Clear supplier offer",
+    "description": "Two explicit product-price lines from a sanitized supplier email.",
+    "bodyText": "Amlodipine 5mg tabs 28 - 8.40 GBP\nParacetamol 500mg caplets 16 - 1.25 GBP",
+    "expected": {
+      "commerciallyRelevant": true,
+      "offerCount": 2,
+      "reviewRequired": false,
+      "parsingSource": "DETERMINISTIC",
+      "offers": [
+        {
+          "productIncludes": "Amlodipine 5mg tabs 28",
+          "price": 8.4,
+          "currencyCode": "GBP"
+        },
+        {
+          "productIncludes": "Paracetamol 500mg caplets 16",
+          "price": 1.25,
+          "currencyCode": "GBP"
+        }
+      ]
+    }
+  },
+  {
+    "id": "forwarded-supplier-offer",
+    "title": "Forwarded supplier offer",
+    "description": "Forwarded header and contact lines should not become product offers.",
+    "bodyText": "Please review below.\n\nFrom: pricing@supplier-example.test\nSubject: Offer\n\nNOVOFINE NEEDLES INJ TU 31G 6MM 100X\nNOVOFINE NEEDLES INJ TU 30G 100X\nPrices for both refs are 7 euro a pack.\nemail: carl.junius@supplier-example.test",
+    "expected": {
+      "commerciallyRelevant": true,
+      "offerCount": 2,
+      "reviewRequired": true,
+      "parsingSource": "DETERMINISTIC",
+      "offers": [
+        {
+          "productIncludes": "NOVOFINE NEEDLES INJ TU 31G 6MM 100X",
+          "price": 7,
+          "currencyCode": "EUR"
+        },
+        {
+          "productIncludes": "NOVOFINE NEEDLES INJ TU 30G 100X",
+          "price": 7,
+          "currencyCode": "EUR"
+        }
+      ]
+    }
+  },
+  {
+    "id": "ambiguous-supplier",
+    "title": "Ambiguous supplier",
+    "description": "Commercial text with one parseable row and ambiguous surrounding supplier context.",
+    "bodyText": "Team,\nSupplier A may be involved; Supplier B may also have stock.\nAmlodipine 5mg tabs 28 - 8.40 GBP\nConfirm supplier before buying.",
+    "expected": {
+      "commerciallyRelevant": true,
+      "offerCount": 1,
+      "reviewRequired": true,
+      "parsingSource": "DETERMINISTIC",
+      "offers": [
+        {
+          "productIncludes": "Amlodipine 5mg tabs 28",
+          "price": 8.4,
+          "currencyCode": "GBP"
+        }
+      ]
+    }
+  },
+  {
+    "id": "missing-price",
+    "title": "Missing price",
+    "description": "Commercial product text without a usable price should create no confident offer.",
+    "bodyText": "Metformin 500mg tablets 28 available. Price to be confirmed.",
+    "expected": {
+      "commerciallyRelevant": true,
+      "offerCount": 0,
+      "reviewRequired": true,
+      "parsingSource": "DETERMINISTIC",
+      "offers": []
+    }
+  },
+  {
+    "id": "multiple-products",
+    "title": "Multiple products",
+    "description": "Several product lines in one email should be counted separately.",
+    "bodyText": "Ibuprofen 200mg tablets 24 - 1.80 GBP\nCetirizine 10mg tablets 30 - 2.20 GBP\nOmeprazole 20mg capsules 28 - 3.40 GBP",
+    "expected": {
+      "commerciallyRelevant": true,
+      "offerCount": 3,
+      "reviewRequired": false,
+      "parsingSource": "DETERMINISTIC",
+      "offers": [
+        {
+          "productIncludes": "Ibuprofen 200mg tablets 24",
+          "price": 1.8,
+          "currencyCode": "GBP"
+        },
+        {
+          "productIncludes": "Cetirizine 10mg tablets 30",
+          "price": 2.2,
+          "currencyCode": "GBP"
+        },
+        {
+          "productIncludes": "Omeprazole 20mg capsules 28",
+          "price": 3.4,
+          "currencyCode": "GBP"
+        }
+      ]
+    }
+  },
+  {
+    "id": "irrelevant-email",
+    "title": "Irrelevant email",
+    "description": "Admin chatter should not produce supplier offer candidates.",
+    "bodyText": "Hello, please find our updated office opening hours for the bank holiday. No price list is attached.",
+    "expected": {
+      "commerciallyRelevant": false,
+      "offerCount": 0,
+      "reviewRequired": false,
+      "parsingSource": "DETERMINISTIC",
+      "offers": []
+    }
+  },
+  {
+    "id": "ai-fallback-needed",
+    "title": "AI fallback needed",
+    "description": "Messy commercial prose where deterministic parsing is weak, evaluated with a deterministic mocked AI result.",
+    "bodyText": "Acme can do Paracetamol 500mg caplets 16 at 1.25 GBP if needed, MOQ 20.",
+    "mockAiResult": {
+      "supplierName": "Acme Pharma",
+      "overallConfidence": "MEDIUM",
+      "reviewRecommended": true,
+      "offers": [
+        {
+          "rawLine": "Acme can do Paracetamol 500mg caplets 16 at 1.25 GBP if needed, MOQ 20.",
+          "evidenceText": "Paracetamol 500mg caplets 16 at 1.25 GBP, MOQ 20.",
+          "productText": "Paracetamol 500mg caplets 16",
+          "strength": "500mg",
+          "dosageForm": "caplets",
+          "packSize": "16",
+          "price": 1.25,
+          "currency": "GBP",
+          "availability": "if needed",
+          "minimumOrderQuantity": 20,
+          "manufacturer": "Acme",
+          "sourceSegment": "BODY_MAIN",
+          "confidence": "MEDIUM",
+          "reason": "Sanitized eval fixture: product, price, currency, and MOQ are present in prose."
+        }
+      ],
+      "notes": ["AI fallback fixture remains review-first."]
+    },
+    "expected": {
+      "commerciallyRelevant": true,
+      "offerCount": 1,
+      "reviewRequired": true,
+      "parsingSource": "OPENAI_FALLBACK",
+      "offers": [
+        {
+          "productIncludes": "Paracetamol 500mg caplets 16",
+          "price": 1.25,
+          "currencyCode": "GBP"
+        }
+      ]
+    }
+  },
+  {
+    "id": "attachment-text-offer",
+    "title": "Attachment text offer",
+    "description": "Sanitized extracted PDF/OCR text is evaluated without requiring PDF parsing or OCR services.",
+    "bodyText": "Please see attached price list.",
+    "documents": [
+      {
+        "label": "sanitized-price-list.pdf",
+        "kind": "ATTACHMENT_TEXT",
+        "textContent": "Atenolol 50mg tablets 28 - 2.75 GBP"
+      }
+    ],
+    "expected": {
+      "commerciallyRelevant": true,
+      "offerCount": 1,
+      "reviewRequired": false,
+      "parsingSource": "DETERMINISTIC",
+      "documentClass": "SUPPLIER_PRICE_LIST",
+      "offers": [
+        {
+          "productIncludes": "Atenolol 50mg tablets 28",
+          "price": 2.75,
+          "currencyCode": "GBP"
+        }
+      ]
+    }
+  }
+]

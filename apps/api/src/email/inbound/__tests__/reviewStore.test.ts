@@ -8,7 +8,9 @@ import {
   resetEmailReviewStore,
 } from '../reviewStore';
 
-function buildReviewItem(overrides?: Partial<Parameters<typeof recordEmailReviewItems>[0][number]>) {
+function buildReviewItem(
+  overrides?: Partial<Parameters<typeof recordEmailReviewItems>[0][number]>,
+) {
   return {
     processingStatus: 'NEEDS_REVIEW' as const,
     inferredImportType: null,
@@ -35,8 +37,39 @@ function buildReviewItem(overrides?: Partial<Parameters<typeof recordEmailReview
 test('newest email review items appear first', () => {
   resetEmailReviewStore();
 
-  recordEmailReviewItems([buildReviewItem({ email: { messageId: 'older', from: 'ops@ambe.test', subject: 'Older', bodyText: 'Older' } })], new Date('2026-04-19T10:00:00.000Z'));
-  recordEmailReviewItems([buildReviewItem({ email: { messageId: 'newer', from: 'ops@ambe.test', subject: 'Newer', bodyText: 'Newer' }, attachment: { fileName: 'newer.csv', mimeType: 'text/csv', size: 10, contentId: null, disposition: null } })], new Date('2026-04-19T11:00:00.000Z'));
+  recordEmailReviewItems(
+    [
+      buildReviewItem({
+        email: {
+          messageId: 'older',
+          from: 'ops@ambe.test',
+          subject: 'Older',
+          bodyText: 'Older',
+        },
+      }),
+    ],
+    new Date('2026-04-19T10:00:00.000Z'),
+  );
+  recordEmailReviewItems(
+    [
+      buildReviewItem({
+        email: {
+          messageId: 'newer',
+          from: 'ops@ambe.test',
+          subject: 'Newer',
+          bodyText: 'Newer',
+        },
+        attachment: {
+          fileName: 'newer.csv',
+          mimeType: 'text/csv',
+          size: 10,
+          contentId: null,
+          disposition: null,
+        },
+      }),
+    ],
+    new Date('2026-04-19T11:00:00.000Z'),
+  );
 
   const items = listStoredEmailReviewItems();
 
@@ -51,7 +84,10 @@ test('duplicate email review items are updated instead of accumulated', () => {
   const secondSeen = new Date('2026-04-19T11:00:00.000Z');
 
   recordEmailReviewItems([buildReviewItem()], firstSeen);
-  recordEmailReviewItems([buildReviewItem({ reason: 'Still needs review.' })], secondSeen);
+  recordEmailReviewItems(
+    [buildReviewItem({ reason: 'Still needs review.' })],
+    secondSeen,
+  );
 
   const items = listStoredEmailReviewItems();
 
@@ -91,5 +127,8 @@ test('email review store does not grow without bound', () => {
   const items = listStoredEmailReviewItems();
 
   assert.equal(items.length, MAX_EMAIL_REVIEW_ITEMS);
-  assert.equal(items.some((item) => item.email.messageId === 'email-0'), false);
+  assert.equal(
+    items.some((item) => item.email.messageId === 'email-0'),
+    false,
+  );
 });

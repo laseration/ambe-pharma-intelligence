@@ -3,12 +3,14 @@ import express from 'express';
 import { env } from './config/env';
 import { requireInternalAdminAccess } from './http/auth';
 import { errorHandler } from './http/errors';
+import { requestContextMiddleware } from './http/requestContext';
 import { importsDebugRouter } from './imports/debugRoutes';
 import { apiRouter } from './routes';
 
 export function createApp() {
   const app = express();
 
+  app.use(requestContextMiddleware);
   app.use(express.json());
 
   app.get('/health', (_request, response) => {
@@ -19,11 +21,15 @@ export function createApp() {
   });
 
   if (env.enableDebugRoutes) {
-    app.get('/api/debug/env', requireInternalAdminAccess, (_request, response) => {
-      response.json({
-        databaseUrlDetected: Boolean(env.databaseUrl),
-      });
-    });
+    app.get(
+      '/api/debug/env',
+      requireInternalAdminAccess,
+      (_request, response) => {
+        response.json({
+          databaseUrlDetected: Boolean(env.databaseUrl),
+        });
+      },
+    );
     app.use('/api/debug', requireInternalAdminAccess, importsDebugRouter);
   }
 

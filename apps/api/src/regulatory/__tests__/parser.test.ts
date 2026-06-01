@@ -19,19 +19,27 @@ test('maps MHRA recall wording to recall event and critical severity', () => {
   assert.equal(parsed.affectedProductText, 'Amlodipine 5mg tablets 28');
   assert.equal(parsed.batchNumber, 'ABC123');
   assert.match(parsed.summary, /Potentially relevant update/);
-  assert.ok(parsed.evidence.evidenceSnippets.some((snippet) => /Class 1/i.test(snippet)));
+  assert.ok(
+    parsed.evidence.evidenceSnippets.some((snippet) =>
+      /Class 1/i.test(snippet),
+    ),
+  );
 });
 
 test('maps medicine defect wording and preserves safe evidence wording', () => {
   const parsed = parseRegulatoryUpdate({
     title: 'Medicine defect: Metformin 500mg tablets',
-    rawText: 'Manufacturer: Example Pharma\nMedicine defect reported for Metformin 500mg tablets.',
+    rawText:
+      'Manufacturer: Example Pharma\nMedicine defect reported for Metformin 500mg tablets.',
   });
 
   assert.equal(parsed.eventType, 'MEDICINE_DEFECT');
   assert.equal(parsed.severity, 'HIGH');
   assert.equal(parsed.manufacturer, 'Example Pharma');
-  assert.match(parsed.evidence.safetyWording, /does not claim legal certainty/i);
+  assert.match(
+    parsed.evidence.safetyWording,
+    /does not claim legal certainty/i,
+  );
 });
 
 test('defaults vague regulatory content to other update and medium severity', () => {

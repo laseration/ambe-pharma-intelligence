@@ -1,13 +1,20 @@
 import 'server-only';
 
+import { requestInternalJson } from './internalApiRequest';
+
 export type ReviewWorkflowListItem = {
   id: string;
   status: string;
   priority: string;
+  priorityReason: string | null;
   assigneeLabel: string | null;
   sourceKind: string | null;
   sourceReviewReason: string | null;
+  aiAssisted: boolean;
   latestNote: string | null;
+  hasUnresolvedSupplier: boolean;
+  hasConflictingSupplierCues: boolean;
+  hasManufacturerAmbiguity: boolean;
   supplierQualificationStatus: string;
   hasUnknownSupplierQualification: boolean;
   hasRestrictedSupplier: boolean;
@@ -34,6 +41,29 @@ export type ReviewWorkflowListItem = {
     availabilityCandidate?: string | null;
     minimumOrderQuantityCandidate?: number | null;
   } | null;
+};
+
+export type ReviewOfferCorrectionRecord = {
+  id: string;
+  correctionStatus: string;
+  correctedSupplierId: string | null;
+  correctedSupplierName: string | null;
+  correctedProductId: string | null;
+  correctedRawProductText: string | null;
+  correctedNormalizedProductName: string | null;
+  correctedStrength: string | null;
+  correctedDosageForm: string | null;
+  correctedPackSize: string | null;
+  correctedManufacturer: string | null;
+  correctedUnitPrice: string | number | null;
+  correctedCurrencyCode: string | null;
+  correctedMinimumOrderQuantity: number | null;
+  correctedAvailability: string | null;
+  actorType: string;
+  actorIdentifier: string | null;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type ReviewWorkflowDetail = ReviewWorkflowListItem & {
@@ -82,6 +112,8 @@ export type ReviewWorkflowDetail = ReviewWorkflowListItem & {
       textContent: string;
       metadata: unknown;
     } | null;
+    offerCorrections?: Array<ReviewOfferCorrectionRecord>;
+    relatedOfferCorrections?: Array<ReviewOfferCorrectionRecord>;
   } | null;
   inboundEmail?: {
     id: string;
@@ -132,6 +164,29 @@ export type ReviewWorkflowEvent = {
   createdAt: string;
 };
 
+export type ReviewWorkflowAuditEntry = {
+  id: string;
+  entityType:
+    | 'OFFER_WORKFLOW_ITEM'
+    | 'BUY_DECISION'
+    | 'BUY_EXECUTION'
+    | 'OFFER_CORRECTION'
+    | 'TRADE_OPPORTUNITY';
+  entityId: string;
+  actionType: string;
+  previousStatus: string | null;
+  newStatus: string | null;
+  actorType: string;
+  actorIdentifier: string | null;
+  note: string | null;
+  metadata: unknown;
+  createdAt: string;
+};
+
+export type ReviewOfferCorrection = NonNullable<
+  NonNullable<ReviewWorkflowDetail['emailDerivedOffer']>['offerCorrections']
+>[number];
+
 export type ReviewWorkflowActionOutcome = {
   action: 'APPROVE_TO_BUY' | 'REJECT';
   buyDecisionId?: string;
@@ -172,69 +227,38 @@ export type ReviewQueueItem = {
 
 type ListReviewWorkflowItemsOptions = {
   inboundEmailId?: string;
+  onlyOpen?: boolean;
   staleFirst?: boolean;
+  status?:
+    | 'NEW'
+    | 'IN_REVIEW'
+    | 'NEEDS_INFO'
+    | 'APPROVED_TO_BUY'
+    | 'REJECTED'
+    | 'ORDERED'
+    | 'CLOSED';
 };
 
-const MANUAL_REVIEW_WORKFLOW_STATUSES = new Set(['NEW', 'IN_REVIEW', 'NEEDS_INFO']);
+const MANUAL_REVIEW_WORKFLOW_STATUSES = new Set([
+  'NEW',
+  'IN_REVIEW',
+  'NEEDS_INFO',
+]);
 
-function getInternalApiBaseUrl(): string {
-  return (
-    process.env.INTERNAL_API_BASE_URL?.trim() ||
-    process.env.NEXT_PUBLIC_INTERNAL_API_BASE_URL?.trim() ||
-    'http://127.0.0.1:4000/api'
-  );
-}
-
-function buildHeaders(includeJsonContentType = false): HeadersInit {
-  const headers: Record<string, string> = {};
-  const apiKey =
-    process.env.INTERNAL_API_KEY?.trim() || process.env.INTERNAL_ADMIN_API_KEY?.trim() || '';
-
-  if (apiKey) {
-    headers['x-internal-api-key'] = apiKey;
-    headers['x-internal-caller-name'] = 'web-review-console';
-  }
-
-  if (includeJsonContentType) {
-    headers['content-type'] = 'application/json';
-  }
-
-  return headers;
-}
+const CALLER_NAME = 'web-review-console';
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${getInternalApiBaseUrl()}${path}`, {
-    ...init,
-    cache: 'no-store',
-    headers: {
-      ...buildHeaders(init?.body !== undefined),
-      ...(init?.headers ?? {}),
-    },
+  return requestInternalJson<T>(path, {
+    callerName: CALLER_NAME,
+    init,
   });
-
-  if (!response.ok) {
-    let message = `Request failed with status ${response.status}.`;
-
-    try {
-      const payload = (await response.json()) as { error?: string };
-      if (payload.error) {
-        message = payload.error;
-      }
-    } catch {
-      // Keep the generic status-based message.
-    }
-
-    throw new Error(message);
-  }
-
-  return (await response.json()) as T;
 }
 
 export async function listReviewWorkflowItems(
   options?: ListReviewWorkflowItemsOptions,
 ): Promise<ReviewWorkflowListItem[]> {
   const searchParams = new URLSearchParams({
-    onlyOpen: 'true',
+    onlyOpen: String(options?.onlyOpen ?? true),
   });
 
   if (options?.inboundEmailId) {
@@ -245,27 +269,50 @@ export async function listReviewWorkflowItems(
     searchParams.set('staleFirst', 'true');
   }
 
+  if (options?.status) {
+    searchParams.set('status', options.status);
+  }
+
   const payload = await requestJson<{ items: ReviewWorkflowListItem[] }>(
     `/review-queue/workflows?${searchParams.toString()}`,
   );
-  return payload.items.filter((item) => MANUAL_REVIEW_WORKFLOW_STATUSES.has(item.status));
+  return options?.status || options?.onlyOpen === false
+    ? payload.items
+    : payload.items.filter((item) =>
+        MANUAL_REVIEW_WORKFLOW_STATUSES.has(item.status),
+      );
 }
 
 export async function listReviewQueueItems(): Promise<ReviewQueueItem[]> {
-  const payload = await requestJson<{ items: ReviewQueueItem[] }>('/review-queue');
+  const payload = await requestJson<{ items: ReviewQueueItem[] }>(
+    '/review-queue',
+  );
   return payload.items;
 }
 
-export async function getReviewWorkflowItem(workflowItemId: string): Promise<ReviewWorkflowDetail> {
+export async function getReviewWorkflowItem(
+  workflowItemId: string,
+): Promise<ReviewWorkflowDetail> {
   const payload = await requestJson<{ item: ReviewWorkflowDetail }>(
     `/review-queue/workflows/${encodeURIComponent(workflowItemId)}`,
   );
   return payload.item;
 }
 
-export async function listReviewWorkflowEvents(workflowItemId: string): Promise<ReviewWorkflowEvent[]> {
+export async function listReviewWorkflowEvents(
+  workflowItemId: string,
+): Promise<ReviewWorkflowEvent[]> {
   const payload = await requestJson<{ items: ReviewWorkflowEvent[] }>(
     `/review-queue/workflows/${encodeURIComponent(workflowItemId)}/events`,
+  );
+  return payload.items;
+}
+
+export async function listReviewWorkflowAuditHistory(
+  workflowItemId: string,
+): Promise<ReviewWorkflowAuditEntry[]> {
+  const payload = await requestJson<{ items: ReviewWorkflowAuditEntry[] }>(
+    `/review-queue/workflows/${encodeURIComponent(workflowItemId)}/audit-history`,
   );
   return payload.items;
 }
@@ -273,9 +320,29 @@ export async function listReviewWorkflowEvents(workflowItemId: string): Promise<
 export async function updateReviewWorkflowItem(
   workflowItemId: string,
   body: Record<string, unknown>,
-): Promise<{ item: ReviewWorkflowDetail; actionOutcome?: ReviewWorkflowActionOutcome | null }> {
-  return requestJson<{ item: ReviewWorkflowDetail; actionOutcome?: ReviewWorkflowActionOutcome | null }>(`/review-queue/workflows/${encodeURIComponent(workflowItemId)}`, {
+): Promise<{
+  item: ReviewWorkflowDetail;
+  actionOutcome?: ReviewWorkflowActionOutcome | null;
+}> {
+  return requestJson<{
+    item: ReviewWorkflowDetail;
+    actionOutcome?: ReviewWorkflowActionOutcome | null;
+  }>(`/review-queue/workflows/${encodeURIComponent(workflowItemId)}`, {
     method: 'PATCH',
     body: JSON.stringify(body),
   });
+}
+
+export async function createReviewWorkflowCorrection(
+  workflowItemId: string,
+  body: Record<string, unknown>,
+): Promise<ReviewOfferCorrection> {
+  const payload = await requestJson<{ item: ReviewOfferCorrection }>(
+    `/review-queue/workflows/${encodeURIComponent(workflowItemId)}/corrections`,
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    },
+  );
+  return payload.item;
 }

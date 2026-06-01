@@ -4,7 +4,11 @@ import test, { type TestContext } from 'node:test';
 import { db } from '../../../lib/db';
 import { env } from '../../../config/env';
 import { createReviewQueueService as createReviewQueueServiceBase } from '../../../reviewQueue/service';
-import { mergeResolvedOffers, persistPromotion, stageInboundEmail } from '../pipeline';
+import {
+  mergeResolvedOffers,
+  persistPromotion,
+  stageInboundEmail,
+} from '../pipeline';
 import type { EmailInboundResult } from '../types';
 
 function createReviewQueueService(
@@ -16,7 +20,20 @@ function createReviewQueueService(
   });
 }
 
-function createInboundResult(overrides?: Partial<EmailInboundResult['items'][number]>): EmailInboundResult {
+function overrideEnv(context: TestContext, overrides: Partial<typeof env>) {
+  const snapshot = Object.fromEntries(
+    Object.keys(overrides).map((key) => [key, env[key as keyof typeof env]]),
+  ) as Partial<typeof env>;
+
+  Object.assign(env, overrides);
+  context.after(() => {
+    Object.assign(env, snapshot);
+  });
+}
+
+function createInboundResult(
+  overrides?: Partial<EmailInboundResult['items'][number]>,
+): EmailInboundResult {
   return {
     ignored: false,
     items: [
@@ -137,7 +154,11 @@ function installDbMocks(t: TestContext) {
 
   let idCounter = 0;
   const nextId = (prefix: string) => `${prefix}-${++idCounter}`;
-  const stubMethod = (target: object, methodName: string, implementation: (...args: any[]) => any) => {
+  const stubMethod = (
+    target: object,
+    methodName: string,
+    implementation: (...args: any[]) => any,
+  ) => {
     const original = (target as Record<string, unknown>)[methodName];
     (target as Record<string, unknown>)[methodName] = implementation;
     t.after(() => {
@@ -158,22 +179,28 @@ function installDbMocks(t: TestContext) {
     (db as any).$transaction = originalTransaction;
   });
 
-  stubMethod(db.inboundEmail, 'upsert', async ({ where, update, create }: any) => {
-    const existing = state.inboundEmails.find(
-      (item) =>
-        item.sourceSystem === where.sourceSystem_externalMessageId.sourceSystem &&
-        item.externalMessageId === where.sourceSystem_externalMessageId.externalMessageId,
-    );
+  stubMethod(
+    db.inboundEmail,
+    'upsert',
+    async ({ where, update, create }: any) => {
+      const existing = state.inboundEmails.find(
+        (item) =>
+          item.sourceSystem ===
+            where.sourceSystem_externalMessageId.sourceSystem &&
+          item.externalMessageId ===
+            where.sourceSystem_externalMessageId.externalMessageId,
+      );
 
-    if (existing) {
-      Object.assign(existing, update);
-      return existing;
-    }
+      if (existing) {
+        Object.assign(existing, update);
+        return existing;
+      }
 
-    const created = { id: nextId('email'), ...create };
-    state.inboundEmails.push(created);
-    return created;
-  });
+      const created = { id: nextId('email'), ...create };
+      state.inboundEmails.push(created);
+      return created;
+    },
+  );
 
   stubMethod(db.inboundEmail, 'create', async ({ data }: any) => {
     const created = { id: nextId('email'), ...data };
@@ -188,30 +215,40 @@ function installDbMocks(t: TestContext) {
   });
 
   stubMethod(db.inboundEmailDocument, 'deleteMany', async ({ where }: any) => {
-    state.documents = state.documents.filter((item) => item.inboundEmailId !== where.inboundEmailId);
+    state.documents = state.documents.filter(
+      (item) => item.inboundEmailId !== where.inboundEmailId,
+    );
     return { count: 0 };
   });
 
-  stubMethod(db.inboundEmailDocument, 'upsert', async ({ where, update, create }: any) => {
-    const existing = state.documents.find(
-      (item) =>
-        item.inboundEmailId === where.inboundEmailId_kind_documentIndex.inboundEmailId &&
-        item.kind === where.inboundEmailId_kind_documentIndex.kind &&
-        item.documentIndex === where.inboundEmailId_kind_documentIndex.documentIndex,
-    );
+  stubMethod(
+    db.inboundEmailDocument,
+    'upsert',
+    async ({ where, update, create }: any) => {
+      const existing = state.documents.find(
+        (item) =>
+          item.inboundEmailId ===
+            where.inboundEmailId_kind_documentIndex.inboundEmailId &&
+          item.kind === where.inboundEmailId_kind_documentIndex.kind &&
+          item.documentIndex ===
+            where.inboundEmailId_kind_documentIndex.documentIndex,
+      );
 
-    if (existing) {
-      Object.assign(existing, update);
-      return existing;
-    }
+      if (existing) {
+        Object.assign(existing, update);
+        return existing;
+      }
 
-    const createdRecord = { id: nextId('doc'), ...create };
-    state.documents.push(createdRecord);
-    return createdRecord;
-  });
+      const createdRecord = { id: nextId('doc'), ...create };
+      state.documents.push(createdRecord);
+      return createdRecord;
+    },
+  );
 
   stubMethod(db.emailExtractionRun, 'deleteMany', async ({ where }: any) => {
-    state.runs = state.runs.filter((item) => item.inboundEmailId !== where.inboundEmailId);
+    state.runs = state.runs.filter(
+      (item) => item.inboundEmailId !== where.inboundEmailId,
+    );
     return { count: 0 };
   });
 
@@ -226,20 +263,28 @@ function installDbMocks(t: TestContext) {
     return { count: 0 };
   });
 
-  stubMethod(db.emailDerivedOfferEvidence, 'createMany', async ({ data }: any) => {
-    state.evidences.push(...data);
-    return { count: data.length };
-  });
+  stubMethod(
+    db.emailDerivedOfferEvidence,
+    'createMany',
+    async ({ data }: any) => {
+      state.evidences.push(...data);
+      return { count: data.length };
+    },
+  );
 
   stubMethod(db.entityResolutionCandidate, 'deleteMany', async () => {
     state.resolutionCandidates = [];
     return { count: 0 };
   });
 
-  stubMethod(db.entityResolutionCandidate, 'createMany', async ({ data }: any) => {
-    state.resolutionCandidates.push(...data);
-    return { count: data.length };
-  });
+  stubMethod(
+    db.entityResolutionCandidate,
+    'createMany',
+    async ({ data }: any) => {
+      state.resolutionCandidates.push(...data);
+      return { count: data.length };
+    },
+  );
 
   stubMethod(db.promotionDecision, 'deleteMany', async ({ where }: any) => {
     state.promotionDecisions = state.promotionDecisions.filter(
@@ -259,10 +304,19 @@ function installDbMocks(t: TestContext) {
       item
         ? {
             ...item,
-            inboundEmail: state.inboundEmails.find((entry) => entry.id === item.inboundEmailId) ?? null,
-            buyDecision: state.buyDecisions.find((entry) => entry.offerWorkflowItemId === item.id) ?? null,
+            inboundEmail:
+              state.inboundEmails.find(
+                (entry) => entry.id === item.inboundEmailId,
+              ) ?? null,
+            buyDecision:
+              state.buyDecisions.find(
+                (entry) => entry.offerWorkflowItemId === item.id,
+              ) ?? null,
             emailDerivedOffer: (() => {
-              const offer = state.offers.find((entry) => entry.id === item.emailDerivedOfferId) ?? null;
+              const offer =
+                state.offers.find(
+                  (entry) => entry.id === item.emailDerivedOfferId,
+                ) ?? null;
               if (!offer) {
                 return null;
               }
@@ -271,7 +325,10 @@ function installDbMocks(t: TestContext) {
                 resolutionCandidates: state.resolutionCandidates.filter(
                   (entry) => entry.emailDerivedOfferId === offer.id,
                 ),
-                buyDecision: state.buyDecisions.find((entry) => entry.emailDerivedOfferId === offer.id) ?? null,
+                buyDecision:
+                  state.buyDecisions.find(
+                    (entry) => entry.emailDerivedOfferId === offer.id,
+                  ) ?? null,
               };
             })(),
           }
@@ -279,12 +336,16 @@ function installDbMocks(t: TestContext) {
 
     if (where.emailDerivedOfferId) {
       return withRelations(
-        state.workflowItems.find((item) => item.emailDerivedOfferId === where.emailDerivedOfferId) ?? null,
+        state.workflowItems.find(
+          (item) => item.emailDerivedOfferId === where.emailDerivedOfferId,
+        ) ?? null,
       );
     }
 
     if (where.id) {
-      return withRelations(state.workflowItems.find((item) => item.id === where.id) ?? null);
+      return withRelations(
+        state.workflowItems.find((item) => item.id === where.id) ?? null,
+      );
     }
 
     return null;
@@ -316,89 +377,127 @@ function installDbMocks(t: TestContext) {
     const existing = state.workflowItems.find((item) => item.id === where.id);
     Object.assign(existing ?? {}, data, { updatedAt: new Date() });
     if (existing) {
-      existing.buyDecision = state.buyDecisions.find((entry) => entry.offerWorkflowItemId === existing.id) ?? null;
-      const offer = state.offers.find((entry) => entry.id === existing.emailDerivedOfferId) ?? null;
+      existing.buyDecision =
+        state.buyDecisions.find(
+          (entry) => entry.offerWorkflowItemId === existing.id,
+        ) ?? null;
+      const offer =
+        state.offers.find(
+          (entry) => entry.id === existing.emailDerivedOfferId,
+        ) ?? null;
       existing.emailDerivedOffer = offer
         ? {
             ...offer,
             resolutionCandidates: state.resolutionCandidates.filter(
               (entry) => entry.emailDerivedOfferId === offer.id,
             ),
-            buyDecision: state.buyDecisions.find((entry) => entry.emailDerivedOfferId === offer.id) ?? null,
+            buyDecision:
+              state.buyDecisions.find(
+                (entry) => entry.emailDerivedOfferId === offer.id,
+              ) ?? null,
           }
         : null;
     }
     return existing;
   });
 
-  stubMethod(db.offerWorkflowItem, 'findMany', async ({ where, orderBy, take }: any = {}) => {
-    let items = [...state.workflowItems];
+  stubMethod(
+    db.offerWorkflowItem,
+    'findMany',
+    async ({ where, orderBy, take }: any = {}) => {
+      let items = [...state.workflowItems];
 
-    if (where?.status?.in) {
-      items = items.filter((item) => where.status.in.includes(item.status));
-    } else if (where?.status) {
-      items = items.filter((item) => item.status === where.status);
-    }
+      if (where?.status?.in) {
+        items = items.filter((item) => where.status.in.includes(item.status));
+      } else if (where?.status) {
+        items = items.filter((item) => item.status === where.status);
+      }
 
-    if (where?.hasUnresolvedSupplier === true) {
-      items = items.filter((item) => item.hasUnresolvedSupplier === true);
-    }
+      if (where?.hasUnresolvedSupplier === true) {
+        items = items.filter((item) => item.hasUnresolvedSupplier === true);
+      }
 
-    if (where?.hasConflictingSupplierCues === true) {
-      items = items.filter((item) => item.hasConflictingSupplierCues === true);
-    }
+      if (where?.hasConflictingSupplierCues === true) {
+        items = items.filter(
+          (item) => item.hasConflictingSupplierCues === true,
+        );
+      }
 
-    if (where?.hasBlockedSupplier === true) {
-      items = items.filter((item) => item.hasBlockedSupplier === true);
-    }
+      if (where?.hasBlockedSupplier === true) {
+        items = items.filter((item) => item.hasBlockedSupplier === true);
+      }
 
-    if (where?.hasRestrictedSupplier === true) {
-      items = items.filter((item) => item.hasRestrictedSupplier === true);
-    }
+      if (where?.hasRestrictedSupplier === true) {
+        items = items.filter((item) => item.hasRestrictedSupplier === true);
+      }
 
-    if (where?.hasUnknownSupplierQualification === true) {
-      items = items.filter((item) => item.hasUnknownSupplierQualification === true);
-    }
+      if (where?.hasUnknownSupplierQualification === true) {
+        items = items.filter(
+          (item) => item.hasUnknownSupplierQualification === true,
+        );
+      }
 
-    if (where?.buyDecision?.isNot === null) {
-      items = items.filter((item) =>
-        state.buyDecisions.some((entry) => entry.offerWorkflowItemId === item.id),
-      );
-    }
-
-    if (where?.buyDecision?.is === null) {
-      items = items.filter((item) =>
-        !state.buyDecisions.some((entry) => entry.offerWorkflowItemId === item.id),
-      );
-    }
-
-    if (Array.isArray(orderBy) && orderBy[1]?.createdAt === 'asc') {
-      items.sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
-    } else {
-      items.sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime());
-    }
-
-    const mapped = items.map((item) => ({
-      ...item,
-      inboundEmail: state.inboundEmails.find((entry) => entry.id === item.inboundEmailId) ?? null,
-      buyDecision: state.buyDecisions.find((entry) => entry.offerWorkflowItemId === item.id) ?? null,
-      emailDerivedOffer: (() => {
-        const offer = state.offers.find((entry) => entry.id === item.emailDerivedOfferId) ?? null;
-        if (!offer) {
-          return null;
-        }
-        return {
-          ...offer,
-          resolutionCandidates: state.resolutionCandidates.filter(
-            (entry) => entry.emailDerivedOfferId === offer.id,
+      if (where?.buyDecision?.isNot === null) {
+        items = items.filter((item) =>
+          state.buyDecisions.some(
+            (entry) => entry.offerWorkflowItemId === item.id,
           ),
-          buyDecision: state.buyDecisions.find((entry) => entry.emailDerivedOfferId === offer.id) ?? null,
-        };
-      })(),
-    }));
+        );
+      }
 
-    return typeof take === 'number' ? mapped.slice(0, take) : mapped;
-  });
+      if (where?.buyDecision?.is === null) {
+        items = items.filter(
+          (item) =>
+            !state.buyDecisions.some(
+              (entry) => entry.offerWorkflowItemId === item.id,
+            ),
+        );
+      }
+
+      if (Array.isArray(orderBy) && orderBy[1]?.createdAt === 'asc') {
+        items.sort(
+          (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
+        );
+      } else {
+        items.sort(
+          (left, right) => right.updatedAt.getTime() - left.updatedAt.getTime(),
+        );
+      }
+
+      const mapped = items.map((item) => ({
+        ...item,
+        inboundEmail:
+          state.inboundEmails.find(
+            (entry) => entry.id === item.inboundEmailId,
+          ) ?? null,
+        buyDecision:
+          state.buyDecisions.find(
+            (entry) => entry.offerWorkflowItemId === item.id,
+          ) ?? null,
+        emailDerivedOffer: (() => {
+          const offer =
+            state.offers.find(
+              (entry) => entry.id === item.emailDerivedOfferId,
+            ) ?? null;
+          if (!offer) {
+            return null;
+          }
+          return {
+            ...offer,
+            resolutionCandidates: state.resolutionCandidates.filter(
+              (entry) => entry.emailDerivedOfferId === offer.id,
+            ),
+            buyDecision:
+              state.buyDecisions.find(
+                (entry) => entry.emailDerivedOfferId === offer.id,
+              ) ?? null,
+          };
+        })(),
+      }));
+
+      return typeof take === 'number' ? mapped.slice(0, take) : mapped;
+    },
+  );
 
   stubMethod(db.offerWorkflowEvent, 'create', async ({ data }: any) => {
     const created = {
@@ -411,16 +510,26 @@ function installDbMocks(t: TestContext) {
   });
 
   stubMethod(db.offerWorkflowEvent, 'findMany', async ({ where }: any) => {
-    return state.workflowEvents.filter((item) => item.workflowItemId === where.workflowItemId);
+    return state.workflowEvents.filter(
+      (item) => item.workflowItemId === where.workflowItemId,
+    );
   });
 
   stubMethod(db.supplierQualification, 'findUnique', async ({ where }: any) => {
-    return state.supplierQualifications.find((item) => item.supplierId === where.supplierId) ?? null;
+    return (
+      state.supplierQualifications.find(
+        (item) => item.supplierId === where.supplierId,
+      ) ?? null
+    );
   });
 
   stubMethod(db.buyDecision, 'findUnique', async ({ where }: any) => {
     if (where.emailDerivedOfferId) {
-      return state.buyDecisions.find((item) => item.emailDerivedOfferId === where.emailDerivedOfferId) ?? null;
+      return (
+        state.buyDecisions.find(
+          (item) => item.emailDerivedOfferId === where.emailDerivedOfferId,
+        ) ?? null
+      );
     }
     if (where.id) {
       return state.buyDecisions.find((item) => item.id === where.id) ?? null;
@@ -458,22 +567,28 @@ function installDbMocks(t: TestContext) {
     return created;
   });
 
-  stubMethod(db.emailDerivedOffer, 'upsert', async ({ where, update, create }: any) => {
-    const existing = state.offers.find(
-      (item) =>
-        item.inboundEmailId === where.inboundEmailId_offerFingerprint.inboundEmailId &&
-        item.offerFingerprint === where.inboundEmailId_offerFingerprint.offerFingerprint,
-    );
+  stubMethod(
+    db.emailDerivedOffer,
+    'upsert',
+    async ({ where, update, create }: any) => {
+      const existing = state.offers.find(
+        (item) =>
+          item.inboundEmailId ===
+            where.inboundEmailId_offerFingerprint.inboundEmailId &&
+          item.offerFingerprint ===
+            where.inboundEmailId_offerFingerprint.offerFingerprint,
+      );
 
-    if (existing) {
-      Object.assign(existing, update);
-      return existing;
-    }
+      if (existing) {
+        Object.assign(existing, update);
+        return existing;
+      }
 
-    const created = { id: nextId('offer'), ...create };
-    state.offers.push(created);
-    return created;
-  });
+      const created = { id: nextId('offer'), ...create };
+      state.offers.push(created);
+      return created;
+    },
+  );
 
   stubMethod(db.emailDerivedOffer, 'update', async ({ where, data }: any) => {
     const existing = state.offers.find((item) => item.id === where.id);
@@ -489,7 +604,9 @@ function installDbMocks(t: TestContext) {
       }
 
       if (where.offerFingerprint?.notIn) {
-        const keep = where.offerFingerprint.notIn.includes(item.offerFingerprint);
+        const keep = where.offerFingerprint.notIn.includes(
+          item.offerFingerprint,
+        );
         if (!keep) {
           removedOfferIds.push(item.id);
         }
@@ -517,7 +634,11 @@ function installDbMocks(t: TestContext) {
   });
 
   stubMethod(db.supplier, 'findFirst', async ({ where }: any) => {
-    return state.suppliers.find((item) => item.normalizedName === where.normalizedName) ?? null;
+    return (
+      state.suppliers.find(
+        (item) => item.normalizedName === where.normalizedName,
+      ) ?? null
+    );
   });
 
   stubMethod(db.supplier, 'findUnique', async ({ where }: any) => {
@@ -525,7 +646,11 @@ function installDbMocks(t: TestContext) {
       return state.suppliers.find((item) => item.id === where.id) ?? null;
     }
 
-    return state.suppliers.find((item) => item.normalizedName === where.normalizedName) ?? null;
+    return (
+      state.suppliers.find(
+        (item) => item.normalizedName === where.normalizedName,
+      ) ?? null
+    );
   });
 
   stubMethod(db.supplier, 'create', async ({ data }: any) => {
@@ -535,7 +660,11 @@ function installDbMocks(t: TestContext) {
   });
 
   stubMethod(db.product, 'findFirst', async ({ where }: any) => {
-    return state.products.find((item) => item.normalizedName === where.normalizedName) ?? null;
+    return (
+      state.products.find(
+        (item) => item.normalizedName === where.normalizedName,
+      ) ?? null
+    );
   });
 
   stubMethod(db.product, 'findMany', async ({ where }: any) => {
@@ -547,7 +676,8 @@ function installDbMocks(t: TestContext) {
       where.OR.some(
         (clause: any) =>
           (clause.baseName && item.baseName === clause.baseName) ||
-          (clause.normalizedName && item.normalizedName === clause.normalizedName),
+          (clause.normalizedName &&
+            item.normalizedName === clause.normalizedName),
       ),
     );
   });
@@ -570,41 +700,57 @@ function installDbMocks(t: TestContext) {
 
   stubMethod(db.productAlias, 'findFirst', async () => null);
   stubMethod(db.productAlias, 'findMany', async () => []);
-  stubMethod(db.productAlias, 'create', async ({ data }: any) => ({ id: nextId('alias'), ...data }));
+  stubMethod(db.productAlias, 'create', async ({ data }: any) => ({
+    id: nextId('alias'),
+    ...data,
+  }));
 
-  stubMethod(db.supplierPriceList, 'upsert', async ({ where, update, create }: any) => {
-    const existing = state.priceLists.find(
-      (item) =>
-        item.supplierId === where.supplierId_sourceInboundEmailId.supplierId &&
-        item.sourceInboundEmailId === where.supplierId_sourceInboundEmailId.sourceInboundEmailId,
-    );
+  stubMethod(
+    db.supplierPriceList,
+    'upsert',
+    async ({ where, update, create }: any) => {
+      const existing = state.priceLists.find(
+        (item) =>
+          item.supplierId ===
+            where.supplierId_sourceInboundEmailId.supplierId &&
+          item.sourceInboundEmailId ===
+            where.supplierId_sourceInboundEmailId.sourceInboundEmailId,
+      );
 
-    if (existing) {
-      Object.assign(existing, update);
-      return existing;
-    }
+      if (existing) {
+        Object.assign(existing, update);
+        return existing;
+      }
 
-    const created = { id: nextId('price-list'), ...create };
-    state.priceLists.push(created);
-    return created;
-  });
+      const created = { id: nextId('price-list'), ...create };
+      state.priceLists.push(created);
+      return created;
+    },
+  );
 
-  stubMethod(db.supplierPriceItem, 'upsert', async ({ where, update, create }: any) => {
-    const existing = state.priceItems.find(
-      (item) =>
-        item.supplierPriceListId === where.supplierPriceListId_promotionFingerprint.supplierPriceListId &&
-        item.promotionFingerprint === where.supplierPriceListId_promotionFingerprint.promotionFingerprint,
-    );
+  stubMethod(
+    db.supplierPriceItem,
+    'upsert',
+    async ({ where, update, create }: any) => {
+      const existing = state.priceItems.find(
+        (item) =>
+          item.supplierPriceListId ===
+            where.supplierPriceListId_promotionFingerprint
+              .supplierPriceListId &&
+          item.promotionFingerprint ===
+            where.supplierPriceListId_promotionFingerprint.promotionFingerprint,
+      );
 
-    if (existing) {
-      Object.assign(existing, update);
-      return existing;
-    }
+      if (existing) {
+        Object.assign(existing, update);
+        return existing;
+      }
 
-    const created = { id: nextId('price-item'), ...create };
-    state.priceItems.push(created);
-    return created;
-  });
+      const created = { id: nextId('price-item'), ...create };
+      state.priceItems.push(created);
+      return created;
+    },
+  );
 
   return state;
 }
@@ -614,7 +760,9 @@ test('same inbound email processed twice does not duplicate staged offers', asyn
   const originalMappings = env.emailInboundSupplierMappings;
   const originalAllowedSenders = env.emailInboundAllowedSenders;
 
-  env.emailInboundSupplierMappings = [{ pattern: 'pricing@supplier.co', supplierName: 'Supplier Co' }];
+  env.emailInboundSupplierMappings = [
+    { pattern: 'pricing@supplier.co', supplierName: 'Supplier Co' },
+  ];
   env.emailInboundAllowedSenders = ['pricing@supplier.co'];
 
   t.after(() => {
@@ -640,7 +788,36 @@ test('same inbound email processed twice does not duplicate staged offers', asyn
 
   assert.equal(state.offers.length, 2);
   assert.equal(state.workflowItems.length, 2);
-  assert.equal(state.workflowEvents.filter((event) => event.actionType === 'CREATED').length, 2);
+  assert.equal(
+    state.workflowEvents.filter((event) => event.actionType === 'CREATED')
+      .length,
+    2,
+  );
+});
+
+test('staging uses installed Prisma mocks when local env points at managed database', async (t) => {
+  const state = installDbMocks(t);
+  overrideEnv(t, {
+    databaseUrl:
+      'postgresql://redacted@ep-example.eu-west-2.aws.neon.tech/neondb',
+    databaseHost: 'ep-example.eu-west-2.aws.neon.tech',
+  });
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'graph-managed-env',
+      messageId: 'internet-managed-env',
+      from: 'pricing@supplier.co',
+      subject: 'Offer',
+      bodyText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
+    },
+    createInboundResult(),
+  );
+
+  assert.equal(state.inboundEmails.length, 1);
+  assert.equal(state.offers.length, 1);
+  assert.equal(state.inboundEmails[0]?.externalMessageId, 'graph-managed-env');
 });
 
 test('persistPromotion is idempotent and reuses one supplier price list per inbound email batch', async (t) => {
@@ -672,7 +849,9 @@ test('persistPromotion is idempotent and reuses one supplier price list per inbo
   assert.equal(state.priceLists.length, 1);
   assert.equal(state.priceItems.length, 2);
   assert.equal(
-    state.priceItems.filter((item) => item.rawProductName === 'Amlodipine 5mg tabs 28').length,
+    state.priceItems.filter(
+      (item) => item.rawProductName === 'Amlodipine 5mg tabs 28',
+    ).length,
     1,
   );
 });
@@ -765,7 +944,12 @@ test('persistPromotion derives explicit review reasons for review-only offers', 
         name: 'Supplier Co',
         normalizedName: 'supplier co',
       });
-      seedStagedOffer(state, `offer-review-${index + 1}`, 'email-review', scenario.overrides);
+      seedStagedOffer(
+        state,
+        `offer-review-${index + 1}`,
+        'email-review',
+        scenario.overrides,
+      );
       const result = await persistPromotion(
         'email-review',
         `offer-review-${index + 1}`,
@@ -780,7 +964,10 @@ test('persistPromotion derives explicit review reasons for review-only offers', 
       assert.equal(state.offers[0]?.status, 'REVIEW_REQUIRED');
       assert.equal(state.offers[0]?.reviewReason, scenario.expectedReason);
       assert.equal(state.promotionDecisions[0]?.status, 'REVIEW_REQUIRED');
-      assert.equal(state.promotionDecisions[0]?.reason, scenario.expectedReason);
+      assert.equal(
+        state.promotionDecisions[0]?.reason,
+        scenario.expectedReason,
+      );
       assert.equal(state.priceLists.length, 0);
       assert.equal(state.priceItems.length, 0);
     });
@@ -792,7 +979,9 @@ test('review-required offers do not remain staged when supplier cues conflict', 
   const originalMappings = env.emailInboundSupplierMappings;
   const originalAllowedSenders = env.emailInboundAllowedSenders;
 
-  env.emailInboundSupplierMappings = [{ pattern: 'pricing@supplier.co', supplierName: 'Supplier One' }];
+  env.emailInboundSupplierMappings = [
+    { pattern: 'pricing@supplier.co', supplierName: 'Supplier One' },
+  ];
   env.emailInboundAllowedSenders = ['pricing@supplier.co'];
 
   t.after(() => {
@@ -834,7 +1023,9 @@ test('same review-required offer does not create duplicate workflow items', asyn
   const originalMappings = env.emailInboundSupplierMappings;
   const originalAllowedSenders = env.emailInboundAllowedSenders;
 
-  env.emailInboundSupplierMappings = [{ pattern: 'pricing@supplier.co', supplierName: 'Supplier One' }];
+  env.emailInboundSupplierMappings = [
+    { pattern: 'pricing@supplier.co', supplierName: 'Supplier One' },
+  ];
   env.emailInboundAllowedSenders = ['pricing@supplier.co'];
 
   t.after(() => {
@@ -860,7 +1051,11 @@ test('same review-required offer does not create duplicate workflow items', asyn
   await stageInboundEmail(message, createInboundResult());
 
   assert.equal(state.workflowItems.length, 1);
-  assert.equal(state.workflowEvents.filter((event) => event.actionType === 'CREATED').length, 1);
+  assert.equal(
+    state.workflowEvents.filter((event) => event.actionType === 'CREATED')
+      .length,
+    1,
+  );
 });
 
 test('parent inbound email review reason falls back to promotion threshold when offers require review', async (t) => {
@@ -877,7 +1072,8 @@ test('parent inbound email review reason falls back to promotion threshold when 
     },
     createInboundResult({
       processingStatus: 'REVIEW_REQUIRED',
-      reason: 'Extracted text from the image attachment but found no safe structured commercial rows.',
+      reason:
+        'Extracted text from the image attachment but found no safe structured commercial rows.',
     }),
   );
 
@@ -892,7 +1088,9 @@ test('specific promotion review reason carries through workflow and parent email
   const originalMappings = env.emailInboundSupplierMappings;
   const originalAllowedSenders = env.emailInboundAllowedSenders;
 
-  env.emailInboundSupplierMappings = [{ pattern: 'pricing@supplier.co', supplierName: 'Supplier Co' }];
+  env.emailInboundSupplierMappings = [
+    { pattern: 'pricing@supplier.co', supplierName: 'Supplier Co' },
+  ];
   env.emailInboundAllowedSenders = ['pricing@supplier.co'];
   state.products.push({
     id: 'product-1',
@@ -936,7 +1134,8 @@ test('specific promotion review reason carries through workflow and parent email
     listTelegramInboundItems: async () => [],
     listEmailReviewItems: () => [],
     listAccountOpeningCases: async () => [],
-    listEmailDerivedOfferItems: async () => (await db.offerWorkflowItem.findMany({})) as never,
+    listEmailDerivedOfferItems: async () =>
+      (await db.offerWorkflowItem.findMany({})) as never,
     getSupplierScorecardsForIds: async () => ({}),
     getTradeOpportunitiesForOfferIds: async () => ({}),
     getOfferFeedbackSummariesForOfferIds: async () => ({}),
@@ -962,8 +1161,14 @@ test('specific promotion review reason carries through workflow and parent email
 
   assert.equal(reviewQueueItems.length, 1);
   assert.equal(reviewQueueItems[0]?.reason, 'Missing currency');
-  assert.equal(reviewQueueItems[0]?.reviewSummary?.reviewReason, 'Missing currency');
-  assert.match(reviewQueueItems[0]?.reviewSummary?.missingOrUnclear ?? '', /currency is missing or unclear/i);
+  assert.equal(
+    reviewQueueItems[0]?.reviewSummary?.reviewReason,
+    'Missing currency',
+  );
+  assert.match(
+    reviewQueueItems[0]?.reviewSummary?.missingOrUnclear ?? '',
+    /currency is missing or unclear/i,
+  );
 });
 
 test('unresolved supplier review reason stays consistent across storage and queue surfaces', async (t) => {
@@ -996,7 +1201,10 @@ test('unresolved supplier review reason stays consistent across storage and queu
   assert.equal(state.offers[0]?.reviewReason, 'unresolved_supplier');
   assert.equal(state.promotionDecisions[0]?.reason, 'unresolved_supplier');
   assert.equal(state.workflowItems.length, 1);
-  assert.equal(state.workflowItems[0]?.sourceReviewReason, 'unresolved_supplier');
+  assert.equal(
+    state.workflowItems[0]?.sourceReviewReason,
+    'unresolved_supplier',
+  );
   assert.equal(state.inboundEmails[0]?.processingStatus, 'REVIEW_REQUIRED');
   assert.equal(state.inboundEmails[0]?.reviewReason, 'unresolved_supplier');
 
@@ -1004,7 +1212,8 @@ test('unresolved supplier review reason stays consistent across storage and queu
     listTelegramInboundItems: async () => [],
     listEmailReviewItems: () => [],
     listAccountOpeningCases: async () => [],
-    listEmailDerivedOfferItems: async () => (await db.offerWorkflowItem.findMany({})) as never,
+    listEmailDerivedOfferItems: async () =>
+      (await db.offerWorkflowItem.findMany({})) as never,
     getSupplierScorecardsForIds: async () => ({}),
     getTradeOpportunitiesForOfferIds: async () => ({}),
     getOfferFeedbackSummariesForOfferIds: async () => ({}),
@@ -1030,7 +1239,10 @@ test('unresolved supplier review reason stays consistent across storage and queu
 
   assert.equal(reviewQueueItems.length, 1);
   assert.equal(reviewQueueItems[0]?.reason, 'Unresolved supplier');
-  assert.equal(reviewQueueItems[0]?.reviewSummary?.reviewReason, 'Unresolved supplier');
+  assert.equal(
+    reviewQueueItems[0]?.reviewSummary?.reviewReason,
+    'Unresolved supplier',
+  );
   assert.match(
     reviewQueueItems[0]?.reviewSummary?.missingOrUnclear ?? '',
     /supplier could not be resolved safely/i,
@@ -1042,7 +1254,9 @@ test('mapped supplier cue without canonical supplier record stays unresolved', a
   const originalMappings = env.emailInboundSupplierMappings;
   const originalAllowedSenders = env.emailInboundAllowedSenders;
 
-  env.emailInboundSupplierMappings = [{ pattern: 'pricing@supplier.co', supplierName: 'Supplier Co' }];
+  env.emailInboundSupplierMappings = [
+    { pattern: 'pricing@supplier.co', supplierName: 'Supplier Co' },
+  ];
   env.emailInboundAllowedSenders = ['pricing@supplier.co'];
   state.products.push({
     id: 'product-1',
@@ -1075,7 +1289,10 @@ test('mapped supplier cue without canonical supplier record stays unresolved', a
   assert.equal(state.offers[0]?.supplierCandidate, 'Supplier Co');
   assert.equal(state.promotionDecisions[0]?.reason, 'unresolved_supplier');
   assert.equal(state.workflowItems.length, 1);
-  assert.equal(state.workflowItems[0]?.sourceReviewReason, 'unresolved_supplier');
+  assert.equal(
+    state.workflowItems[0]?.sourceReviewReason,
+    'unresolved_supplier',
+  );
   assert.equal(state.priceLists.length, 0);
   assert.equal(state.priceItems.length, 0);
 });
@@ -1153,7 +1370,11 @@ test('forwarded supplier cues and shared pricing stay review-only but preserve s
           },
           attachmentTextExtraction: {
             method: 'IMAGE_OCR',
-            text: ['DeltaPharma', 'NDSE11M -1', '(10) NDSE11M-1 (17) 280400 (90) 1463010'].join('\n'),
+            text: [
+              'DeltaPharma',
+              'NDSE11M -1',
+              '(10) NDSE11M-1 (17) 280400 (90) 1463010',
+            ].join('\n'),
             extractedTextChars: 58,
             warnings: [],
           },
@@ -1182,7 +1403,8 @@ test('forwarded supplier cues and shared pricing stay review-only but preserve s
     state.offers.map((offer) => ({
       supplierCandidate: offer.supplierCandidate,
       reviewReason: offer.reviewReason,
-      priceCandidate: offer.priceCandidate?.toString?.() ?? String(offer.priceCandidate),
+      priceCandidate:
+        offer.priceCandidate?.toString?.() ?? String(offer.priceCandidate),
       currencyCandidate: offer.currencyCandidate,
     })),
     [
@@ -1207,30 +1429,43 @@ test('forwarded supplier cues and shared pricing stay review-only but preserve s
         candidate.candidateId === null &&
         candidate.candidateName === 'Delta Pharma' &&
         candidate.selected === false &&
-        Array.isArray((candidate.metadata as { aliases?: string[] } | null)?.aliases) &&
-        ((candidate.metadata as { aliases?: string[] }).aliases ?? []).includes('Delta BE bv') &&
-        ((candidate.metadata as { aliases?: string[] }).aliases ?? []).includes('DeltaPharma'),
+        Array.isArray(
+          (candidate.metadata as { aliases?: string[] } | null)?.aliases,
+        ) &&
+        ((candidate.metadata as { aliases?: string[] }).aliases ?? []).includes(
+          'Delta BE bv',
+        ) &&
+        ((candidate.metadata as { aliases?: string[] }).aliases ?? []).includes(
+          'DeltaPharma',
+        ),
     ),
     true,
   );
   assert.equal(
-    state.offers.some((offer) => /NDSE11M/i.test(String(offer.rawProductText ?? ''))),
+    state.offers.some((offer) =>
+      /NDSE11M/i.test(String(offer.rawProductText ?? '')),
+    ),
     false,
   );
   assert.equal(
     state.workflowItems.every(
-      (item) => item.hasUnresolvedSupplier === true && item.sourceReviewReason === 'unresolved_supplier',
+      (item) =>
+        item.hasUnresolvedSupplier === true &&
+        item.sourceReviewReason === 'unresolved_supplier',
     ),
     true,
   );
   assert.equal(
-    state.offers.some((offer) => /ambe medical/i.test(String(offer.supplierCandidate ?? ''))),
+    state.offers.some((offer) =>
+      /ambe medical/i.test(String(offer.supplierCandidate ?? '')),
+    ),
     false,
   );
   assert.equal(
     state.resolutionCandidates.some(
       (candidate) =>
-        candidate.entityType === 'SUPPLIER' && /ambe medical/i.test(String(candidate.candidateName ?? '')),
+        candidate.entityType === 'SUPPLIER' &&
+        /ambe medical/i.test(String(candidate.candidateName ?? '')),
     ),
     false,
   );
@@ -1284,11 +1519,15 @@ test('internal company cue alone is ignored as a supplier candidate', async (t) 
   assert.equal(state.offers.length, 1);
   assert.equal(state.offers[0]?.supplierCandidate, null);
   assert.equal(state.offers[0]?.reviewReason, 'unresolved_supplier');
-  assert.equal(state.workflowItems[0]?.sourceReviewReason, 'unresolved_supplier');
+  assert.equal(
+    state.workflowItems[0]?.sourceReviewReason,
+    'unresolved_supplier',
+  );
   assert.equal(
     state.resolutionCandidates.some(
       (candidate) =>
-        candidate.entityType === 'SUPPLIER' && /ambe medical/i.test(String(candidate.candidateName ?? '')),
+        candidate.entityType === 'SUPPLIER' &&
+        /ambe medical/i.test(String(candidate.candidateName ?? '')),
     ),
     false,
   );
@@ -1308,7 +1547,8 @@ test('attachment filename supplier cue is extracted from xlsx filename and kept 
       attachments: [
         {
           fileName: 'Delta Pharma price list.xlsx',
-          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           content: Buffer.from('not-a-real-xlsx').toString('base64'),
         },
       ],
@@ -1318,7 +1558,10 @@ test('attachment filename supplier cue is extracted from xlsx filename and kept 
 
   assert.equal(state.offers[0]?.supplierCandidate, 'Delta Pharma');
   assert.equal(state.offers[0]?.reviewReason, 'unresolved_supplier');
-  assert.equal(state.workflowItems[0]?.sourceReviewReason, 'unresolved_supplier');
+  assert.equal(
+    state.workflowItems[0]?.sourceReviewReason,
+    'unresolved_supplier',
+  );
   assert.equal(
     state.resolutionCandidates.some(
       (candidate) =>
@@ -1334,7 +1577,9 @@ test('attachment filename supplier cue is extracted from xlsx filename and kept 
 test('attachment filename supplier cue does not override sender mapping', async (t) => {
   const state = installDbMocks(t);
   const originalMappings = env.emailInboundSupplierMappings;
-  env.emailInboundSupplierMappings = [{ pattern: 'pricing@supplier.co', supplierName: 'Supplier Co' }];
+  env.emailInboundSupplierMappings = [
+    { pattern: 'pricing@supplier.co', supplierName: 'Supplier Co' },
+  ];
 
   t.after(() => {
     env.emailInboundSupplierMappings = originalMappings;
@@ -1357,7 +1602,8 @@ test('attachment filename supplier cue does not override sender mapping', async 
       attachments: [
         {
           fileName: 'Delta Pharma price list.xlsx',
-          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           content: Buffer.from('not-a-real-xlsx').toString('base64'),
         },
       ],
@@ -1392,7 +1638,8 @@ test('generic attachment filenames do not create supplier candidates', async (t)
       attachments: [
         {
           fileName: 'price list april.xlsx',
-          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           content: Buffer.from('not-a-real-xlsx').toString('base64'),
         },
       ],
@@ -1402,7 +1649,9 @@ test('generic attachment filenames do not create supplier candidates', async (t)
 
   assert.equal(state.offers[0]?.supplierCandidate, null);
   assert.equal(
-    state.resolutionCandidates.some((candidate) => candidate.reason === 'attachment_filename_company_cue'),
+    state.resolutionCandidates.some(
+      (candidate) => candidate.reason === 'attachment_filename_company_cue',
+    ),
     false,
   );
 });
@@ -1427,7 +1676,8 @@ test('internal company attachment filename cues are ignored', async (t) => {
       attachments: [
         {
           fileName: 'Ambe Medical price list.xlsx',
-          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           content: Buffer.from('not-a-real-xlsx').toString('base64'),
         },
       ],
@@ -1439,7 +1689,8 @@ test('internal company attachment filename cues are ignored', async (t) => {
   assert.equal(
     state.resolutionCandidates.some(
       (candidate) =>
-        candidate.entityType === 'SUPPLIER' && /ambe medical/i.test(String(candidate.candidateName ?? '')),
+        candidate.entityType === 'SUPPLIER' &&
+        /ambe medical/i.test(String(candidate.candidateName ?? '')),
     ),
     false,
   );
@@ -1450,7 +1701,9 @@ test('weak product match review reason stays consistent across storage and queue
   const originalMappings = env.emailInboundSupplierMappings;
   const originalAllowedSenders = env.emailInboundAllowedSenders;
 
-  env.emailInboundSupplierMappings = [{ pattern: 'pricing@supplier.co', supplierName: 'Supplier Co' }];
+  env.emailInboundSupplierMappings = [
+    { pattern: 'pricing@supplier.co', supplierName: 'Supplier Co' },
+  ];
   env.emailInboundAllowedSenders = ['pricing@supplier.co'];
 
   t.after(() => {
@@ -1481,7 +1734,10 @@ test('weak product match review reason stays consistent across storage and queue
   assert.equal(state.offers[0]?.reviewReason, 'weak_product_match');
   assert.equal(state.promotionDecisions[0]?.reason, 'weak_product_match');
   assert.equal(state.workflowItems.length, 1);
-  assert.equal(state.workflowItems[0]?.sourceReviewReason, 'weak_product_match');
+  assert.equal(
+    state.workflowItems[0]?.sourceReviewReason,
+    'weak_product_match',
+  );
   assert.equal(state.inboundEmails[0]?.processingStatus, 'REVIEW_REQUIRED');
   assert.equal(state.inboundEmails[0]?.reviewReason, 'weak_product_match');
 
@@ -1489,7 +1745,8 @@ test('weak product match review reason stays consistent across storage and queue
     listTelegramInboundItems: async () => [],
     listEmailReviewItems: () => [],
     listAccountOpeningCases: async () => [],
-    listEmailDerivedOfferItems: async () => (await db.offerWorkflowItem.findMany({})) as never,
+    listEmailDerivedOfferItems: async () =>
+      (await db.offerWorkflowItem.findMany({})) as never,
     getSupplierScorecardsForIds: async () => ({}),
     getTradeOpportunitiesForOfferIds: async () => ({}),
     getOfferFeedbackSummariesForOfferIds: async () => ({}),
@@ -1515,7 +1772,10 @@ test('weak product match review reason stays consistent across storage and queue
 
   assert.equal(reviewQueueItems.length, 1);
   assert.equal(reviewQueueItems[0]?.reason, 'Weak product match');
-  assert.equal(reviewQueueItems[0]?.reviewSummary?.reviewReason, 'Weak product match');
+  assert.equal(
+    reviewQueueItems[0]?.reviewSummary?.reviewReason,
+    'Weak product match',
+  );
   assert.match(
     reviewQueueItems[0]?.reviewSummary?.missingOrUnclear ?? '',
     /could not match it strongly enough/i,
@@ -1555,7 +1815,8 @@ test('mergeResolvedOffers preserves deterministic and ai extraction run provenan
     [
       {
         sourceKind: 'AI_PARAGRAPH_OFFER',
-        sourceBlockText: 'We can offer Paracetamol 500mg caplets 16 at GBP 1.25',
+        sourceBlockText:
+          'We can offer Paracetamol 500mg caplets 16 at GBP 1.25',
         rawProductText: 'Paracetamol 500mg caplets 16',
         normalizedProductNameCandidate: 'paracetamol 500mg caplets 16',
         strengthCandidate: '500mg',

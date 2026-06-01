@@ -1,4 +1,5 @@
 import { db } from '../lib/db';
+import { buildCommercialAuditMetadata } from '../audit/commercialAudit';
 import {
   summarizeBuyExecution,
   upsertExecutionForBuyDecision,
@@ -96,7 +97,12 @@ export type ApprovedBuyDecisionInput = BuyDecisionActor & {
   quotedAvailability: string | null;
   sourceKind: string | null;
   sourceBlockText: string | null;
-  supplierQualificationStatus: 'UNKNOWN' | 'PENDING_REVIEW' | 'APPROVED' | 'RESTRICTED' | 'BLOCKED';
+  supplierQualificationStatus:
+    | 'UNKNOWN'
+    | 'PENDING_REVIEW'
+    | 'APPROVED'
+    | 'RESTRICTED'
+    | 'BLOCKED';
   hasQualificationRisk: boolean;
   qualificationRiskNote: string | null;
   approvalNote?: string | null;
@@ -119,12 +125,18 @@ export type EnrichedBuyDecisionRecord = BuyDecisionRecord & {
   supplierPerformanceSummary: Awaited<
     ReturnType<typeof supplierScorecardService.getScorecardForSupplier>
   >;
-  recommendedNextAction: ReturnType<typeof summarizeBuyExecution>['recommendedNextAction'];
+  recommendedNextAction: ReturnType<
+    typeof summarizeBuyExecution
+  >['recommendedNextAction'];
 };
 
 export type BuyDecisionRepository = {
-  transaction: <T>(callback: (repository: BuyDecisionRepository) => Promise<T>) => Promise<T>;
-  findByOfferId: (emailDerivedOfferId: string) => Promise<BuyDecisionRecord | null>;
+  transaction: <T>(
+    callback: (repository: BuyDecisionRepository) => Promise<T>,
+  ) => Promise<T>;
+  findByOfferId: (
+    emailDerivedOfferId: string,
+  ) => Promise<BuyDecisionRecord | null>;
   findById: (buyDecisionId: string) => Promise<BuyDecisionRecord | null>;
   create: (
     data: Partial<BuyDecisionRecord> &
@@ -137,19 +149,40 @@ export type BuyDecisionRepository = {
         | 'hasQualificationRisk'
       >,
   ) => Promise<BuyDecisionRecord>;
-  update: (buyDecisionId: string, data: Partial<BuyDecisionRecord>) => Promise<BuyDecisionRecord>;
-  createEvent: (data: Omit<BuyDecisionEventRecord, 'id' | 'createdAt'>) => Promise<BuyDecisionEventRecord>;
+  update: (
+    buyDecisionId: string,
+    data: Partial<BuyDecisionRecord>,
+  ) => Promise<BuyDecisionRecord>;
+  createEvent: (
+    data: Omit<BuyDecisionEventRecord, 'id' | 'createdAt'>,
+  ) => Promise<BuyDecisionEventRecord>;
   list: (filters: BuyDecisionListFilters) => Promise<BuyDecisionRecord[]>;
-  findExecutionByBuyDecisionId: (buyDecisionId: string) => Promise<BuyExecutionRecord | null>;
-  createExecution: Parameters<typeof upsertExecutionForBuyDecision>[0]['create'];
-  updateExecution: Parameters<typeof upsertExecutionForBuyDecision>[0]['update'];
-  createExecutionEvent: Parameters<typeof upsertExecutionForBuyDecision>[0]['createEvent'];
-  listActiveTradeOpportunitiesByOfferId: (emailDerivedOfferId: string) => Promise<any[]>;
-  updateTradeOpportunity: (tradeOpportunityId: string, data: Record<string, unknown>) => Promise<any>;
+  findExecutionByBuyDecisionId: (
+    buyDecisionId: string,
+  ) => Promise<BuyExecutionRecord | null>;
+  createExecution: Parameters<
+    typeof upsertExecutionForBuyDecision
+  >[0]['create'];
+  updateExecution: Parameters<
+    typeof upsertExecutionForBuyDecision
+  >[0]['update'];
+  createExecutionEvent: Parameters<
+    typeof upsertExecutionForBuyDecision
+  >[0]['createEvent'];
+  listActiveTradeOpportunitiesByOfferId: (
+    emailDerivedOfferId: string,
+  ) => Promise<any[]>;
+  updateTradeOpportunity: (
+    tradeOpportunityId: string,
+    data: Record<string, unknown>,
+  ) => Promise<any>;
   createTradeOpportunityEvent: (data: Record<string, unknown>) => Promise<any>;
 };
 
-function normalizeActor(actor?: BuyDecisionActor): { actorType: string; actorIdentifier: string | null } {
+function normalizeActor(actor?: BuyDecisionActor): {
+  actorType: string;
+  actorIdentifier: string | null;
+} {
   return {
     actorType: actor?.actorType?.trim() || 'SYSTEM',
     actorIdentifier: actor?.actorIdentifier?.trim() || null,
@@ -179,7 +212,7 @@ function mapOrderStatusToExecutionInput(
       input.orderStatus === 'ORDERED' ||
       input.orderStatus === 'PARTIALLY_FULFILLED' ||
       input.orderStatus === 'FULFILLED'
-        ? input.orderPlacedAt ?? new Date()
+        ? (input.orderPlacedAt ?? new Date())
         : input.orderPlacedAt,
     orderedQuantity: input.orderedQuantity,
     orderedUnitPrice: input.orderedUnitPrice,
@@ -200,7 +233,9 @@ function mapOrderStatusToExecutionInput(
   };
 }
 
-function buildDecisionExecutionSnapshot(decision: BuyDecisionRecord): BuyDecisionExecutionSnapshot {
+function buildDecisionExecutionSnapshot(
+  decision: BuyDecisionRecord,
+): BuyDecisionExecutionSnapshot {
   return {
     id: decision.id,
     emailDerivedOfferId: decision.emailDerivedOfferId,
@@ -220,14 +255,19 @@ function buildDecisionExecutionSnapshot(decision: BuyDecisionRecord): BuyDecisio
   };
 }
 
-export function createBuyDecisionRepository(client: typeof db = db, inTransaction = false): BuyDecisionRepository {
+export function createBuyDecisionRepository(
+  client: typeof db = db,
+  inTransaction = false,
+): BuyDecisionRepository {
   return {
     transaction: async (callback) => {
       if (inTransaction) {
         return callback(createBuyDecisionRepository(client, true));
       }
 
-      return db.$transaction(async (tx) => callback(createBuyDecisionRepository(tx as never, true)));
+      return db.$transaction(async (tx) =>
+        callback(createBuyDecisionRepository(tx as never, true)),
+      );
     },
     findByOfferId: async (emailDerivedOfferId) =>
       client.buyDecision.findUnique({
@@ -478,38 +518,70 @@ async function logBuyDecisionEvent(
     actorType: actor.actorType,
     actorIdentifier: actor.actorIdentifier,
     note: note?.trim() || null,
-    metadata: metadata ?? null,
+    metadata: buildCommercialAuditMetadata(
+      {
+        entityType: 'BUY_DECISION',
+        entityId: buyDecisionId,
+        action: actionType,
+        approvalStatus: {
+          previous: previousApprovalStatus,
+          next: newApprovalStatus,
+        },
+        orderStatus: {
+          previous: previousOrderStatus,
+          next: newOrderStatus,
+        },
+      },
+      metadata,
+    ),
   });
 }
 
-async function enrichBuyDecisions(items: BuyDecisionRecord[]): Promise<EnrichedBuyDecisionRecord[]> {
-  const supplierIds = Array.from(new Set(items.flatMap((item) => (item.supplierId ? [item.supplierId] : []))));
-  const scorecards = await supplierScorecardService.getScorecardsForSupplierIds(supplierIds);
+async function enrichBuyDecisions(
+  items: BuyDecisionRecord[],
+): Promise<EnrichedBuyDecisionRecord[]> {
+  const supplierIds = Array.from(
+    new Set(
+      items.flatMap((item) => (item.supplierId ? [item.supplierId] : [])),
+    ),
+  );
+  const scorecards =
+    await supplierScorecardService.getScorecardsForSupplierIds(supplierIds);
 
   return items.map((item) => {
-    const executionSummary = summarizeBuyExecution(buildDecisionExecutionSnapshot(item), item.execution ?? null);
-    const supplierPerformanceSummary = item.supplierId ? scorecards[item.supplierId] ?? null : null;
+    const executionSummary = summarizeBuyExecution(
+      buildDecisionExecutionSnapshot(item),
+      item.execution ?? null,
+    );
+    const supplierPerformanceSummary = item.supplierId
+      ? (scorecards[item.supplierId] ?? null)
+      : null;
 
     return {
       ...item,
       executionSummary,
       supplierPerformanceSummary,
       recommendedNextAction:
-        supplierPerformanceSummary?.summary.recommendedAction === 'restrict supplier'
+        supplierPerformanceSummary?.summary.recommendedAction ===
+        'restrict supplier'
           ? 'restrict supplier'
           : executionSummary.recommendedNextAction,
     };
   });
 }
 
-export function createBuyDecisionService(overrides?: Partial<BuyDecisionRepository>) {
+export function createBuyDecisionService(
+  overrides?: Partial<BuyDecisionRepository>,
+) {
   const repository: BuyDecisionRepository = {
     ...createBuyDecisionRepository(),
     ...overrides,
   };
 
   return {
-    async getBuyDecision(buyDecisionId: string): Promise<EnrichedBuyDecisionRecord | null> {
+    async getBuyDecision(
+      buyDecisionId: string,
+    ): Promise<EnrichedBuyDecisionRecord | null> {
       const item = await repository.findById(buyDecisionId);
       if (!item) {
         return null;
@@ -518,7 +590,9 @@ export function createBuyDecisionService(overrides?: Partial<BuyDecisionReposito
       return (await enrichBuyDecisions([item]))[0] ?? null;
     },
 
-    async getBuyDecisionByOffer(emailDerivedOfferId: string): Promise<EnrichedBuyDecisionRecord | null> {
+    async getBuyDecisionByOffer(
+      emailDerivedOfferId: string,
+    ): Promise<EnrichedBuyDecisionRecord | null> {
       const item = await repository.findByOfferId(emailDerivedOfferId);
       if (!item) {
         return null;
@@ -527,15 +601,21 @@ export function createBuyDecisionService(overrides?: Partial<BuyDecisionReposito
       return (await enrichBuyDecisions([item]))[0] ?? null;
     },
 
-    async listBuyDecisions(filters: BuyDecisionListFilters = {}): Promise<EnrichedBuyDecisionRecord[]> {
+    async listBuyDecisions(
+      filters: BuyDecisionListFilters = {},
+    ): Promise<EnrichedBuyDecisionRecord[]> {
       return enrichBuyDecisions(await repository.list(filters));
     },
 
-    async upsertApprovedDecision(input: ApprovedBuyDecisionInput): Promise<EnrichedBuyDecisionRecord> {
+    async upsertApprovedDecision(
+      input: ApprovedBuyDecisionInput,
+    ): Promise<EnrichedBuyDecisionRecord> {
       const actor = normalizeActor(input);
 
       const decision = await repository.transaction(async (txRepository) => {
-        const existing = await txRepository.findByOfferId(input.emailDerivedOfferId);
+        const existing = await txRepository.findByOfferId(
+          input.emailDerivedOfferId,
+        );
 
         if (!existing) {
           const created = await txRepository.create({
@@ -545,7 +625,8 @@ export function createBuyDecisionService(overrides?: Partial<BuyDecisionReposito
             supplierId: input.supplierId,
             productId: input.productId,
             rawProductText: input.rawProductText,
-            normalizedProductNameCandidate: input.normalizedProductNameCandidate,
+            normalizedProductNameCandidate:
+              input.normalizedProductNameCandidate,
             manufacturerCandidate: input.manufacturerCandidate,
             quotedUnitPrice: input.quotedUnitPrice,
             quotedCurrencyCode: input.quotedCurrencyCode,
@@ -583,9 +664,11 @@ export function createBuyDecisionService(overrides?: Partial<BuyDecisionReposito
 
           await syncTradeOpportunityCommercialState(
             {
-              listActiveByOfferId: txRepository.listActiveTradeOpportunitiesByOfferId,
+              listActiveByOfferId:
+                txRepository.listActiveTradeOpportunitiesByOfferId,
               updateTradeOpportunity: txRepository.updateTradeOpportunity,
-              createTradeOpportunityEvent: txRepository.createTradeOpportunityEvent,
+              createTradeOpportunityEvent:
+                txRepository.createTradeOpportunityEvent,
             },
             {
               emailDerivedOfferId: input.emailDerivedOfferId,
@@ -599,9 +682,11 @@ export function createBuyDecisionService(overrides?: Partial<BuyDecisionReposito
           return created;
         }
 
-        const approvalNote = input.approvalNote?.trim() || existing.approvalNote;
+        const approvalNote =
+          input.approvalNote?.trim() || existing.approvalNote;
         const updated = await txRepository.update(existing.id, {
-          offerWorkflowItemId: input.offerWorkflowItemId ?? existing.offerWorkflowItemId,
+          offerWorkflowItemId:
+            input.offerWorkflowItemId ?? existing.offerWorkflowItemId,
           inboundEmailId: input.inboundEmailId ?? existing.inboundEmailId,
           supplierId: input.supplierId,
           productId: input.productId,
@@ -622,7 +707,8 @@ export function createBuyDecisionService(overrides?: Partial<BuyDecisionReposito
           approvedByType: actor.actorType,
           approvedByIdentifier: actor.actorIdentifier,
           approvedAt: existing.approvedAt ?? new Date(),
-          metadata: input.metadata === undefined ? existing.metadata : input.metadata,
+          metadata:
+            input.metadata === undefined ? existing.metadata : input.metadata,
         });
 
         if (existing.approvalStatus !== 'APPROVED') {
@@ -645,9 +731,11 @@ export function createBuyDecisionService(overrides?: Partial<BuyDecisionReposito
 
         await syncTradeOpportunityCommercialState(
           {
-            listActiveByOfferId: txRepository.listActiveTradeOpportunitiesByOfferId,
+            listActiveByOfferId:
+              txRepository.listActiveTradeOpportunitiesByOfferId,
             updateTradeOpportunity: txRepository.updateTradeOpportunity,
-            createTradeOpportunityEvent: txRepository.createTradeOpportunityEvent,
+            createTradeOpportunityEvent:
+              txRepository.createTradeOpportunityEvent,
           },
           {
             emailDerivedOfferId: input.emailDerivedOfferId,
@@ -680,7 +768,9 @@ export function createBuyDecisionService(overrides?: Partial<BuyDecisionReposito
         const nextApprovalStatus: BuyDecisionApprovalStatus =
           existing.orderStatus === 'NOT_ORDERED' ? 'REJECTED' : 'CANCELLED';
         const nextOrderStatus: BuyDecisionOrderStatus =
-          existing.orderStatus === 'NOT_ORDERED' ? existing.orderStatus : 'CANCELLED';
+          existing.orderStatus === 'NOT_ORDERED'
+            ? existing.orderStatus
+            : 'CANCELLED';
 
         if (
           existing.approvalStatus === nextApprovalStatus &&
@@ -712,7 +802,8 @@ export function createBuyDecisionService(overrides?: Partial<BuyDecisionReposito
           nextOrderStatus === 'CANCELLED'
             ? await upsertExecutionForBuyDecision(
                 {
-                  findByBuyDecisionId: txRepository.findExecutionByBuyDecisionId,
+                  findByBuyDecisionId:
+                    txRepository.findExecutionByBuyDecisionId,
                   create: txRepository.createExecution,
                   update: txRepository.updateExecution,
                   createEvent: txRepository.createExecutionEvent,
@@ -725,13 +816,15 @@ export function createBuyDecisionService(overrides?: Partial<BuyDecisionReposito
                   fulfillmentStatus: 'CANCELLED',
                 },
               )
-            : updated.execution ?? null;
+            : (updated.execution ?? null);
 
         await syncTradeOpportunityCommercialState(
           {
-            listActiveByOfferId: txRepository.listActiveTradeOpportunitiesByOfferId,
+            listActiveByOfferId:
+              txRepository.listActiveTradeOpportunitiesByOfferId,
             updateTradeOpportunity: txRepository.updateTradeOpportunity,
-            createTradeOpportunityEvent: txRepository.createTradeOpportunityEvent,
+            createTradeOpportunityEvent:
+              txRepository.createTradeOpportunityEvent,
           },
           {
             emailDerivedOfferId,
@@ -783,7 +876,7 @@ export function createBuyDecisionService(overrides?: Partial<BuyDecisionReposito
           input.orderStatus === 'ORDERED' ||
           input.orderStatus === 'PARTIALLY_FULFILLED' ||
           input.orderStatus === 'FULFILLED'
-            ? existing.orderedAt ?? input.orderPlacedAt ?? new Date()
+            ? (existing.orderedAt ?? input.orderPlacedAt ?? new Date())
             : existing.orderedAt;
 
         if (
@@ -851,9 +944,11 @@ export function createBuyDecisionService(overrides?: Partial<BuyDecisionReposito
 
         await syncTradeOpportunityCommercialState(
           {
-            listActiveByOfferId: txRepository.listActiveTradeOpportunitiesByOfferId,
+            listActiveByOfferId:
+              txRepository.listActiveTradeOpportunitiesByOfferId,
             updateTradeOpportunity: txRepository.updateTradeOpportunity,
-            createTradeOpportunityEvent: txRepository.createTradeOpportunityEvent,
+            createTradeOpportunityEvent:
+              txRepository.createTradeOpportunityEvent,
           },
           {
             emailDerivedOfferId: existing.emailDerivedOfferId,
@@ -872,7 +967,10 @@ export function createBuyDecisionService(overrides?: Partial<BuyDecisionReposito
 
     async updateReference(
       buyDecisionId: string,
-      input: BuyDecisionActor & { externalOrderReference: string | null; note?: string | null },
+      input: BuyDecisionActor & {
+        externalOrderReference: string | null;
+        note?: string | null;
+      },
     ): Promise<EnrichedBuyDecisionRecord> {
       const actor = normalizeActor(input);
 
@@ -883,7 +981,10 @@ export function createBuyDecisionService(overrides?: Partial<BuyDecisionReposito
         }
 
         const nextReference = input.externalOrderReference?.trim() || null;
-        if (existing.externalOrderReference === nextReference && !input.note?.trim()) {
+        if (
+          existing.externalOrderReference === nextReference &&
+          !input.note?.trim()
+        ) {
           return existing;
         }
 

@@ -11,7 +11,10 @@ import type {
 import { db } from '../lib/db';
 import { requireFound } from '../http/errors';
 import { parseRegulatoryUpdate, REGULATORY_PARSER_VERSION } from './parser';
-import { matchRegulatoryProductText, type RegulatoryMatchOutcome } from './matching';
+import {
+  matchRegulatoryProductText,
+  type RegulatoryMatchOutcome,
+} from './matching';
 import {
   buildRegulatoryAlertMessage,
   buildRegulatoryAlertTitle,
@@ -39,9 +42,15 @@ export type RegulatoryReviewQueueItem = Awaited<
   ReturnType<typeof listOpenRegulatoryReviewQueueItems>
 >[number];
 
-const OPEN_REGULATORY_REVIEW_STATUSES: RegulatoryReviewStatus[] = ['NEW', 'REVIEWING'];
+const OPEN_REGULATORY_REVIEW_STATUSES: RegulatoryReviewStatus[] = [
+  'NEW',
+  'REVIEWING',
+];
 
-function normalizeActor(actor?: RegulatoryActor): { actorType: string; actorIdentifier: string | null } {
+function normalizeActor(actor?: RegulatoryActor): {
+  actorType: string;
+  actorIdentifier: string | null;
+} {
   return {
     actorType: actor?.actorType?.trim() || 'SYSTEM',
     actorIdentifier: actor?.actorIdentifier?.trim() || null,
@@ -51,7 +60,14 @@ function normalizeActor(actor?: RegulatoryActor): { actorType: string; actorIden
 function hashContent(input: RegulatoryUpdateInput): string {
   return crypto
     .createHash('sha256')
-    .update([input.sourceUrl, input.title, input.publishedAt?.toISOString() ?? '', input.rawText].join('\n'))
+    .update(
+      [
+        input.sourceUrl,
+        input.title,
+        input.publishedAt?.toISOString() ?? '',
+        input.rawText,
+      ].join('\n'),
+    )
     .digest('hex');
 }
 
@@ -68,13 +84,19 @@ function getEvidenceSnippets(evidence: unknown): string[] {
     return [];
   }
 
-  const snippets = (evidence as { evidenceSnippets?: unknown }).evidenceSnippets;
+  const snippets = (evidence as { evidenceSnippets?: unknown })
+    .evidenceSnippets;
   return Array.isArray(snippets)
-    ? snippets.filter((snippet): snippet is string => typeof snippet === 'string' && snippet.trim().length > 0)
+    ? snippets.filter(
+        (snippet): snippet is string =>
+          typeof snippet === 'string' && snippet.trim().length > 0,
+      )
     : [];
 }
 
-function priorityFromSeverity(severity: RegulatorySeverity): RegulatorySeverity {
+function priorityFromSeverity(
+  severity: RegulatorySeverity,
+): RegulatorySeverity {
   return severity;
 }
 
@@ -241,7 +263,10 @@ export function previewRegulatoryIngest(input: RegulatoryUpdateInput) {
   };
 }
 
-export async function ingestRegulatoryUpdate(input: RegulatoryUpdateInput, actor?: RegulatoryActor) {
+export async function ingestRegulatoryUpdate(
+  input: RegulatoryUpdateInput,
+  actor?: RegulatoryActor,
+) {
   const contentHash = hashContent(input);
   const update = await db.regulatoryUpdate.upsert({
     where: {
@@ -282,7 +307,10 @@ export async function ingestRegulatoryUpdate(input: RegulatoryUpdateInput, actor
   return update;
 }
 
-export async function parseStoredRegulatoryUpdate(updateId: string, actor?: RegulatoryActor) {
+export async function parseStoredRegulatoryUpdate(
+  updateId: string,
+  actor?: RegulatoryActor,
+) {
   const update = requireFound(
     await db.regulatoryUpdate.findUnique({ where: { id: updateId } }),
     'Regulatory update not found.',
@@ -322,7 +350,10 @@ export async function parseStoredRegulatoryUpdate(updateId: string, actor?: Regu
   return signal;
 }
 
-export async function matchRegulatorySignal(signalId: string, actor?: RegulatoryActor) {
+export async function matchRegulatorySignal(
+  signalId: string,
+  actor?: RegulatoryActor,
+) {
   const signal = requireFound(
     await db.regulatorySignal.findUnique({
       where: { id: signalId },
@@ -338,7 +369,8 @@ export async function matchRegulatorySignal(signalId: string, actor?: Regulatory
     const reviewItem = await createReviewItemForMatch(db, {
       signalId: signal.id,
       severity: signal.severity,
-      reason: 'No affected product text was parsed. Requires compliance review.',
+      reason:
+        'No affected product text was parsed. Requires compliance review.',
     });
 
     await createActionLog(db, {
@@ -358,7 +390,10 @@ export async function matchRegulatorySignal(signalId: string, actor?: Regulatory
     };
   }
 
-  const matchOutcome = await matchRegulatoryProductText(buildProductMatchRepository(db), productText);
+  const matchOutcome = await matchRegulatoryProductText(
+    buildProductMatchRepository(db),
+    productText,
+  );
   const match = await db.regulatoryProductMatch.create({
     data: {
       regulatorySignalId: signal.id,
@@ -381,7 +416,11 @@ export async function matchRegulatorySignal(signalId: string, actor?: Regulatory
     metadata: matchOutcome.evidence,
   });
 
-  if (matchOutcome.status === 'CONFIDENT' && match.productId && signal.confidence >= 70) {
+  if (
+    matchOutcome.status === 'CONFIDENT' &&
+    match.productId &&
+    signal.confidence >= 70
+  ) {
     const alert = await createRegulatoryAlertForMatch(db, match, matchOutcome);
 
     await createActionLog(db, {
@@ -501,7 +540,9 @@ export async function getRegulatorySignal(signalId: string) {
   });
 }
 
-export async function listRegulatoryAlerts(filters?: { status?: RegulatoryAlertStatus }) {
+export async function listRegulatoryAlerts(filters?: {
+  status?: RegulatoryAlertStatus;
+}) {
   return db.regulatoryAlert.findMany({
     where: filters?.status ? { status: filters.status } : undefined,
     orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
@@ -535,7 +576,10 @@ export async function getRegulatoryAlert(alertId: string) {
 }
 
 export async function previewRegulatoryAlertMessage(alertId: string) {
-  const alert = requireFound(await getRegulatoryAlert(alertId), 'Regulatory alert not found.');
+  const alert = requireFound(
+    await getRegulatoryAlert(alertId),
+    'Regulatory alert not found.',
+  );
 
   return {
     alertId: alert.id,
@@ -552,7 +596,10 @@ export async function updateRegulatoryAlertStatus(
     note?: string | null;
   },
 ) {
-  const existing = requireFound(await db.regulatoryAlert.findUnique({ where: { id: input.alertId } }), 'Regulatory alert not found.');
+  const existing = requireFound(
+    await db.regulatoryAlert.findUnique({ where: { id: input.alertId } }),
+    'Regulatory alert not found.',
+  );
   const updated = await db.regulatoryAlert.update({
     where: { id: input.alertId },
     data: {
@@ -581,7 +628,9 @@ export async function updateRegulatoryAlertStatus(
   return updated;
 }
 
-export async function listRegulatoryReviewItems(filters?: { status?: RegulatoryReviewStatus }) {
+export async function listRegulatoryReviewItems(filters?: {
+  status?: RegulatoryReviewStatus;
+}) {
   return db.regulatoryReviewItem.findMany({
     where: filters?.status
       ? { status: filters.status }
@@ -630,7 +679,9 @@ export async function updateRegulatoryReviewItem(
   },
 ) {
   const existing = requireFound(
-    await db.regulatoryReviewItem.findUnique({ where: { id: input.reviewItemId } }),
+    await db.regulatoryReviewItem.findUnique({
+      where: { id: input.reviewItemId },
+    }),
     'Regulatory review item not found.',
   );
   const nextStatus = input.status ?? existing.status;
@@ -639,8 +690,13 @@ export async function updateRegulatoryReviewItem(
     data: {
       status: nextStatus,
       latestNote: input.note?.trim() || existing.latestNote,
-      assigneeLabel: input.assigneeLabel === undefined ? existing.assigneeLabel : input.assigneeLabel,
-      completedAt: ['ACTIONED', 'IGNORED', 'FALSE_MATCH'].includes(nextStatus) ? new Date() : null,
+      assigneeLabel:
+        input.assigneeLabel === undefined
+          ? existing.assigneeLabel
+          : input.assigneeLabel,
+      completedAt: ['ACTIONED', 'IGNORED', 'FALSE_MATCH'].includes(nextStatus)
+        ? new Date()
+        : null,
     },
   });
   const actionType =

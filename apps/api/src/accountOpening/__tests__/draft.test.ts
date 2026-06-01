@@ -36,7 +36,7 @@ test('completion draft uses master profile and reviewer responses while blocking
     (field) => field.key === 'responsiblePerson',
   );
 
-  assert.equal(draft.profileVersion, '2026-05-15');
+  assert.equal(draft.profileVersion, '2026-05-19');
   assert.equal(draft.status, 'BLOCKED');
   assert.equal(draft.overallConfidence, 'BLOCKED');
   assert.equal(draft.summary.safeToAutoFill, false);
@@ -50,7 +50,7 @@ test('completion draft uses master profile and reviewer responses while blocking
   assert.doesNotMatch(draftText, /12-34-56/);
 });
 
-test('completion draft keeps unresolved master profile placeholders review-required', () => {
+test('completion draft uses populated master profile values while keeping unresolved placeholders review-required', () => {
   const draft = buildAccountOpeningCompletionDraft({
     missingInfoResponses: {},
     riskFlags: [],
@@ -66,10 +66,16 @@ test('completion draft keeps unresolved master profile placeholders review-requi
   const registeredAddress = draft.fields.find(
     (field) => field.key === 'registeredAddress',
   );
+  const website = draft.fields.find((field) => field.key === 'website');
 
-  assert.equal(companyNumber?.valueSource, 'SYSTEM_PLACEHOLDER');
-  assert.equal(companyNumber?.requiresReview, true);
-  assert.equal(registeredAddress?.requiresReview, true);
+  assert.equal(companyNumber?.proposedValue, '[redacted bank account number]');
+  assert.equal(companyNumber?.valueSource, 'AMBE_MASTER_PROFILE');
+  assert.equal(companyNumber?.confidence, 'HIGH');
+  assert.equal(companyNumber?.requiresReview, false);
+  assert.equal(registeredAddress?.valueSource, 'AMBE_MASTER_PROFILE');
+  assert.equal(registeredAddress?.requiresReview, false);
+  assert.equal(website?.valueSource, 'SYSTEM_PLACEHOLDER');
+  assert.equal(website?.requiresReview, true);
   assert.equal(draft.summary.safeToAutoFill, false);
 });
 
@@ -110,4 +116,68 @@ test('guarantee indemnity director-only and RP GDP WDA fields require review or 
   assert.equal(gphc?.riskLevel, 'HIGH');
   assert.equal(responsiblePerson?.requiresReview, true);
   assert.equal(responsiblePerson?.riskLevel, 'HIGH');
+});
+
+test('reviewer-supplied sensitive account-opening values cannot become auto-fillable', () => {
+  const draft = buildAccountOpeningCompletionDraft({
+    missingInfoResponses: {
+      directDebitRequested:
+        'Please use account number 12345678 and sort code 12-34-56 for Direct Debit.',
+      gphcPremisesNumber: '9012345',
+      cqcRegistration: 'CQC-12345',
+    },
+    riskFlags: [
+      'Direct Debit mandate',
+      'bank authority signature',
+      'Guarantee and indemnity',
+      'Director-only signature',
+      'RP/GDP/WDA regulatory declaration',
+    ],
+    detectedRoles: [
+      'Director-only signature',
+      'Responsible Person',
+      'GDP',
+      'WDA',
+    ],
+    detectedNames: ['Sandeep Patel'],
+    missingFields: [],
+    sourceEvidence: [
+      {
+        sourceType: 'ATTACHMENT',
+        sourceLabel: 'supplier-form.pdf',
+        safeSnippet:
+          'Direct Debit, bank authority, director-only guarantee, indemnity, RP GDP WDA and signature sections.',
+      },
+    ],
+    now: new Date('2026-05-15T10:00:00.000Z'),
+  });
+  const draftText = JSON.stringify(draft);
+  const blockedKeys = [
+    'directDebitOrBankAuthority',
+    'bankDetails',
+    'signature',
+    'guaranteeIndemnityDirectorOnly',
+  ];
+
+  for (const key of blockedKeys) {
+    const field = draft.fields.find((candidate) => candidate.key === key);
+    assert.equal(field?.confidence, 'BLOCKED');
+    assert.equal(field?.riskLevel, 'BLOCKED');
+    assert.equal(field?.requiresReview, true);
+  }
+
+  for (const key of [
+    'gphcPremisesNumber',
+    'responsiblePerson',
+    'wholesaleDealerAuthorisation',
+    'cqcRegistration',
+  ]) {
+    const field = draft.fields.find((candidate) => candidate.key === key);
+    assert.equal(field?.requiresReview, true);
+    assert.notEqual(field?.riskLevel, 'LOW');
+  }
+
+  assert.equal(draft.summary.safeToAutoFill, false);
+  assert.doesNotMatch(draftText, /12345678/);
+  assert.doesNotMatch(draftText, /12-34-56/);
 });

@@ -20,20 +20,33 @@ type PageProps = {
 
 type OpportunityStatusFilter = 'OPEN' | 'REVIEWED' | 'ACTIONED' | 'DISMISSED';
 
-const STATUS_FILTER_OPTIONS: OpportunityStatusFilter[] = ['OPEN', 'REVIEWED', 'ACTIONED', 'DISMISSED'];
-const TYPE_FILTER_OPTIONS: Array<{ label: string; value: OpportunityListType | null }> = [
+const STATUS_FILTER_OPTIONS: OpportunityStatusFilter[] = [
+  'OPEN',
+  'REVIEWED',
+  'ACTIONED',
+  'DISMISSED',
+];
+const TYPE_FILTER_OPTIONS: Array<{
+  label: string;
+  value: OpportunityListType | null;
+}> = [
   { label: 'All', value: null },
   { label: 'BUY', value: 'BUY' },
   { label: 'PUSH', value: 'PUSH' },
   { label: 'PRICE_ALERT', value: 'PRICE_ALERT' },
 ];
 
-function formatPrice(value: number | null | undefined, currencyCode?: string | null) {
+function formatPrice(
+  value: number | null | undefined,
+  currencyCode?: string | null,
+) {
   if (value === null || value === undefined) {
     return null;
   }
 
-  return currencyCode?.trim() ? `${currencyCode.trim().toUpperCase()} ${value.toFixed(2)}` : value.toFixed(2);
+  return currencyCode?.trim()
+    ? `${currencyCode.trim().toUpperCase()} ${value.toFixed(2)}`
+    : value.toFixed(2);
 }
 
 function formatPct(value: number | null | undefined) {
@@ -49,12 +62,19 @@ function buildOpportunitySignals(item: OpportunityListItem): string[] {
   const commercialContext = item.metadata?.commercialContext;
   const currencyCode = commercialContext?.supplierCurrencyCode ?? null;
   const latestSupplierBuyPrice =
-    commercialContext?.latestSupplierBuyPrice ?? metrics?.latestSupplierBuyPrice ?? null;
-  const averageSalePrice = commercialContext?.averageSalePrice ?? metrics?.averageSalePrice ?? null;
+    commercialContext?.latestSupplierBuyPrice ??
+    metrics?.latestSupplierBuyPrice ??
+    null;
+  const averageSalePrice =
+    commercialContext?.averageSalePrice ?? metrics?.averageSalePrice ?? null;
   const estimatedMarginPct =
-    commercialContext?.estimatedMarginPct ?? metrics?.estimatedMarginPct ?? null;
+    commercialContext?.estimatedMarginPct ??
+    metrics?.estimatedMarginPct ??
+    null;
   const priceDeltaVsMarketPct =
-    commercialContext?.priceDeltaVsMarketPct ?? metrics?.priceDeltaVsMarketPct ?? null;
+    commercialContext?.priceDeltaVsMarketPct ??
+    metrics?.priceDeltaVsMarketPct ??
+    null;
   const simulatedMarketPrice = commercialContext?.simulatedMarketPrice ?? null;
   const recentSalesUnits30d = metrics?.recentSalesUnits30d ?? null;
   const currentStockQty = metrics?.currentStockQty ?? null;
@@ -69,8 +89,12 @@ function buildOpportunitySignals(item: OpportunityListItem): string[] {
     averageSalePrice !== null
       ? `Average sale price ${formatPrice(averageSalePrice, currencyCode)}`
       : null,
-    estimatedMarginPct !== null ? `Estimated margin ${formatPct(estimatedMarginPct)}` : null,
-    recentSalesUnits30d !== null ? `Recent sales ${recentSalesUnits30d} units in 30d` : null,
+    estimatedMarginPct !== null
+      ? `Estimated margin ${formatPct(estimatedMarginPct)}`
+      : null,
+    recentSalesUnits30d !== null
+      ? `Recent sales ${recentSalesUnits30d} units in 30d`
+      : null,
     currentStockQty !== null ? `Current stock ${currentStockQty} units` : null,
   ];
 
@@ -93,7 +117,9 @@ function formatDateTime(value: string | null | undefined) {
   }).format(parsed);
 }
 
-function normalizeStatusFilter(value: string | undefined): OpportunityStatusFilter {
+function normalizeStatusFilter(
+  value: string | undefined,
+): OpportunityStatusFilter {
   switch (value) {
     case 'REVIEWED':
     case 'ACTIONED':
@@ -104,7 +130,9 @@ function normalizeStatusFilter(value: string | undefined): OpportunityStatusFilt
   }
 }
 
-function normalizeTypeFilter(value: string | undefined): OpportunityListType | null {
+function normalizeTypeFilter(
+  value: string | undefined,
+): OpportunityListType | null {
   switch (value) {
     case 'BUY':
     case 'PUSH':
@@ -115,7 +143,10 @@ function normalizeTypeFilter(value: string | undefined): OpportunityListType | n
   }
 }
 
-function buildOpportunitiesHref(status: OpportunityStatusFilter, type: OpportunityListType | null) {
+function buildOpportunitiesHref(
+  status: OpportunityStatusFilter,
+  type: OpportunityListType | null,
+) {
   const searchParams = new URLSearchParams();
   if (status !== 'OPEN') {
     searchParams.set('status', status);
@@ -152,8 +183,8 @@ export default async function OpportunitiesPage({ searchParams }: PageProps) {
               <p className="eyebrow">Opportunities</p>
               <h2 className="title">Opportunity Workflow</h2>
               <p className="copy">
-                A bounded operational view of open and triaged signals using the same opportunity
-                engine and status flow as the dashboard.
+                A bounded operational view of open and triaged signals using the
+                same opportunity engine and status flow as the dashboard.
               </p>
             </div>
             <Link className="button" href="/dashboard">
@@ -167,7 +198,9 @@ export default async function OpportunitiesPage({ searchParams }: PageProps) {
             </p>
           ) : null}
           {query?.error ? (
-            <p className="dashboard-inline-message dashboard-inline-message-error">{query.error}</p>
+            <p className="dashboard-inline-message dashboard-inline-message-error">
+              {query.error}
+            </p>
           ) : null}
 
           <div className="dashboard-filter-row">
@@ -209,8 +242,12 @@ export default async function OpportunitiesPage({ searchParams }: PageProps) {
           <section className="panel dashboard-panel">
             <h3 className="section-title">No Matching Opportunities</h3>
             <p className="copy">
-              There are no {selectedStatus.toLowerCase().replace('_', ' ')} opportunities
-              {selectedType ? ` for ${selectedType.replace('_', ' ')}` : ''} right now.
+              There are no {selectedStatus.toLowerCase().replace('_', ' ')}{' '}
+              opportunities
+              {selectedType
+                ? ` for ${selectedType.replace('_', ' ')}`
+                : ''}{' '}
+              right now.
             </p>
           </section>
         ) : (
@@ -223,10 +260,13 @@ export default async function OpportunitiesPage({ searchParams }: PageProps) {
                 </h3>
                 <p className="copy">
                   {opportunities.length} opportunity
-                  {opportunities.length === 1 ? '' : 'ies'} in the current filter.
+                  {opportunities.length === 1 ? '' : 'ies'} in the current
+                  filter.
                 </p>
               </div>
-              <span className="pill pill-neutral">{opportunities.length} items</span>
+              <span className="pill pill-neutral">
+                {opportunities.length} items
+              </span>
             </div>
 
             <div className="dashboard-opportunity-list">
@@ -234,20 +274,26 @@ export default async function OpportunitiesPage({ searchParams }: PageProps) {
                 <article className="dashboard-opportunity-card" key={item.id}>
                   <div className="dashboard-opportunity-top">
                     <div>
-                      <p className="dashboard-opportunity-title">{item.title}</p>
+                      <p className="dashboard-opportunity-title">
+                        {item.title}
+                      </p>
                       <p className="dashboard-opportunity-meta">
                         {item.product?.name ?? 'Unknown product'}
                         {item.supplier?.name ? ` | ${item.supplier.name}` : ''}
                       </p>
                     </div>
                     <div className="dashboard-opportunity-badges">
-                      <span className="pill pill-neutral">{item.type.replace('_', ' ')}</span>
+                      <span className="pill pill-neutral">
+                        {item.type.replace('_', ' ')}
+                      </span>
                       <span className="pill pill-neutral">{item.status}</span>
                       <span className="pill pill-high">Score {item.score}</span>
                     </div>
                   </div>
 
-                  <p className="dashboard-opportunity-copy">{item.description}</p>
+                  <p className="dashboard-opportunity-copy">
+                    {item.description}
+                  </p>
                   <p className="dashboard-triage-meta">
                     Updated {formatDateTime(item.updatedAt) ?? 'recently'}
                   </p>
@@ -259,22 +305,47 @@ export default async function OpportunitiesPage({ searchParams }: PageProps) {
                   </ul>
 
                   {canShowTriageActions(selectedStatus) ? (
-                    <form action={submitOpportunityTriageAction} className="dashboard-opportunity-actions">
-                      <input name="opportunityId" type="hidden" value={item.id} />
+                    <form
+                      action={submitOpportunityTriageAction}
+                      className="dashboard-opportunity-actions"
+                    >
+                      <input
+                        name="opportunityId"
+                        type="hidden"
+                        value={item.id}
+                      />
                       <input
                         name="redirectTo"
                         type="hidden"
-                        value={buildOpportunitiesHref(selectedStatus, selectedType)}
+                        value={buildOpportunitiesHref(
+                          selectedStatus,
+                          selectedType,
+                        )}
                       />
                       {selectedStatus === 'OPEN' ? (
-                        <button className="button" name="status" type="submit" value="REVIEWED">
+                        <button
+                          className="button"
+                          name="status"
+                          type="submit"
+                          value="REVIEWED"
+                        >
                           Mark reviewed
                         </button>
                       ) : null}
-                      <button className="button button-primary" name="status" type="submit" value="ACTIONED">
+                      <button
+                        className="button button-primary"
+                        name="status"
+                        type="submit"
+                        value="ACTIONED"
+                      >
                         Mark actioned
                       </button>
-                      <button className="button" name="status" type="submit" value="DISMISSED">
+                      <button
+                        className="button"
+                        name="status"
+                        type="submit"
+                        value="DISMISSED"
+                      >
                         Dismiss
                       </button>
                     </form>
@@ -292,7 +363,9 @@ export default async function OpportunitiesPage({ searchParams }: PageProps) {
         <p className="eyebrow">Opportunities</p>
         <h2 className="title">Opportunity View Unavailable</h2>
         <p className="copy">
-          {error instanceof Error ? error.message : 'Failed to load opportunities.'}
+          {error instanceof Error
+            ? error.message
+            : 'Failed to load opportunities.'}
         </p>
         <div className="actions">
           <Link className="button" href="/dashboard">

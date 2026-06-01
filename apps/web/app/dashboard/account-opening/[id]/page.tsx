@@ -183,6 +183,130 @@ function readinessLabel(status: AccountOpeningReadinessStatus) {
   return 'Red';
 }
 
+function boolLabel(value: boolean) {
+  return value ? 'Yes' : 'No';
+}
+
+function FormReadinessSection({
+  readiness,
+}: {
+  readiness: AccountOpeningReadinessReport;
+}) {
+  const lifecycle = readiness.documentLifecycle;
+
+  return (
+    <section className="panel dashboard-panel">
+      <div className="dashboard-section-header">
+        <div>
+          <h3 className="section-title">Document lifecycle</h3>
+          <p className="copy review-summary-copy">
+            Metadata-only view of whether the original form can be binary-filled
+            and internally filed. This does not expose raw extracted text,
+            binary bytes, bank details, Direct Debit mandate values, signatures,
+            guarantees, or director home address.
+          </p>
+        </div>
+        <span className={readinessPillClass(readiness.status)}>
+          {readinessLabel(readiness.status)}
+        </span>
+      </div>
+
+      <dl className="duplicate-product-details">
+        <div>
+          <dt>Original forms</dt>
+          <dd>{lifecycle.originalFormCount}</dd>
+        </div>
+        <div>
+          <dt>Can attempt binary preview</dt>
+          <dd>{boolLabel(lifecycle.canAttemptBinaryPreview)}</dd>
+        </div>
+        <div>
+          <dt>Binary preview downloadable</dt>
+          <dd>{boolLabel(lifecycle.canDownloadBinaryPreview)}</dd>
+        </div>
+        <div>
+          <dt>Can approve filing</dt>
+          <dd>{boolLabel(lifecycle.canApproveCompletedUnsignedFiling)}</dd>
+        </div>
+        <div>
+          <dt>Can file completed unsigned form</dt>
+          <dd>{boolLabel(lifecycle.canFileCompletedUnsignedForm)}</dd>
+        </div>
+        <div>
+          <dt>Completed unsigned filing</dt>
+          <dd>{renderNullable(lifecycle.completedUnsignedFilingStatus)}</dd>
+        </div>
+        <div>
+          <dt>Primary blocker</dt>
+          <dd>{renderValue(lifecycle.primaryBlocker, 'None')}</dd>
+        </div>
+        <div>
+          <dt>Next action</dt>
+          <dd>{lifecycle.nextAction}</dd>
+        </div>
+      </dl>
+
+      {lifecycle.forms.length ? (
+        <div className="table-wrapper">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Form</th>
+                <th>Capture</th>
+                <th>Bytes</th>
+                <th>Type</th>
+                <th>Binary support</th>
+                <th>Preview</th>
+                <th>Filing</th>
+                <th>Next action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lifecycle.forms.map((form) => (
+                <tr key={form.originalFormId}>
+                  <td>{form.fileName}</td>
+                  <td>
+                    {form.sourceEvidenceCaptured
+                      ? form.textExtractionStatus === 'TEXT_EXTRACTED'
+                        ? `Captured, ${form.extractedTextChars ?? 0} text chars`
+                        : 'Captured, metadata only'
+                      : 'Source evidence missing'}
+                  </td>
+                  <td>
+                    {form.originalBytesRetrievable
+                      ? humanizeStatus(form.originalBytesRetrievalStatus)
+                      : 'Not retrievable'}
+                  </td>
+                  <td>{humanizeStatus(form.formType)}</td>
+                  <td>
+                    {form.fillablePdfLikely
+                      ? `Supported PDF${form.acroFieldCountKnown ? `, ${form.acroFieldCount ?? 0} fields` : ''}`
+                      : humanizeStatus(form.binaryFillSupportStatus)}
+                  </td>
+                  <td>
+                    {form.binaryPreviewDownloadable
+                      ? 'Generated and downloadable'
+                      : renderNullable(
+                          form.binaryPreviewStatus,
+                          'Not generated',
+                        )}
+                  </td>
+                  <td>{renderNullable(form.completedUnsignedFilingStatus)}</td>
+                  <td>{form.primaryBlocker ?? form.nextAction}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="alert alert-warning">
+          No original supplier form reference has been captured yet.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function ReadinessSection({
   readiness,
 }: {
@@ -206,6 +330,10 @@ function ReadinessSection({
       </div>
 
       <dl className="duplicate-product-details">
+        <div>
+          <dt>Diagnostic ID</dt>
+          <dd>{renderValue(readiness.diagnosticCorrelationId)}</dd>
+        </div>
         <div>
           <dt>Overall status</dt>
           <dd>
@@ -584,6 +712,8 @@ export default async function AccountOpeningDetailPage({
 
         <ReadinessSection readiness={readiness} />
 
+        <FormReadinessSection readiness={readiness} />
+
         <section className="panel dashboard-panel">
           <div className="dashboard-section-header">
             <div>
@@ -598,6 +728,10 @@ export default async function AccountOpeningDetailPage({
             </span>
           </div>
           <dl className="duplicate-product-details">
+            <div>
+              <dt>Diagnostic ID</dt>
+              <dd>{renderValue(item.diagnosticCorrelationId)}</dd>
+            </div>
             <div>
               <dt>Sender email</dt>
               <dd>{renderValue(item.senderEmail, 'Unknown sender')}</dd>

@@ -105,6 +105,10 @@ test('returns explainable output for incomplete names', () => {
 
   assert.equal(result.confidence, 'MEDIUM');
   assert.equal(result.formulation, 'sachet');
-  assert.ok(result.explanation.rulesApplied.includes('built canonical normalized key from base name and extracted attributes'));
+  assert.ok(
+    result.explanation.rulesApplied.includes(
+      'built canonical normalized key from base name and extracted attributes',
+    ),
+  );
   assert.equal(result.explanation.cleanedInput, 'Aspirin sachets');
 });

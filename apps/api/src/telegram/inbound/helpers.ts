@@ -2,7 +2,11 @@ import path from 'node:path';
 
 import { env } from '../../config/env';
 import type { TelegramInboundFileType } from '@prisma/client';
-import type { InboundAttachment, InboundDecision, TelegramMessage } from './types';
+import type {
+  InboundAttachment,
+  InboundDecision,
+  TelegramMessage,
+} from './types';
 
 function lower(value: string | null | undefined): string {
   return (value || '').toLowerCase();
@@ -34,7 +38,8 @@ export function isAllowedTelegramSenderForLists(
     input.telegramUserId !== null &&
     allowedUsers.length > 0 &&
     allowedUsers.includes(input.telegramUserId);
-  const chatAllowed = allowedChats.length > 0 && allowedChats.includes(input.telegramChatId);
+  const chatAllowed =
+    allowedChats.length > 0 && allowedChats.includes(input.telegramChatId);
 
   if (allowedUsers.length === 0 && allowedChats.length === 0) {
     return false;
@@ -43,7 +48,10 @@ export function isAllowedTelegramSenderForLists(
   return userAllowed || chatAllowed;
 }
 
-function detectFileType(fileName: string | null, mimeType: string | null): TelegramInboundFileType {
+function detectFileType(
+  fileName: string | null,
+  mimeType: string | null,
+): TelegramInboundFileType {
   const extension = fileName ? path.extname(fileName).toLowerCase() : '';
   const mime = lower(mimeType);
 
@@ -62,17 +70,25 @@ function detectFileType(fileName: string | null, mimeType: string | null): Teleg
     return 'PDF';
   }
 
-  if (mime.startsWith('image/') || ['.jpg', '.jpeg', '.png', '.webp'].includes(extension)) {
+  if (
+    mime.startsWith('image/') ||
+    ['.jpg', '.jpeg', '.png', '.webp'].includes(extension)
+  ) {
     return 'IMAGE';
   }
 
   return 'UNKNOWN';
 }
 
-export function extractAttachment(message: TelegramMessage): InboundAttachment | null {
+export function extractAttachment(
+  message: TelegramMessage,
+): InboundAttachment | null {
   if (message.document) {
     return {
-      fileType: detectFileType(message.document.file_name ?? null, message.document.mime_type ?? null),
+      fileType: detectFileType(
+        message.document.file_name ?? null,
+        message.document.mime_type ?? null,
+      ),
       fileName: message.document.file_name ?? null,
       mimeType: message.document.mime_type ?? null,
       telegramFileId: message.document.file_id,
@@ -86,7 +102,9 @@ export function extractAttachment(message: TelegramMessage): InboundAttachment |
       return current;
     }
 
-    return (current.file_size ?? 0) > (largest.file_size ?? 0) ? current : largest;
+    return (current.file_size ?? 0) > (largest.file_size ?? 0)
+      ? current
+      : largest;
   }, message.photo?.[0]);
 
   if (largestPhoto) {
@@ -157,7 +175,9 @@ export function inferImportDecision(input: {
   };
 }
 
-export function buildSenderDisplayName(message: TelegramMessage): string | null {
+export function buildSenderDisplayName(
+  message: TelegramMessage,
+): string | null {
   const parts = [
     message.from?.first_name?.trim(),
     message.from?.last_name?.trim(),

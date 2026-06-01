@@ -2,10 +2,17 @@ import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 
-import { getInternalAuthContext, requireInternalOperatorAccess } from '../http/auth';
+import {
+  getInternalAuthContext,
+  requireInternalOperatorAccess,
+} from '../http/auth';
 import { asyncHandler, requireFound, ValidationError } from '../http/errors';
 import { logger } from '../lib/logger';
-import { idParamSchema, optionalTrimmedStringSchema, parseRequest } from '../http/validation';
+import {
+  idParamSchema,
+  optionalTrimmedStringSchema,
+  parseRequest,
+} from '../http/validation';
 import {
   getImportBatchDetail,
   importInventory,
@@ -39,7 +46,10 @@ importsRouter.get(
   '/batches',
   requireInternalOperatorAccess,
   asyncHandler(async (request, response) => {
-    const { query } = parseRequest<unknown, z.infer<typeof listImportBatchesQuerySchema>>(request, {
+    const { query } = parseRequest<
+      unknown,
+      z.infer<typeof listImportBatchesQuerySchema>
+    >(request, {
       query: listImportBatchesQuerySchema,
     });
 
@@ -80,7 +90,11 @@ importsRouter.post(
   requireInternalOperatorAccess,
   upload.single('file'),
   asyncHandler(async (request, response) => {
-    const { body } = parseRequest<unknown, unknown, z.infer<typeof supplierPriceListBodySchema>>(request, {
+    const { body } = parseRequest<
+      unknown,
+      unknown,
+      z.infer<typeof supplierPriceListBodySchema>
+    >(request, {
       body: supplierPriceListBodySchema,
     });
     const file = requireFile(request.file);

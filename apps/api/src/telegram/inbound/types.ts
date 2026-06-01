@@ -1,4 +1,7 @@
-import type { TelegramInboundFileType, TelegramInboundProcessingStatus } from '@prisma/client';
+import type {
+  TelegramInboundFileType,
+  TelegramInboundProcessingStatus,
+} from '@prisma/client';
 
 export type TelegramUpdate = {
   update_id?: number;

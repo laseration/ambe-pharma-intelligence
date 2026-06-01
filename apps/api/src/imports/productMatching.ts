@@ -15,9 +15,15 @@ type ProductMatchingSemantics = {
 };
 
 type ProductMatchRepository = {
-  findProductByStoredCanonicalField: (storedCanonicalField: string) => Promise<Product | null>;
-  findAliasByRawName: (rawProductName: string) => Promise<(ProductAlias & { product: Product }) | null>;
-  listAliasesForCanonicalComparison: () => Promise<Array<ProductAlias & { product: Product }>>;
+  findProductByStoredCanonicalField: (
+    storedCanonicalField: string,
+  ) => Promise<Product | null>;
+  findAliasByRawName: (
+    rawProductName: string,
+  ) => Promise<(ProductAlias & { product: Product }) | null>;
+  listAliasesForCanonicalComparison: () => Promise<
+    Array<ProductAlias & { product: Product }>
+  >;
 };
 
 function buildProductMatchingSemantics(input: {
@@ -43,9 +49,11 @@ function buildProductMatchingSemantics(input: {
 
 export function canonicalizeProductAliasName(aliasName: string): string {
   const candidates = buildProductCandidates(aliasName);
-  const structuredSignalCount = [candidates.strength, candidates.formulation, candidates.packSize].filter(
-    Boolean,
-  ).length;
+  const structuredSignalCount = [
+    candidates.strength,
+    candidates.formulation,
+    candidates.packSize,
+  ].filter(Boolean).length;
 
   if (structuredSignalCount > 0 && candidates.confidence !== 'LOW') {
     return candidates.normalizedKey;
@@ -54,14 +62,17 @@ export function canonicalizeProductAliasName(aliasName: string): string {
   return aliasName.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
-export function findMatchingAliasVariant<TAlias extends { aliasName: string; productId: string }>(
+export function findMatchingAliasVariant<
+  TAlias extends { aliasName: string; productId: string },
+>(
   aliases: TAlias[],
   rawProductName: string,
 ): {
   alias: TAlias | null;
   matchType: 'EXACT_RAW_ALIAS' | 'CANONICALIZED_ALIAS' | null;
 } {
-  const exactRawAliasMatch = aliases.find((alias) => alias.aliasName === rawProductName) ?? null;
+  const exactRawAliasMatch =
+    aliases.find((alias) => alias.aliasName === rawProductName) ?? null;
 
   if (exactRawAliasMatch) {
     return {
@@ -79,7 +90,8 @@ export function findMatchingAliasVariant<TAlias extends { aliasName: string; pro
   }
 
   const canonicalizedAliasMatches = aliases.filter(
-    (alias) => canonicalizeProductAliasName(alias.aliasName) === canonicalizedRawAlias,
+    (alias) =>
+      canonicalizeProductAliasName(alias.aliasName) === canonicalizedRawAlias,
   );
 
   if (canonicalizedAliasMatches.length === 1) {
@@ -91,7 +103,8 @@ export function findMatchingAliasVariant<TAlias extends { aliasName: string; pro
 
   if (
     canonicalizedAliasMatches.length > 1 &&
-    new Set(canonicalizedAliasMatches.map((alias) => alias.productId)).size === 1
+    new Set(canonicalizedAliasMatches.map((alias) => alias.productId)).size ===
+      1
   ) {
     return {
       alias: canonicalizedAliasMatches[0] ?? null,
@@ -114,15 +127,27 @@ function determineStructuredCompatibility(
 } {
   const conflictFields: Array<'strength' | 'formulation' | 'packSize'> = [];
 
-  if (product.strength && semantics.strength && product.strength !== semantics.strength) {
+  if (
+    product.strength &&
+    semantics.strength &&
+    product.strength !== semantics.strength
+  ) {
     conflictFields.push('strength');
   }
 
-  if (product.dosageForm && semantics.formulation && product.dosageForm !== semantics.formulation) {
+  if (
+    product.dosageForm &&
+    semantics.formulation &&
+    product.dosageForm !== semantics.formulation
+  ) {
     conflictFields.push('formulation');
   }
 
-  if (product.packSize && semantics.packSize && product.packSize !== semantics.packSize) {
+  if (
+    product.packSize &&
+    semantics.packSize &&
+    product.packSize !== semantics.packSize
+  ) {
     conflictFields.push('packSize');
   }
 
@@ -140,9 +165,10 @@ export async function determineProductMatchDecision(
   },
 ): Promise<ProductMatchDecision> {
   const semantics = buildProductMatchingSemantics(input);
-  const storedCanonicalFieldMatch = await repository.findProductByStoredCanonicalField(
-    semantics.storedCanonicalField,
-  );
+  const storedCanonicalFieldMatch =
+    await repository.findProductByStoredCanonicalField(
+      semantics.storedCanonicalField,
+    );
 
   if (storedCanonicalFieldMatch) {
     return {
@@ -161,9 +187,10 @@ export async function determineProductMatchDecision(
     };
   }
 
-  const normalizedBaseNameMatch = await repository.findProductByStoredCanonicalField(
-    semantics.normalizedBaseName,
-  );
+  const normalizedBaseNameMatch =
+    await repository.findProductByStoredCanonicalField(
+      semantics.normalizedBaseName,
+    );
 
   if (normalizedBaseNameMatch) {
     const structuredCompatibility = determineStructuredCompatibility(
@@ -189,7 +216,9 @@ export async function determineProductMatchDecision(
     }
   }
 
-  const aliasMatch = await repository.findAliasByRawName(semantics.rawProductName);
+  const aliasMatch = await repository.findAliasByRawName(
+    semantics.rawProductName,
+  );
 
   if (aliasMatch) {
     return {
@@ -214,7 +243,10 @@ export async function determineProductMatchDecision(
     semantics.rawProductName,
   );
 
-  if (canonicalAliasMatch.alias && canonicalAliasMatch.matchType === 'CANONICALIZED_ALIAS') {
+  if (
+    canonicalAliasMatch.alias &&
+    canonicalAliasMatch.matchType === 'CANONICALIZED_ALIAS'
+  ) {
     return {
       outcome: 'EXISTING_ALIAS',
       matchedProductId: canonicalAliasMatch.alias.productId,

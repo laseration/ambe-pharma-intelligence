@@ -40,7 +40,11 @@ function createHarness() {
   const restoreState = (snapshot: ReturnType<typeof cloneState>) => {
     buyDecisions.splice(0, buyDecisions.length, ...snapshot.buyDecisions);
     executions.splice(0, executions.length, ...snapshot.executions);
-    executionEvents.splice(0, executionEvents.length, ...snapshot.executionEvents);
+    executionEvents.splice(
+      0,
+      executionEvents.length,
+      ...snapshot.executionEvents,
+    );
   };
 
   const repository = {
@@ -54,10 +58,12 @@ function createHarness() {
       }
     },
     async findById(buyExecutionId: string) {
-      return (executions.find((item) => item.id === buyExecutionId) ?? null) as never;
+      return (executions.find((item) => item.id === buyExecutionId) ??
+        null) as never;
     },
     async findByBuyDecisionId(buyDecisionId: string) {
-      return (executions.find((item) => item.buyDecisionId === buyDecisionId) ?? null) as never;
+      return (executions.find((item) => item.buyDecisionId === buyDecisionId) ??
+        null) as never;
     },
     async create(data: Record<string, any>) {
       const created = {
@@ -93,7 +99,8 @@ function createHarness() {
       return executions as never;
     },
     async findBuyDecisionById(buyDecisionId: string) {
-      return (buyDecisions.find((item) => item.id === buyDecisionId) ?? null) as never;
+      return (buyDecisions.find((item) => item.id === buyDecisionId) ??
+        null) as never;
     },
     async updateBuyDecision(buyDecisionId: string, data: Record<string, any>) {
       const index = buyDecisions.findIndex((item) => item.id === buyDecisionId);
@@ -117,7 +124,9 @@ function createHarness() {
   };
 }
 
-async function createOrderedExecution(harness: ReturnType<typeof createHarness>) {
+async function createOrderedExecution(
+  harness: ReturnType<typeof createHarness>,
+) {
   return upsertExecutionForBuyDecision(
     harness.repository as never,
     harness.buyDecisions[0] as BuyDecisionExecutionSnapshot,
@@ -159,7 +168,9 @@ test('recording invoice reconciles matched terms and does not duplicate events o
   assert.equal(first.summary.hasCommercialDrift, false);
   assert.equal(second.summary.reconciliationStatus, 'MATCHED');
   assert.equal(
-    harness.executionEvents.filter((event) => event.actionType === 'INVOICE_RECORDED').length,
+    harness.executionEvents.filter(
+      (event) => event.actionType === 'INVOICE_RECORDED',
+    ).length,
     1,
   );
 });

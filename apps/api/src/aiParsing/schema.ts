@@ -12,7 +12,12 @@ export type AiParsedOffer = {
   availability: string | null;
   minimumOrderQuantity: number | null;
   manufacturer: string | null;
-  sourceSegment: 'BODY_MAIN' | 'BODY_FORWARDED' | 'SIGNATURE' | 'UNKNOWN' | null;
+  sourceSegment:
+    | 'BODY_MAIN'
+    | 'BODY_FORWARDED'
+    | 'SIGNATURE'
+    | 'UNKNOWN'
+    | null;
   confidence: AiParsingConfidence;
   reason: string;
 };
@@ -92,7 +97,13 @@ export const AI_PARSER_RESPONSE_SCHEMA = {
       items: { type: 'string' },
     },
   },
-  required: ['supplierName', 'offers', 'overallConfidence', 'reviewRecommended', 'notes'],
+  required: [
+    'supplierName',
+    'offers',
+    'overallConfidence',
+    'reviewRecommended',
+    'notes',
+  ],
 } as const;
 
 function isConfidence(value: unknown): value is AiParsingConfidence {
@@ -161,7 +172,10 @@ export function validateAiParsedOfferResponse(value: unknown): {
     issues.push('AI parser output had an invalid reviewRecommended value.');
   }
 
-  if (!Array.isArray(candidate.notes) || candidate.notes.some((item) => typeof item !== 'string')) {
+  if (
+    !Array.isArray(candidate.notes) ||
+    candidate.notes.some((item) => typeof item !== 'string')
+  ) {
     issues.push('AI parser output had invalid notes.');
   }
 
@@ -181,7 +195,9 @@ export function validateAiParsedOfferResponse(value: unknown): {
     const dosageForm = normalizeNullableString(rawOffer.dosageForm);
     const packSize = normalizeNullableString(rawOffer.packSize);
     const price = normalizeNullableNumber(rawOffer.price);
-    const minimumOrderQuantity = normalizeNullableNumber(rawOffer.minimumOrderQuantity);
+    const minimumOrderQuantity = normalizeNullableNumber(
+      rawOffer.minimumOrderQuantity,
+    );
     const manufacturer = normalizeNullableString(rawOffer.manufacturer);
     const reason = normalizeNullableString(rawOffer.reason);
     const confidence = rawOffer.confidence;
@@ -216,7 +232,9 @@ export function validateAiParsedOfferResponse(value: unknown): {
     });
   });
 
-  const validOffers = normalizedOffers.filter((offer) => offer.rawLine && offer.reason);
+  const validOffers = normalizedOffers.filter(
+    (offer) => offer.rawLine && offer.reason,
+  );
 
   if (validOffers.length === 0) {
     issues.push('AI parser output did not contain any usable offers.');
@@ -227,7 +245,9 @@ export function validateAiParsedOfferResponse(value: unknown): {
   );
 
   if (populatedCommercialOffers.length === 0) {
-    issues.push('AI parser output did not contain any offers with both product text and price.');
+    issues.push(
+      'AI parser output did not contain any offers with both product text and price.',
+    );
   }
 
   if (issues.length > 0) {
@@ -245,7 +265,9 @@ export function validateAiParsedOfferResponse(value: unknown): {
       offers: validOffers,
       overallConfidence: candidate.overallConfidence as AiParsingConfidence,
       reviewRecommended: candidate.reviewRecommended as boolean,
-      notes: (candidate.notes as string[]).map((note) => note.trim()).filter(Boolean),
+      notes: (candidate.notes as string[])
+        .map((note) => note.trim())
+        .filter(Boolean),
     },
     issues: [],
   };

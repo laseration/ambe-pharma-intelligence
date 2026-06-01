@@ -33,6 +33,65 @@ Copy the example files if needed and fill in real values locally:
 
 Do not commit real secrets.
 
+### Web dashboard auth
+
+The Next.js dashboard uses a minimal internal sign-in flow for pilot use. It stores the web session in an HTTP-only cookie and protects all `/dashboard` routes.
+
+Add these to `apps/web/.env`:
+
+```bash
+WEB_AUTH_USERNAME=pilot.operator
+WEB_AUTH_PASSWORD=replace-with-local-development-password
+WEB_AUTH_ROLE=operator
+WEB_AUTH_SESSION_SECRET=replace-with-at-least-32-random-characters
+WEB_AUTH_SESSION_TTL_SECONDS=28800
+```
+
+- `WEB_AUTH_USERNAME` and `WEB_AUTH_PASSWORD`: internal dashboard credentials for the pilot operator.
+- `WEB_AUTH_ROLE`: one of `viewer`, `operator`, or `admin`. The current web flow records the role in the session and leaves room for finer-grained page/action authorization.
+- `WEB_AUTH_SESSION_SECRET`: signing secret for the HTTP-only session cookie. Use a unique high-entropy value; at least 32 characters are required.
+- `WEB_AUTH_SESSION_TTL_SECONDS`: session lifetime in seconds. Defaults to 8 hours when omitted.
+
+For local development, copy `apps/web/.env.example` to `apps/web/.env` and replace the placeholder values. In production, run the app with `NODE_ENV=production`; the session cookie is then marked `Secure`.
+
+### Setup checklist
+
+Authenticated dashboard users can open:
+
+```text
+/dashboard/setup
+```
+
+The setup page calls the read-only API endpoint:
+
+```text
+GET /api/system/readiness
+```
+
+The endpoint returns safe pilot-readiness checks for database connectivity, API internal auth, email polling, Microsoft Graph mail credentials, Microsoft storage settings, Telegram polling, OpenAI fallback configuration, and import availability. It reports booleans, counts, status labels, documentation hints, and environment variable names only. It must not return secret values, full connection strings, tokens, or Graph credentials.
+
+The API also exposes safe runtime polling status for authenticated internal callers:
+
+```text
+GET /api/system/workers
+```
+
+This returns safe status for the email and Telegram pollers: enabled/configured flags, running/in-flight state, last run timestamps, last safe error message, consecutive failures, processed/skipped/failed counters, and duplicate-skip counters where available. The API persists these snapshots in `AppSetting` so operators can still see the last known state after a restart. It does not include message bodies, tokens, connection strings, raw Graph payloads, or Telegram payloads. See [docs/operations-runbook.md](docs/operations-runbook.md) for retry and dead-letter guidance.
+
+This page does not send email, send Telegram messages, call OpenAI, write Microsoft Graph files, or mutate business data. Use it as a first-run checklist before controlled fixture imports and pilot operator testing.
+
+Operator-safe diagnostics are available at:
+
+```text
+/dashboard/setup/diagnostics
+```
+
+The diagnostics page summarizes readiness, worker status, safe last errors, and
+next checks. API errors include an `x-request-id` response header and a safe
+error payload with `message`, `code`, `requestId`, and `nextAction`. Logs redact
+tokens, connection strings, raw message bodies, and file contents by default.
+See [docs/troubleshooting.md](docs/troubleshooting.md) for support guidance.
+
 For the API and Prisma commands, environment loading works in this order:
 
 1. `apps/api/.env`
@@ -51,9 +110,77 @@ pnpm lint
 pnpm test
 ```
 
+### CI quality gates
+
+GitHub Actions runs `.github/workflows/ci.yml` on pull requests, pushes to `main`, and manual dispatch. The CI job uses Node 20 and pnpm 9.15.4, installs with `pnpm install --frozen-lockfile`, validates the Prisma schema, generates the Prisma client, then runs:
+
+```bash
+pnpm lint
+pnpm test
+pnpm --filter @ambe/api eval:extraction
+pnpm build
+```
+
+CI uses safe placeholder environment variables and a dummy local `DATABASE_URL` for Prisma validation/generation only. It does not run migrations, connect to Neon, send email, call Telegram, use Microsoft Graph, or call OpenAI.
+
+### Deployment and pilot operations
+
+Deployment setup is documented in [docs/deployment.md](docs/deployment.md).
+Pilot operating procedures, safe defaults, migrations, backups, inbox polling,
+optional integrations, and seed/demo cautions are documented in
+[docs/pilot-runbook.md](docs/pilot-runbook.md).
+
+### Pilot demo dataset
+
+Seed the safe fake commercial walkthrough dataset with:
+
+```bash
+pnpm --filter @ambe/api demo:seed-pilot
+```
+
+The command upserts deterministic fake records for supplier-email ingestion,
+review, buy decision, execution tracking, and deal visibility. It does not call
+Microsoft Graph, Telegram, OpenAI, or outbound email services. Run it only
+against a local or disposable pilot-demo database. See
+[docs/demo-pilot-walkthrough.md](docs/demo-pilot-walkthrough.md).
+
+### Extraction evaluation
+
+Run the local extraction quality evaluation with:
+
+```bash
+pnpm --filter @ambe/api eval:extraction
+```
+
+The default eval uses sanitized fixtures in `apps/api/fixtures/extraction-evals` and does not require Microsoft Graph, OpenAI, OCR, PDF parsing, a database, or network access. It reports extracted offer counts, false positives, false negatives, review-required cases, auto-promotion-eligible cases, AI-used cases, and key mismatches. The command exits non-zero when deterministic fixtures fail, so CI can run it as a regression check.
+
+See [docs/extraction-evals.md](docs/extraction-evals.md) for fixture format, optional live-AI mode, how to add sanitized cases, and recommended quality thresholds.
+
+### Commercial audit history
+
+Review, buy, execution, correction, automation-readiness, and related commercial decisions use domain event tables for audit history. The review detail screen shows combined workflow, buy decision, execution, correction, and deal history for each offer row. The deals dashboard shows recent deal event history.
+
+See [docs/audit-history.md](docs/audit-history.md) for the consolidated commercial audit-history behavior and [docs/commercial-audit-history.md](docs/commercial-audit-history.md) for the earlier coverage notes.
+
+## Product readiness
+
+See [docs/product-readiness-audit.md](docs/product-readiness-audit.md) for the current product thesis, readiness gaps, commercial pilot scope, and ordered implementation roadmap.
+
 ## Database
 
 The API uses Neon PostgreSQL with Prisma. Prisma lives in `apps/api/prisma`.
+
+### Safe Local Runtime Smoke
+
+When a disposable local PostgreSQL database is available, run the guarded API smoke harness:
+
+```bash
+pnpm --filter @ambe/api smoke:local-runtime
+```
+
+The harness refuses Neon, Supabase, AWS RDS, Azure PostgreSQL, unknown public hosts, invalid URLs, empty URLs, and local databases whose names do not clearly contain `local`, `dev`, or `test`. It also refuses live-capable OpenAI, Telegram polling, email, inbox polling, SharePoint, and OneDrive modes. It does not migrate, seed, run Prisma migrate status, start polling workers, send messages, or upload files.
+
+Full instructions are in [docs/local-runtime-smoke-runbook.md](/d:/Users/User/Desktop/ambe-pharma-intelligence/docs/local-runtime-smoke-runbook.md:1).
 
 ### Configure Neon
 
@@ -129,7 +256,7 @@ Recommended pilot path:
 6. restrict intake with `EMAIL_INBOUND_ALLOWED_SENDERS`
 7. add `EMAIL_INBOUND_SUPPLIER_MAPPINGS` for direct supplier domains or addresses where deterministic mapping is safe
 
-The poller reads unread inbox mail oldest-first, processes each message through the existing inbound email intake flow, marks successfully handled or safely skipped messages as read, and continues past one bad message instead of stopping the whole loop.
+The poller reads unread inbox mail oldest-first, processes each message through the existing inbound email intake flow, marks successfully handled, duplicate, or safely skipped malformed messages as read, and continues past one bad message instead of stopping the whole loop. If handling a valid message fails, the message is left unread for retry. Runtime status is visible in `GET /api/system/workers` and included in the email polling readiness details. Safe status snapshots are persisted in `AppSetting`; raw message bodies and Graph response bodies are not stored in worker status.
 
 ### Email Extraction Flow
 
@@ -296,6 +423,8 @@ The triage layer can mark inbound email as:
 - `POST /api/imports/sales`
 
 All upload endpoints expect `multipart/form-data` with a `file` field.
+CSV and XLSX uploads are capped at 10 MB by the API upload middleware.
+Template guidance is documented in [docs/import-templates.md](docs/import-templates.md).
 
 Supplier price list imports also accept:
 
@@ -334,10 +463,18 @@ Each import returns:
 - `summary.warnings`
 - `errors`
 
+Import batch detail is available through:
+
+- `GET /api/imports/batches`
+- `GET /api/imports/batches/:id`
+
+The detail response includes detected columns, warning categories, suggested fixes, duplicate product candidate groups, invalid-row counts, unresolved-product counts, and redacted row error samples for operator review.
+
 ### Import Behavior
 
 - CSV and XLSX are both supported.
 - Row validation is per-row, so bad rows are collected and reported without crashing the whole import.
+- Import diagnostics are stored on the batch as safe metadata. Raw failed-row previews are redacted before the web dashboard displays them.
 - Original file metadata is stored on the import batch and supplier price list records.
 - Raw product text is preserved exactly as uploaded.
 - Candidate product fields are generated for `normalizedName`, `strength`, `formulation`, and `packSize`.
@@ -779,6 +916,8 @@ Invoke-RestMethod `
 ```
 
 Polling is optional and local/dev-oriented. The webhook endpoint at `POST /api/telegram/inbound/updates` still works unchanged.
+
+Runtime status is visible in `GET /api/system/workers` and included in the Telegram readiness details. Telegram polling processes each update independently and records safe failure counters. Because Telegram `getUpdates` uses a single monotonically increasing offset, the poller advances past a failed update after logging a safe error so one bad update cannot poison the whole intake loop. Durable inbound idempotency still comes from the `telegramChatId` and `telegramMessageId` unique key. Retry and dead-letter expectations are documented in [docs/operations-runbook.md](docs/operations-runbook.md).
 
 ### Local Fixture Replay
 

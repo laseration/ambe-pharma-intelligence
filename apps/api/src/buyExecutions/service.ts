@@ -1,4 +1,5 @@
 import { db } from '../lib/db';
+import { buildCommercialAuditMetadata } from '../audit/commercialAudit';
 import { syncTradeOpportunityCommercialState } from '../deals/service';
 
 export type BuyDecisionOrderStatus =
@@ -188,9 +189,13 @@ export const buyExecutionConfig = {
 } as const;
 
 export type BuyExecutionRepository = {
-  transaction: <T>(callback: (repository: BuyExecutionRepository) => Promise<T>) => Promise<T>;
+  transaction: <T>(
+    callback: (repository: BuyExecutionRepository) => Promise<T>,
+  ) => Promise<T>;
   findById: (buyExecutionId: string) => Promise<BuyExecutionRecord | null>;
-  findByBuyDecisionId: (buyDecisionId: string) => Promise<BuyExecutionRecord | null>;
+  findByBuyDecisionId: (
+    buyDecisionId: string,
+  ) => Promise<BuyExecutionRecord | null>;
   create: (
     data: Partial<BuyExecutionRecord> &
       Pick<
@@ -204,20 +209,35 @@ export type BuyExecutionRepository = {
         | 'hasAvailabilityDrift'
       >,
   ) => Promise<BuyExecutionRecord>;
-  update: (buyExecutionId: string, data: Partial<BuyExecutionRecord>) => Promise<BuyExecutionRecord>;
-  createEvent: (data: Omit<BuyExecutionEventRecord, 'id' | 'createdAt'>) => Promise<BuyExecutionEventRecord>;
+  update: (
+    buyExecutionId: string,
+    data: Partial<BuyExecutionRecord>,
+  ) => Promise<BuyExecutionRecord>;
+  createEvent: (
+    data: Omit<BuyExecutionEventRecord, 'id' | 'createdAt'>,
+  ) => Promise<BuyExecutionEventRecord>;
   list: (filters: BuyExecutionListFilters) => Promise<BuyExecutionRecord[]>;
-  findBuyDecisionById: (buyDecisionId: string) => Promise<BuyDecisionExecutionSnapshot | null>;
+  findBuyDecisionById: (
+    buyDecisionId: string,
+  ) => Promise<BuyDecisionExecutionSnapshot | null>;
   updateBuyDecision: (
     buyDecisionId: string,
     data: Partial<BuyDecisionExecutionSnapshot>,
   ) => Promise<BuyDecisionExecutionSnapshot>;
-  listActiveTradeOpportunitiesByOfferId: (emailDerivedOfferId: string) => Promise<any[]>;
-  updateTradeOpportunity: (tradeOpportunityId: string, data: Record<string, unknown>) => Promise<any>;
+  listActiveTradeOpportunitiesByOfferId: (
+    emailDerivedOfferId: string,
+  ) => Promise<any[]>;
+  updateTradeOpportunity: (
+    tradeOpportunityId: string,
+    data: Record<string, unknown>,
+  ) => Promise<any>;
   createTradeOpportunityEvent: (data: Record<string, unknown>) => Promise<any>;
 };
 
-function normalizeActor(actor?: BuyExecutionActor): { actorType: string; actorIdentifier: string | null } {
+function normalizeActor(actor?: BuyExecutionActor): {
+  actorType: string;
+  actorIdentifier: string | null;
+} {
   return {
     actorType: actor?.actorType?.trim() || 'SYSTEM',
     actorIdentifier: actor?.actorIdentifier?.trim() || null,
@@ -233,7 +253,9 @@ function round(value: number | null, precision = 4): number | null {
   return Math.round(value * factor) / factor;
 }
 
-function normalizeCurrencyCode(value: string | null | undefined): string | null {
+function normalizeCurrencyCode(
+  value: string | null | undefined,
+): string | null {
   const normalized = value?.trim().toUpperCase() || null;
   return normalized || null;
 }
@@ -252,7 +274,12 @@ function toNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
 
-  if (typeof value === 'object' && value && 'toString' in value && typeof value.toString === 'function') {
+  if (
+    typeof value === 'object' &&
+    value &&
+    'toString' in value &&
+    typeof value.toString === 'function'
+  ) {
     const parsed = Number(value.toString());
     return Number.isFinite(parsed) ? parsed : null;
   }
@@ -260,7 +287,9 @@ function toNumber(value: unknown): number | null {
   return null;
 }
 
-function normalizeAvailabilityExpectation(value: string | null | undefined): boolean | null {
+function normalizeAvailabilityExpectation(
+  value: string | null | undefined,
+): boolean | null {
   const normalized = value?.trim().toLowerCase() || null;
   if (!normalized) {
     return null;
@@ -287,7 +316,10 @@ function normalizeAvailabilityExpectation(value: string | null | undefined): boo
   return null;
 }
 
-function calculatePriceDrift(referencePrice: number | null, actualPrice: number | null) {
+function calculatePriceDrift(
+  referencePrice: number | null,
+  actualPrice: number | null,
+) {
   if (referencePrice === null || actualPrice === null) {
     return {
       delta: null,
@@ -297,7 +329,9 @@ function calculatePriceDrift(referencePrice: number | null, actualPrice: number 
 
   const delta = round(actualPrice - referencePrice, 4);
   const deltaPct =
-    referencePrice > 0 ? round((actualPrice - referencePrice) / referencePrice, 6) : null;
+    referencePrice > 0
+      ? round((actualPrice - referencePrice) / referencePrice, 6)
+      : null;
 
   return {
     delta,
@@ -305,7 +339,10 @@ function calculatePriceDrift(referencePrice: number | null, actualPrice: number 
   };
 }
 
-function calculateQuantityVariance(expectedQuantity: number | null, actualQuantity: number | null): number | null {
+function calculateQuantityVariance(
+  expectedQuantity: number | null,
+  actualQuantity: number | null,
+): number | null {
   if (expectedQuantity === null || actualQuantity === null) {
     return null;
   }
@@ -313,7 +350,10 @@ function calculateQuantityVariance(expectedQuantity: number | null, actualQuanti
   return actualQuantity - expectedQuantity;
 }
 
-function hasQuantityDrift(expectedQuantity: number | null, actualQuantity: number | null): boolean {
+function hasQuantityDrift(
+  expectedQuantity: number | null,
+  actualQuantity: number | null,
+): boolean {
   if (expectedQuantity === null || actualQuantity === null) {
     return false;
   }
@@ -369,7 +409,9 @@ function deriveFulfillmentStatus(
   }
 
   if (input.orderConfirmedAt !== undefined) {
-    return input.orderConfirmedAt ? 'ORDER_CONFIRMED' : current?.fulfillmentStatus ?? 'NOT_STARTED';
+    return input.orderConfirmedAt
+      ? 'ORDER_CONFIRMED'
+      : (current?.fulfillmentStatus ?? 'NOT_STARTED');
   }
 
   if (
@@ -406,7 +448,10 @@ function valuesEqual(left: unknown, right: unknown): boolean {
   return false;
 }
 
-function datesEqual(left: Date | null | undefined, right: Date | null | undefined): boolean {
+function datesEqual(
+  left: Date | null | undefined,
+  right: Date | null | undefined,
+): boolean {
   return (left?.getTime() ?? null) === (right?.getTime() ?? null);
 }
 
@@ -438,19 +483,30 @@ function buildEventAction(
     return 'CREATED';
   }
 
-  if (next.fulfillmentStatus === 'CANCELLED' && previous.fulfillmentStatus !== 'CANCELLED') {
+  if (
+    next.fulfillmentStatus === 'CANCELLED' &&
+    previous.fulfillmentStatus !== 'CANCELLED'
+  ) {
     return 'CANCELLED';
   }
 
   if (
     changedFields.some((field) =>
-      ['invoiceReference', 'invoicedAt', 'invoicedCurrencyCode', 'invoicedUnitPrice'].includes(field),
+      [
+        'invoiceReference',
+        'invoicedAt',
+        'invoicedCurrencyCode',
+        'invoicedUnitPrice',
+      ].includes(field),
     )
   ) {
     return 'INVOICE_RECORDED';
   }
 
-  if (next.fulfillmentStatus === 'RECEIVED' && previous.fulfillmentStatus !== 'RECEIVED') {
+  if (
+    next.fulfillmentStatus === 'RECEIVED' &&
+    previous.fulfillmentStatus !== 'RECEIVED'
+  ) {
     return 'RECEIVED';
   }
 
@@ -509,29 +565,47 @@ export function calculateBuyExecutionReconciliation(
   const quotedUnitPrice = toNumber(buyDecision.quotedUnitPrice);
   const orderedUnitPrice = toNumber(execution.orderedUnitPrice);
   const invoicedUnitPrice = toNumber(execution.invoicedUnitPrice);
-  const quotedCurrencyCode = normalizeCurrencyCode(buyDecision.quotedCurrencyCode);
-  const orderedCurrencyCode = normalizeCurrencyCode(execution.orderedCurrencyCode);
-  const invoicedCurrencyCode = normalizeCurrencyCode(execution.invoicedCurrencyCode);
-  const orderPriceDrift = calculatePriceDrift(quotedUnitPrice, orderedUnitPrice);
-  const invoicePriceDrift = calculatePriceDrift(quotedUnitPrice, invoicedUnitPrice);
+  const quotedCurrencyCode = normalizeCurrencyCode(
+    buyDecision.quotedCurrencyCode,
+  );
+  const orderedCurrencyCode = normalizeCurrencyCode(
+    execution.orderedCurrencyCode,
+  );
+  const invoicedCurrencyCode = normalizeCurrencyCode(
+    execution.invoicedCurrencyCode,
+  );
+  const orderPriceDrift = calculatePriceDrift(
+    quotedUnitPrice,
+    orderedUnitPrice,
+  );
+  const invoicePriceDrift = calculatePriceDrift(
+    quotedUnitPrice,
+    invoicedUnitPrice,
+  );
   const quantityVariance = calculateQuantityVariance(
     buyDecision.quotedMinimumOrderQuantity ?? null,
     execution.receivedQuantity ?? execution.orderedQuantity ?? null,
   );
   const hasOrderPriceDrift =
-    Math.abs(orderPriceDrift.deltaPct ?? 0) > buyExecutionConfig.priceDriftThresholdPct;
+    Math.abs(orderPriceDrift.deltaPct ?? 0) >
+    buyExecutionConfig.priceDriftThresholdPct;
   const hasInvoicePriceDrift =
-    Math.abs(invoicePriceDrift.deltaPct ?? 0) > buyExecutionConfig.priceDriftThresholdPct;
+    Math.abs(invoicePriceDrift.deltaPct ?? 0) >
+    buyExecutionConfig.priceDriftThresholdPct;
   const hasPriceDrift = hasOrderPriceDrift || hasInvoicePriceDrift;
   const hasCurrencyMismatch =
     Boolean(quotedCurrencyCode) &&
-    ((Boolean(orderedCurrencyCode) && orderedCurrencyCode !== quotedCurrencyCode) ||
-      (Boolean(invoicedCurrencyCode) && invoicedCurrencyCode !== quotedCurrencyCode));
+    ((Boolean(orderedCurrencyCode) &&
+      orderedCurrencyCode !== quotedCurrencyCode) ||
+      (Boolean(invoicedCurrencyCode) &&
+        invoicedCurrencyCode !== quotedCurrencyCode));
   const hasQuantityDriftFlag = hasQuantityDrift(
     buyDecision.quotedMinimumOrderQuantity ?? null,
     execution.receivedQuantity ?? execution.orderedQuantity ?? null,
   );
-  const expectedAvailability = normalizeAvailabilityExpectation(buyDecision.quotedAvailability);
+  const expectedAvailability = normalizeAvailabilityExpectation(
+    buyDecision.quotedAvailability,
+  );
   const hasAvailabilityDrift =
     expectedAvailability !== null &&
     execution.confirmedAvailability !== null &&
@@ -543,19 +617,20 @@ export function calculateBuyExecutionReconciliation(
     hasCurrencyMismatch ||
     hasAvailabilityDrift;
 
-  const reconciliationStatus: BuyExecutionReconciliationStatus = !hasComparableValues
-    ? 'NOT_RECONCILED'
-    : hasCurrencyMismatch
-      ? 'CURRENCY_MISMATCH'
-      : hasPriceDrift && hasQuantityDriftFlag
-        ? 'REQUIRES_REVIEW'
-        : hasAvailabilityDrift
+  const reconciliationStatus: BuyExecutionReconciliationStatus =
+    !hasComparableValues
+      ? 'NOT_RECONCILED'
+      : hasCurrencyMismatch
+        ? 'CURRENCY_MISMATCH'
+        : hasPriceDrift && hasQuantityDriftFlag
           ? 'REQUIRES_REVIEW'
-          : hasPriceDrift
-            ? 'PRICE_DRIFT'
-            : hasQuantityDriftFlag
-              ? 'QUANTITY_DRIFT'
-              : 'MATCHED';
+          : hasAvailabilityDrift
+            ? 'REQUIRES_REVIEW'
+            : hasPriceDrift
+              ? 'PRICE_DRIFT'
+              : hasQuantityDriftFlag
+                ? 'QUANTITY_DRIFT'
+                : 'MATCHED';
 
   return {
     unitPriceDelta: invoicePriceDrift.delta ?? orderPriceDrift.delta,
@@ -615,7 +690,9 @@ export function summarizeBuyExecution(
               : execution.fulfillmentStatus === 'PARTIALLY_RECEIVED'
                 ? 'record received quantity'
                 : execution.fulfillmentStatus === 'RECEIVED' &&
-                    (!execution.invoiceReference || !execution.invoicedAt || toNumber(execution.invoicedUnitPrice) === null)
+                    (!execution.invoiceReference ||
+                      !execution.invoicedAt ||
+                      toNumber(execution.invoicedUnitPrice) === null)
                   ? 'record invoice'
                   : 'monitor';
 
@@ -638,7 +715,9 @@ function buildBuyDecisionUpdateFromExecution(
     orderStatus: mapFulfillmentStatusToOrderStatus(execution.fulfillmentStatus),
     orderedAt: execution.orderPlacedAt ?? buyDecision.orderedAt,
     externalOrderReference:
-      execution.externalOrderReference ?? buyDecision.externalOrderReference ?? null,
+      execution.externalOrderReference ??
+      buyDecision.externalOrderReference ??
+      null,
   };
 }
 
@@ -664,7 +743,29 @@ async function logExecutionEvent(
     actorType: actor.actorType,
     actorIdentifier: actor.actorIdentifier,
     note: note?.trim() || null,
-    metadata: metadata ?? null,
+    metadata: buildCommercialAuditMetadata(
+      {
+        entityType: 'BUY_EXECUTION',
+        entityId: buyExecutionId,
+        action: actionType,
+        fulfillmentStatus: {
+          previous: previousFulfillmentStatus,
+          next: newFulfillmentStatus,
+        },
+        reconciliationStatus: {
+          previous: previousReconciliationStatus,
+          next: newReconciliationStatus,
+        },
+        changedFields:
+          metadata &&
+          typeof metadata === 'object' &&
+          !Array.isArray(metadata) &&
+          Array.isArray((metadata as { changedFields?: unknown }).changedFields)
+            ? (metadata as { changedFields: string[] }).changedFields
+            : undefined,
+      },
+      metadata,
+    ),
   });
 }
 
@@ -680,52 +781,85 @@ export async function upsertExecutionForBuyDecision(
   const existing = await repository.findByBuyDecisionId(buyDecision.id);
 
   const orderedQuantity =
-    input.orderedQuantity === undefined ? existing?.orderedQuantity ?? null : input.orderedQuantity;
+    input.orderedQuantity === undefined
+      ? (existing?.orderedQuantity ?? null)
+      : input.orderedQuantity;
   const orderedUnitPrice =
-    input.orderedUnitPrice === undefined ? existing?.orderedUnitPrice ?? null : input.orderedUnitPrice;
+    input.orderedUnitPrice === undefined
+      ? (existing?.orderedUnitPrice ?? null)
+      : input.orderedUnitPrice;
   const orderedCurrencyCode =
     input.orderedCurrencyCode === undefined
-      ? existing?.orderedCurrencyCode ?? buyDecision.quotedCurrencyCode ?? null
+      ? (existing?.orderedCurrencyCode ??
+        buyDecision.quotedCurrencyCode ??
+        null)
       : normalizeCurrencyCode(input.orderedCurrencyCode);
   const orderedMinimumOrderQuantity =
     input.orderedMinimumOrderQuantity === undefined
-      ? existing?.orderedMinimumOrderQuantity ?? buyDecision.quotedMinimumOrderQuantity ?? null
+      ? (existing?.orderedMinimumOrderQuantity ??
+        buyDecision.quotedMinimumOrderQuantity ??
+        null)
       : input.orderedMinimumOrderQuantity;
   const confirmedAvailability =
     input.confirmedAvailability === undefined
-      ? existing?.confirmedAvailability ?? null
+      ? (existing?.confirmedAvailability ?? null)
       : input.confirmedAvailability;
   const externalOrderReference =
     input.externalOrderReference === undefined
-      ? existing?.externalOrderReference ?? buyDecision.externalOrderReference ?? null
+      ? (existing?.externalOrderReference ??
+        buyDecision.externalOrderReference ??
+        null)
       : input.externalOrderReference?.trim() || null;
   const orderPlacedAt =
     input.orderPlacedAt === undefined
-      ? existing?.orderPlacedAt ?? buyDecision.orderedAt ?? null
+      ? (existing?.orderPlacedAt ?? buyDecision.orderedAt ?? null)
       : input.orderPlacedAt;
   const orderConfirmedAt =
-    input.orderConfirmedAt === undefined ? existing?.orderConfirmedAt ?? null : input.orderConfirmedAt;
+    input.orderConfirmedAt === undefined
+      ? (existing?.orderConfirmedAt ?? null)
+      : input.orderConfirmedAt;
   const expectedDeliveryDate =
     input.expectedDeliveryDate === undefined
-      ? existing?.expectedDeliveryDate ?? null
+      ? (existing?.expectedDeliveryDate ?? null)
       : input.expectedDeliveryDate;
   const receivedQuantity =
-    input.receivedQuantity === undefined ? existing?.receivedQuantity ?? null : input.receivedQuantity;
-  const receivedAt = input.receivedAt === undefined ? existing?.receivedAt ?? null : input.receivedAt;
+    input.receivedQuantity === undefined
+      ? (existing?.receivedQuantity ?? null)
+      : input.receivedQuantity;
+  const receivedAt =
+    input.receivedAt === undefined
+      ? (existing?.receivedAt ?? null)
+      : input.receivedAt;
   const invoicedUnitPrice =
-    input.invoicedUnitPrice === undefined ? existing?.invoicedUnitPrice ?? null : input.invoicedUnitPrice;
+    input.invoicedUnitPrice === undefined
+      ? (existing?.invoicedUnitPrice ?? null)
+      : input.invoicedUnitPrice;
   const invoicedCurrencyCode =
     input.invoicedCurrencyCode === undefined
-      ? existing?.invoicedCurrencyCode ?? orderedCurrencyCode
+      ? (existing?.invoicedCurrencyCode ?? orderedCurrencyCode)
       : normalizeCurrencyCode(input.invoicedCurrencyCode);
   const invoiceReference =
     input.invoiceReference === undefined
-      ? existing?.invoiceReference ?? null
+      ? (existing?.invoiceReference ?? null)
       : input.invoiceReference?.trim() || null;
-  const invoicedAt = input.invoicedAt === undefined ? existing?.invoicedAt ?? null : input.invoicedAt;
-  const notes = input.notes === undefined ? existing?.notes ?? null : input.notes?.trim() || null;
-  const metadata = input.metadata === undefined ? existing?.metadata ?? null : input.metadata;
-  const fulfillmentStatus = deriveFulfillmentStatus(existing, input, orderedQuantity, receivedQuantity);
+  const invoicedAt =
+    input.invoicedAt === undefined
+      ? (existing?.invoicedAt ?? null)
+      : input.invoicedAt;
+  const notes =
+    input.notes === undefined
+      ? (existing?.notes ?? null)
+      : input.notes?.trim() || null;
+  const metadata =
+    input.metadata === undefined
+      ? (existing?.metadata ?? null)
+      : input.metadata;
+  const fulfillmentStatus = deriveFulfillmentStatus(
+    existing,
+    input,
+    orderedQuantity,
+    receivedQuantity,
+  );
   const reconciliation = calculateBuyExecutionReconciliation(buyDecision, {
     orderedQuantity,
     orderedUnitPrice,
@@ -794,7 +928,10 @@ export async function upsertExecutionForBuyDecision(
       const previousValue = existing[field as keyof typeof nextData];
 
       if (field.endsWith('At')) {
-        return !datesEqual(previousValue as Date | null | undefined, value as Date | null | undefined);
+        return !datesEqual(
+          previousValue as Date | null | undefined,
+          value as Date | null | undefined,
+        );
       }
 
       if (typeof value === 'string' || value === null) {
@@ -837,14 +974,19 @@ export async function upsertExecutionForBuyDecision(
   return updated;
 }
 
-export function createBuyExecutionRepository(client: typeof db = db, inTransaction = false): BuyExecutionRepository {
+export function createBuyExecutionRepository(
+  client: typeof db = db,
+  inTransaction = false,
+): BuyExecutionRepository {
   return {
     transaction: async (callback) => {
       if (inTransaction) {
         return callback(createBuyExecutionRepository(client, true));
       }
 
-      return db.$transaction(async (tx) => callback(createBuyExecutionRepository(tx as never, true)));
+      return db.$transaction(async (tx) =>
+        callback(createBuyExecutionRepository(tx as never, true)),
+      );
     },
     findById: async (buyExecutionId) =>
       client.buyExecution.findUnique({
@@ -1063,9 +1205,9 @@ function enrichExecution(
           hasExecution: true,
           hasCommercialDrift: Boolean(
             execution.hasPriceDrift ||
-              execution.hasQuantityDrift ||
-              execution.hasCurrencyMismatch ||
-              execution.hasAvailabilityDrift,
+            execution.hasQuantityDrift ||
+            execution.hasCurrencyMismatch ||
+            execution.hasAvailabilityDrift,
           ),
           fulfillmentStatus: execution.fulfillmentStatus,
           recommendedNextAction: 'monitor',
@@ -1085,7 +1227,9 @@ function enrichExecution(
   };
 }
 
-export function createBuyExecutionService(overrides?: Partial<BuyExecutionRepository>) {
+export function createBuyExecutionService(
+  overrides?: Partial<BuyExecutionRepository>,
+) {
   const repository: BuyExecutionRepository = {
     ...createBuyExecutionRepository(),
     ...overrides,
@@ -1112,27 +1256,42 @@ export function createBuyExecutionService(overrides?: Partial<BuyExecutionReposi
           throw new Error('Buy execution not found.');
         }
 
-        const buyDecision = await txRepository.findBuyDecisionById(existing.buyDecisionId);
+        const buyDecision = await txRepository.findBuyDecisionById(
+          existing.buyDecisionId,
+        );
         if (!buyDecision) {
           throw new Error('Linked buy decision not found.');
         }
 
-        const updatedExecution = await upsertExecutionForBuyDecision(txRepository, buyDecision, input);
-        const buyDecisionPatch = buildBuyDecisionUpdateFromExecution(buyDecision, updatedExecution);
+        const updatedExecution = await upsertExecutionForBuyDecision(
+          txRepository,
+          buyDecision,
+          input,
+        );
+        const buyDecisionPatch = buildBuyDecisionUpdateFromExecution(
+          buyDecision,
+          updatedExecution,
+        );
         const shouldUpdateBuyDecision =
           buyDecision.orderStatus !== buyDecisionPatch.orderStatus ||
-          buyDecision.externalOrderReference !== buyDecisionPatch.externalOrderReference ||
+          buyDecision.externalOrderReference !==
+            buyDecisionPatch.externalOrderReference ||
           !datesEqual(buyDecision.orderedAt, buyDecisionPatch.orderedAt);
 
         const updatedBuyDecision = shouldUpdateBuyDecision
-          ? await txRepository.updateBuyDecision(buyDecision.id, buyDecisionPatch)
+          ? await txRepository.updateBuyDecision(
+              buyDecision.id,
+              buyDecisionPatch,
+            )
           : buyDecision;
 
         await syncTradeOpportunityCommercialState(
           {
-            listActiveByOfferId: txRepository.listActiveTradeOpportunitiesByOfferId,
+            listActiveByOfferId:
+              txRepository.listActiveTradeOpportunitiesByOfferId,
             updateTradeOpportunity: txRepository.updateTradeOpportunity,
-            createTradeOpportunityEvent: txRepository.createTradeOpportunityEvent,
+            createTradeOpportunityEvent:
+              txRepository.createTradeOpportunityEvent,
           },
           {
             emailDerivedOfferId: updatedBuyDecision.emailDerivedOfferId,

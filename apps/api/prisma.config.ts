@@ -25,7 +25,10 @@ if (!process.env.DATABASE_URL?.trim() && fallbackEnvExists) {
   dotenv.config({ path: fallbackEnvPath });
 }
 
-console.log('DATABASE_URL detected:', Boolean(process.env.DATABASE_URL?.trim()));
+console.log(
+  'DATABASE_URL detected:',
+  Boolean(process.env.DATABASE_URL?.trim()),
+);
 
 if (!process.env.DATABASE_URL?.trim()) {
   console.error('DATABASE_URL is missing in Prisma config');

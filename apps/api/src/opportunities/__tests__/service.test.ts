@@ -45,7 +45,10 @@ function createOpportunity(
   };
 }
 
-function installOpportunityDbMocks(t: TestContext, opportunity: OpportunityRecord | null) {
+function installOpportunityDbMocks(
+  t: TestContext,
+  opportunity: OpportunityRecord | null,
+) {
   let currentOpportunity = opportunity;
 
   const originalFindUnique = db.opportunity.findUnique;
@@ -59,7 +62,10 @@ function installOpportunityDbMocks(t: TestContext, opportunity: OpportunityRecor
     return currentOpportunity;
   }) as typeof db.opportunity.findUnique;
 
-  db.opportunity.update = (async ({ where, data }: Prisma.OpportunityUpdateArgs) => {
+  db.opportunity.update = (async ({
+    where,
+    data,
+  }: Prisma.OpportunityUpdateArgs) => {
     if (!currentOpportunity || where.id !== currentOpportunity.id) {
       throw new Error('Opportunity not found during update.');
     }
@@ -72,7 +78,8 @@ function installOpportunityDbMocks(t: TestContext, opportunity: OpportunityRecor
     currentOpportunity = {
       ...currentOpportunity,
       status: nextStatus ?? currentOpportunity.status,
-      metadata: (data.metadata as Prisma.JsonValue) ?? currentOpportunity.metadata,
+      metadata:
+        (data.metadata as Prisma.JsonValue) ?? currentOpportunity.metadata,
       updatedAt: new Date('2026-04-24T00:00:00.000Z'),
     };
 
@@ -85,7 +92,10 @@ function installOpportunityDbMocks(t: TestContext, opportunity: OpportunityRecor
   });
 }
 
-function installOpportunityListDbMock(t: TestContext, opportunities: OpportunityRecord[]) {
+function installOpportunityListDbMock(
+  t: TestContext,
+  opportunities: OpportunityRecord[],
+) {
   const originalFindMany = db.opportunity.findMany;
 
   db.opportunity.findMany = (async (args?: Prisma.OpportunityFindManyArgs) => {
@@ -99,7 +109,9 @@ function installOpportunityListDbMock(t: TestContext, opportunities: Opportunity
     }
 
     if (Array.isArray(orderBy) && orderBy[0] && 'updatedAt' in orderBy[0]) {
-      items.sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime());
+      items.sort(
+        (left, right) => right.updatedAt.getTime() - left.updatedAt.getTime(),
+      );
     } else {
       items.sort((left, right) => {
         if (right.score !== left.score) {
@@ -131,16 +143,30 @@ test('updates opportunity status and appends triage metadata', async (t) => {
 
   assert.ok(updated);
   assert.equal(updated.status, 'REVIEWED');
-  assert.equal((updated.metadata as { metrics?: { latestSupplierBuyPrice?: number } }).metrics?.latestSupplierBuyPrice, 8.4);
-  const triage = (updated.metadata as {
-    triage?: {
-      latest?: { previousStatus?: string; newStatus?: string; actorIdentifier?: string | null; note?: string | null };
-      history?: Array<{ newStatus?: string }>;
-    };
-  }).triage;
+  assert.equal(
+    (updated.metadata as { metrics?: { latestSupplierBuyPrice?: number } })
+      .metrics?.latestSupplierBuyPrice,
+    8.4,
+  );
+  const triage = (
+    updated.metadata as {
+      triage?: {
+        latest?: {
+          previousStatus?: string;
+          newStatus?: string;
+          actorIdentifier?: string | null;
+          note?: string | null;
+        };
+        history?: Array<{ newStatus?: string }>;
+      };
+    }
+  ).triage;
   assert.equal(triage?.latest?.previousStatus, 'OPEN');
   assert.equal(triage?.latest?.newStatus, 'REVIEWED');
-  assert.equal(triage?.latest?.actorIdentifier, 'internal-operator:web-dashboard');
+  assert.equal(
+    triage?.latest?.actorIdentifier,
+    'internal-operator:web-dashboard',
+  );
   assert.equal(triage?.latest?.note, 'Reviewed from dashboard.');
   assert.equal(triage?.history?.length, 1);
 });

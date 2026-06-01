@@ -167,10 +167,13 @@ export async function publishOpportunity(opportunityId: string) {
   const contentHash = hashMessage(messageText);
 
   if (await hasUnchangedPublishedPost(opportunity.id, contentHash)) {
-    logger.info('Skipped Telegram publish because opportunity message is unchanged', {
-      opportunityId: opportunity.id,
-      type: opportunity.type,
-    });
+    logger.info(
+      'Skipped Telegram publish because opportunity message is unchanged',
+      {
+        opportunityId: opportunity.id,
+        type: opportunity.type,
+      },
+    );
 
     return {
       dryRun: isDryRun(),
@@ -209,7 +212,10 @@ export async function publishOpportunity(opportunityId: string) {
   }
 
   try {
-    const result = await sendTelegramText(env.telegramInternalChatId, messageText);
+    const result = await sendTelegramText(
+      env.telegramInternalChatId,
+      messageText,
+    );
     const post = await createTelegramPostRecord({
       opportunityId: opportunity.id,
       messageText,
@@ -235,7 +241,8 @@ export async function publishOpportunity(opportunityId: string) {
       skipped: false,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Telegram publish failed.';
+    const message =
+      error instanceof Error ? error.message : 'Telegram publish failed.';
 
     const post = await createTelegramPostRecord({
       opportunityId: opportunity.id,
@@ -306,6 +313,9 @@ export async function previewDailySummary() {
 
   return {
     dryRun: isDryRun(),
-    messageText: buildDailySummaryMessage(opportunities as OpportunityWithRelations[], new Date()),
+    messageText: buildDailySummaryMessage(
+      opportunities as OpportunityWithRelations[],
+      new Date(),
+    ),
   };
 }

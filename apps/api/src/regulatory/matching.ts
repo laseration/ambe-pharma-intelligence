@@ -5,9 +5,15 @@ import { determineProductMatchDecision } from '../imports/productMatching';
 import type { ProductCandidates, ProductMatchDecision } from '../imports/types';
 
 export type RegulatoryProductMatchRepository = {
-  findProductByStoredCanonicalField: (storedCanonicalField: string) => Promise<Product | null>;
-  findAliasByRawName: (rawProductName: string) => Promise<(ProductAlias & { product: Product }) | null>;
-  listAliasesForCanonicalComparison: () => Promise<Array<ProductAlias & { product: Product }>>;
+  findProductByStoredCanonicalField: (
+    storedCanonicalField: string,
+  ) => Promise<Product | null>;
+  findAliasByRawName: (
+    rawProductName: string,
+  ) => Promise<(ProductAlias & { product: Product }) | null>;
+  listAliasesForCanonicalComparison: () => Promise<
+    Array<ProductAlias & { product: Product }>
+  >;
   listProductsByBaseName: (baseName: string) => Promise<Product[]>;
 };
 
@@ -36,15 +42,23 @@ export type RegulatoryMatchOutcome = {
 };
 
 function hasStructuredSignal(candidates: ProductCandidates): boolean {
-  return Boolean(candidates.strength || candidates.formulation || candidates.packSize);
+  return Boolean(
+    candidates.strength || candidates.formulation || candidates.packSize,
+  );
 }
 
-function confidenceForDecision(decision: ProductMatchDecision, candidates: ProductCandidates): number {
+function confidenceForDecision(
+  decision: ProductMatchDecision,
+  candidates: ProductCandidates,
+): number {
   if (decision.reasonCode === 'EXACT_NORMALIZED_KEY_MATCH') {
     return candidates.confidence === 'HIGH' ? 95 : 85;
   }
 
-  if (decision.reasonCode === 'EXISTING_ALIAS_MATCH' && decision.aliasMatchType === 'EXACT_RAW_ALIAS') {
+  if (
+    decision.reasonCode === 'EXISTING_ALIAS_MATCH' &&
+    decision.aliasMatchType === 'EXACT_RAW_ALIAS'
+  ) {
     return 90;
   }
 
@@ -52,14 +66,20 @@ function confidenceForDecision(decision: ProductMatchDecision, candidates: Produ
     return 82;
   }
 
-  if (decision.reasonCode === 'EXACT_NORMALIZED_NAME_MATCH' && hasStructuredSignal(candidates)) {
+  if (
+    decision.reasonCode === 'EXACT_NORMALIZED_NAME_MATCH' &&
+    hasStructuredSignal(candidates)
+  ) {
     return 78;
   }
 
   return 55;
 }
 
-function isConfidentDecision(decision: ProductMatchDecision, candidates: ProductCandidates): boolean {
+function isConfidentDecision(
+  decision: ProductMatchDecision,
+  candidates: ProductCandidates,
+): boolean {
   if (!decision.matchedProductId) {
     return false;
   }
@@ -68,7 +88,10 @@ function isConfidentDecision(decision: ProductMatchDecision, candidates: Product
     return true;
   }
 
-  if (decision.reasonCode === 'EXISTING_ALIAS_MATCH' && decision.aliasMatchType === 'EXACT_RAW_ALIAS') {
+  if (
+    decision.reasonCode === 'EXISTING_ALIAS_MATCH' &&
+    decision.aliasMatchType === 'EXACT_RAW_ALIAS'
+  ) {
     return true;
   }
 
@@ -83,7 +106,10 @@ function isConfidentDecision(decision: ProductMatchDecision, candidates: Product
   return false;
 }
 
-function buildReason(decision: ProductMatchDecision, baseNameCandidateCount: number): string {
+function buildReason(
+  decision: ProductMatchDecision,
+  baseNameCandidateCount: number,
+): string {
   if (!decision.matchedProductId) {
     return 'No safe existing product match was found. Requires compliance review.';
   }
@@ -118,7 +144,9 @@ export async function matchRegulatoryProductText(
   const baseNameMatches = candidates.baseName
     ? await repository.listProductsByBaseName(candidates.baseName)
     : [];
-  const baseNameCandidateCount = new Set(baseNameMatches.map((product) => product.id)).size;
+  const baseNameCandidateCount = new Set(
+    baseNameMatches.map((product) => product.id),
+  ).size;
   const confident =
     isConfidentDecision(decision, candidates) &&
     baseNameCandidateCount <= 1 &&
@@ -127,7 +155,9 @@ export async function matchRegulatoryProductText(
 
   return {
     status: confident ? 'CONFIDENT' : 'UNCLEAR',
-    productId: confident ? decision.matchedProductId : decision.matchedProductId,
+    productId: confident
+      ? decision.matchedProductId
+      : decision.matchedProductId,
     confidence: confident ? confidence : Math.min(confidence, 65),
     reason: buildReason(decision, baseNameCandidateCount),
     candidates,

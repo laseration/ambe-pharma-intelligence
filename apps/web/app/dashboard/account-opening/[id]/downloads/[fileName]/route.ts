@@ -4,48 +4,21 @@ import {
   downloadAccountOpeningReviewExportFile,
 } from '../../../../../../lib/accountOpeningApi';
 import { requireAccountOpeningDownloadAccess } from '../../../../../../lib/accountOpeningDownloadAuth';
+import {
+  classifyAccountOpeningDownloadFileName,
+  safeAccountOpeningDownloadFileName,
+} from '../../../../../../lib/accountOpeningDownloadFiles';
 
 export const runtime = 'nodejs';
-
-const DOWNLOAD_FILE_NAMES = new Set([
-  'review-pack.json',
-  'review-pack.md',
-  'completion-draft.json',
-  'field-mapping-summary.json',
-  'unresolved-fields.json',
-  'blocked-fields.json',
-  'signing-notes.json',
-  'risk-summary.json',
-  'source-evidence.json',
-  'source-evidence.md',
-]);
-const FILL_PREVIEW_FILE_NAMES = new Set([
-  'fill-preview.json',
-  'fill-preview.md',
-  'fill-values.json',
-  'blank-fields.json',
-  'original-form-reference.json',
-]);
-const BINARY_FILL_PREVIEW_FILE_NAMES = new Set(['binary-fill-preview.pdf']);
-const ALL_DOWNLOAD_FILE_NAMES = new Set([
-  ...DOWNLOAD_FILE_NAMES,
-  ...FILL_PREVIEW_FILE_NAMES,
-  ...BINARY_FILL_PREVIEW_FILE_NAMES,
-]);
-
-function safeFileName(value: string): string {
-  return ALL_DOWNLOAD_FILE_NAMES.has(value)
-    ? value
-    : 'account-opening-review.txt';
-}
 
 export async function GET(
   request: Request,
   context: { params: Promise<{ id: string; fileName: string }> },
 ) {
   const { id, fileName } = await context.params;
+  const downloadKind = classifyAccountOpeningDownloadFileName(fileName);
 
-  if (!ALL_DOWNLOAD_FILE_NAMES.has(fileName)) {
+  if (!downloadKind) {
     return Response.json(
       { error: 'Unsupported account-opening review download file.' },
       { status: 404 },
@@ -58,17 +31,18 @@ export async function GET(
   }
 
   try {
-    const file = BINARY_FILL_PREVIEW_FILE_NAMES.has(fileName)
-      ? await downloadAccountOpeningBinaryFillPreviewFile(id, fileName)
-      : FILL_PREVIEW_FILE_NAMES.has(fileName)
-        ? await downloadAccountOpeningFillPreviewFile(id, fileName)
-        : await downloadAccountOpeningReviewExportFile(id, fileName);
+    const file =
+      downloadKind === 'binary-fill-preview'
+        ? await downloadAccountOpeningBinaryFillPreviewFile(id, fileName)
+        : downloadKind === 'fill-preview'
+          ? await downloadAccountOpeningFillPreviewFile(id, fileName)
+          : await downloadAccountOpeningReviewExportFile(id, fileName);
 
     return new Response(file.content, {
       status: 200,
       headers: {
         'content-type': file.contentType,
-        'content-disposition': `attachment; filename="${safeFileName(file.fileName)}"`,
+        'content-disposition': `attachment; filename="${safeAccountOpeningDownloadFileName(file.fileName)}"`,
         'cache-control': 'no-store',
       },
     });

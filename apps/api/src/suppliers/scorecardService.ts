@@ -81,8 +81,12 @@ export type SupplierScorecardFilters = {
 };
 
 export type SupplierScorecardRepository = {
-  listSuppliers: (filters: SupplierScorecardFilters) => Promise<SupplierWithPerformanceData[]>;
-  findSupplierById: (supplierId: string) => Promise<SupplierWithPerformanceData | null>;
+  listSuppliers: (
+    filters: SupplierScorecardFilters,
+  ) => Promise<SupplierWithPerformanceData[]>;
+  findSupplierById: (
+    supplierId: string,
+  ) => Promise<SupplierWithPerformanceData | null>;
 };
 
 function round(value: number | null, precision = 4): number | null {
@@ -103,7 +107,10 @@ function average(values: number[]): number | null {
     return null;
   }
 
-  return round(values.reduce((sum, value) => sum + value, 0) / values.length, 6);
+  return round(
+    values.reduce((sum, value) => sum + value, 0) / values.length,
+    6,
+  );
 }
 
 function maxDate(dates: Array<Date | null | undefined>): Date | null {
@@ -118,7 +125,9 @@ function maxDate(dates: Array<Date | null | undefined>): Date | null {
   return new Date(Math.max(...timestamps));
 }
 
-function defaultQualification(input: SupplierWithPerformanceData['qualification']) {
+function defaultQualification(
+  input: SupplierWithPerformanceData['qualification'],
+) {
   return {
     qualificationStatus: input?.qualificationStatus ?? 'UNKNOWN',
     trustTier: input?.trustTier ?? 'LOW',
@@ -141,11 +150,16 @@ function buildTier(score: number): SupplierScorecardTier {
   return 'RISKY';
 }
 
-function buildScorecard(supplier: SupplierWithPerformanceData): SupplierScorecardRecord {
+function buildScorecard(
+  supplier: SupplierWithPerformanceData,
+): SupplierScorecardRecord {
   const qualification = defaultQualification(supplier.qualification);
-  const approvedBuyDecisions = supplier.buyDecisions.filter((decision) => Boolean(decision.approvedAt));
-  const executions = approvedBuyDecisions
-    .flatMap((decision) => (decision.execution ? [{ decision, execution: decision.execution }] : []));
+  const approvedBuyDecisions = supplier.buyDecisions.filter((decision) =>
+    Boolean(decision.approvedAt),
+  );
+  const executions = approvedBuyDecisions.flatMap((decision) =>
+    decision.execution ? [{ decision, execution: decision.execution }] : [],
+  );
   const orderedExecutions = executions.filter(
     ({ execution }) => execution.fulfillmentStatus !== 'NOT_STARTED',
   );
@@ -158,23 +172,33 @@ function buildScorecard(supplier: SupplierWithPerformanceData): SupplierScorecar
   const reconciliationMetrics = executions.map(({ decision, execution }) =>
     calculateBuyExecutionReconciliation(decision, execution),
   );
-  const orderDriftPcts = reconciliationMetrics
-    .flatMap((metric) =>
-      metric.quoteToOrderPriceDriftPct === null ? [] : [Math.abs(metric.quoteToOrderPriceDriftPct)],
-    );
-  const invoiceDriftPcts = reconciliationMetrics
-    .flatMap((metric) =>
-      metric.quoteToInvoicePriceDriftPct === null ? [] : [Math.abs(metric.quoteToInvoicePriceDriftPct)],
-    );
-  const priceDriftIncidentCount = reconciliationMetrics.filter((metric) => metric.hasPriceDrift).length;
+  const orderDriftPcts = reconciliationMetrics.flatMap((metric) =>
+    metric.quoteToOrderPriceDriftPct === null
+      ? []
+      : [Math.abs(metric.quoteToOrderPriceDriftPct)],
+  );
+  const invoiceDriftPcts = reconciliationMetrics.flatMap((metric) =>
+    metric.quoteToInvoicePriceDriftPct === null
+      ? []
+      : [Math.abs(metric.quoteToInvoicePriceDriftPct)],
+  );
+  const priceDriftIncidentCount = reconciliationMetrics.filter(
+    (metric) => metric.hasPriceDrift,
+  ).length;
   const quantityDriftIncidentCount = reconciliationMetrics.filter(
     (metric) => metric.hasQuantityDrift,
   ).length;
-  const qualificationRiskCount = approvedBuyDecisions.filter((decision) => decision.hasQualificationRisk).length;
+  const qualificationRiskCount = approvedBuyDecisions.filter(
+    (decision) => decision.hasQualificationRisk,
+  ).length;
   const fulfillmentRate =
-    orderedExecutions.length > 0 ? round(receivedExecutions.length / orderedExecutions.length, 4) : null;
+    orderedExecutions.length > 0
+      ? round(receivedExecutions.length / orderedExecutions.length, 4)
+      : null;
   const cancellationRate =
-    orderedExecutions.length > 0 ? cancelledExecutions.length / orderedExecutions.length : 0;
+    orderedExecutions.length > 0
+      ? cancelledExecutions.length / orderedExecutions.length
+      : 0;
   const averageOrderDrift = average(orderDriftPcts);
   const averageInvoiceDrift = average(invoiceDriftPcts);
   const qualificationComponent =
@@ -208,7 +232,8 @@ function buildScorecard(supplier: SupplierWithPerformanceData): SupplierScorecar
       reviewBurdenPenalty,
   );
   const tier = buildTier(score);
-  const hasRecentDrift = priceDriftIncidentCount > 0 || quantityDriftIncidentCount > 0;
+  const hasRecentDrift =
+    priceDriftIncidentCount > 0 || quantityDriftIncidentCount > 0;
   const recommendedAction: SupplierScorecardRecord['summary']['recommendedAction'] =
     qualification.qualificationStatus === 'BLOCKED' ||
     qualification.qualificationStatus === 'RESTRICTED' ||
@@ -258,7 +283,8 @@ function buildScorecard(supplier: SupplierWithPerformanceData): SupplierScorecar
     summary: {
       recommendedAction,
       hasQualificationRisk:
-        qualification.qualificationStatus !== 'APPROVED' || qualificationRiskCount > 0,
+        qualification.qualificationStatus !== 'APPROVED' ||
+        qualificationRiskCount > 0,
       hasRecentDrift,
     },
   };
@@ -276,12 +302,11 @@ export function createSupplierScorecardRepository(
             : filters.supplierIds?.length
               ? { in: filters.supplierIds }
               : undefined,
-          qualification:
-            filters.qualificationStatus
-              ? {
-                  qualificationStatus: filters.qualificationStatus,
-                }
-              : undefined,
+          qualification: filters.qualificationStatus
+            ? {
+                qualificationStatus: filters.qualificationStatus,
+              }
+            : undefined,
         },
         include: {
           qualification: true,
@@ -317,21 +342,29 @@ export function createSupplierScorecardRepository(
   };
 }
 
-export function createSupplierScorecardService(overrides?: Partial<SupplierScorecardRepository>) {
+export function createSupplierScorecardService(
+  overrides?: Partial<SupplierScorecardRepository>,
+) {
   const repository: SupplierScorecardRepository = {
     ...createSupplierScorecardRepository(),
     ...overrides,
   };
 
   return {
-    async listScorecards(filters: SupplierScorecardFilters = {}): Promise<SupplierScorecardRecord[]> {
+    async listScorecards(
+      filters: SupplierScorecardFilters = {},
+    ): Promise<SupplierScorecardRecord[]> {
       const items = await repository.listSuppliers(filters);
       const scorecards = items.map(buildScorecard);
 
-      return filters.tier ? scorecards.filter((scorecard) => scorecard.tier === filters.tier) : scorecards;
+      return filters.tier
+        ? scorecards.filter((scorecard) => scorecard.tier === filters.tier)
+        : scorecards;
     },
 
-    async getScorecardForSupplier(supplierId: string): Promise<SupplierScorecardRecord | null> {
+    async getScorecardForSupplier(
+      supplierId: string,
+    ): Promise<SupplierScorecardRecord | null> {
       const supplier = await repository.findSupplierById(supplierId);
       return supplier ? buildScorecard(supplier) : null;
     },
@@ -339,7 +372,9 @@ export function createSupplierScorecardService(overrides?: Partial<SupplierScore
     async getScorecardsForSupplierIds(
       supplierIds: string[],
     ): Promise<Record<string, SupplierScorecardRecord>> {
-      const uniqueSupplierIds = Array.from(new Set(supplierIds.filter(Boolean)));
+      const uniqueSupplierIds = Array.from(
+        new Set(supplierIds.filter(Boolean)),
+      );
       if (uniqueSupplierIds.length === 0) {
         return {};
       }
@@ -349,7 +384,9 @@ export function createSupplierScorecardService(overrides?: Partial<SupplierScore
         take: uniqueSupplierIds.length,
       });
 
-      return Object.fromEntries(suppliers.map((supplier) => [supplier.id, buildScorecard(supplier)]));
+      return Object.fromEntries(
+        suppliers.map((supplier) => [supplier.id, buildScorecard(supplier)]),
+      );
     },
   };
 }

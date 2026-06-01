@@ -13,8 +13,10 @@ import { logger } from '../lib/logger';
 import type {
   ImportResponse,
   ImportSummary,
+  ParsedColumn,
   InventoryImportRequest,
   InventoryRowInput,
+  ParsedFileResult,
   ParsedTableRow,
   RowIssue,
   SalesImportRequest,
@@ -25,7 +27,11 @@ import type {
   ProductCandidates,
   ProductPriceIntelligence,
 } from './types';
-import { validateInventoryRows, validateSalesRows, validateSupplierPriceRows } from './validators';
+import {
+  validateInventoryRows,
+  validateSalesRows,
+  validateSupplierPriceRows,
+} from './validators';
 
 type DbClient = typeof db | Prisma.TransactionClient;
 const MILLISECONDS_PER_DAY = 1000 * 60 * 60 * 24;
@@ -56,10 +62,55 @@ export type ImportBatchErrorItem = {
   createdAt: Date;
 };
 
+export type ImportWarningCategory = {
+  category:
+    | 'header'
+    | 'worksheet'
+    | 'empty-data'
+    | 'duplicate-header'
+    | 'format'
+    | 'other';
+  count: number;
+  messages: string[];
+};
+
+export type ImportProductMatchingSummary = {
+  candidateConfidence: {
+    high: number;
+    medium: number;
+    low: number;
+  };
+  duplicateCandidateGroups: Array<{
+    normalizedKey: string;
+    rowNumbers: number[];
+    rawProductNames: string[];
+  }>;
+};
+
+export type ImportDataQualityMetrics = {
+  invalidRows: number;
+  unresolvedProducts: number;
+  duplicateCandidates: number;
+};
+
+export type ImportDiagnostics = {
+  detectedColumns: ParsedColumn[];
+  warningCategories: ImportWarningCategory[];
+  suggestedFixes: string[];
+  dataQualityMetrics: ImportDataQualityMetrics;
+  productMatchingSummary: ImportProductMatchingSummary;
+};
+
 export type ImportBatchDetail = ImportBatchListItem & {
   warnings: string[];
   errors: ImportBatchErrorItem[];
+  diagnostics: ImportDiagnostics;
 };
+
+type ImportDataRow =
+  | SupplierPriceListRowInput
+  | InventoryRowInput
+  | SalesRowInput;
 
 function buildSummary(
   totalRows: number,
@@ -88,11 +139,278 @@ function extractWarnings(
   }
 
   return warnings
-    .filter((warning): warning is string => typeof warning === 'string' && warning.trim().length > 0)
+    .filter(
+      (warning): warning is string =>
+        typeof warning === 'string' && warning.trim().length > 0,
+    )
     .slice(0, take);
 }
 
-export async function listRecentImportBatches(take = 20): Promise<ImportBatchListItem[]> {
+function categorizeWarning(message: string): ImportWarningCategory['category'] {
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes('worksheet')) {
+    return 'worksheet';
+  }
+  if (normalized.includes('blank header') || normalized.includes('header row')) {
+    return 'header';
+  }
+  if (normalized.includes('duplicate header')) {
+    return 'duplicate-header';
+  }
+  if (normalized.includes('no tabular data')) {
+    return 'empty-data';
+  }
+  if (normalized.includes('could not confidently')) {
+    return 'format';
+  }
+
+  return 'other';
+}
+
+function buildWarningCategories(warnings: string[]): ImportWarningCategory[] {
+  const grouped = new Map<ImportWarningCategory['category'], string[]>();
+
+  for (const warning of warnings) {
+    const category = categorizeWarning(warning);
+    const existing = grouped.get(category) ?? [];
+    existing.push(warning);
+    grouped.set(category, existing);
+  }
+
+  return Array.from(grouped.entries()).map(([category, messages]) => ({
+    category,
+    count: messages.length,
+    messages: messages.slice(0, 3),
+  }));
+}
+
+function buildProductMatchingSummary(
+  rows: ImportDataRow[],
+): ImportProductMatchingSummary {
+  const confidence = {
+    high: 0,
+    medium: 0,
+    low: 0,
+  };
+  const byNormalizedKey = new Map<
+    string,
+    { rowNumbers: number[]; rawProductNames: Set<string> }
+  >();
+
+  for (const row of rows) {
+    switch (row.productCandidates.confidence) {
+      case 'HIGH':
+        confidence.high += 1;
+        break;
+      case 'MEDIUM':
+        confidence.medium += 1;
+        break;
+      case 'LOW':
+        confidence.low += 1;
+        break;
+    }
+
+    const existing = byNormalizedKey.get(row.productCandidates.normalizedKey) ?? {
+      rowNumbers: [],
+      rawProductNames: new Set<string>(),
+    };
+    existing.rowNumbers.push(row.rowNumber);
+    existing.rawProductNames.add(row.rawProductName);
+    byNormalizedKey.set(row.productCandidates.normalizedKey, existing);
+  }
+
+  return {
+    candidateConfidence: confidence,
+    duplicateCandidateGroups: Array.from(byNormalizedKey.entries())
+      .filter(([, value]) => value.rowNumbers.length > 1)
+      .map(([normalizedKey, value]) => ({
+        normalizedKey,
+        rowNumbers: value.rowNumbers.slice(0, 10),
+        rawProductNames: Array.from(value.rawProductNames).slice(0, 5),
+      }))
+      .slice(0, 10),
+  };
+}
+
+function isUnresolvedProductError(message: string): boolean {
+  const normalized = message.toLowerCase();
+
+  return (
+    normalized.includes('needs product review') ||
+    normalized.includes('no safe existing product match') ||
+    normalized.includes('auto-creation blocked') ||
+    normalized.includes('matched product') ||
+    normalized.includes('product review')
+  );
+}
+
+function buildSuggestedFixes(
+  kind: ImportBatchListItem['kind'],
+  parsed: ParsedFileResult,
+  errors: RowIssue[],
+  productMatchingSummary: ImportProductMatchingSummary,
+): string[] {
+  const fixes = new Set<string>();
+  const fields = new Set(
+    errors
+      .map((error) => error.fieldName)
+      .filter((field): field is string => Boolean(field)),
+  );
+  const warnings = parsed.warnings.join(' ').toLowerCase();
+
+  if (parsed.detectedColumns.length === 0) {
+    fixes.add(
+      'Use a CSV or XLSX file with one clear header row and at least one data row.',
+    );
+  }
+  if (warnings.includes('could not confidently identify a header row')) {
+    fixes.add(
+      'Rename columns to one of the documented template headers so the parser can map fields confidently.',
+    );
+  }
+  if (fields.has('productName')) {
+    fixes.add(
+      'Add a product name/description column and make sure every data row has a value.',
+    );
+  }
+  if (fields.has('unitPrice')) {
+    fixes.add('Use numeric unit prices without currency symbols or text.');
+  }
+  if (fields.has('quantity') || fields.has('quantityOnHand')) {
+    fixes.add('Use whole numbers for quantity fields.');
+  }
+  if (fields.has('snapshotDate') || fields.has('saleDate')) {
+    fixes.add('Use ISO dates such as 2026-04-30 for date columns.');
+  }
+  if (fields.has('warehouseCode')) {
+    fixes.add('Add a warehouseCode column for inventory imports.');
+  }
+  if (fields.has('customerName')) {
+    fixes.add('Add a customerName column for sales imports.');
+  }
+  if (errors.some((error) => isUnresolvedProductError(error.message))) {
+    fixes.add(
+      'Review product names that could not be safely matched; add clearer strength, form, pack size, or a known alias before re-importing.',
+    );
+  }
+  if (productMatchingSummary.duplicateCandidateGroups.length > 0) {
+    fixes.add(
+      'Check duplicate product candidate groups before re-importing; repeated normalized product keys may indicate duplicate rows or aliases.',
+    );
+  }
+  if (kind === 'SUPPLIER_PRICE_LIST') {
+    fixes.add(
+      'For supplier price lists, provide supplierName in the upload form or include a supplierName column.',
+    );
+  }
+
+  return Array.from(fixes).slice(0, 8);
+}
+
+export function buildImportDiagnostics(
+  kind: ImportBatchListItem['kind'],
+  parsed: ParsedFileResult,
+  validRows: ImportDataRow[],
+  errors: RowIssue[],
+): ImportDiagnostics {
+  const productMatchingSummary = buildProductMatchingSummary(validRows);
+  const unresolvedProducts = errors.filter((error) =>
+    isUnresolvedProductError(error.message),
+  ).length;
+
+  return {
+    detectedColumns: parsed.detectedColumns,
+    warningCategories: buildWarningCategories(parsed.warnings),
+    suggestedFixes: buildSuggestedFixes(
+      kind,
+      parsed,
+      errors,
+      productMatchingSummary,
+    ),
+    dataQualityMetrics: {
+      invalidRows: errors.length,
+      unresolvedProducts,
+      duplicateCandidates:
+        productMatchingSummary.duplicateCandidateGroups.reduce(
+          (total, group) => total + group.rowNumbers.length,
+          0,
+        ),
+    },
+    productMatchingSummary,
+  };
+}
+
+const SENSITIVE_KEY_PATTERN =
+  /(password|secret|token|api[_-]?key|access[_-]?key|client[_-]?secret|authorization|connection|string)/i;
+
+const SENSITIVE_VALUE_PATTERN =
+  /(bearer\s+[a-z0-9._-]+|sk-[a-z0-9_-]{8,}|password\s*=|api[_-]?key\s*=|client_secret\s*=)/i;
+
+function redactImportValue(key: string, value: unknown): unknown {
+  if (SENSITIVE_KEY_PATTERN.test(key)) {
+    return '[REDACTED]';
+  }
+  if (typeof value === 'string' && SENSITIVE_VALUE_PATTERN.test(value)) {
+    return '[REDACTED]';
+  }
+  return value;
+}
+
+export function redactImportRawRow(value: Prisma.JsonValue | null): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, rawValue]) => [
+      key,
+      redactImportValue(key, rawValue),
+    ]),
+  );
+}
+
+function fallbackImportDiagnostics(
+  batch: Pick<
+    ImportBatchDetail,
+    'kind' | 'invalidRows' | 'errors' | 'warnings'
+  > & { diagnostics?: Prisma.JsonValue | null },
+): ImportDiagnostics {
+  if (
+    batch.diagnostics &&
+    typeof batch.diagnostics === 'object' &&
+    !Array.isArray(batch.diagnostics)
+  ) {
+    return batch.diagnostics as unknown as ImportDiagnostics;
+  }
+
+  return {
+    detectedColumns: [],
+    warningCategories: buildWarningCategories(batch.warnings),
+    suggestedFixes: batch.errors.length
+      ? ['Open the row error samples, fix the invalid fields, then re-import.']
+      : [],
+    dataQualityMetrics: {
+      invalidRows: batch.invalidRows,
+      unresolvedProducts: batch.errors.filter((error) =>
+        isUnresolvedProductError(error.message),
+      ).length,
+      duplicateCandidates: 0,
+    },
+    productMatchingSummary: {
+      candidateConfidence: {
+        high: 0,
+        medium: 0,
+        low: 0,
+      },
+      duplicateCandidateGroups: [],
+    },
+  };
+}
+
+export async function listRecentImportBatches(
+  take = 20,
+): Promise<ImportBatchListItem[]> {
   const batches = await db.importBatch.findMany({
     orderBy: { uploadedAt: 'desc' },
     take,
@@ -107,6 +425,7 @@ export async function listRecentImportBatches(take = 20): Promise<ImportBatchLis
       validRows: true,
       invalidRows: true,
       warnings: true,
+      diagnostics: true,
       uploadedAt: true,
       createdAt: true,
       updatedAt: true,
@@ -153,6 +472,7 @@ export async function getImportBatchDetail(
       validRows: true,
       invalidRows: true,
       warnings: true,
+      diagnostics: true,
       uploadedAt: true,
       createdAt: true,
       updatedAt: true,
@@ -201,9 +521,23 @@ export async function getImportBatchDetail(
       rowNumber: error.rowNumber,
       fieldName: error.fieldName,
       message: error.message,
-      rawRow: error.rawRow,
+      rawRow: redactImportRawRow(error.rawRow) as Prisma.JsonValue,
       createdAt: error.createdAt,
     })),
+    diagnostics: fallbackImportDiagnostics({
+      kind: batch.kind,
+      invalidRows: batch.invalidRows,
+      warnings: extractWarnings(batch.warnings, 100),
+      errors: batch.errors.map((error) => ({
+        id: error.id,
+        rowNumber: error.rowNumber,
+        fieldName: error.fieldName,
+        message: error.message,
+        rawRow: redactImportRawRow(error.rawRow) as Prisma.JsonValue,
+        createdAt: error.createdAt,
+      })),
+      diagnostics: batch.diagnostics,
+    }),
   };
 }
 
@@ -212,6 +546,7 @@ async function createImportBatch(
   file: SupplierPriceListImportRequest['file'],
   summary: ImportSummary,
   errors: RowIssue[],
+  diagnostics: ImportDiagnostics,
 ) {
   return db.importBatch.create({
     data: {
@@ -224,6 +559,7 @@ async function createImportBatch(
       validRows: summary.validRows,
       invalidRows: summary.invalidRows,
       warnings: summary.warnings,
+      diagnostics: diagnostics as unknown as Prisma.InputJsonValue,
       errors: {
         create: errors.map((error) => ({
           rowNumber: error.rowNumber,
@@ -249,7 +585,9 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function toNumber(value: Prisma.Decimal | number | null | undefined): number | null {
+function toNumber(
+  value: Prisma.Decimal | number | null | undefined,
+): number | null {
   if (value === null || value === undefined) {
     return null;
   }
@@ -289,13 +627,15 @@ function calculateVolatilityScore(prices: number[]): number | null {
     return 0;
   }
 
-  const averagePrice = prices.reduce((total, price) => total + price, 0) / prices.length;
+  const averagePrice =
+    prices.reduce((total, price) => total + price, 0) / prices.length;
   if (averagePrice <= 0) {
     return null;
   }
 
   const variance =
-    prices.reduce((total, price) => total + (price - averagePrice) ** 2, 0) / prices.length;
+    prices.reduce((total, price) => total + (price - averagePrice) ** 2, 0) /
+    prices.length;
   return roundNumber(clamp(Math.sqrt(variance) / averagePrice, 0, 1));
 }
 
@@ -316,7 +656,8 @@ function calculateMarketConfidence(
   );
   const latestAgeDays = Math.max(
     0,
-    (referenceDate.getTime() - latestObservedAt.getTime()) / MILLISECONDS_PER_DAY,
+    (referenceDate.getTime() - latestObservedAt.getTime()) /
+      MILLISECONDS_PER_DAY,
   );
   const recencyScore = clamp(
     1 - latestAgeDays / Math.max(1, opportunityConfig.marketLookbackDays),
@@ -325,11 +666,16 @@ function calculateMarketConfidence(
   );
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
-  const averagePrice = prices.reduce((total, price) => total + price, 0) / prices.length;
+  const averagePrice =
+    prices.reduce((total, price) => total + price, 0) / prices.length;
   const spreadConsistency =
-    averagePrice > 0 ? clamp(1 - (maxPrice - minPrice) / averagePrice, 0, 1) : 0;
+    averagePrice > 0
+      ? clamp(1 - (maxPrice - minPrice) / averagePrice, 0, 1)
+      : 0;
 
-  return roundNumber(sampleScore * (0.5 + 0.3 * recencyScore + 0.2 * spreadConsistency));
+  return roundNumber(
+    sampleScore * (0.5 + 0.3 * recencyScore + 0.2 * spreadConsistency),
+  );
 }
 
 function buildProductPriceIntelligence(
@@ -340,19 +686,28 @@ function buildProductPriceIntelligence(
   const prices = observations.map((observation) => observation.unitPrice);
   const latestObservedPrice = observations[0]?.unitPrice ?? null;
   const rollingAveragePrice =
-    prices.length > 0 ? roundNumber(prices.reduce((total, price) => total + price, 0) / prices.length) : null;
-  const bestObservedPrice = prices.length > 0 ? roundNumber(Math.min(...prices)) : null;
+    prices.length > 0
+      ? roundNumber(
+          prices.reduce((total, price) => total + price, 0) / prices.length,
+        )
+      : null;
+  const bestObservedPrice =
+    prices.length > 0 ? roundNumber(Math.min(...prices)) : null;
   const weightedTotals = observations.reduce(
     (totals, observation) => {
       const ageDays = Math.max(
         0,
-        (referenceDate.getTime() - observation.createdAt.getTime()) / MILLISECONDS_PER_DAY,
+        (referenceDate.getTime() - observation.createdAt.getTime()) /
+          MILLISECONDS_PER_DAY,
       );
-      const weight = 1 / (1 + ageDays / Math.max(1, opportunityConfig.marketRecentWeightDays));
+      const weight =
+        1 /
+        (1 + ageDays / Math.max(1, opportunityConfig.marketRecentWeightDays));
 
       return {
         weightTotal: totals.weightTotal + weight,
-        weightedPriceTotal: totals.weightedPriceTotal + observation.unitPrice * weight,
+        weightedPriceTotal:
+          totals.weightedPriceTotal + observation.unitPrice * weight,
       };
     },
     {
@@ -362,7 +717,9 @@ function buildProductPriceIntelligence(
   );
   const simulatedMarketPrice =
     weightedTotals.weightTotal > 0
-      ? roundNumber(weightedTotals.weightedPriceTotal / weightedTotals.weightTotal)
+      ? roundNumber(
+          weightedTotals.weightedPriceTotal / weightedTotals.weightTotal,
+        )
       : null;
 
   return {
@@ -420,10 +777,17 @@ async function loadRecentProductPriceIntelligence(
   );
 }
 
-function getStructuredCompatibility(product: Product, candidates: ProductCandidates) {
+function getStructuredCompatibility(
+  product: Product,
+  candidates: ProductCandidates,
+) {
   const conflictFields: Array<'strength' | 'formulation' | 'packSize'> = [];
 
-  if (product.strength && candidates.strength && product.strength !== candidates.strength) {
+  if (
+    product.strength &&
+    candidates.strength &&
+    product.strength !== candidates.strength
+  ) {
     conflictFields.push('strength');
   }
 
@@ -435,7 +799,11 @@ function getStructuredCompatibility(product: Product, candidates: ProductCandida
     conflictFields.push('formulation');
   }
 
-  if (product.packSize && candidates.packSize && product.packSize !== candidates.packSize) {
+  if (
+    product.packSize &&
+    candidates.packSize &&
+    product.packSize !== candidates.packSize
+  ) {
     conflictFields.push('packSize');
   }
 
@@ -445,13 +813,20 @@ function getStructuredCompatibility(product: Product, candidates: ProductCandida
   };
 }
 
-function countStructuredMatches(product: Product, candidates: ProductCandidates): number {
+function countStructuredMatches(
+  product: Product,
+  candidates: ProductCandidates,
+): number {
   return [
-    product.strength && candidates.strength && product.strength === candidates.strength,
+    product.strength &&
+      candidates.strength &&
+      product.strength === candidates.strength,
     product.dosageForm &&
       candidates.formulation &&
       product.dosageForm === candidates.formulation,
-    product.packSize && candidates.packSize && product.packSize === candidates.packSize,
+    product.packSize &&
+      candidates.packSize &&
+      product.packSize === candidates.packSize,
   ].filter(Boolean).length;
 }
 
@@ -460,9 +835,11 @@ async function findStructuredBaseNameProductMatch(
   client: DbClient = db,
 ): Promise<Product | null> {
   const candidateBaseName = candidates.baseName.trim();
-  const structuredSignalCount = [candidates.strength, candidates.formulation, candidates.packSize].filter(
-    Boolean,
-  ).length;
+  const structuredSignalCount = [
+    candidates.strength,
+    candidates.formulation,
+    candidates.packSize,
+  ].filter(Boolean).length;
 
   if (!candidateBaseName || structuredSignalCount === 0) {
     return null;
@@ -472,7 +849,10 @@ async function findStructuredBaseNameProductMatch(
     where: {
       // Prefer baseName for current records, but keep normalizedName base-name lookup
       // for compatibility with products created before baseName was populated consistently.
-      OR: [{ baseName: candidateBaseName }, { normalizedName: candidateBaseName }],
+      OR: [
+        { baseName: candidateBaseName },
+        { normalizedName: candidateBaseName },
+      ],
     },
   });
 
@@ -484,11 +864,16 @@ async function findStructuredBaseNameProductMatch(
       prefersBaseNameField: product.baseName === candidateBaseName,
     }))
     .filter(
-      (entry) => entry.compatibility.compatible && entry.exactStructuredMatches > 0,
+      (entry) =>
+        entry.compatibility.compatible && entry.exactStructuredMatches > 0,
     )
     .sort((left, right) => {
-      if (Number(left.prefersBaseNameField) !== Number(right.prefersBaseNameField)) {
-        return Number(right.prefersBaseNameField) - Number(left.prefersBaseNameField);
+      if (
+        Number(left.prefersBaseNameField) !== Number(right.prefersBaseNameField)
+      ) {
+        return (
+          Number(right.prefersBaseNameField) - Number(left.prefersBaseNameField)
+        );
       }
 
       return right.exactStructuredMatches - left.exactStructuredMatches;
@@ -547,7 +932,10 @@ async function applySupplierReliabilityFeedback(
       productId,
       currencyCode,
       createdAt: {
-        gte: new Date(saleDate.getTime() - opportunityConfig.marketLookbackDays * MILLISECONDS_PER_DAY),
+        gte: new Date(
+          saleDate.getTime() -
+            opportunityConfig.marketLookbackDays * MILLISECONDS_PER_DAY,
+        ),
         lte: saleDate,
       },
     },
@@ -570,7 +958,8 @@ async function applySupplierReliabilityFeedback(
     return;
   }
 
-  const realizedMarginPct = (saleUnitPriceNumber - supplierUnitPrice) / saleUnitPriceNumber;
+  const realizedMarginPct =
+    (saleUnitPriceNumber - supplierUnitPrice) / saleUnitPriceNumber;
   const marketPriceEstimate = toNumber(recentSupplierPrice.marketPriceEstimate);
   const priceDeltaFromMarketPct =
     recentSupplierPrice.priceDeltaFromMarketPct ??
@@ -585,7 +974,8 @@ async function applySupplierReliabilityFeedback(
     adjustment = opportunityConfig.supplierReliabilityAdjustmentStep;
   } else if (
     realizedMarginPct < 0 &&
-    (recentSupplierPrice.marketPriceConfidence ?? 0) >= opportunityConfig.marketConfidenceMinForBuy
+    (recentSupplierPrice.marketPriceConfidence ?? 0) >=
+      opportunityConfig.marketConfidenceMinForBuy
   ) {
     adjustment = -opportunityConfig.supplierReliabilityAdjustmentStep;
   }
@@ -609,7 +999,10 @@ async function applySupplierReliabilityFeedback(
     clamp(supplier.reliabilityScore + adjustment, 0, 1),
   );
 
-  if (nextReliabilityScore === null || nextReliabilityScore === supplier.reliabilityScore) {
+  if (
+    nextReliabilityScore === null ||
+    nextReliabilityScore === supplier.reliabilityScore
+  ) {
     return;
   }
 
@@ -621,7 +1014,10 @@ async function applySupplierReliabilityFeedback(
   });
 }
 
-export async function findOrCreateSupplier(rawSupplierName: string, client: DbClient = db) {
+export async function findOrCreateSupplier(
+  rawSupplierName: string,
+  client: DbClient = db,
+) {
   const normalizedName = normalizeText(rawSupplierName);
 
   const existing = await client.supplier.findUnique({
@@ -640,7 +1036,10 @@ export async function findOrCreateSupplier(rawSupplierName: string, client: DbCl
   });
 }
 
-async function findOrCreateCustomer(rawCustomerName: string, client: DbClient = db) {
+async function findOrCreateCustomer(
+  rawCustomerName: string,
+  client: DbClient = db,
+) {
   const normalizedName = normalizeText(rawCustomerName);
 
   const existing = await client.customer.findUnique({
@@ -681,7 +1080,10 @@ async function ensureProductAlias(
       productId,
     },
   });
-  const existingAliasVariant = findMatchingAliasVariant(existingAliasesForProduct, rawProductName);
+  const existingAliasVariant = findMatchingAliasVariant(
+    existingAliasesForProduct,
+    rawProductName,
+  );
 
   if (existingAliasVariant.alias) {
     return existingAliasVariant.alias;
@@ -710,9 +1112,12 @@ function logProductMatchDecision(
     confidence: decision.confidence,
     matchedProductId,
     aliasMatchType: decision.aliasMatchType ?? null,
-    structuredCompatibilityChecked: decision.structuredCompatibility?.checked ?? false,
-    structuredCompatibilityPassed: decision.structuredCompatibility?.compatible ?? true,
-    structuredCompatibilityConflictFields: decision.structuredCompatibility?.conflictFields ?? [],
+    structuredCompatibilityChecked:
+      decision.structuredCompatibility?.checked ?? false,
+    structuredCompatibilityPassed:
+      decision.structuredCompatibility?.compatible ?? true,
+    structuredCompatibilityConflictFields:
+      decision.structuredCompatibility?.conflictFields ?? [],
     rulesApplied,
   });
 }
@@ -754,7 +1159,9 @@ export async function findOrCreateProduct(
     });
 
     if (!existingProduct) {
-      throw new Error(`Matched product ${decision.matchedProductId} was not found during persistence.`);
+      throw new Error(
+        `Matched product ${decision.matchedProductId} was not found during persistence.`,
+      );
     }
 
     const existing = await updateProductCanonicalFields(
@@ -765,11 +1172,18 @@ export async function findOrCreateProduct(
     );
 
     await ensureProductAlias(existing.id, rawProductName, sourceSystem, client);
-    logProductMatchDecision(decision, existing.id, candidates.explanation.rulesApplied);
+    logProductMatchDecision(
+      decision,
+      existing.id,
+      candidates.explanation.rulesApplied,
+    );
     return existing;
   }
 
-  const structuredBaseNameMatch = await findStructuredBaseNameProductMatch(candidates, client);
+  const structuredBaseNameMatch = await findStructuredBaseNameProductMatch(
+    candidates,
+    client,
+  );
 
   if (structuredBaseNameMatch) {
     const matchedProduct = await updateProductCanonicalFields(
@@ -779,7 +1193,12 @@ export async function findOrCreateProduct(
       client,
     );
 
-    await ensureProductAlias(matchedProduct.id, rawProductName, sourceSystem, client);
+    await ensureProductAlias(
+      matchedProduct.id,
+      rawProductName,
+      sourceSystem,
+      client,
+    );
     logProductMatchDecision(
       {
         outcome: 'EXISTING_PRODUCT',
@@ -808,7 +1227,11 @@ export async function findOrCreateProduct(
   });
 
   if (!autoCreationEligibility.allowed) {
-    logProductMatchDecision(decision, null, candidates.explanation.rulesApplied);
+    logProductMatchDecision(
+      decision,
+      null,
+      candidates.explanation.rulesApplied,
+    );
     logger.warn('Import product auto-creation blocked', {
       rawProductName,
       normalizedKey: candidates.normalizedKey,
@@ -917,7 +1340,10 @@ async function persistSupplierPriceRows(
   }
 }
 
-async function persistInventoryRows(importBatchId: string, rows: InventoryRowInput[]) {
+async function persistInventoryRows(
+  importBatchId: string,
+  rows: InventoryRowInput[],
+) {
   for (const row of rows) {
     const product = await findOrCreateProduct(
       row.rawProductName,
@@ -926,7 +1352,9 @@ async function persistInventoryRows(importBatchId: string, rows: InventoryRowInp
       row.manufacturer,
     );
 
-    const supplier = row.rawSupplierName ? await findOrCreateSupplier(row.rawSupplierName) : null;
+    const supplier = row.rawSupplierName
+      ? await findOrCreateSupplier(row.rawSupplierName)
+      : null;
 
     await db.inventorySnapshot.create({
       data: {
@@ -961,7 +1389,9 @@ async function persistSalesRows(importBatchId: string, rows: SalesRowInput[]) {
       row.manufacturer,
     );
     const customer = await findOrCreateCustomer(row.rawCustomerName);
-    const supplier = row.rawSupplierName ? await findOrCreateSupplier(row.rawSupplierName) : null;
+    const supplier = row.rawSupplierName
+      ? await findOrCreateSupplier(row.rawSupplierName)
+      : null;
 
     await db.salesRecord.create({
       data: {
@@ -997,10 +1427,15 @@ async function persistSalesRows(importBatchId: string, rows: SalesRowInput[]) {
   }
 }
 
-function mapUnexpectedError(error: unknown, rawRow: ParsedTableRow, rowNumber: number): RowIssue {
+function mapUnexpectedError(
+  error: unknown,
+  rawRow: ParsedTableRow,
+  rowNumber: number,
+): RowIssue {
   return {
     rowNumber,
-    message: error instanceof Error ? error.message : 'Unexpected import error.',
+    message:
+      error instanceof Error ? error.message : 'Unexpected import error.',
     rawRow,
   };
 }
@@ -1010,35 +1445,74 @@ export async function importSupplierPriceList(
 ): Promise<ImportResponse> {
   const parsed = parseUploadedFile(request.file);
   const currencyCode = request.currencyCode?.trim() || 'USD';
-  const { validRows, errors } = validateSupplierPriceRows(parsed.rows, currencyCode);
-  const summary = buildSummary(parsed.rows.length, validRows.length, errors.length, parsed.warnings);
-  const importBatch = await createImportBatch('SUPPLIER_PRICE_LIST', request.file, summary, errors);
+  const { validRows, errors } = validateSupplierPriceRows(
+    parsed.rows,
+    currencyCode,
+  );
+  const summary = buildSummary(
+    parsed.rows.length,
+    validRows.length,
+    errors.length,
+    parsed.warnings,
+  );
+  const initialDiagnostics = buildImportDiagnostics(
+    'SUPPLIER_PRICE_LIST',
+    parsed,
+    validRows,
+    errors,
+  );
+  const importBatch = await createImportBatch(
+    'SUPPLIER_PRICE_LIST',
+    request.file,
+    summary,
+    errors,
+    initialDiagnostics,
+  );
 
-  const firstRowSupplierName = parsed.rows.find((row) => row.supplierName || row.SupplierName)?.supplierName;
-  const supplierName = request.supplierName?.trim() || firstRowSupplierName?.trim();
+  const firstRowSupplierName = parsed.rows.find(
+    (row) => row.supplierName || row.SupplierName,
+  )?.supplierName;
+  const supplierName =
+    request.supplierName?.trim() || firstRowSupplierName?.trim();
 
   if (!supplierName) {
+    const supplierNameError: RowIssue = {
+      rowNumber: 0,
+      message:
+        'supplierName is required as a form field or row column for supplier price list imports.',
+      rawRow: {},
+    };
+    const finalErrors = [...errors, supplierNameError];
+    const finalSummary = {
+      ...summary,
+      invalidRows: summary.invalidRows + 1,
+    };
+    const finalDiagnostics = buildImportDiagnostics(
+      'SUPPLIER_PRICE_LIST',
+      parsed,
+      validRows,
+      finalErrors,
+    );
+
     await db.importError.create({
       data: {
         importBatchId: importBatch.id,
-        message: 'supplierName is required as a form field or row column for supplier price list imports.',
+        message: supplierNameError.message,
+      },
+    });
+    await db.importBatch.update({
+      where: { id: importBatch.id },
+      data: {
+        status: 'COMPLETED_WITH_ERRORS',
+        invalidRows: finalSummary.invalidRows,
+        diagnostics: finalDiagnostics as unknown as Prisma.InputJsonValue,
       },
     });
 
     return {
       importBatchId: importBatch.id,
-      summary: {
-        ...summary,
-        invalidRows: summary.invalidRows + 1,
-      },
-      errors: [
-        ...errors,
-        {
-          rowNumber: 0,
-          message: 'supplierName is required as a form field or row column for supplier price list imports.',
-          rawRow: {},
-        },
-      ],
+      summary: finalSummary,
+      errors: finalErrors,
     };
   }
 
@@ -1060,7 +1534,9 @@ export async function importSupplierPriceList(
     try {
       await persistSupplierPriceRows(supplierPriceList.id, supplier.id, [row]);
     } catch (error) {
-      persistenceErrors.push(mapUnexpectedError(error, row.rawRow, row.rowNumber));
+      persistenceErrors.push(
+        mapUnexpectedError(error, row.rawRow, row.rowNumber),
+      );
     }
   }
 
@@ -1083,6 +1559,12 @@ export async function importSupplierPriceList(
     finalErrors.length,
     parsed.warnings,
   );
+  const finalDiagnostics = buildImportDiagnostics(
+    'SUPPLIER_PRICE_LIST',
+    parsed,
+    validRows,
+    finalErrors,
+  );
 
   await db.importBatch.update({
     where: { id: importBatch.id },
@@ -1092,6 +1574,7 @@ export async function importSupplierPriceList(
       validRows: finalSummary.validRows,
       invalidRows: finalSummary.invalidRows,
       warnings: finalSummary.warnings,
+      diagnostics: finalDiagnostics as unknown as Prisma.InputJsonValue,
     },
   });
 
@@ -1102,18 +1585,39 @@ export async function importSupplierPriceList(
   };
 }
 
-export async function importInventory(request: InventoryImportRequest): Promise<ImportResponse> {
+export async function importInventory(
+  request: InventoryImportRequest,
+): Promise<ImportResponse> {
   const parsed = parseUploadedFile(request.file);
   const { validRows, errors } = validateInventoryRows(parsed.rows);
-  const summary = buildSummary(parsed.rows.length, validRows.length, errors.length, parsed.warnings);
-  const importBatch = await createImportBatch('INVENTORY', request.file, summary, errors);
+  const summary = buildSummary(
+    parsed.rows.length,
+    validRows.length,
+    errors.length,
+    parsed.warnings,
+  );
+  const initialDiagnostics = buildImportDiagnostics(
+    'INVENTORY',
+    parsed,
+    validRows,
+    errors,
+  );
+  const importBatch = await createImportBatch(
+    'INVENTORY',
+    request.file,
+    summary,
+    errors,
+    initialDiagnostics,
+  );
 
   const persistenceErrors: RowIssue[] = [];
   for (const row of validRows) {
     try {
       await persistInventoryRows(importBatch.id, [row]);
     } catch (error) {
-      persistenceErrors.push(mapUnexpectedError(error, row.rawRow, row.rowNumber));
+      persistenceErrors.push(
+        mapUnexpectedError(error, row.rawRow, row.rowNumber),
+      );
     }
   }
 
@@ -1136,6 +1640,12 @@ export async function importInventory(request: InventoryImportRequest): Promise<
     finalErrors.length,
     parsed.warnings,
   );
+  const finalDiagnostics = buildImportDiagnostics(
+    'INVENTORY',
+    parsed,
+    validRows,
+    finalErrors,
+  );
 
   await db.importBatch.update({
     where: { id: importBatch.id },
@@ -1145,6 +1655,7 @@ export async function importInventory(request: InventoryImportRequest): Promise<
       validRows: finalSummary.validRows,
       invalidRows: finalSummary.invalidRows,
       warnings: finalSummary.warnings,
+      diagnostics: finalDiagnostics as unknown as Prisma.InputJsonValue,
     },
   });
 
@@ -1155,18 +1666,39 @@ export async function importInventory(request: InventoryImportRequest): Promise<
   };
 }
 
-export async function importSales(request: SalesImportRequest): Promise<ImportResponse> {
+export async function importSales(
+  request: SalesImportRequest,
+): Promise<ImportResponse> {
   const parsed = parseUploadedFile(request.file);
   const { validRows, errors } = validateSalesRows(parsed.rows);
-  const summary = buildSummary(parsed.rows.length, validRows.length, errors.length, parsed.warnings);
-  const importBatch = await createImportBatch('SALES', request.file, summary, errors);
+  const summary = buildSummary(
+    parsed.rows.length,
+    validRows.length,
+    errors.length,
+    parsed.warnings,
+  );
+  const initialDiagnostics = buildImportDiagnostics(
+    'SALES',
+    parsed,
+    validRows,
+    errors,
+  );
+  const importBatch = await createImportBatch(
+    'SALES',
+    request.file,
+    summary,
+    errors,
+    initialDiagnostics,
+  );
 
   const persistenceErrors: RowIssue[] = [];
   for (const row of validRows) {
     try {
       await persistSalesRows(importBatch.id, [row]);
     } catch (error) {
-      persistenceErrors.push(mapUnexpectedError(error, row.rawRow, row.rowNumber));
+      persistenceErrors.push(
+        mapUnexpectedError(error, row.rawRow, row.rowNumber),
+      );
     }
   }
 
@@ -1189,6 +1721,12 @@ export async function importSales(request: SalesImportRequest): Promise<ImportRe
     finalErrors.length,
     parsed.warnings,
   );
+  const finalDiagnostics = buildImportDiagnostics(
+    'SALES',
+    parsed,
+    validRows,
+    finalErrors,
+  );
 
   await db.importBatch.update({
     where: { id: importBatch.id },
@@ -1198,6 +1736,7 @@ export async function importSales(request: SalesImportRequest): Promise<ImportRe
       validRows: finalSummary.validRows,
       invalidRows: finalSummary.invalidRows,
       warnings: finalSummary.warnings,
+      diagnostics: finalDiagnostics as unknown as Prisma.InputJsonValue,
     },
   });
 

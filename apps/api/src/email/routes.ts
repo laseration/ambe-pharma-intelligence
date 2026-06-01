@@ -14,7 +14,10 @@ import {
   optionalDateInputSchema,
   parseRequest,
 } from '../http/validation';
-import { ingestInboundEmail, listInboundEmailInboxItems } from './inbound/service';
+import {
+  ingestInboundEmail,
+  listInboundEmailInboxItems,
+} from './inbound/service';
 import {
   previewDailySummaryEmail,
   previewEmailBodyParsing,
@@ -58,76 +61,112 @@ const listInboundMessagesQuerySchema = z.object({
   status: z.enum(['REVIEW_REQUIRED', 'FAILED', 'RECEIVED_ONLY']).optional(),
 });
 
-emailRouter.post('/body/parse-preview', asyncHandler(async (request, response) => {
-  const { body } = parseRequest<unknown, unknown, z.infer<typeof parsePreviewBodySchema>>(request, {
-    body: parsePreviewBodySchema,
-  });
+emailRouter.post(
+  '/body/parse-preview',
+  asyncHandler(async (request, response) => {
+    const { body } = parseRequest<
+      unknown,
+      unknown,
+      z.infer<typeof parsePreviewBodySchema>
+    >(request, {
+      body: parsePreviewBodySchema,
+    });
 
-  response.json(await previewEmailBodyParsing(body.bodyText));
-}));
+    response.json(await previewEmailBodyParsing(body.bodyText));
+  }),
+);
 
-emailRouter.post('/inbound/messages', requireInternalAdminAccess, asyncHandler(async (request, response) => {
-  const { body } = parseRequest<unknown, unknown, z.infer<typeof inboundMessageBodySchema>>(request, {
-    body: inboundMessageBodySchema,
-  });
+emailRouter.post(
+  '/inbound/messages',
+  requireInternalAdminAccess,
+  asyncHandler(async (request, response) => {
+    const { body } = parseRequest<
+      unknown,
+      unknown,
+      z.infer<typeof inboundMessageBodySchema>
+    >(request, {
+      body: inboundMessageBodySchema,
+    });
 
-  const auth = getInternalAuthContext(request);
-  logger.info('Internal inbound email ingest requested', {
-    authRole: auth?.role ?? null,
-    callerLabel: auth?.callerLabel ?? null,
-    from: body.from,
-    sourceSystem: body.sourceSystem ?? null,
-  });
+    const auth = getInternalAuthContext(request);
+    logger.info('Internal inbound email ingest requested', {
+      authRole: auth?.role ?? null,
+      callerLabel: auth?.callerLabel ?? null,
+      from: body.from,
+      sourceSystem: body.sourceSystem ?? null,
+    });
 
-  response.status(201).json(await ingestInboundEmail(body));
-}));
+    response.status(201).json(await ingestInboundEmail(body));
+  }),
+);
 
-emailRouter.get('/inbound/messages', requireInternalOperatorAccess, asyncHandler(async (request, response) => {
-  const { query } = parseRequest<unknown, z.infer<typeof listInboundMessagesQuerySchema>>(request, {
-    query: listInboundMessagesQuerySchema,
-  });
+emailRouter.get(
+  '/inbound/messages',
+  requireInternalOperatorAccess,
+  asyncHandler(async (request, response) => {
+    const { query } = parseRequest<
+      unknown,
+      z.infer<typeof listInboundMessagesQuerySchema>
+    >(request, {
+      query: listInboundMessagesQuerySchema,
+    });
 
-  response.json({
-    items: await listInboundEmailInboxItems({
-      take: query.take,
-      status: query.status,
-    }),
-  });
-}));
+    response.json({
+      items: await listInboundEmailInboxItems({
+        take: query.take,
+        status: query.status,
+      }),
+    });
+  }),
+);
 
-emailRouter.post('/opportunities/:id/preview', asyncHandler(async (request, response) => {
-  const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {
-    params: idParamSchema,
-  });
+emailRouter.post(
+  '/opportunities/:id/preview',
+  asyncHandler(async (request, response) => {
+    const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {
+      params: idParamSchema,
+    });
 
-  response.json(await previewOpportunityEmail(params.id));
-}));
+    response.json(await previewOpportunityEmail(params.id));
+  }),
+);
 
-emailRouter.post('/opportunities/:id/send', requireInternalAdminAccess, asyncHandler(async (request, response) => {
-  const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {
-    params: idParamSchema,
-  });
+emailRouter.post(
+  '/opportunities/:id/send',
+  requireInternalAdminAccess,
+  asyncHandler(async (request, response) => {
+    const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {
+      params: idParamSchema,
+    });
 
-  const auth = getInternalAuthContext(request);
-  logger.info('Internal opportunity email send requested', {
-    authRole: auth?.role ?? null,
-    callerLabel: auth?.callerLabel ?? null,
-    opportunityId: params.id,
-  });
+    const auth = getInternalAuthContext(request);
+    logger.info('Internal opportunity email send requested', {
+      authRole: auth?.role ?? null,
+      callerLabel: auth?.callerLabel ?? null,
+      opportunityId: params.id,
+    });
 
-  response.status(201).json(await sendOpportunityEmail(params.id));
-}));
+    response.status(201).json(await sendOpportunityEmail(params.id));
+  }),
+);
 
-emailRouter.get('/daily-summary/preview', asyncHandler(async (_request, response) => {
-  response.json(await previewDailySummaryEmail());
-}));
+emailRouter.get(
+  '/daily-summary/preview',
+  asyncHandler(async (_request, response) => {
+    response.json(await previewDailySummaryEmail());
+  }),
+);
 
-emailRouter.post('/daily-summary/send', requireInternalAdminAccess, asyncHandler(async (_request, response) => {
-  const auth = getInternalAuthContext(_request);
-  logger.info('Internal daily summary email send requested', {
-    authRole: auth?.role ?? null,
-    callerLabel: auth?.callerLabel ?? null,
-  });
+emailRouter.post(
+  '/daily-summary/send',
+  requireInternalAdminAccess,
+  asyncHandler(async (_request, response) => {
+    const auth = getInternalAuthContext(_request);
+    logger.info('Internal daily summary email send requested', {
+      authRole: auth?.role ?? null,
+      callerLabel: auth?.callerLabel ?? null,
+    });
 
-  response.status(201).json(await sendDailySummaryEmail());
-}));
+    response.status(201).json(await sendDailySummaryEmail());
+  }),
+);

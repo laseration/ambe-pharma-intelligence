@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
 
-import { requireInternalOperatorAccess, resolveInternalActor } from '../http/auth';
+import {
+  requireInternalOperatorAccess,
+  resolveInternalActor,
+} from '../http/auth';
 import { asyncHandler, requireFound } from '../http/errors';
 import { executionUpdateBodySchema } from '../http/routeSchemas';
 import {
@@ -40,40 +43,56 @@ const listBuyExecutionsQuerySchema = z.object({
   hasDrift: optionalBooleanQuerySchema,
 });
 
-buyExecutionsRouter.get('/', asyncHandler(async (request, response) => {
-  const { query } = parseRequest<unknown, z.infer<typeof listBuyExecutionsQuerySchema>>(request, {
-    query: listBuyExecutionsQuerySchema,
-  });
+buyExecutionsRouter.get(
+  '/',
+  asyncHandler(async (request, response) => {
+    const { query } = parseRequest<
+      unknown,
+      z.infer<typeof listBuyExecutionsQuerySchema>
+    >(request, {
+      query: listBuyExecutionsQuerySchema,
+    });
 
-  response.json({
-    items: await buyExecutionService.listBuyExecutions(query),
-  });
-}));
+    response.json({
+      items: await buyExecutionService.listBuyExecutions(query),
+    });
+  }),
+);
 
-buyExecutionsRouter.get('/:id', asyncHandler(async (request, response) => {
-  const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {
-    params: idParamSchema,
-  });
+buyExecutionsRouter.get(
+  '/:id',
+  asyncHandler(async (request, response) => {
+    const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {
+      params: idParamSchema,
+    });
 
-  response.json({
-    item: requireFound(await buyExecutionService.getBuyExecution(params.id), 'Buy execution not found.'),
-  });
-}));
+    response.json({
+      item: requireFound(
+        await buyExecutionService.getBuyExecution(params.id),
+        'Buy execution not found.',
+      ),
+    });
+  }),
+);
 
-buyExecutionsRouter.patch('/:id', requireInternalOperatorAccess, asyncHandler(async (request, response) => {
-  const { params, body } = parseRequest<
-    z.infer<typeof idParamSchema>,
-    unknown,
-    z.infer<typeof executionUpdateBodySchema>
-  >(request, {
-    params: idParamSchema,
-    body: executionUpdateBodySchema,
-  });
+buyExecutionsRouter.patch(
+  '/:id',
+  requireInternalOperatorAccess,
+  asyncHandler(async (request, response) => {
+    const { params, body } = parseRequest<
+      z.infer<typeof idParamSchema>,
+      unknown,
+      z.infer<typeof executionUpdateBodySchema>
+    >(request, {
+      params: idParamSchema,
+      body: executionUpdateBodySchema,
+    });
 
-  response.json({
-    item: await buyExecutionService.updateBuyExecution(params.id, {
-      ...body,
-      ...resolveInternalActor(request, body),
-    }),
-  });
-}));
+    response.json({
+      item: await buyExecutionService.updateBuyExecution(params.id, {
+        ...body,
+        ...resolveInternalActor(request, body),
+      }),
+    });
+  }),
+);

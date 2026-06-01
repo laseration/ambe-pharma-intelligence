@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import {
+  createReviewWorkflowCorrection,
   listReviewWorkflowItems,
   type ReviewWorkflowActionOutcome,
   updateReviewWorkflowItem,
@@ -14,7 +15,24 @@ function value(formData: FormData, key: string): string {
   return typeof rawValue === 'string' ? rawValue.trim() : '';
 }
 
-function buildSupplierDetails(formData: FormData): Record<string, string | null> | undefined {
+function optionalValue(formData: FormData, key: string): string | undefined {
+  const trimmed = value(formData, key);
+  return trimmed || undefined;
+}
+
+function optionalNumber(formData: FormData, key: string): number | undefined {
+  const rawValue = optionalValue(formData, key);
+  if (!rawValue) {
+    return undefined;
+  }
+
+  const parsed = Number(rawValue);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function buildSupplierDetails(
+  formData: FormData,
+): Record<string, string | null> | undefined {
   const supplierDetails = {
     supplierName: value(formData, 'supplierName') || null,
     contactName: value(formData, 'supplierContactName') || null,
@@ -22,7 +40,9 @@ function buildSupplierDetails(formData: FormData): Record<string, string | null>
     phone: value(formData, 'supplierPhone') || null,
   };
 
-  return Object.values(supplierDetails).some(Boolean) ? supplierDetails : undefined;
+  return Object.values(supplierDetails).some(Boolean)
+    ? supplierDetails
+    : undefined;
 }
 
 function sanitizeReturnTo(value: string | null | undefined): string {
@@ -49,7 +69,10 @@ function buildReviewRedirectTarget(
   return `/dashboard/review/${encodeURIComponent(inboundEmailId)}?${searchParams.toString()}#decision`;
 }
 
-function formatReviewActionErrorMessage(message: string, action: string): string {
+function formatReviewActionErrorMessage(
+  message: string,
+  action: string,
+): string {
   if (
     action === 'APPROVE_TO_BUY' &&
     /qualification risk requires explicit operator confirmation/i.test(message)
@@ -57,7 +80,10 @@ function formatReviewActionErrorMessage(message: string, action: string): string
     return 'Supplier needs checking before approval. The supplier was detected, but it has not been matched to an approved supplier record yet. Use the checkbox below if you intentionally want to continue.';
   }
 
-  if (action === 'APPROVE_TO_BUY' && /blocked supplier cannot be approved to buy/i.test(message)) {
+  if (
+    action === 'APPROVE_TO_BUY' &&
+    /blocked supplier cannot be approved to buy/i.test(message)
+  ) {
     return 'Approval is blocked. The supplier is currently blocked and must be reviewed before you can continue.';
   }
 
@@ -68,8 +94,12 @@ function buildApprovalMessage(outcomes: ReviewWorkflowActionOutcome[]): {
   message: string;
   dealId?: string;
 } {
-  const createdDeal = outcomes.find((outcome) => outcome.tradeOpportunityOutcome === 'CREATED');
-  const existingDeal = outcomes.find((outcome) => outcome.tradeOpportunityOutcome === 'EXISTING_ACTIVE');
+  const createdDeal = outcomes.find(
+    (outcome) => outcome.tradeOpportunityOutcome === 'CREATED',
+  );
+  const existingDeal = outcomes.find(
+    (outcome) => outcome.tradeOpportunityOutcome === 'EXISTING_ACTIVE',
+  );
 
   if (createdDeal?.tradeOpportunityId) {
     return {
@@ -80,14 +110,22 @@ function buildApprovalMessage(outcomes: ReviewWorkflowActionOutcome[]): {
 
   if (existingDeal?.tradeOpportunityId) {
     return {
-      message: 'Approved. A deal opportunity was already open for this supplier offer.',
+      message:
+        'Approved. A deal opportunity was already open for this supplier offer.',
       dealId: existingDeal.tradeOpportunityId,
     };
   }
 
-  const hasBuyDecisionCreated = outcomes.some((outcome) => outcome.buyDecisionCreated);
-  const noDemand = outcomes.some((outcome) => outcome.tradeOpportunityOutcome === 'SKIPPED_NO_RECENT_DEMAND');
-  const noMargin = outcomes.some((outcome) => outcome.tradeOpportunityOutcome === 'SKIPPED_NON_POSITIVE_MARGIN');
+  const hasBuyDecisionCreated = outcomes.some(
+    (outcome) => outcome.buyDecisionCreated,
+  );
+  const noDemand = outcomes.some(
+    (outcome) => outcome.tradeOpportunityOutcome === 'SKIPPED_NO_RECENT_DEMAND',
+  );
+  const noMargin = outcomes.some(
+    (outcome) =>
+      outcome.tradeOpportunityOutcome === 'SKIPPED_NON_POSITIVE_MARGIN',
+  );
 
   if (noDemand) {
     return {
@@ -116,12 +154,137 @@ function buildApprovalMessage(outcomes: ReviewWorkflowActionOutcome[]): {
   };
 }
 
+function buildNonApprovalMessage(action: string): string {
+  if (action === 'REJECT') {
+    return 'Rejected.';
+  }
+
+  if (action === 'NEEDS_INFO') {
+    return 'Marked as needing more information.';
+  }
+
+  if (action === 'ADD_NOTE') {
+    return 'Note added.';
+  }
+
+  return 'Saved.';
+}
+
+function buildCorrectionBody(formData: FormData): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    correctedSupplierName: optionalValue(formData, 'correctedSupplierName'),
+    correctedRawProductText: optionalValue(
+      formData,
+      'correctedRawProductText',
+    ),
+    correctedNormalizedProductName: optionalValue(
+      formData,
+      'correctedNormalizedProductName',
+    ),
+    correctedManufacturer: optionalValue(formData, 'correctedManufacturer'),
+    correctedUnitPrice: optionalValue(formData, 'correctedUnitPrice'),
+    correctedCurrencyCode: optionalValue(formData, 'correctedCurrencyCode'),
+    correctedMinimumOrderQuantity: optionalNumber(
+      formData,
+      'correctedMinimumOrderQuantity',
+    ),
+    correctedAvailability: optionalValue(formData, 'correctedAvailability'),
+    note: optionalValue(formData, 'note'),
+    actorType: 'OPERATOR',
+    actorIdentifier: 'web-review-console',
+  };
+
+  return Object.fromEntries(
+    Object.entries(body).filter(([, fieldValue]) => fieldValue !== undefined),
+  );
+}
+
 function buildReviewSuccessRedirectTarget(
   inboundEmailId: string,
   params: Record<string, string>,
   returnTo: string,
 ): string {
   return buildReviewRedirectTarget(inboundEmailId, params, returnTo);
+}
+
+export async function submitReviewOfferCorrection(formData: FormData) {
+  const inboundEmailId = value(formData, 'inboundEmailId');
+  const workflowItemId = value(formData, 'workflowItemId');
+  const correctionNextAction = value(formData, 'correctionNextAction');
+  const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
+
+  if (!inboundEmailId || !workflowItemId) {
+    redirect('/dashboard/review?error=Missing+correction+input');
+  }
+
+  const body = buildCorrectionBody(formData);
+  const hasCorrectionInput = Object.keys(body).some(
+    (key) => !['actorType', 'actorIdentifier'].includes(key),
+  );
+
+  if (!hasCorrectionInput) {
+    redirect(
+      buildReviewRedirectTarget(
+        inboundEmailId,
+        {
+          error: 'Enter at least one correction field before saving.',
+        },
+        returnTo,
+      ),
+    );
+  }
+
+  try {
+    await createReviewWorkflowCorrection(workflowItemId, body);
+    if (correctionNextAction === 'APPROVE_TO_BUY') {
+      await updateReviewWorkflowItem(workflowItemId, {
+        action: 'APPROVE_TO_BUY',
+        note: optionalValue(formData, 'approveNote') ?? body.note,
+        allowQualificationRisk: true,
+        actorType: 'OPERATOR',
+        actorIdentifier: 'web-review-console',
+      });
+    }
+  } catch (error) {
+    redirect(
+      buildReviewRedirectTarget(
+        inboundEmailId,
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Offer correction failed.',
+        },
+        returnTo,
+      ),
+    );
+  }
+
+  revalidatePath('/dashboard/review');
+  revalidatePath('/dashboard/deals');
+  revalidatePath(`/dashboard/review/${inboundEmailId}`);
+  if (correctionNextAction === 'APPROVE_TO_BUY') {
+    const searchParams = new URLSearchParams({
+      updated: 'CORRECTION_APPROVED',
+      message:
+        'Correction saved and offer approved. The buy decision uses the corrected commercial values.',
+    });
+    redirect(
+      `${returnTo}${returnTo.includes('?') ? '&' : '?'}${searchParams.toString()}`,
+    );
+  }
+
+  redirect(
+    buildReviewSuccessRedirectTarget(
+      inboundEmailId,
+      {
+        updated: 'CORRECTION',
+        message:
+          'Correction saved. It will be used as a bounded hint for future review, not as automatic approval.',
+      },
+      returnTo,
+    ),
+  );
 }
 
 export async function submitInboundEmailReviewAction(formData: FormData) {
@@ -136,7 +299,8 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
 
   const note = value(formData, 'note') || undefined;
   const supplierDetails = buildSupplierDetails(formData);
-  const allowQualificationRisk = formData.get('allowQualificationRisk') === 'on';
+  const allowQualificationRisk =
+    formData.get('allowQualificationRisk') === 'on';
   const actorPayload = {
     actorType: 'OPERATOR',
     actorIdentifier: 'web-review-console',
@@ -150,9 +314,13 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
 
     if (items.length === 0) {
       redirect(
-        buildReviewRedirectTarget(inboundEmailId, {
-          error: 'No open workflow items were found for this email.',
-        }, returnTo),
+        buildReviewRedirectTarget(
+          inboundEmailId,
+          {
+            error: 'No open workflow items were found for this email.',
+          },
+          returnTo,
+        ),
       );
     }
 
@@ -161,7 +329,9 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
         const result = await updateReviewWorkflowItem(item.id, {
           action,
           note,
-          allowQualificationRisk: workflowItemId ? true : allowQualificationRisk,
+          allowQualificationRisk: workflowItemId
+            ? true
+            : allowQualificationRisk,
           supplierDetails,
           ...actorPayload,
         });
@@ -188,13 +358,19 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
 
     if (inboundEmailId) {
       redirect(
-        buildReviewRedirectTarget(inboundEmailId, {
-          error: message,
-        }, returnTo),
+        buildReviewRedirectTarget(
+          inboundEmailId,
+          {
+            error: message,
+          },
+          returnTo,
+        ),
       );
     }
 
-    redirect(`/dashboard/review/${workflowItemId}?error=${encodeURIComponent(message)}&returnTo=${encodeURIComponent(returnTo)}`);
+    redirect(
+      `/dashboard/review/${workflowItemId}?error=${encodeURIComponent(message)}&returnTo=${encodeURIComponent(returnTo)}`,
+    );
   }
 
   revalidatePath('/dashboard/review');
@@ -204,7 +380,7 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
     action === 'APPROVE_TO_BUY'
       ? buildApprovalMessage(outcomes)
       : {
-          message: 'Rejected.',
+          message: buildNonApprovalMessage(action),
         };
 
   if (inboundEmailId) {
@@ -218,7 +394,9 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
       if (successPayload.dealId) {
         searchParams.set('dealId', successPayload.dealId);
       }
-      redirect(`${returnTo}${returnTo.includes('?') ? '&' : '?'}${searchParams.toString()}`);
+      redirect(
+        `${returnTo}${returnTo.includes('?') ? '&' : '?'}${searchParams.toString()}`,
+      );
     }
     const nextParams: Record<string, string> = {
       updated: action,
@@ -227,7 +405,9 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
     if (successPayload.dealId) {
       nextParams.dealId = successPayload.dealId;
     }
-    redirect(buildReviewSuccessRedirectTarget(inboundEmailId, nextParams, returnTo));
+    redirect(
+      buildReviewSuccessRedirectTarget(inboundEmailId, nextParams, returnTo),
+    );
   }
 
   const searchParams = new URLSearchParams({
@@ -237,5 +417,7 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
   if (successPayload.dealId) {
     searchParams.set('dealId', successPayload.dealId);
   }
-  redirect(`${returnTo}${returnTo.includes('?') ? '&' : '?'}${searchParams.toString()}`);
+  redirect(
+    `${returnTo}${returnTo.includes('?') ? '&' : '?'}${searchParams.toString()}`,
+  );
 }

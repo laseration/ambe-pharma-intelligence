@@ -53,7 +53,8 @@ type GraphRequestResult<T> = {
 
 const GRAPH_ROOT = 'https://graph.microsoft.com/v1.0';
 const HEALTH_CHECK_FILE_NAME = 'microsoft-drive-health-check.txt';
-const HEALTH_CHECK_FILE_CONTENT = 'AMBE bot Microsoft Drive health check. Safe to delete.';
+const HEALTH_CHECK_FILE_CONTENT =
+  'AMBE bot Microsoft Drive health check. Safe to delete.';
 const HEALTH_CHECK_FOLDER_NAME = 'Health Checks';
 const REDACTED = '[redacted]';
 
@@ -83,11 +84,17 @@ function credentialSourceLabel(source: MicrosoftGraphCredentialSource): string {
   return source;
 }
 
-export function redactSensitiveLogText(value: string, secrets: string[] = []): string {
+export function redactSensitiveLogText(
+  value: string,
+  secrets: string[] = [],
+): string {
   let redacted = value;
 
   for (const secret of secrets.map((item) => item.trim()).filter(Boolean)) {
-    redacted = redacted.replace(new RegExp(escapeRegExp(secret), 'g'), REDACTED);
+    redacted = redacted.replace(
+      new RegExp(escapeRegExp(secret), 'g'),
+      REDACTED,
+    );
   }
 
   return redacted
@@ -131,7 +138,9 @@ export function validateMicrosoftDriveAccessCheckConfig(
   return missing;
 }
 
-export function getDiagnosticFolderChecks(config: MicrosoftDriveAccessCheckConfig): Array<{
+export function getDiagnosticFolderChecks(
+  config: MicrosoftDriveAccessCheckConfig,
+): Array<{
   label: string;
   path: string;
 }> {
@@ -217,7 +226,10 @@ function encodeDrivePath(path: string): string {
 }
 
 function splitFolderPath(path: string): string[] {
-  return path.split('/').map((segment) => segment.trim()).filter(Boolean);
+  return path
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
 }
 
 function joinDrivePath(...parts: string[]): string {
@@ -244,7 +256,9 @@ async function requestGraphToken(
     },
   );
   const text = await response.text();
-  const payload = parseJson<TokenErrorPayload & { access_token?: string }>(text);
+  const payload = parseJson<TokenErrorPayload & { access_token?: string }>(
+    text,
+  );
 
   if (!response.ok) {
     throw new DiagnosticError(
@@ -255,7 +269,9 @@ async function requestGraphToken(
   }
 
   if (!payload?.access_token) {
-    throw new DiagnosticError('Microsoft Graph token response did not include an access token.');
+    throw new DiagnosticError(
+      'Microsoft Graph token response did not include an access token.',
+    );
   }
 
   return payload.access_token;
@@ -284,7 +300,10 @@ async function graphRequest<T>(
   };
 }
 
-function graphFailureMessage(result: GraphRequestResult<unknown>, fallback: string): string {
+function graphFailureMessage(
+  result: GraphRequestResult<unknown>,
+  fallback: string,
+): string {
   const graphError = parseJson<GraphErrorPayload>(result.text);
   const code = graphError?.error?.code;
   const message = graphError?.error?.message;
@@ -306,7 +325,10 @@ async function resolveConfiguredDrive(
 
     if (!siteResult.ok) {
       throw new DiagnosticError(
-        graphFailureMessage(siteResult, `SharePoint site lookup failed with status ${siteResult.status}.`),
+        graphFailureMessage(
+          siteResult,
+          `SharePoint site lookup failed with status ${siteResult.status}.`,
+        ),
         undefined,
         siteResult.status,
       );
@@ -322,7 +344,10 @@ async function resolveConfiguredDrive(
 
     if (!drivesResult.ok) {
       throw new DiagnosticError(
-        graphFailureMessage(drivesResult, `SharePoint drive list failed with status ${drivesResult.status}.`),
+        graphFailureMessage(
+          drivesResult,
+          `SharePoint drive list failed with status ${drivesResult.status}.`,
+        ),
         undefined,
         drivesResult.status,
       );
@@ -339,7 +364,9 @@ async function resolveConfiguredDrive(
       );
     }
 
-    console.log(`PASS: SharePoint drive found${matchingDrive.name ? ` (${matchingDrive.name})` : ''}`);
+    console.log(
+      `PASS: SharePoint drive found${matchingDrive.name ? ` (${matchingDrive.name})` : ''}`,
+    );
     return matchingDrive;
   }
 
@@ -356,13 +383,18 @@ async function resolveConfiguredDrive(
 
   if (!driveResult.ok || !driveResult.payload?.id) {
     throw new DiagnosticError(
-      graphFailureMessage(driveResult, `OneDrive drive resolution failed with status ${driveResult.status}.`),
+      graphFailureMessage(
+        driveResult,
+        `OneDrive drive resolution failed with status ${driveResult.status}.`,
+      ),
       undefined,
       driveResult.status,
     );
   }
 
-  console.log(`PASS: OneDrive drive resolved${driveResult.payload.name ? ` (${driveResult.payload.name})` : ''}`);
+  console.log(
+    `PASS: OneDrive drive resolved${driveResult.payload.name ? ` (${driveResult.payload.name})` : ''}`,
+  );
   return driveResult.payload;
 }
 
@@ -390,7 +422,12 @@ async function ensureFolderPath(
 
   for (const segment of splitFolderPath(folderPath)) {
     const nextPath = currentPath ? `${currentPath}/${segment}` : segment;
-    const getResult = await getFolder(accessToken, driveId, nextPath, fetchImpl);
+    const getResult = await getFolder(
+      accessToken,
+      driveId,
+      nextPath,
+      fetchImpl,
+    );
 
     if (getResult.ok) {
       latestFolder = getResult.payload;
@@ -400,7 +437,10 @@ async function ensureFolderPath(
 
     if (getResult.status !== 404) {
       throw new DiagnosticError(
-        graphFailureMessage(getResult, `Folder lookup failed with status ${getResult.status}.`),
+        graphFailureMessage(
+          getResult,
+          `Folder lookup failed with status ${getResult.status}.`,
+        ),
         undefined,
         getResult.status,
       );
@@ -426,7 +466,10 @@ async function ensureFolderPath(
 
     if (!createResult.ok) {
       throw new DiagnosticError(
-        graphFailureMessage(createResult, `Folder creation failed with status ${createResult.status}.`),
+        graphFailureMessage(
+          createResult,
+          `Folder creation failed with status ${createResult.status}.`,
+        ),
         undefined,
         createResult.status,
       );
@@ -459,7 +502,10 @@ async function uploadHealthCheckFile(
 
   if (!uploadResult.ok || !uploadResult.payload?.id) {
     throw new DiagnosticError(
-      graphFailureMessage(uploadResult, `Test upload failed with status ${uploadResult.status}.`),
+      graphFailureMessage(
+        uploadResult,
+        `Test upload failed with status ${uploadResult.status}.`,
+      ),
       undefined,
       uploadResult.status,
     );
@@ -482,38 +528,68 @@ async function deleteDriveItem(
   );
 }
 
-function printRedactedConfigSummary(config: MicrosoftDriveAccessCheckConfig): void {
+function printRedactedConfigSummary(
+  config: MicrosoftDriveAccessCheckConfig,
+): void {
   console.log('Microsoft Drive account-opening diagnostic');
   console.log(`Selected provider: ${config.provider}`);
-  console.log(`Account-opening storage enabled: ${config.accountOpeningEnabled}`);
+  console.log(
+    `Account-opening storage enabled: ${config.accountOpeningEnabled}`,
+  );
   console.log(`Storage tenant ID present: ${config.tenantId ? 'yes' : 'no'}`);
   console.log(`Storage client ID present: ${config.clientId ? 'yes' : 'no'}`);
-  console.log(`Storage client secret present: ${config.clientSecret ? 'yes' : 'no'}`);
-  console.log(`Credential source: ${credentialSourceLabel(config.credentialSource)}`);
-  console.log(`SharePoint site ID present: ${config.sharePointSiteId ? 'yes' : 'no'}`);
-  console.log(`SharePoint drive ID present: ${config.sharePointDriveId ? 'yes' : 'no'}`);
-  console.log(`OneDrive user ID present: ${config.oneDriveUserId ? 'yes' : 'no'}`);
-  console.log(`OneDrive drive ID present: ${config.oneDriveDriveId ? 'yes' : 'no'}`);
-  console.log(`Microsoft Drive root folder: ${config.rootFolder || '(missing)'}`);
-  console.log(`Target folder path: ${config.accountOpeningFolder || '(missing)'}`);
+  console.log(
+    `Storage client secret present: ${config.clientSecret ? 'yes' : 'no'}`,
+  );
+  console.log(
+    `Credential source: ${credentialSourceLabel(config.credentialSource)}`,
+  );
+  console.log(
+    `SharePoint site ID present: ${config.sharePointSiteId ? 'yes' : 'no'}`,
+  );
+  console.log(
+    `SharePoint drive ID present: ${config.sharePointDriveId ? 'yes' : 'no'}`,
+  );
+  console.log(
+    `OneDrive user ID present: ${config.oneDriveUserId ? 'yes' : 'no'}`,
+  );
+  console.log(
+    `OneDrive drive ID present: ${config.oneDriveDriveId ? 'yes' : 'no'}`,
+  );
+  console.log(
+    `Microsoft Drive root folder: ${config.rootFolder || '(missing)'}`,
+  );
+  console.log(
+    `Target folder path: ${config.accountOpeningFolder || '(missing)'}`,
+  );
   console.log('');
 }
 
-function printFailure(error: unknown, config: MicrosoftDriveAccessCheckConfig): void {
-  const message = error instanceof Error ? error.message : 'Microsoft Drive diagnostic failed.';
+function printFailure(
+  error: unknown,
+  config: MicrosoftDriveAccessCheckConfig,
+): void {
+  const message =
+    error instanceof Error
+      ? error.message
+      : 'Microsoft Drive diagnostic failed.';
   const code = error instanceof DiagnosticError ? error.code : undefined;
   const status = error instanceof DiagnosticError ? error.status : undefined;
   const statusText = status ? ` status ${status}` : '';
   const codeText = code ? `${code}${statusText} - ` : '';
 
-  console.error(`FAIL: ${codeText}${redactSensitiveLogText(message, [config.clientSecret])}`);
+  console.error(
+    `FAIL: ${codeText}${redactSensitiveLogText(message, [config.clientSecret])}`,
+  );
 }
 
 function printTokenFailureHint(error: unknown): void {
   const code = error instanceof DiagnosticError ? error.code : undefined;
 
   if (code === 'invalid_client') {
-    console.error('Hint: invalid_client usually means the client ID or client secret is wrong.');
+    console.error(
+      'Hint: invalid_client usually means the client ID or client secret is wrong.',
+    );
     return;
   }
 
@@ -542,7 +618,9 @@ async function runMicrosoftDriveAccessCheck(writeTest: boolean): Promise<void> {
   const missing = validateMicrosoftDriveAccessCheckConfig(config);
 
   if (missing.length > 0) {
-    throw new DiagnosticError(`Missing required env vars: ${missing.join(', ')}`);
+    throw new DiagnosticError(
+      `Missing required env vars: ${missing.join(', ')}`,
+    );
   }
 
   let accessToken: string;
@@ -558,11 +636,18 @@ async function runMicrosoftDriveAccessCheck(writeTest: boolean): Promise<void> {
   const drive = await resolveConfiguredDrive(accessToken, config, fetchImpl);
 
   if (!drive.id) {
-    throw new DiagnosticError('Microsoft Drive resolution did not return a drive ID.');
+    throw new DiagnosticError(
+      'Microsoft Drive resolution did not return a drive ID.',
+    );
   }
 
   for (const folderCheck of getDiagnosticFolderChecks(config)) {
-    const folderResult = await getFolder(accessToken, drive.id, folderCheck.path, fetchImpl);
+    const folderResult = await getFolder(
+      accessToken,
+      drive.id,
+      folderCheck.path,
+      fetchImpl,
+    );
 
     if (folderResult.ok) {
       console.log(`PASS: ${folderCheck.label} found (${folderCheck.path})`);
@@ -570,7 +655,12 @@ async function runMicrosoftDriveAccessCheck(writeTest: boolean): Promise<void> {
     }
 
     if (folderResult.status === 404 && writeTest) {
-      const createdFolder = await ensureFolderPath(accessToken, drive.id, folderCheck.path, fetchImpl);
+      const createdFolder = await ensureFolderPath(
+        accessToken,
+        drive.id,
+        folderCheck.path,
+        fetchImpl,
+      );
       console.log(
         `PASS: ${folderCheck.label} created or available at ${createdFolder?.webUrl || folderCheck.path}`,
       );
@@ -586,29 +676,55 @@ async function runMicrosoftDriveAccessCheck(writeTest: boolean): Promise<void> {
     }
 
     throw new DiagnosticError(
-      graphFailureMessage(folderResult, `Folder lookup failed with status ${folderResult.status}.`),
+      graphFailureMessage(
+        folderResult,
+        `Folder lookup failed with status ${folderResult.status}.`,
+      ),
       undefined,
       folderResult.status,
     );
   }
 
   if (!writeTest) {
-    console.log('SKIP: Write test disabled by default. Pass --write-test to upload the harmless health-check file.');
+    console.log(
+      'SKIP: Write test disabled by default. Pass --write-test to upload the harmless health-check file.',
+    );
     return;
   }
 
   if (!config.accountOpeningEnabled) {
-    console.log('INFO: Account-opening storage is disabled; continuing because --write-test was explicitly passed.');
+    console.log(
+      'INFO: Account-opening storage is disabled; continuing because --write-test was explicitly passed.',
+    );
   }
 
   const healthCheckFolder = getHealthCheckFolderPath(config);
-  const folder = await ensureFolderPath(accessToken, drive.id, healthCheckFolder, fetchImpl);
-  console.log(`PASS: Health-check folder available at ${folder?.webUrl || healthCheckFolder}`);
+  const folder = await ensureFolderPath(
+    accessToken,
+    drive.id,
+    healthCheckFolder,
+    fetchImpl,
+  );
+  console.log(
+    `PASS: Health-check folder available at ${folder?.webUrl || healthCheckFolder}`,
+  );
 
-  const uploadedFile = await uploadHealthCheckFile(accessToken, drive.id, healthCheckFolder, fetchImpl);
-  console.log(`PASS: Test upload succeeded${uploadedFile.webUrl ? ` (${uploadedFile.webUrl})` : ''}`);
+  const uploadedFile = await uploadHealthCheckFile(
+    accessToken,
+    drive.id,
+    healthCheckFolder,
+    fetchImpl,
+  );
+  console.log(
+    `PASS: Test upload succeeded${uploadedFile.webUrl ? ` (${uploadedFile.webUrl})` : ''}`,
+  );
 
-  const deleteResult = await deleteDriveItem(accessToken, drive.id, uploadedFile.id!, fetchImpl);
+  const deleteResult = await deleteDriveItem(
+    accessToken,
+    drive.id,
+    uploadedFile.id!,
+    fetchImpl,
+  );
 
   if (deleteResult.ok || deleteResult.status === 204) {
     console.log('PASS: Test file deleted after upload');

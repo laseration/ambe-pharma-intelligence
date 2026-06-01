@@ -8,7 +8,11 @@ test('known supplier and structured price list body is auto-processed', () => {
     fromEmail: 'pricing@supplier.co',
     fromName: 'Supplier Co',
     subject: 'Price list April',
-    bodyText: ['Amlodipine 5mg tabs 28 - 8.40 GBP', 'Paracetamol 500mg caplets 16 - 1.25 GBP', 'Metformin 500mg 28 - 3.10 GBP'].join('\n'),
+    bodyText: [
+      'Amlodipine 5mg tabs 28 - 8.40 GBP',
+      'Paracetamol 500mg caplets 16 - 1.25 GBP',
+      'Metformin 500mg 28 - 3.10 GBP',
+    ].join('\n'),
     hasAttachment: false,
     knownSupplierDomains: ['supplier.co'],
     dailyAiReviewCount: 0,
@@ -25,7 +29,8 @@ test('trusted sender with commercially relevant but unclear email becomes AI rev
     fromEmail: 'sandeep@ambemedical.com',
     fromName: 'Sandeep',
     subject: 'Offer this week',
-    bodyText: 'Available: Paracetamol 500mg caplets 16 by Teva at GBP 1.25 MOQ 20.',
+    bodyText:
+      'Available: Paracetamol 500mg caplets 16 by Teva at GBP 1.25 MOQ 20.',
     hasAttachment: false,
     trustedSender: true,
     dailyAiReviewCount: 0,
@@ -83,7 +88,9 @@ test('unknown sender vague admin chatter becomes rejected low value or ignored',
     dailyAiReviewLimit: 10,
   });
 
-  assert.ok(['REJECTED_LOW_VALUE', 'IGNORED_NON_ACTIONABLE'].includes(result.status));
+  assert.ok(
+    ['REJECTED_LOW_VALUE', 'IGNORED_NON_ACTIONABLE'].includes(result.status),
+  );
 });
 
 test('known supplier with attachment and unclear body becomes manual review when AI limit exceeded', () => {
@@ -128,7 +135,8 @@ test('spreadsheet attachment with product rows can auto-process with high parser
     subject: 'Attached',
     bodyText: '',
     attachmentFileName: 'spreadsheet.xlsx',
-    attachmentMimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    attachmentMimeType:
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     hasAttachment: true,
     dailyAiReviewCount: 0,
     dailyAiReviewLimit: 10,

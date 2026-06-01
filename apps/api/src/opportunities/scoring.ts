@@ -56,7 +56,10 @@ function diffDays(later: Date, earlier: Date | null): number | null {
   }
 
   const millisecondsPerDay = 1000 * 60 * 60 * 24;
-  return Math.max(0, Math.floor((later.getTime() - earlier.getTime()) / millisecondsPerDay));
+  return Math.max(
+    0,
+    Math.floor((later.getTime() - earlier.getTime()) / millisecondsPerDay),
+  );
 }
 
 function getExtendedContext(context: ScoringContext): ExtendedScoringContext {
@@ -83,13 +86,15 @@ function calculateVolatilityScore(prices: number[]): number | null {
     return 0;
   }
 
-  const averagePrice = prices.reduce((total, price) => total + price, 0) / prices.length;
+  const averagePrice =
+    prices.reduce((total, price) => total + price, 0) / prices.length;
   if (averagePrice <= 0) {
     return null;
   }
 
   const variance =
-    prices.reduce((total, price) => total + (price - averagePrice) ** 2, 0) / prices.length;
+    prices.reduce((total, price) => total + (price - averagePrice) ** 2, 0) /
+    prices.length;
   return round(Math.max(0, Math.min(1, Math.sqrt(variance) / averagePrice)), 4);
 }
 
@@ -118,11 +123,17 @@ function calculateMarketConfidence(
   );
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
-  const averagePrice = prices.reduce((total, price) => total + price, 0) / prices.length;
+  const averagePrice =
+    prices.reduce((total, price) => total + price, 0) / prices.length;
   const spreadConsistency =
-    averagePrice > 0 ? Math.max(0, Math.min(1, 1 - (maxPrice - minPrice) / averagePrice)) : 0;
+    averagePrice > 0
+      ? Math.max(0, Math.min(1, 1 - (maxPrice - minPrice) / averagePrice))
+      : 0;
 
-  return round(sampleScore * (0.5 + 0.3 * recencyScore + 0.2 * spreadConsistency), 4);
+  return round(
+    sampleScore * (0.5 + 0.3 * recencyScore + 0.2 * spreadConsistency),
+    4,
+  );
 }
 
 function buildMarketSimulation(
@@ -142,27 +153,38 @@ function buildMarketSimulation(
   | 'estimatedMarginPct'
 > {
   const extendedContext = getExtendedContext(context);
-  const supplierPriceHistory = (extendedContext.supplierPriceHistory ?? []).filter((priceItem) => {
+  const supplierPriceHistory = (
+    extendedContext.supplierPriceHistory ?? []
+  ).filter((priceItem) => {
     const ageDays = diffDays(context.now, priceItem.createdAt);
     return ageDays !== null && ageDays <= config.marketLookbackDays;
   });
   const latestHistoryItem = supplierPriceHistory[0] ?? null;
-  const latestSupplierBuyPrice = context.latestSupplierPrice?.unitPrice ?? latestHistoryItem?.unitPrice ?? null;
+  const latestSupplierBuyPrice =
+    context.latestSupplierPrice?.unitPrice ??
+    latestHistoryItem?.unitPrice ??
+    null;
   const prices = supplierPriceHistory.map((priceItem) => priceItem.unitPrice);
   const rollingAverageSupplierPrice =
-    prices.length > 0 ? round(prices.reduce((total, price) => total + price, 0) / prices.length) : null;
-  const bestSupplierBuyPrice = prices.length > 0 ? round(Math.min(...prices)) : null;
+    prices.length > 0
+      ? round(prices.reduce((total, price) => total + price, 0) / prices.length)
+      : null;
+  const bestSupplierBuyPrice =
+    prices.length > 0 ? round(Math.min(...prices)) : null;
   const weightedTotals = supplierPriceHistory.reduce(
     (totals, priceItem) => {
       const ageDays = Math.max(
         0,
-        (context.now.getTime() - priceItem.createdAt.getTime()) / (1000 * 60 * 60 * 24),
+        (context.now.getTime() - priceItem.createdAt.getTime()) /
+          (1000 * 60 * 60 * 24),
       );
-      const weight = 1 / (1 + ageDays / Math.max(1, config.marketRecentWeightDays));
+      const weight =
+        1 / (1 + ageDays / Math.max(1, config.marketRecentWeightDays));
 
       return {
         weightTotal: totals.weightTotal + weight,
-        weightedPriceTotal: totals.weightedPriceTotal + priceItem.unitPrice * weight,
+        weightedPriceTotal:
+          totals.weightedPriceTotal + priceItem.unitPrice * weight,
       };
     },
     {
@@ -174,7 +196,8 @@ function buildMarketSimulation(
     weightedTotals.weightTotal > 0
       ? round(weightedTotals.weightedPriceTotal / weightedTotals.weightTotal)
       : null;
-  const simulatedMarketPrice = computedMarketPrice ?? latestHistoryItem?.marketPriceEstimate ?? null;
+  const simulatedMarketPrice =
+    computedMarketPrice ?? latestHistoryItem?.marketPriceEstimate ?? null;
   const marketPriceConfidence =
     calculateMarketConfidence(
       supplierPriceHistory.length,
@@ -182,7 +205,9 @@ function buildMarketSimulation(
       prices,
       context.now,
       config,
-    ) ?? latestHistoryItem?.marketPriceConfidence ?? null;
+    ) ??
+    latestHistoryItem?.marketPriceConfidence ??
+    null;
 
   return {
     rollingAverageSupplierPrice,
@@ -190,10 +215,14 @@ function buildMarketSimulation(
     simulatedMarketPrice,
     marketPriceConfidence,
     priceDeltaVsMarketPct:
-      calculatePriceDeltaFromMarketPct(latestSupplierBuyPrice, simulatedMarketPrice) ??
+      calculatePriceDeltaFromMarketPct(
+        latestSupplierBuyPrice,
+        simulatedMarketPrice,
+      ) ??
       latestHistoryItem?.priceDeltaFromMarketPct ??
       null,
-    supplierReliabilityScore: latestHistoryItem?.supplierReliabilityScore ?? null,
+    supplierReliabilityScore:
+      latestHistoryItem?.supplierReliabilityScore ?? null,
     volatilityScore: calculateVolatilityScore(prices),
   };
 }
@@ -203,7 +232,8 @@ function buildMetrics(
   config: OpportunityConfig,
 ): ExtendedOpportunityMetrics {
   const latestSupplierBuyPrice = context.latestSupplierPrice?.unitPrice ?? null;
-  const previousSupplierBuyPrice = context.previousSupplierPrice?.unitPrice ?? null;
+  const previousSupplierBuyPrice =
+    context.previousSupplierPrice?.unitPrice ?? null;
   const averageSalePrice = context.recentSales.averageSalePrice;
   const marketSimulation = buildMarketSimulation(context, config);
 
@@ -211,7 +241,8 @@ function buildMetrics(
     latestSupplierBuyPrice !== null &&
     previousSupplierBuyPrice !== null &&
     previousSupplierBuyPrice > 0
-      ? (latestSupplierBuyPrice - previousSupplierBuyPrice) / previousSupplierBuyPrice
+      ? (latestSupplierBuyPrice - previousSupplierBuyPrice) /
+        previousSupplierBuyPrice
       : null;
 
   const estimatedMarginPct =
@@ -223,12 +254,14 @@ function buildMetrics(
 
   return {
     currentStockQty: context.latestInventory?.quantityAvailable ?? null,
-    daysSinceInventorySnapshot: diffDays(context.now, context.latestInventory?.snapshotDate ?? null),
+    daysSinceInventorySnapshot: diffDays(
+      context.now,
+      context.latestInventory?.snapshotDate ?? null,
+    ),
     recentSalesUnits30d: context.recentSales.units30d,
-    recentSalesVelocity30d: round(
-      context.recentSales.units30d / config.recentSalesWindowDays,
-      2,
-    ) ?? 0,
+    recentSalesVelocity30d:
+      round(context.recentSales.units30d / config.recentSalesWindowDays, 2) ??
+      0,
     lastSaleDaysAgo: diffDays(context.now, context.recentSales.lastSaleDate),
     latestSupplierBuyPrice: round(latestSupplierBuyPrice),
     previousSupplierBuyPrice: round(previousSupplierBuyPrice),
@@ -264,13 +297,18 @@ function buildBreakdown(baseScore: number) {
   };
 }
 
-function formatPrice(value: number | null, currencyCode?: string | null): string | null {
+function formatPrice(
+  value: number | null,
+  currencyCode?: string | null,
+): string | null {
   if (value === null) {
     return null;
   }
 
   const normalizedCurrencyCode = currencyCode?.trim().toUpperCase();
-  return normalizedCurrencyCode ? `${normalizedCurrencyCode} ${value.toFixed(2)}` : value.toFixed(2);
+  return normalizedCurrencyCode
+    ? `${normalizedCurrencyCode} ${value.toFixed(2)}`
+    : value.toFixed(2);
 }
 
 function formatPct(value: number | null): string | null {
@@ -281,7 +319,9 @@ function formatPct(value: number | null): string | null {
   return `${Math.round(value * 100)}%`;
 }
 
-function isBestRecentKnownSupplierOffer(metrics: ExtendedOpportunityMetrics): boolean {
+function isBestRecentKnownSupplierOffer(
+  metrics: ExtendedOpportunityMetrics,
+): boolean {
   return (
     metrics.latestSupplierBuyPrice !== null &&
     ((metrics.previousSupplierBuyPrice !== null &&
@@ -291,8 +331,12 @@ function isBestRecentKnownSupplierOffer(metrics: ExtendedOpportunityMetrics): bo
   );
 }
 
-function buildCommercialContext(context: ScoringContext, metrics: ExtendedOpportunityMetrics) {
-  const supplierCurrencyCode = getExtendedContext(context).supplierPriceHistory?.[0]?.currencyCode ?? null;
+function buildCommercialContext(
+  context: ScoringContext,
+  metrics: ExtendedOpportunityMetrics,
+) {
+  const supplierCurrencyCode =
+    getExtendedContext(context).supplierPriceHistory?.[0]?.currencyCode ?? null;
   const hasBestRecentKnownOffer = isBestRecentKnownSupplierOffer(metrics);
   const supplierSavingPct =
     metrics.latestSupplierBuyPrice !== null &&
@@ -336,7 +380,9 @@ function createCandidate(
   commercialContext?: Prisma.InputJsonObject,
 ): OpportunityCandidate {
   const supplierId =
-    context.latestSupplierPrice?.supplierId ?? context.latestInventory?.supplierId ?? null;
+    context.latestSupplierPrice?.supplierId ??
+    context.latestInventory?.supplierId ??
+    null;
 
   return {
     type,
@@ -386,7 +432,9 @@ function check(
   };
 }
 
-function buildAuditEntry(evaluation: RuleEvaluation): OpportunityScoringAuditEntry {
+function buildAuditEntry(
+  evaluation: RuleEvaluation,
+): OpportunityScoringAuditEntry {
   return {
     type: evaluation.type,
     eligible: evaluation.eligible,
@@ -402,14 +450,19 @@ function isOpportunityTypeEnabledForBusinessMode(
   type: OpportunityType,
   businessMode: OpportunityBusinessMode,
 ): boolean {
-  if (businessMode === 'TRADING' && (type === 'RESTOCK' || type === 'DEAD_STOCK')) {
+  if (
+    businessMode === 'TRADING' &&
+    (type === 'RESTOCK' || type === 'DEAD_STOCK')
+  ) {
     return false;
   }
 
   return true;
 }
 
-function calculateStockCoverageDays(metrics: OpportunityMetrics): number | null {
+function calculateStockCoverageDays(
+  metrics: OpportunityMetrics,
+): number | null {
   const stockQty = metrics.currentStockQty;
   const dailyVelocity = metrics.recentSalesVelocity30d;
 
@@ -433,12 +486,14 @@ function evaluateBuyRule(
   const hasLatestSupplierPrice = metrics.latestSupplierBuyPrice !== null;
   const hasPriceChange = priceChange !== null;
   const priceImprovementThreshold = -config.buyPriceImprovementPct;
-  const meetsPriceImprovement = hasPriceChange && priceChange <= priceImprovementThreshold;
+  const meetsPriceImprovement =
+    hasPriceChange && priceChange <= priceImprovementThreshold;
   const priceDeltaVsMarketPct = metrics.priceDeltaVsMarketPct;
   const marketPriceConfidence = metrics.marketPriceConfidence;
   const supplierReliabilityScore = metrics.supplierReliabilityScore;
   const meetsMarketDiscount =
-    priceDeltaVsMarketPct !== null && priceDeltaVsMarketPct <= -config.buyVsMarketDiscountPct;
+    priceDeltaVsMarketPct !== null &&
+    priceDeltaVsMarketPct <= -config.buyVsMarketDiscountPct;
   const marketConfidenceStrongEnough =
     !meetsMarketDiscount ||
     (marketPriceConfidence !== null &&
@@ -449,14 +504,17 @@ function evaluateBuyRule(
     supplierReliabilityScore >= 0.35;
   const hasMeaningfulPricingEdge =
     meetsPriceImprovement ||
-    (meetsMarketDiscount && marketConfidenceStrongEnough && supplierReliabilityNotWeak);
+    (meetsMarketDiscount &&
+      marketConfidenceStrongEnough &&
+      supplierReliabilityNotWeak);
   const meetsDemand = salesUnits >= config.healthyDemandUnits30d;
   const inventoryNotAlreadyHigh = isTradingMode
     ? true
     : stockQty === null || stockQty < config.highStockThresholdUnits;
   const inventorySnapshotFreshEnough = isTradingMode
     ? true
-    : inventoryAgeDays === null || inventoryAgeDays < config.maxInventorySnapshotAgeDays;
+    : inventoryAgeDays === null ||
+      inventoryAgeDays < config.maxInventorySnapshotAgeDays;
   const strongSellSideMargin =
     metrics.estimatedMarginPct !== null &&
     metrics.estimatedMarginPct >= config.pushMinMarginVsMarketPct;
@@ -469,7 +527,11 @@ function evaluateBuyRule(
     inventorySnapshotFreshEnough;
 
   const ruleChecks = [
-    check('Latest supplier price available', hasLatestSupplierPrice, metrics.latestSupplierBuyPrice),
+    check(
+      'Latest supplier price available',
+      hasLatestSupplierPrice,
+      metrics.latestSupplierBuyPrice,
+    ),
     check(
       'Supplier price improvement meets BUY threshold',
       hasMeaningfulPricingEdge,
@@ -549,9 +611,15 @@ function evaluateBuyRule(
     if (supplierReliabilityScore !== null && supplierReliabilityScore >= 0.65) {
       builder.add('Supplier reliability supports repeatable BUY execution', 4);
     }
-    builder.add('Healthy recent sales demand', Math.min(10, Math.floor(salesUnits / 10)));
+    builder.add(
+      'Healthy recent sales demand',
+      Math.min(10, Math.floor(salesUnits / 10)),
+    );
     if (isTradingMode && strongSellSideMargin) {
-      builder.add('Trading-mode sell-side margin supports acting on the BUY signal', 6);
+      builder.add(
+        'Trading-mode sell-side margin supports acting on the BUY signal',
+        6,
+      );
     }
     scoreBreakdown = builder.finalize();
     const commercialContext = buildCommercialContext(context, metrics);
@@ -568,7 +636,8 @@ function evaluateBuyRule(
         commercialContext.priceDeltaVsMarketPct !== null
           ? `Current supplier price sits about ${formatPct(Math.abs(commercialContext.priceDeltaVsMarketPct))} ${commercialContext.priceDeltaVsMarketPct < 0 ? 'below' : 'above'} the simulated market reference of ${formatPrice(commercialContext.simulatedMarketPrice, commercialContext.supplierCurrencyCode)}.`
           : null,
-        commercialContext.estimatedMarginPct !== null && commercialContext.averageSalePrice !== null
+        commercialContext.estimatedMarginPct !== null &&
+        commercialContext.averageSalePrice !== null
           ? `At the current average sale price of ${formatPrice(commercialContext.averageSalePrice)}, estimated margin is about ${formatPct(commercialContext.estimatedMarginPct)}.`
           : null,
         isTradingMode && strongSellSideMargin
@@ -627,7 +696,8 @@ function evaluatePriceAlertRule(
     metrics.latestSupplierBuyPrice !== null &&
     rollingAverageSupplierPrice !== null &&
     rollingAverageSupplierPrice > 0
-      ? (metrics.latestSupplierBuyPrice - rollingAverageSupplierPrice) / rollingAverageSupplierPrice
+      ? (metrics.latestSupplierBuyPrice - rollingAverageSupplierPrice) /
+        rollingAverageSupplierPrice
       : null;
   const meetsHistoryDropThreshold =
     dropVsRollingAveragePct !== null &&
@@ -638,12 +708,20 @@ function evaluatePriceAlertRule(
 
   const eligible =
     hasLatestSupplierPrice &&
-    (meetsAlertThreshold || meetsHistoryDropThreshold || meetsMarketDropThreshold);
+    (meetsAlertThreshold ||
+      meetsHistoryDropThreshold ||
+      meetsMarketDropThreshold);
   const ruleChecks = [
-    check('Latest supplier price available', hasLatestSupplierPrice, metrics.latestSupplierBuyPrice),
+    check(
+      'Latest supplier price available',
+      hasLatestSupplierPrice,
+      metrics.latestSupplierBuyPrice,
+    ),
     check(
       'Supplier price move meets alert threshold versus prior history and/or simulated market',
-      meetsAlertThreshold || meetsHistoryDropThreshold || meetsMarketDropThreshold,
+      meetsAlertThreshold ||
+        meetsHistoryDropThreshold ||
+        meetsMarketDropThreshold,
       priceDeltaVsMarketPct ?? dropVsRollingAveragePct ?? priceChange,
       'history_or_market_alert',
     ),
@@ -656,16 +734,21 @@ function evaluatePriceAlertRule(
   let candidate: OpportunityCandidate | null = null;
 
   if (eligible) {
-    const directionalChanges = [priceChange, dropVsRollingAveragePct, priceDeltaVsMarketPct].filter(
-      (value): value is number => value !== null,
-    );
-    const strongestDirectionalChange = directionalChanges.reduce((strongest, value) =>
-      Math.abs(value) > Math.abs(strongest) ? value : strongest,
+    const directionalChanges = [
+      priceChange,
+      dropVsRollingAveragePct,
+      priceDeltaVsMarketPct,
+    ].filter((value): value is number => value !== null);
+    const strongestDirectionalChange = directionalChanges.reduce(
+      (strongest, value) =>
+        Math.abs(value) > Math.abs(strongest) ? value : strongest,
     );
     const strongestAbsoluteChange = Math.abs(strongestDirectionalChange);
     const lowerPriceSignal = strongestDirectionalChange < 0;
     const tradingDemandMakesAlertActionable =
-      isTradingMode && lowerPriceSignal && metrics.recentSalesUnits30d >= config.healthyDemandUnits30d;
+      isTradingMode &&
+      lowerPriceSignal &&
+      metrics.recentSalesUnits30d >= config.healthyDemandUnits30d;
     const tradingMarginStillViable =
       tradingDemandMakesAlertActionable &&
       metrics.estimatedMarginPct !== null &&
@@ -682,10 +765,16 @@ function evaluatePriceAlertRule(
       builder.add('Current supplier price dropped against simulated market', 8);
     }
     if (tradingDemandMakesAlertActionable) {
-      builder.add('Trading-mode demand makes the lower supplier price actionable', 6);
+      builder.add(
+        'Trading-mode demand makes the lower supplier price actionable',
+        6,
+      );
     }
     if (tradingMarginStillViable) {
-      builder.add('Sell-side margin remains viable after the supplier price move', 4);
+      builder.add(
+        'Sell-side margin remains viable after the supplier price move',
+        4,
+      );
     }
     scoreBreakdown = builder.finalize();
     const direction = strongestDirectionalChange < 0 ? 'lower' : 'higher';
@@ -702,7 +791,9 @@ function evaluatePriceAlertRule(
         dropVsRollingAveragePct !== null && dropVsRollingAveragePct < 0
           ? `Current supplier price is about ${formatPct(Math.abs(dropVsRollingAveragePct))} below the rolling supplier average.`
           : null,
-        priceDeltaVsMarketPct !== null && priceDeltaVsMarketPct < 0 && commercialContext.simulatedMarketPrice !== null
+        priceDeltaVsMarketPct !== null &&
+        priceDeltaVsMarketPct < 0 &&
+        commercialContext.simulatedMarketPrice !== null
           ? `Current supplier price is about ${formatPct(Math.abs(priceDeltaVsMarketPct))} below the simulated market reference of ${formatPrice(commercialContext.simulatedMarketPrice, commercialContext.supplierCurrencyCode)}.`
           : null,
         tradingDemandMakesAlertActionable
@@ -755,14 +846,21 @@ function evaluatePushRule(
   const hasHealthyDemand = salesUnits >= config.healthyDemandUnits30d;
   const hasHighStock = stockQty >= config.highStockThresholdUnits;
   const hasMargin = marginPct !== null;
-  const marginNotWeak = marginPct === null || marginPct >= config.lowMarginThresholdPct;
-  const strongMargin = marginPct !== null && marginPct >= config.pushMinMarginVsMarketPct;
-  const buyPriceFavorableVsMarket = priceDeltaVsMarketPct !== null && priceDeltaVsMarketPct <= 0;
+  const marginNotWeak =
+    marginPct === null || marginPct >= config.lowMarginThresholdPct;
+  const strongMargin =
+    marginPct !== null && marginPct >= config.pushMinMarginVsMarketPct;
+  const buyPriceFavorableVsMarket =
+    priceDeltaVsMarketPct !== null && priceDeltaVsMarketPct <= 0;
   const inventorySnapshotFreshEnough =
-    inventoryAgeDays === null || inventoryAgeDays < config.maxInventorySnapshotAgeDays;
+    inventoryAgeDays === null ||
+    inventoryAgeDays < config.maxInventorySnapshotAgeDays;
   const eligible = isTradingMode
     ? hasHealthyDemand && hasMargin && marginNotWeak
-    : hasHighStock && hasHealthyDemand && marginNotWeak && inventorySnapshotFreshEnough;
+    : hasHighStock &&
+      hasHealthyDemand &&
+      marginNotWeak &&
+      inventorySnapshotFreshEnough;
   const ruleChecks = [
     check(
       'Recent sales demand meets PUSH healthy-demand threshold',
@@ -814,14 +912,27 @@ function evaluatePushRule(
   if (eligible) {
     const builder = buildBreakdown(config.pushBaseScore);
     if (isTradingMode) {
-      builder.add('Healthy recent demand for trading-led promotion', Math.min(12, Math.floor(salesUnits / 10)));
-      builder.add(strongMargin ? 'Margin remains commercially strong' : 'Margin remains commercially acceptable', strongMargin ? 10 : 8);
+      builder.add(
+        'Healthy recent demand for trading-led promotion',
+        Math.min(12, Math.floor(salesUnits / 10)),
+      );
+      builder.add(
+        strongMargin
+          ? 'Margin remains commercially strong'
+          : 'Margin remains commercially acceptable',
+        strongMargin ? 10 : 8,
+      );
     } else {
       builder.add('Healthy stock available', 10);
-      builder.add('Healthy recent sales velocity', Math.min(12, Math.floor(salesUnits / 10)));
+      builder.add(
+        'Healthy recent sales velocity',
+        Math.min(12, Math.floor(salesUnits / 10)),
+      );
       if (marginPct !== null) {
         builder.add(
-          strongMargin ? 'Margin remains commercially strong' : 'Margin remains commercially acceptable',
+          strongMargin
+            ? 'Margin remains commercially strong'
+            : 'Margin remains commercially acceptable',
           strongMargin ? 8 : 6,
         );
       }
@@ -832,8 +943,14 @@ function evaluatePushRule(
         isTradingMode ? 8 : 6,
       );
     }
-    if (metrics.supplierReliabilityScore !== null && metrics.supplierReliabilityScore >= 0.65) {
-      builder.add('Reliable supplier pricing improves push confidence', isTradingMode ? 4 : 3);
+    if (
+      metrics.supplierReliabilityScore !== null &&
+      metrics.supplierReliabilityScore >= 0.65
+    ) {
+      builder.add(
+        'Reliable supplier pricing improves push confidence',
+        isTradingMode ? 4 : 3,
+      );
     }
     scoreBreakdown = builder.finalize();
     const commercialContext = buildCommercialContext(context, metrics);
@@ -847,7 +964,8 @@ function evaluatePushRule(
             commercialContext.estimatedMarginPct !== null
               ? `Estimated margin is about ${formatPct(commercialContext.estimatedMarginPct)} at the current average sale price.`
               : null,
-            commercialContext.priceDeltaVsMarketPct !== null && commercialContext.priceDeltaVsMarketPct <= 0
+            commercialContext.priceDeltaVsMarketPct !== null &&
+            commercialContext.priceDeltaVsMarketPct <= 0
               ? 'Current supplier pricing also remains favorable against the simulated market reference.'
               : null,
             commercialContext.supplierReliabilityScore !== null &&
@@ -860,7 +978,8 @@ function evaluatePushRule(
             commercialContext.estimatedMarginPct !== null
               ? `Estimated margin remains about ${formatPct(commercialContext.estimatedMarginPct)}.`
               : null,
-            commercialContext.priceDeltaVsMarketPct !== null && commercialContext.priceDeltaVsMarketPct <= 0
+            commercialContext.priceDeltaVsMarketPct !== null &&
+            commercialContext.priceDeltaVsMarketPct <= 0
               ? 'Current buy price is also favorable versus the simulated market reference.'
               : null,
           ]),
@@ -912,13 +1031,15 @@ function evaluateDeadStockRule(
   const hasWeakDemand = salesUnits < config.weakDemandMaxUnits30d;
   const hasNoRecentSales =
     salesUnits === 0 &&
-    (lastSaleDaysAgo === null || lastSaleDaysAgo >= config.deadStockNoSalesWindowDays);
+    (lastSaleDaysAgo === null ||
+      lastSaleDaysAgo >= config.deadStockNoSalesWindowDays);
   const enabledForBusinessMode = isOpportunityTypeEnabledForBusinessMode(
     'DEAD_STOCK',
     config.businessMode,
   );
   const inventorySnapshotFreshEnough =
-    inventoryAgeDays === null || inventoryAgeDays < config.maxInventorySnapshotAgeDays;
+    inventoryAgeDays === null ||
+    inventoryAgeDays < config.maxInventorySnapshotAgeDays;
   const eligible =
     enabledForBusinessMode &&
     hasPositiveStock &&
@@ -1015,7 +1136,8 @@ function evaluateLowMarginRule(
   const marginPct = metrics.estimatedMarginPct;
   const salesUnits = metrics.recentSalesUnits30d;
   const hasMargin = marginPct !== null;
-  const belowMarginThreshold = hasMargin && marginPct < config.lowMarginThresholdPct;
+  const belowMarginThreshold =
+    hasMargin && marginPct < config.lowMarginThresholdPct;
   const hasSales = salesUnits > 0;
   const eligible = hasMargin && belowMarginThreshold && hasSales;
   const ruleChecks = [
@@ -1037,14 +1159,22 @@ function evaluateLowMarginRule(
 
   if (eligible) {
     const hasHealthyDemand = salesUnits >= config.healthyDemandUnits30d;
-    const buyPriceAboveMarket = metrics.priceDeltaVsMarketPct !== null && metrics.priceDeltaVsMarketPct > 0;
+    const buyPriceAboveMarket =
+      metrics.priceDeltaVsMarketPct !== null &&
+      metrics.priceDeltaVsMarketPct > 0;
     const builder = buildBreakdown(config.lowMarginBaseScore);
     builder.add('Estimated margin below threshold', 12);
     if (isTradingMode && hasHealthyDemand) {
-      builder.add('Healthy recent demand makes the low margin commercially urgent', 4);
+      builder.add(
+        'Healthy recent demand makes the low margin commercially urgent',
+        4,
+      );
     }
     if (isTradingMode && buyPriceAboveMarket) {
-      builder.add('Current buy price sits above the simulated market reference', 6);
+      builder.add(
+        'Current buy price sits above the simulated market reference',
+        6,
+      );
     }
     scoreBreakdown = builder.finalize();
     const commercialContext = buildCommercialContext(context, metrics);
@@ -1054,7 +1184,8 @@ function evaluateLowMarginRule(
       `Low margin watch for ${context.product.name}`,
       joinSentences([
         'Estimated margin is below the configured threshold.',
-        commercialContext.averageSalePrice !== null && commercialContext.latestSupplierBuyPrice !== null
+        commercialContext.averageSalePrice !== null &&
+        commercialContext.latestSupplierBuyPrice !== null
           ? `Average sale price is ${formatPrice(commercialContext.averageSalePrice)} against a supplier buy price of ${formatPrice(commercialContext.latestSupplierBuyPrice, commercialContext.supplierCurrencyCode)}, leaving only about ${formatPct(commercialContext.estimatedMarginPct)} margin.`
           : null,
         isTradingMode &&
@@ -1102,9 +1233,11 @@ function evaluateRestockRule(
   const lowStock = stockQty <= config.lowStockThresholdUnits;
   const hasDemand = salesUnits >= config.healthyDemandUnits30d;
   const lowStockRelativeToDemand =
-    stockCoverageDays !== null && stockCoverageDays <= config.restockMaxCoverageDays;
+    stockCoverageDays !== null &&
+    stockCoverageDays <= config.restockMaxCoverageDays;
   const inventorySnapshotFreshEnough =
-    inventoryAgeDays === null || inventoryAgeDays < config.maxInventorySnapshotAgeDays;
+    inventoryAgeDays === null ||
+    inventoryAgeDays < config.maxInventorySnapshotAgeDays;
   const enabledForBusinessMode = isOpportunityTypeEnabledForBusinessMode(
     'RESTOCK',
     config.businessMode,
@@ -1122,7 +1255,12 @@ function evaluateRestockRule(
       config.businessMode,
       'STOCKHOLDING',
     ),
-    check('Current stock is at or below RESTOCK threshold', lowStock, stockQty, config.lowStockThresholdUnits),
+    check(
+      'Current stock is at or below RESTOCK threshold',
+      lowStock,
+      stockQty,
+      config.lowStockThresholdUnits,
+    ),
     check(
       'Recent sales demand meets RESTOCK healthy-demand threshold',
       hasDemand,
@@ -1152,7 +1290,10 @@ function evaluateRestockRule(
   if (eligible) {
     const builder = buildBreakdown(config.restockBaseScore);
     builder.add('Low stock position', 12);
-    builder.add('Healthy recent sales velocity', Math.min(12, Math.floor(salesUnits / 10)));
+    builder.add(
+      'Healthy recent sales velocity',
+      Math.min(12, Math.floor(salesUnits / 10)),
+    );
     scoreBreakdown = builder.finalize();
     candidate = createCandidate(
       context,
@@ -1227,8 +1368,10 @@ export function scoreOpportunityCandidates(
 ): OpportunityCandidate[] {
   const metrics = buildMetrics(context, config);
 
-  return evaluateOpportunityRules(context, metrics, config)
-    .flatMap((evaluation) => (evaluation.eligible && evaluation.candidate ? [evaluation.candidate] : []));
+  return evaluateOpportunityRules(context, metrics, config).flatMap(
+    (evaluation) =>
+      evaluation.eligible && evaluation.candidate ? [evaluation.candidate] : [],
+  );
 }
 
 export function auditOpportunityScoring(
@@ -1241,8 +1384,9 @@ export function auditOpportunityScoring(
   return {
     productId: context.product.id,
     productName: context.product.name,
-    generatedOpportunityTypes: evaluations
-      .flatMap((evaluation) => (evaluation.eligible && evaluation.candidate ? [evaluation.type] : [])),
+    generatedOpportunityTypes: evaluations.flatMap((evaluation) =>
+      evaluation.eligible && evaluation.candidate ? [evaluation.type] : [],
+    ),
     metrics,
     opportunities: evaluations.map(buildAuditEntry),
   };

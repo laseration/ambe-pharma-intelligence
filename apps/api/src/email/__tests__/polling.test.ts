@@ -3,11 +3,18 @@ import test from 'node:test';
 
 import { createEmailInboundService } from '../inbound/service';
 import type { EmailInboundResult } from '../inbound/types';
+import {
+  getPollingWorkerStatus,
+  resetPollingWorkerStatusesForTests,
+} from '../../polling/status';
 import { createEmailInboundPollingWorker } from '../polling';
 
 function createLogger() {
   return {
-    errorCalls: [] as Array<{ message: string; meta?: Record<string, unknown> }>,
+    errorCalls: [] as Array<{
+      message: string;
+      meta?: Record<string, unknown>;
+    }>,
     infoCalls: [] as Array<{ message: string; meta?: Record<string, unknown> }>,
     warnCalls: [] as Array<{ message: string; meta?: Record<string, unknown> }>,
     error(message: string, meta?: Record<string, unknown>) {
@@ -82,6 +89,13 @@ test('allowed sender accepted through Graph polling and structured body reaches 
   assert.equal(result.items[0]?.email.from, 'supplier@example.com');
   assert.equal(result.items[0]?.triageStatus, 'AUTO_PROCESSED');
   assert.deepEqual(markReadCalls, ['graph-1']);
+  assert.ok(
+    logger.infoCalls.some(
+      (call) =>
+        call.message === 'Email inbox polling handled message' &&
+        call.meta?.correlationId === 'MICROSOFT_GRAPH:graph-1',
+    ),
+  );
 });
 
 test('unapproved sender is ignored safely through Graph polling', async () => {
@@ -196,7 +210,9 @@ test('attachment email reaches import path through Graph polling', async () => {
         '@odata.type': '#microsoft.graph.fileAttachment',
         name: 'supplier-price-list.csv',
         contentType: 'text/csv',
-        contentBytes: Buffer.from('supplierName,productName,unitPrice\nAcme Labs,Aspirin,1.20').toString('base64'),
+        contentBytes: Buffer.from(
+          'supplierName,productName,unitPrice\nAcme Labs,Aspirin,1.20',
+        ).toString('base64'),
       },
     ],
     logger,
@@ -219,6 +235,7 @@ test('attachment email reaches import path through Graph polling', async () => {
 });
 
 test('one bad email does not kill the polling loop', async () => {
+  resetPollingWorkerStatusesForTests();
   const logger = createLogger();
   const handled: string[] = [];
   const markReadCalls: string[] = [];
@@ -277,9 +294,16 @@ test('one bad email does not kill the polling loop', async () => {
   assert.deepEqual(markReadCalls, ['graph-4b']);
   assert.equal(logger.errorCalls.length, 1);
   assert.match(logger.errorCalls[0]?.message ?? '', /continued/i);
+  const status = getPollingWorkerStatus('email-inbound');
+  assert.equal(status.totalRuns, 1);
+  assert.equal(status.totalItemsSeen, 2);
+  assert.equal(status.totalItemsProcessed, 1);
+  assert.equal(status.totalItemsFailed, 1);
+  assert.equal(status.lastError, 'boom');
 });
 
 test('duplicate replayed unread message is not reprocessed dangerously', async () => {
+  resetPollingWorkerStatusesForTests();
   const logger = createLogger();
   let ingestCalls = 0;
   const markReadCalls: string[] = [];
@@ -322,6 +346,10 @@ test('duplicate replayed unread message is not reprocessed dangerously', async (
 
   assert.equal(ingestCalls, 0);
   assert.deepEqual(markReadCalls, ['graph-5']);
+  const status = getPollingWorkerStatus('email-inbound');
+  assert.equal(status.totalItemsSeen, 1);
+  assert.equal(status.totalItemsSkipped, 1);
+  assert.equal(status.duplicateItemsSkipped, 1);
 });
 
 test('malformed sender-less message is marked read so it does not poison the inbox loop', async () => {

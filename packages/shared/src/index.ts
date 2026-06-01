@@ -38,3 +38,5 @@ export type Customer = {
 export function formatEntityLabel(id: string, name: string): string {
   return `${name} (${id})`;
 }
+
+export type * from './accountOpening.js';

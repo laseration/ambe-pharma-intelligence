@@ -1,10 +1,19 @@
-import type { Opportunity, OpportunityStatus, OpportunityType, Prisma } from '@prisma/client';
+import type {
+  Opportunity,
+  OpportunityStatus,
+  OpportunityType,
+  Prisma,
+} from '@prisma/client';
 
 import { db } from '../lib/db';
 import { logger } from '../lib/logger';
 import { opportunityConfig } from './config';
 import { auditOpportunityScoring, scoreOpportunityCandidates } from './scoring';
-import type { OpportunityCandidate, OpportunityScoringAudit, ScoringContext } from './types';
+import type {
+  OpportunityCandidate,
+  OpportunityScoringAudit,
+  ScoringContext,
+} from './types';
 
 const opportunityListInclude = {
   product: {
@@ -49,89 +58,102 @@ function average(numbers: number[]): number | null {
   return numbers.reduce((total, value) => total + value, 0) / numbers.length;
 }
 
-async function buildScoringContexts(now: Date, productId?: string): Promise<ScoringContext[]> {
-  const windowStart = startOfWindow(now, opportunityConfig.recentSalesWindowDays);
+async function buildScoringContexts(
+  now: Date,
+  productId?: string,
+): Promise<ScoringContext[]> {
+  const windowStart = startOfWindow(
+    now,
+    opportunityConfig.recentSalesWindowDays,
+  );
 
-  const [products, inventorySnapshots, supplierPriceItems, salesRecords] = await Promise.all([
-    db.product.findMany({
-      where: productId ? { id: productId } : undefined,
-      select: {
-        id: true,
-        name: true,
-      },
-    }),
-    db.inventorySnapshot.findMany({
-      where: productId ? { productId } : undefined,
-      orderBy: { snapshotDate: 'desc' },
-      select: {
-        productId: true,
-        supplierId: true,
-        snapshotDate: true,
-        quantityAvailable: true,
-        quantityOnHand: true,
-      },
-    }),
-    db.supplierPriceItem.findMany({
-      orderBy: [{ createdAt: 'desc' }],
-      select: {
-        productId: true,
-        supplierId: true,
-        unitPrice: true,
-        currencyCode: true,
-        createdAt: true,
-        marketPriceEstimate: true,
-        marketPriceConfidence: true,
-        priceDeltaFromMarketPct: true,
-        supplier: {
-          select: {
-            reliabilityScore: true,
+  const [products, inventorySnapshots, supplierPriceItems, salesRecords] =
+    await Promise.all([
+      db.product.findMany({
+        where: productId ? { id: productId } : undefined,
+        select: {
+          id: true,
+          name: true,
+        },
+      }),
+      db.inventorySnapshot.findMany({
+        where: productId ? { productId } : undefined,
+        orderBy: { snapshotDate: 'desc' },
+        select: {
+          productId: true,
+          supplierId: true,
+          snapshotDate: true,
+          quantityAvailable: true,
+          quantityOnHand: true,
+        },
+      }),
+      db.supplierPriceItem.findMany({
+        orderBy: [{ createdAt: 'desc' }],
+        select: {
+          productId: true,
+          supplierId: true,
+          unitPrice: true,
+          currencyCode: true,
+          createdAt: true,
+          marketPriceEstimate: true,
+          marketPriceConfidence: true,
+          priceDeltaFromMarketPct: true,
+          supplier: {
+            select: {
+              reliabilityScore: true,
+            },
           },
         },
-      },
-      where: {
-        ...(productId
-          ? {
-              AND: [
-                {
-                  productId: {
-                    not: null,
+        where: {
+          ...(productId
+            ? {
+                AND: [
+                  {
+                    productId: {
+                      not: null,
+                    },
                   },
+                  { productId },
+                ],
+              }
+            : {
+                productId: {
+                  not: null,
                 },
-                { productId },
-              ],
-            }
-          : {
-              productId: {
-                not: null,
-              },
-            }),
-      },
-    }),
-    db.salesRecord.findMany({
-      where: {
-        ...(productId ? { productId } : {}),
-        saleDate: {
-          gte: windowStart,
+              }),
         },
-      },
-      orderBy: { saleDate: 'desc' },
-      select: {
-        productId: true,
-        saleDate: true,
-        quantity: true,
-        unitPrice: true,
-      },
-    }),
-  ]);
+      }),
+      db.salesRecord.findMany({
+        where: {
+          ...(productId ? { productId } : {}),
+          saleDate: {
+            gte: windowStart,
+          },
+        },
+        orderBy: { saleDate: 'desc' },
+        select: {
+          productId: true,
+          saleDate: true,
+          quantity: true,
+          unitPrice: true,
+        },
+      }),
+    ]);
 
-  const latestInventoryByProduct = new Map<string, (typeof inventorySnapshots)[number]>();
+  const latestInventoryByProduct = new Map<
+    string,
+    (typeof inventorySnapshots)[number]
+  >();
   for (const snapshot of inventorySnapshots) {
     if (!latestInventoryByProduct.has(snapshot.productId)) {
       latestInventoryByProduct.set(snapshot.productId, snapshot);
     }
   }
 
-  const supplierPricesByProduct = new Map<string, Array<(typeof supplierPriceItems)[number]>>();
+  const supplierPricesByProduct = new Map<
+    string,
+    Array<(typeof supplierPriceItems)[number]>
+  >();
   for (const priceItem of supplierPriceItems) {
     if (!priceItem.productId) {
       continue;
@@ -142,7 +164,10 @@ async function buildScoringContexts(now: Date, productId?: string): Promise<Scor
     supplierPricesByProduct.set(priceItem.productId, existing);
   }
 
-  const salesByProduct = new Map<string, Array<(typeof salesRecords)[number]>>();
+  const salesByProduct = new Map<
+    string,
+    Array<(typeof salesRecords)[number]>
+  >();
   for (const salesRecord of salesRecords) {
     const existing = salesByProduct.get(salesRecord.productId) ?? [];
     existing.push(salesRecord);
@@ -156,7 +181,8 @@ async function buildScoringContexts(now: Date, productId?: string): Promise<Scor
     const latestSupplierPriceItem = supplierPriceHistory[0] ?? null;
     const comparableSupplierPriceHistory = latestSupplierPriceItem
       ? supplierPriceHistory.filter(
-          (priceItem) => priceItem.currencyCode === latestSupplierPriceItem.currencyCode,
+          (priceItem) =>
+            priceItem.currencyCode === latestSupplierPriceItem.currencyCode,
         )
       : supplierPriceHistory;
 
@@ -179,8 +205,13 @@ async function buildScoringContexts(now: Date, productId?: string): Promise<Scor
           }
         : null,
       recentSales: {
-        units30d: recentSales.reduce((total, record) => total + record.quantity, 0),
-        averageSalePrice: average(recentSales.map((record) => record.unitPrice.toNumber())),
+        units30d: recentSales.reduce(
+          (total, record) => total + record.quantity,
+          0,
+        ),
+        averageSalePrice: average(
+          recentSales.map((record) => record.unitPrice.toNumber()),
+        ),
         lastSaleDate: recentSales[0]?.saleDate ?? null,
       },
       supplierPriceHistory: comparableSupplierPriceHistory.map((priceItem) => ({
@@ -197,8 +228,14 @@ async function buildScoringContexts(now: Date, productId?: string): Promise<Scor
   });
 }
 
-async function persistCandidate(candidate: OpportunityCandidate, now: Date): Promise<Opportunity> {
-  const dedupeWindowStart = startOfWindow(now, opportunityConfig.duplicateWindowDays);
+async function persistCandidate(
+  candidate: OpportunityCandidate,
+  now: Date,
+): Promise<Opportunity> {
+  const dedupeWindowStart = startOfWindow(
+    now,
+    opportunityConfig.duplicateWindowDays,
+  );
 
   const existing = await db.opportunity.findFirst({
     where: {
@@ -255,7 +292,9 @@ async function persistCandidate(candidate: OpportunityCandidate, now: Date): Pro
 export async function regenerateOpportunities() {
   const now = new Date();
   const contexts = await buildScoringContexts(now);
-  const candidates = contexts.flatMap((context) => scoreOpportunityCandidates(context));
+  const candidates = contexts.flatMap((context) =>
+    scoreOpportunityCandidates(context),
+  );
   const persisted: Opportunity[] = [];
 
   for (const candidate of candidates) {
@@ -269,7 +308,9 @@ export async function regenerateOpportunities() {
   };
 }
 
-function getMetadataObject(metadata: Prisma.JsonValue | null): Prisma.JsonObject {
+function getMetadataObject(
+  metadata: Prisma.JsonValue | null,
+): Prisma.JsonObject {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
     return {};
   }
@@ -279,7 +320,11 @@ function getMetadataObject(metadata: Prisma.JsonValue | null): Prisma.JsonObject
 
 function getTriageHistory(metadata: Prisma.JsonObject): Prisma.JsonObject[] {
   const triageValue = metadata.triage;
-  if (!triageValue || typeof triageValue !== 'object' || Array.isArray(triageValue)) {
+  if (
+    !triageValue ||
+    typeof triageValue !== 'object' ||
+    Array.isArray(triageValue)
+  ) {
     return [];
   }
 
@@ -365,7 +410,9 @@ export async function updateOpportunityStatus(
   });
 }
 
-export async function getOpportunityScoringAudit(productId: string): Promise<OpportunityScoringAudit | null> {
+export async function getOpportunityScoringAudit(
+  productId: string,
+): Promise<OpportunityScoringAudit | null> {
   const [context] = await buildScoringContexts(new Date(), productId);
 
   if (!context) {

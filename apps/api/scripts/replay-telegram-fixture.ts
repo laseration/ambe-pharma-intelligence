@@ -25,13 +25,16 @@ async function main() {
   const options = readOptions();
   const payload = JSON.parse(fs.readFileSync(options.fixturePath, 'utf8'));
 
-  const response = await fetch(`${options.apiBaseUrl}/api/telegram/inbound/updates`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+  const response = await fetch(
+    `${options.apiBaseUrl}/api/telegram/inbound/updates`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  });
+  );
 
   const body = await response.text();
 
@@ -42,6 +45,8 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : 'Fixture replay failed.');
+  console.error(
+    error instanceof Error ? error.message : 'Fixture replay failed.',
+  );
   process.exit(1);
 });

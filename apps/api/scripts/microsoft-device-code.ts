@@ -21,7 +21,10 @@ function readEnv(...names: string[]): string {
 }
 
 async function main() {
-  const clientId = readEnv('MICROSOFT_MAIL_CLIENT_ID', 'MICROSOFT_GRAPH_CLIENT_ID');
+  const clientId = readEnv(
+    'MICROSOFT_MAIL_CLIENT_ID',
+    'MICROSOFT_GRAPH_CLIENT_ID',
+  );
   const tenantId =
     process.env.MICROSOFT_MAIL_TENANT_ID?.trim() ||
     process.env.MICROSOFT_GRAPH_TENANT_ID?.trim() ||
@@ -43,7 +46,9 @@ async function main() {
   });
 
   if (!deviceCodeResponse.ok) {
-    throw new Error(`Device code request failed with status ${deviceCodeResponse.status}.`);
+    throw new Error(
+      `Device code request failed with status ${deviceCodeResponse.status}.`,
+    );
   }
 
   const deviceCodePayload = (await deviceCodeResponse.json()) as {
@@ -59,7 +64,10 @@ async function main() {
 
   console.log(deviceCodePayload.message);
 
-  const pollIntervalMs = Math.max((deviceCodePayload.interval ?? 5) * 1000, 1000);
+  const pollIntervalMs = Math.max(
+    (deviceCodePayload.interval ?? 5) * 1000,
+    1000,
+  );
   const expiresAt = Date.now() + (deviceCodePayload.expires_in ?? 900) * 1000;
 
   while (Date.now() < expiresAt) {
@@ -84,7 +92,11 @@ async function main() {
       error_description?: string;
     };
 
-    if (tokenResponse.ok && tokenPayload.access_token && tokenPayload.refresh_token) {
+    if (
+      tokenResponse.ok &&
+      tokenPayload.access_token &&
+      tokenPayload.refresh_token
+    ) {
       const meResponse = await fetch(
         'https://graph.microsoft.com/v1.0/me?$select=displayName,mail,userPrincipalName',
         {
@@ -100,7 +112,9 @@ async function main() {
       console.log(JSON.stringify(mePayload, null, 2));
       console.log('');
       console.log('Add this to apps/api/.env:');
-      console.log(`MICROSOFT_GRAPH_REFRESH_TOKEN=${tokenPayload.refresh_token}`);
+      console.log(
+        `MICROSOFT_GRAPH_REFRESH_TOKEN=${tokenPayload.refresh_token}`,
+      );
       return;
     }
 
@@ -123,6 +137,8 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : 'Device code flow failed.');
+  console.error(
+    error instanceof Error ? error.message : 'Device code flow failed.',
+  );
   process.exit(1);
 });

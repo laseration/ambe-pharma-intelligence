@@ -4,6 +4,7 @@ import type {
   AccountOpeningCompletionDraft,
   AccountOpeningDraftField,
 } from './draft';
+import { evaluateAccountOpeningAutofillPolicy } from './policy';
 
 export type AccountOpeningFieldMappingStatus =
   | 'UNMAPPED'
@@ -397,6 +398,20 @@ function draftFieldMap(
 }
 
 function hasBlockedRisk(label: string, mappedDraftFieldKey: string | null) {
+  const policy = evaluateAccountOpeningAutofillPolicy({
+    fieldKey: mappedDraftFieldKey,
+    fieldLabel: label,
+  });
+
+  if (
+    !policy.safeToAutofill &&
+    ['SIGNATURE', 'BANK_OR_DIRECT_DEBIT', 'GUARANTEE_OR_INDEMNITY'].includes(
+      policy.category,
+    )
+  ) {
+    return true;
+  }
+
   return (
     (mappedDraftFieldKey
       ? BLOCKED_FIELD_KEY_PATTERN.test(mappedDraftFieldKey)

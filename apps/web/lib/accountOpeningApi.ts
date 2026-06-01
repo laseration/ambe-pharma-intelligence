@@ -1,327 +1,44 @@
 import 'server-only';
 
-export type AccountOpeningSigningNotes = {
-  title: string;
-  recommendedSigner: string;
-  defaultSigningStatement: string;
-  detectedNames: string[];
-  detectedRolesOrSections: string[];
-  reviewerChecks: string[];
-  riskFlags: string[];
-  missingOrUnclear: string[];
-  signatureInstruction: string;
-  summary: string;
-};
+import type {
+  AccountOpeningCaseDetail,
+  AccountOpeningCompletionDraft,
+  AccountOpeningCompletedFormFilingDetail,
+  AccountOpeningFieldMappingReview,
+  AccountOpeningFieldMappingSaveInput,
+  AccountOpeningMissingInfoResponses,
+  AccountOpeningReadinessReport,
+  AccountOpeningStatusAction,
+} from '@ambe/shared';
 
-export type AccountOpeningMissingInfoResponses = {
-  website?: string | null;
-  numberOfEmployees?: string | null;
-  businessHours?: string | null;
-  estimatedMonthlyPurchases?: string | null;
-  webOrdering?: string | null;
-  directDebitRequested?: string | null;
-  cdLicenceApplies?: string | null;
-  gphcPremisesNumber?: string | null;
-  cqcRegistration?: string | null;
-  reviewerNotes?: string | null;
-};
+import {
+  requestInternalBinaryFile,
+  requestInternalJson,
+  requestInternalTextFile,
+} from './internalApiRequest';
 
-export type AccountOpeningDraftField = {
-  key: string;
-  supplierLabel: string;
-  proposedValue: string | null;
-  valueSource:
-    | 'AMBE_MASTER_PROFILE'
-    | 'REVIEWER_RESPONSE'
-    | 'EXTRACTED_TEXT'
-    | 'SYSTEM_PLACEHOLDER'
-    | 'NOT_PROVIDED';
-  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'BLOCKED';
-  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'BLOCKED';
-  requiresReview: boolean;
-  reviewReason: string | null;
-  evidence: Array<{
-    sourceType:
-      | 'MASTER_PROFILE'
-      | 'EMAIL_BODY'
-      | 'ATTACHMENT_TEXT'
-      | 'REVIEWER_INPUT'
-      | 'SYSTEM_RULE';
-    sourceLabel: string | null;
-    snippet: string | null;
-  }>;
-};
-
-export type AccountOpeningCompletionDraft = {
-  status: 'PREVIEW' | 'READY_FOR_REVIEW' | 'REVIEW_REQUIRED' | 'BLOCKED';
-  overallConfidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'BLOCKED';
-  isStored: boolean;
-  profileId: string;
-  profileVersion: string;
-  generatedAt: string;
-  fields: AccountOpeningDraftField[];
-  summary: {
-    totalFields: number;
-    highConfidenceFields: number;
-    reviewRequiredFields: number;
-    blockedFields: number;
-    safeToAutoFill: boolean;
-  };
-  safetyNotes: string[];
-};
-
-export type AccountOpeningFieldMappingStatus =
-  | 'UNMAPPED'
-  | 'MAPPED_SAFE'
-  | 'MAPPED_REVIEW_REQUIRED'
-  | 'BLOCKED'
-  | 'IGNORED'
-  | 'NEEDS_OPERATOR_INPUT';
-
-export type AccountOpeningFieldMapping = {
-  id: string;
-  supplierFieldLabel: string;
-  supplierSectionLabel: string | null;
-  normalizedLabel: string;
-  sourceType:
-    | 'DRAFT_FIELD'
-    | 'SOURCE_EVIDENCE'
-    | 'SYSTEM_RULE'
-    | 'OPERATOR_CREATED';
-  sourceEvidenceId: string | null;
-  evidenceSnippet: string | null;
-  suggestedDraftFieldKey: string | null;
-  mappedDraftFieldKey: string | null;
-  proposedValue: string | null;
-  valueSource: string | null;
-  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'BLOCKED';
-  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'BLOCKED';
-  status: AccountOpeningFieldMappingStatus;
-  requiresReview: boolean;
-  blockedReason: string | null;
-  reviewReason: string | null;
-  operatorNote: string | null;
-};
-
-export type AccountOpeningFieldMappingReview = {
-  status: 'PREVIEW' | 'SAVED';
-  generatedAt: string;
-  mappings: AccountOpeningFieldMapping[];
-  summary: {
-    totalMappings: number;
-    mappedSafe: number;
-    reviewRequired: number;
-    blocked: number;
-    ignored: number;
-    unmapped: number;
-    needsOperatorInput: number;
-    safeToFillSupplierForms: false;
-  };
-  safetyNotes: string[];
-};
-
-export type AccountOpeningFieldMappingSaveInput = {
-  id?: string | null;
-  supplierFieldLabel: string;
-  supplierSectionLabel?: string | null;
-  sourceType: AccountOpeningFieldMapping['sourceType'];
-  sourceEvidenceId?: string | null;
-  evidenceSnippet?: string | null;
-  suggestedDraftFieldKey?: string | null;
-  mappedDraftFieldKey?: string | null;
-  status?: AccountOpeningFieldMappingStatus | null;
-  operatorNote?: string | null;
-};
-
-export type AccountOpeningSourceEvidence = {
-  id: string | null;
-  sourceType: string;
-  sourceLabel: string | null;
-  fileName: string | null;
-  mimeType: string | null;
-  sizeBytes: number | null;
-  contentId: string | null;
-  disposition: string | null;
-  extractionMethod: string | null;
-  extractedTextHash: string | null;
-  extractedTextChars: number | null;
-  safeSnippet: string | null;
-  rawFileAvailable: boolean;
-  storageProvider: string | null;
-  storageFolderUrl: string | null;
-  storageFileUrl: string | null;
-  storageDriveItemId: string | null;
-  createdAt: string | null;
-  updatedAt: string | null;
-};
-
-export type AccountOpeningOriginalForm = {
-  id: string;
-  sourceEvidenceId: string | null;
-  fileName: string;
-  mimeType: string | null;
-  sizeBytes: number | null;
-  fileHash: string | null;
-  storageProvider: string | null;
-  storageFolderUrl: string | null;
-  storageFileUrl: string | null;
-  storageDriveItemId: string | null;
-  localBlobAvailable: boolean;
-  formType: string;
-  fillSupportStatus: string;
-  detectedFieldCount: number | null;
-  detectionSummary: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type AccountOpeningFillPreviewDetail = {
-  id: string;
-  originalFormId: string | null;
-  status: string;
-  previewVersion: string;
-  fileNames: string[];
-  summary: Record<string, unknown>;
-  safetySummary: Record<string, unknown>;
-  generatedAt: string;
-  createdByType: string | null;
-  createdByIdentifier: string | null;
-};
-
-export type AccountOpeningBinaryFillPreviewDetail = {
-  id: string;
-  originalFormId: string | null;
-  status: string;
-  previewVersion: string;
-  binaryPreviewFileName: string | null;
-  binaryPreviewContentType: string | null;
-  binaryPreviewHash: string | null;
-  binaryPreviewBytesAvailable: boolean;
-  filledFieldCount: number;
-  blankFieldCount: number;
-  unsupportedReason: string | null;
-  warnings: string[];
-  brandingPreservationCheck: Record<string, unknown>;
-  safetySummary: Record<string, unknown>;
-  generatedAt: string;
-  createdByType: string | null;
-  createdByIdentifier: string | null;
-};
-
-export type AccountOpeningCompletedFormFilingDetail = {
-  id: string;
-  binaryFillPreviewId: string;
-  status: string;
-  fileName: string;
-  contentType: string;
-  fileHash: string | null;
-  fileSizeBytes: number | null;
-  storageProvider: string | null;
-  storageFolderUrl: string | null;
-  storageFileUrl: string | null;
-  storageDriveItemId: string | null;
-  approvedByType: string | null;
-  approvedByIdentifier: string | null;
-  approvedAt: string | null;
-  approvalNote: string | null;
-  filedByType: string | null;
-  filedByIdentifier: string | null;
-  filedAt: string | null;
-  filingNote: string | null;
-  skippedReason: string | null;
-  safetySummary: Record<string, unknown>;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type AccountOpeningReadinessStatus = 'GREEN' | 'AMBER' | 'RED';
-
-export type AccountOpeningReadinessCheck = {
-  key: string;
-  label: string;
-  status: AccountOpeningReadinessStatus;
-  value: string;
-  blocker: string | null;
-  nextAction: string;
-};
-
-export type AccountOpeningReadinessReport = {
-  caseId: string;
-  status: AccountOpeningReadinessStatus;
-  readyForEndToEndFillingAndFiling: boolean;
-  nextAction: string;
-  checks: AccountOpeningReadinessCheck[];
-  blockerTexts: string[];
-  counts: {
-    pdfAcroFormFieldCount: number | null;
-    safeMappedFields: number;
-    blockedFields: number;
-  };
-  safety: {
-    diagnosticOnly: true;
-    internalSharePointFilingOnly: true;
-    notSigned: true;
-    notSent: true;
-    notSubmitted: true;
-    directDebitBankAuthorityNotCompleted: true;
-    guaranteeIndemnityDirectorOnlyNotCompleted: true;
-    purchaseWorkflowTriggered: false;
-    rawExtractedTextIncluded: false;
-    binaryBytesIncluded: false;
-    bankDetailsIncluded: false;
-    sortCodesIncluded: false;
-  };
-};
-
-export type AccountOpeningStatusAction =
-  | 'MARKED_NEEDS_INFO'
-  | 'APPROVED_FOR_COMPLETION'
-  | 'REJECTED';
-
-export type AccountOpeningCaseDetail = {
-  id: string;
-  sourceFingerprint: string;
-  messageId: string | null;
-  senderEmail: string | null;
-  senderDomain: string | null;
-  subject: string | null;
-  receivedAt: string | null;
-  companyName: string | null;
-  detectedFormType: string | null;
-  status: string;
-  recommendedSigner: string;
-  signingStatement: string;
-  signingExplanation: string | null;
-  detectedNames: string[];
-  detectedRoles: string[];
-  escalationNotes: string[];
-  riskFlags: string[];
-  missingFields: string[];
-  reviewerChecks: string[];
-  signingNotes: AccountOpeningSigningNotes;
-  missingInfoResponses: AccountOpeningMissingInfoResponses;
-  extractedTextSummary: string | null;
-  storageStatus: string | null;
-  storageNote: string | null;
-  storageSkippedReason: string | null;
-  storageLastAttemptAt: string | null;
-  storageFolderUrl: string | null;
-  sourceAttachmentNames: string[];
-  draftStatus: string | null;
-  draftVersion: string | null;
-  draftGeneratedAt: string | null;
-  sourceEvidence: AccountOpeningSourceEvidence[];
-  originalForms: AccountOpeningOriginalForm[];
-  completionDraft: AccountOpeningCompletionDraft;
-  fieldMappings: AccountOpeningFieldMappingReview;
-  latestFillPreview: AccountOpeningFillPreviewDetail | null;
-  latestBinaryFillPreview: AccountOpeningBinaryFillPreviewDetail | null;
-  latestCompletedFormFiling: AccountOpeningCompletedFormFilingDetail | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
+export type {
+  AccountOpeningBinaryFillPreviewDetail,
+  AccountOpeningCaseDetail,
+  AccountOpeningCompletedFormFilingDetail,
+  AccountOpeningCompletionDraft,
+  AccountOpeningDocumentLifecycleSummary,
+  AccountOpeningDraftField,
+  AccountOpeningFieldMapping,
+  AccountOpeningFieldMappingReview,
+  AccountOpeningFieldMappingSaveInput,
+  AccountOpeningFieldMappingStatus,
+  AccountOpeningFillPreviewDetail,
+  AccountOpeningMissingInfoResponses,
+  AccountOpeningOriginalForm,
+  AccountOpeningOriginalFormLifecycle,
+  AccountOpeningReadinessCheck,
+  AccountOpeningReadinessReport,
+  AccountOpeningReadinessStatus,
+  AccountOpeningSigningNotes,
+  AccountOpeningSourceEvidence,
+  AccountOpeningStatusAction,
+} from '@ambe/shared';
 export type AccountOpeningReviewExportFile = {
   fileName: string;
   contentType: string;
@@ -334,136 +51,37 @@ export type AccountOpeningBinaryPreviewFile = {
   content: ArrayBuffer;
 };
 
-function getInternalApiBaseUrl(): string {
-  return (
-    process.env.INTERNAL_API_BASE_URL?.trim() ||
-    process.env.NEXT_PUBLIC_INTERNAL_API_BASE_URL?.trim() ||
-    'http://127.0.0.1:4000/api'
-  );
-}
-
-function buildHeaders(includeJsonContentType = false): HeadersInit {
-  const headers: Record<string, string> = {};
-  const apiKey =
-    process.env.INTERNAL_API_KEY?.trim() ||
-    process.env.INTERNAL_ADMIN_API_KEY?.trim() ||
-    '';
-
-  if (apiKey) {
-    headers['x-internal-api-key'] = apiKey;
-    headers['x-internal-caller-name'] = 'web-account-opening-review';
-  }
-
-  if (includeJsonContentType) {
-    headers['content-type'] = 'application/json';
-  }
-
-  return headers;
-}
+const CALLER_NAME = 'web-account-opening-review';
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${getInternalApiBaseUrl()}${path}`, {
-    ...init,
-    cache: 'no-store',
-    headers: {
-      ...buildHeaders(init?.body !== undefined),
-      ...(init?.headers ?? {}),
-    },
+  return requestInternalJson<T>(path, {
+    callerName: CALLER_NAME,
+    init,
   });
-
-  if (!response.ok) {
-    let message = `Request failed with status ${response.status}.`;
-
-    try {
-      const payload = (await response.json()) as { error?: string };
-      if (payload.error) {
-        message = payload.error;
-      }
-    } catch {
-      // Keep the generic status-based message.
-    }
-
-    throw new Error(message);
-  }
-
-  return (await response.json()) as T;
 }
 
 async function requestTextFile(
   path: string,
   init?: RequestInit,
 ): Promise<AccountOpeningReviewExportFile> {
-  const response = await fetch(`${getInternalApiBaseUrl()}${path}`, {
-    ...init,
-    cache: 'no-store',
-    headers: {
-      ...buildHeaders(false),
-      ...(init?.headers ?? {}),
-    },
+  return requestInternalTextFile(path, {
+    callerName: CALLER_NAME,
+    init,
+    fallbackFileName: 'account-opening-review-export.txt',
+    fallbackContentType: 'text/plain; charset=utf-8',
   });
-
-  if (!response.ok) {
-    let message = `Request failed with status ${response.status}.`;
-
-    try {
-      const payload = (await response.json()) as { error?: string };
-      if (payload.error) {
-        message = payload.error;
-      }
-    } catch {
-      // Keep the generic status-based message.
-    }
-
-    throw new Error(message);
-  }
-
-  const disposition = response.headers.get('content-disposition') ?? '';
-  const fileNameMatch = /filename="([^"]+)"/i.exec(disposition);
-
-  return {
-    fileName: fileNameMatch?.[1] ?? 'account-opening-review-export.txt',
-    contentType:
-      response.headers.get('content-type') ?? 'text/plain; charset=utf-8',
-    content: await response.text(),
-  };
 }
 
 async function requestBinaryFile(
   path: string,
   init?: RequestInit,
 ): Promise<AccountOpeningBinaryPreviewFile> {
-  const response = await fetch(`${getInternalApiBaseUrl()}${path}`, {
-    ...init,
-    cache: 'no-store',
-    headers: {
-      ...buildHeaders(false),
-      ...(init?.headers ?? {}),
-    },
+  return requestInternalBinaryFile(path, {
+    callerName: CALLER_NAME,
+    init,
+    fallbackFileName: 'binary-fill-preview.pdf',
+    fallbackContentType: 'application/pdf',
   });
-
-  if (!response.ok) {
-    let message = `Request failed with status ${response.status}.`;
-
-    try {
-      const payload = (await response.json()) as { error?: string };
-      if (payload.error) {
-        message = payload.error;
-      }
-    } catch {
-      // Keep the generic status-based message.
-    }
-
-    throw new Error(message);
-  }
-
-  const disposition = response.headers.get('content-disposition') ?? '';
-  const fileNameMatch = /filename="([^"]+)"/i.exec(disposition);
-
-  return {
-    fileName: fileNameMatch?.[1] ?? 'binary-fill-preview.pdf',
-    contentType: response.headers.get('content-type') ?? 'application/pdf',
-    content: await response.arrayBuffer(),
-  };
 }
 
 export async function getAccountOpeningCase(
