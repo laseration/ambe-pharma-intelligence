@@ -9,7 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "eval:extraction": "tsx src/scripts/evaluateExtraction.ts",
     "demo:seed-pilot": "tsx src/scripts/seedPilotDemo.ts",
     "telegram:replay": "tsx scripts/replay-telegram-fixture.ts",

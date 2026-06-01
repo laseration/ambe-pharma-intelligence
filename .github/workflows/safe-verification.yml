@@ -11,6 +11,35 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI: true
+      NODE_ENV: test
+      DATABASE_URL: 'postgresql://ci:ci@localhost:5432/ambe_ci?schema=public'
+      INTERNAL_API_KEY: 'ci-internal-api-key'
+      INTERNAL_ADMIN_API_KEY: 'ci-internal-admin-api-key'
+      OPENAI_API_KEY: ''
+      OPENAI_PARSER_ENABLED: 'false'
+      OPENAI_EMAIL_REVIEW_ENABLED: 'false'
+      TELEGRAM_BOT_TOKEN: ''
+      TELEGRAM_INTERNAL_CHAT_ID: ''
+      TELEGRAM_DRY_RUN: 'true'
+      TELEGRAM_POLLING_ENABLED: 'false'
+      EMAIL_ALERTS_ENABLED: 'false'
+      EMAIL_INBOUND_POLLING_ENABLED: 'false'
+      MICROSOFT_MAIL_TENANT_ID: ''
+      MICROSOFT_MAIL_CLIENT_ID: ''
+      MICROSOFT_MAIL_CLIENT_SECRET: ''
+      MICROSOFT_GRAPH_TENANT_ID: ''
+      MICROSOFT_GRAPH_CLIENT_ID: ''
+      MICROSOFT_GRAPH_CLIENT_SECRET: ''
+      MICROSOFT_GRAPH_REFRESH_TOKEN: ''
+      MICROSOFT_GRAPH_SENDER_MAILBOX: ''
+      MICROSOFT_STORAGE_TENANT_ID: ''
+      MICROSOFT_STORAGE_CLIENT_ID: ''
+      MICROSOFT_STORAGE_CLIENT_SECRET: ''
+      MICROSOFT_TENANT_ID: ''
+      MICROSOFT_CLIENT_ID: ''
+      MICROSOFT_CLIENT_SECRET: ''
+      SHAREPOINT_ACCOUNT_OPENING_ENABLED: 'false'
+      ONEDRIVE_ACCOUNT_OPENING_ENABLED: 'false'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
