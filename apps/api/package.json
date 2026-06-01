@@ -17,6 +17,7 @@
     "email:reprocess": "tsx src/scripts/reprocessEmail.ts",
     "account-opening:test-case": "tsx src/scripts/createAccountOpeningTestCase.ts",
     "demo:account-opening": "tsx src/accountOpening/demo/fullAccountOpeningDemo.ts",
+    "demo:smoke-pilot": "tsx src/scripts/pilotDemoSmoke.ts",
     "smoke:local-runtime": "tsx src/scripts/localRuntimeSmoke.ts",
     "microsoft-drive:check": "tsx src/scripts/checkMicrosoftDriveAccess.ts",
     "sharepoint:check": "tsx src/scripts/checkSharePointAccess.ts",

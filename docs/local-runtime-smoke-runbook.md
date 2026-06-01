@@ -12,6 +12,14 @@ pnpm --filter @ambe/api smoke:local-runtime
 
 The command imports `createApp()` directly. It does not import `src/index.ts`, does not start Telegram or email polling workers, does not call OpenAI, does not send email, and does not upload to Microsoft Graph, SharePoint, or Drive.
 
+For the fake commercial pilot dataset, use the separate guarded demo smoke:
+
+```bash
+pnpm --filter @ambe/api demo:smoke-pilot
+```
+
+That command uses the same local/disposable database guard, runs the fake pilot demo seed, and verifies the seeded review, buy decision, buy execution, and trade opportunity records. It does not run migrations or call external services.
+
 ## Local Postgres Prerequisite
 
 The smoke command expects a running disposable local PostgreSQL database. It does not create a database, run migrations, seed data, or start Docker for you.
@@ -69,12 +77,15 @@ The database name must contain one of:
 - `local`
 - `dev`
 - `test`
+- `demo`
+- `smoke`
 
 Example safe local values:
 
 ```bash
 DATABASE_URL="postgresql://ambe:ambe@localhost:5432/ambe_local?schema=public"
 DATABASE_URL="postgresql://ambe:ambe@postgres:5432/ambe_dev?schema=public"
+DATABASE_URL="postgresql://ambe:ambe@localhost:5432/ambe_demo?schema=public"
 ```
 
 Rejected examples include Neon, Supabase, AWS RDS, Azure PostgreSQL, invalid URLs, empty values, and any unknown public host. The guard reports only safe metadata such as host, database name, classification, and reason. It must not print credentials or a full connection string.

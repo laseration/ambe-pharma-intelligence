@@ -139,9 +139,19 @@ pnpm --filter @ambe/api demo:seed-pilot
 ```
 
 The command upserts deterministic fake records for supplier-email ingestion,
-review, buy decision, execution tracking, and deal visibility. It does not call
-Microsoft Graph, Telegram, OpenAI, or outbound email services. Run it only
-against a local or disposable pilot-demo database. See
+review, buy decision, execution tracking, and deal visibility. It refuses
+managed/live-looking database URLs by default and does not call Microsoft Graph,
+Telegram, OpenAI, or outbound email services. Run it only against a guarded
+local or disposable pilot-demo database.
+
+Verify the seeded demo path with:
+
+```bash
+pnpm --filter @ambe/api demo:smoke-pilot
+```
+
+The smoke command runs the guarded seed and checks that review, buy decision,
+buy execution, and trade opportunity records exist. See
 [docs/demo-pilot-walkthrough.md](docs/demo-pilot-walkthrough.md).
 
 ### Extraction evaluation
