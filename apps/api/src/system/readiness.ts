@@ -1,4 +1,5 @@
 import { env } from '../config/env';
+import { getGraphMailPreflightStatus } from '../email/graphPreflight';
 import { isMicrosoftGraphConfigured } from '../email/graph';
 import { isEmailInboundPollingActive } from '../email/polling';
 import { isInternalAuthEnforced } from '../http/auth';
@@ -224,6 +225,62 @@ function buildEmailPollingCheck(): SystemReadinessCheck {
       totalItemsSkipped: workerStatus.totalItemsSkipped,
       totalItemsFailed: workerStatus.totalItemsFailed,
       duplicateItemsSkipped: workerStatus.duplicateItemsSkipped,
+    },
+  };
+}
+
+function buildGraphMailPreflightCheck(): SystemReadinessCheck {
+  const preflight = getGraphMailPreflightStatus();
+  let status: SystemReadinessStatus = 'not_configured';
+
+  if (preflight.dryRunSafe && preflight.allowedSenderConfigured) {
+    status = 'ready';
+  } else if (
+    preflight.graphConfigured ||
+    preflight.mailboxConfigured ||
+    preflight.pollingEnabled
+  ) {
+    status = 'warning';
+  }
+
+  return {
+    key: 'graph-mail-preflight',
+    title: 'Graph Inbox Preflight',
+    status,
+    meaning:
+      status === 'ready'
+        ? 'Microsoft Graph inbox dry-run can be performed safely while polling remains disabled.'
+        : preflight.pollingEnabled
+          ? 'Inbox polling is enabled before Graph dry-run signoff.'
+          : 'Graph inbox dry-run is not ready yet.',
+    nextAction: preflight.nextAction,
+    envVars: [
+      'MICROSOFT_MAIL_TENANT_ID',
+      'MICROSOFT_MAIL_CLIENT_ID',
+      'MICROSOFT_MAIL_CLIENT_SECRET',
+      'MICROSOFT_GRAPH_REFRESH_TOKEN',
+      'MICROSOFT_GRAPH_SENDER_MAILBOX',
+      'EMAIL_INBOUND_ALLOWED_SENDERS',
+      'EMAIL_INBOUND_SUPPLIER_MAPPINGS',
+      'EMAIL_INBOUND_POLLING_ENABLED',
+    ],
+    documentationPath: 'README.md#graph-inbox-preflight',
+    details: {
+      mailboxConfigured: preflight.mailboxConfigured,
+      mailbox: preflight.mailbox,
+      credentialSource: preflight.credentialSource,
+      credentialMode: preflight.credentialMode,
+      tenantConfigured: preflight.tenantConfigured,
+      clientIdConfigured: preflight.clientIdConfigured,
+      clientSecretConfigured: preflight.clientSecretConfigured,
+      refreshTokenConfigured: preflight.refreshTokenConfigured,
+      graphConfigured: preflight.graphConfigured,
+      pollingEnabled: preflight.pollingEnabled,
+      allowedSenderConfigured: preflight.allowedSenderConfigured,
+      allowedSenderCount: preflight.allowedSenderCount,
+      supplierMappingCount: preflight.supplierMappingCount,
+      dryRunSafe: preflight.dryRunSafe,
+      warnings: preflight.warnings,
     },
   };
 }
@@ -459,6 +516,7 @@ export function createSystemReadinessService(
         await buildDatabaseCheck(resolvedDependencies),
         buildApiAuthCheck(),
         buildMicrosoftMailCheck(),
+        buildGraphMailPreflightCheck(),
         buildEmailPollingCheck(),
         buildMicrosoftStorageCheck(),
         buildTelegramCheck(),

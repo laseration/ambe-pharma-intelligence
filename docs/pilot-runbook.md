@@ -33,6 +33,8 @@ Before processing real supplier messages:
 - Confirm `/dashboard/setup/diagnostics` loads without exposing secrets.
 - Confirm `EMAIL_INBOUND_ALLOWED_SENDERS` is limited to known owners,
   supplier addresses, or trusted supplier domains.
+- Run `pnpm --filter @ambe/api email:graph-preflight` and review the read-only
+  unread-message summaries before enabling inbox polling.
 - Keep optional integrations disabled until each one is tested deliberately.
 
 ## Required Vs Optional Integrations
@@ -83,6 +85,22 @@ Inbox polling is controlled by:
 - Microsoft mail credentials or delegated refresh token
 - `EMAIL_INBOUND_ALLOWED_SENDERS`
 - `EMAIL_INBOUND_SUPPLIER_MAPPINGS`
+
+Before enabling polling:
+
+1. Keep `EMAIL_INBOUND_POLLING_ENABLED=false`.
+2. Confirm the setup or diagnostics page shows Graph inbox dry-run as safe.
+3. Run `pnpm --filter @ambe/api email:graph-preflight`.
+4. Confirm the command says it is making a live read-only Graph call.
+5. Review only the redacted sender/domain, truncated subject, received
+   timestamp, and attachment count.
+6. Confirm no unexpected unread messages are present and allowed senders are
+   correct.
+7. Enable polling only after manual operator signoff.
+
+The preflight and dry-run do not mark messages read, ingest messages, persist
+email content, download attachment content, call OpenAI, call Telegram, send
+email, or upload files.
 
 Expected behavior:
 

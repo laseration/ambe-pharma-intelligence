@@ -84,6 +84,8 @@ fixtures or templates from [import-templates.md](import-templates.md).
 
 Check:
 
+- `pnpm --filter @ambe/api email:graph-preflight` while polling is still
+  disabled.
 - `/dashboard/setup/diagnostics` worker status.
 - `EMAIL_INBOUND_POLLING_ENABLED`.
 - Microsoft Graph mail credentials and `MICROSOFT_GRAPH_SENDER_MAILBOX`.
@@ -92,6 +94,25 @@ Check:
 
 The email poller should leave valid failed messages unread for retry. It should
 not store raw email bodies in worker status or logs.
+
+### Graph inbox preflight fails
+
+Check:
+
+- `MICROSOFT_GRAPH_SENDER_MAILBOX` is set to the dedicated intake mailbox.
+- Mail credential source is expected: `MICROSOFT_MAIL_*` values first, or the
+  legacy `MICROSOFT_GRAPH_*` fallback.
+- Either `MICROSOFT_MAIL_CLIENT_SECRET` or
+  `MICROSOFT_GRAPH_REFRESH_TOKEN` is set.
+- Microsoft Graph permissions and admin consent are present for read access.
+- `EMAIL_INBOUND_POLLING_ENABLED=false` during preflight and dry-run.
+- `EMAIL_INBOUND_ALLOWED_SENDERS` contains the owner forwarding address,
+  trusted supplier addresses, or trusted supplier domains.
+
+The preflight dry-run should only show message count, redacted sender/domain,
+truncated subject, received timestamp, and attachment count. If a diagnostic
+output includes a full body, token, full Graph payload, attachment content, or
+marks messages read, stop and treat that as a safety issue.
 
 ### Telegram polling is not importing files
 
