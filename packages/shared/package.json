@@ -8,7 +8,7 @@
     "dev": "tsc -p tsconfig.json --watch",
     "build": "tsc -p tsconfig.json",
     "lint": "eslint src --ext .ts",
-    "test": "tsx --test \"src/**/*.test.ts\""
+    "test": "node ../../scripts/run-ts-tests.mjs src"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
