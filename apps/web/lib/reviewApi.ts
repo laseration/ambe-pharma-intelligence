@@ -6,10 +6,15 @@ export type ReviewWorkflowListItem = {
   id: string;
   status: string;
   priority: string;
+  priorityReason: string | null;
   assigneeLabel: string | null;
   sourceKind: string | null;
   sourceReviewReason: string | null;
+  aiAssisted: boolean;
   latestNote: string | null;
+  hasUnresolvedSupplier: boolean;
+  hasConflictingSupplierCues: boolean;
+  hasManufacturerAmbiguity: boolean;
   supplierQualificationStatus: string;
   hasUnknownSupplierQualification: boolean;
   hasRestrictedSupplier: boolean;
@@ -84,6 +89,28 @@ export type ReviewWorkflowDetail = ReviewWorkflowListItem & {
       textContent: string;
       metadata: unknown;
     } | null;
+    offerCorrections?: Array<{
+      id: string;
+      correctionStatus: string;
+      correctedSupplierId: string | null;
+      correctedSupplierName: string | null;
+      correctedProductId: string | null;
+      correctedRawProductText: string | null;
+      correctedNormalizedProductName: string | null;
+      correctedStrength: string | null;
+      correctedDosageForm: string | null;
+      correctedPackSize: string | null;
+      correctedManufacturer: string | null;
+      correctedUnitPrice: string | number | null;
+      correctedCurrencyCode: string | null;
+      correctedMinimumOrderQuantity: number | null;
+      correctedAvailability: string | null;
+      actorType: string;
+      actorIdentifier: string | null;
+      note: string | null;
+      createdAt: string;
+      updatedAt: string;
+    }>;
   } | null;
   inboundEmail?: {
     id: string;
@@ -134,6 +161,20 @@ export type ReviewWorkflowEvent = {
   createdAt: string;
 };
 
+export type ReviewWorkflowAuditEntry = {
+  id: string;
+  entityType: 'OFFER_WORKFLOW_ITEM' | 'BUY_DECISION' | 'BUY_EXECUTION';
+  entityId: string;
+  actionType: string;
+  previousStatus: string | null;
+  newStatus: string | null;
+  actorType: string;
+  actorIdentifier: string | null;
+  note: string | null;
+  metadata: unknown;
+  createdAt: string;
+};
+
 export type ReviewWorkflowActionOutcome = {
   action: 'APPROVE_TO_BUY' | 'REJECT';
   buyDecisionId?: string;
@@ -174,7 +215,16 @@ export type ReviewQueueItem = {
 
 type ListReviewWorkflowItemsOptions = {
   inboundEmailId?: string;
+  onlyOpen?: boolean;
   staleFirst?: boolean;
+  status?:
+    | 'NEW'
+    | 'IN_REVIEW'
+    | 'NEEDS_INFO'
+    | 'APPROVED_TO_BUY'
+    | 'REJECTED'
+    | 'ORDERED'
+    | 'CLOSED';
 };
 
 const MANUAL_REVIEW_WORKFLOW_STATUSES = new Set([
@@ -196,7 +246,7 @@ export async function listReviewWorkflowItems(
   options?: ListReviewWorkflowItemsOptions,
 ): Promise<ReviewWorkflowListItem[]> {
   const searchParams = new URLSearchParams({
-    onlyOpen: 'true',
+    onlyOpen: String(options?.onlyOpen ?? true),
   });
 
   if (options?.inboundEmailId) {
@@ -207,12 +257,18 @@ export async function listReviewWorkflowItems(
     searchParams.set('staleFirst', 'true');
   }
 
+  if (options?.status) {
+    searchParams.set('status', options.status);
+  }
+
   const payload = await requestJson<{ items: ReviewWorkflowListItem[] }>(
     `/review-queue/workflows?${searchParams.toString()}`,
   );
-  return payload.items.filter((item) =>
-    MANUAL_REVIEW_WORKFLOW_STATUSES.has(item.status),
-  );
+  return options?.status || options?.onlyOpen === false
+    ? payload.items
+    : payload.items.filter((item) =>
+        MANUAL_REVIEW_WORKFLOW_STATUSES.has(item.status),
+      );
 }
 
 export async function listReviewQueueItems(): Promise<ReviewQueueItem[]> {
@@ -236,6 +292,15 @@ export async function listReviewWorkflowEvents(
 ): Promise<ReviewWorkflowEvent[]> {
   const payload = await requestJson<{ items: ReviewWorkflowEvent[] }>(
     `/review-queue/workflows/${encodeURIComponent(workflowItemId)}/events`,
+  );
+  return payload.items;
+}
+
+export async function listReviewWorkflowAuditHistory(
+  workflowItemId: string,
+): Promise<ReviewWorkflowAuditEntry[]> {
+  const payload = await requestJson<{ items: ReviewWorkflowAuditEntry[] }>(
+    `/review-queue/workflows/${encodeURIComponent(workflowItemId)}/audit-history`,
   );
   return payload.items;
 }

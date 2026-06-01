@@ -138,6 +138,22 @@ function buildApprovalMessage(outcomes: ReviewWorkflowActionOutcome[]): {
   };
 }
 
+function buildNonApprovalMessage(action: string): string {
+  if (action === 'REJECT') {
+    return 'Rejected.';
+  }
+
+  if (action === 'NEEDS_INFO') {
+    return 'Marked as needing more information.';
+  }
+
+  if (action === 'ADD_NOTE') {
+    return 'Note added.';
+  }
+
+  return 'Saved.';
+}
+
 function buildReviewSuccessRedirectTarget(
   inboundEmailId: string,
   params: Record<string, string>,
@@ -239,7 +255,7 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
     action === 'APPROVE_TO_BUY'
       ? buildApprovalMessage(outcomes)
       : {
-          message: 'Rejected.',
+          message: buildNonApprovalMessage(action),
         };
 
   if (inboundEmailId) {

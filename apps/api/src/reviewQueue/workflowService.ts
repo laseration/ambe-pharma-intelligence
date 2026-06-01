@@ -10,6 +10,10 @@ import {
   type OperatorValidationFeedbackCreateInput,
 } from '../automation/service';
 import {
+  buildCommercialAuditMetadata,
+  type CommercialAuditMetadataInput,
+} from '../audit/commercialAudit';
+import {
   createDemandMatchedTradeOpportunityFromApprovedBuyDecision,
   type DemandMatchedTradeOpportunityOutcome,
   syncTradeOpportunityCommercialState,
@@ -242,6 +246,29 @@ type WorkflowInboundEmailDocumentRecord = {
   metadata: unknown;
 };
 
+type WorkflowOfferCorrectionRecord = {
+  id: string;
+  correctionStatus: string;
+  correctedSupplierId: string | null;
+  correctedSupplierName: string | null;
+  correctedProductId: string | null;
+  correctedRawProductText: string | null;
+  correctedNormalizedProductName: string | null;
+  correctedStrength: string | null;
+  correctedDosageForm: string | null;
+  correctedPackSize: string | null;
+  correctedManufacturer: string | null;
+  correctedUnitPrice: unknown;
+  correctedCurrencyCode: string | null;
+  correctedMinimumOrderQuantity: number | null;
+  correctedAvailability: string | null;
+  actorType: string;
+  actorIdentifier: string | null;
+  note: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 type SupplierContactDetails = {
   companyName: string | null;
   contactName: string | null;
@@ -264,6 +291,7 @@ type WorkflowDetailRecord = WorkflowRecord & {
         entityResolutionConfidence: number | null;
         promotionConfidence: number | null;
         sourceDocument?: WorkflowInboundEmailDocumentRecord | null;
+        offerCorrections?: WorkflowOfferCorrectionRecord[];
       })
     | null;
   inboundEmail?:
@@ -285,6 +313,50 @@ type WorkflowEventRecord = {
   actionType: WorkflowActionType;
   previousStatus: WorkflowStatus | null;
   newStatus: WorkflowStatus | null;
+  actorType: string;
+  actorIdentifier: string | null;
+  note: string | null;
+  metadata: unknown;
+  createdAt: Date;
+};
+
+type BuyDecisionEventRecord = {
+  id: string;
+  buyDecisionId: string;
+  actionType: BuyDecisionActionType;
+  previousApprovalStatus: BuyDecisionApprovalStatus | null;
+  newApprovalStatus: BuyDecisionApprovalStatus | null;
+  previousOrderStatus: BuyDecisionOrderStatus | null;
+  newOrderStatus: BuyDecisionOrderStatus | null;
+  actorType: string;
+  actorIdentifier: string | null;
+  note: string | null;
+  metadata: unknown;
+  createdAt: Date;
+};
+
+type BuyExecutionEventRecord = {
+  id: string;
+  buyExecutionId: string;
+  actionType: string;
+  previousFulfillmentStatus: string | null;
+  newFulfillmentStatus: string | null;
+  previousReconciliationStatus: string | null;
+  newReconciliationStatus: string | null;
+  actorType: string;
+  actorIdentifier: string | null;
+  note: string | null;
+  metadata: unknown;
+  createdAt: Date;
+};
+
+export type WorkflowAuditHistoryEntry = {
+  id: string;
+  entityType: 'OFFER_WORKFLOW_ITEM' | 'BUY_DECISION' | 'BUY_EXECUTION';
+  entityId: string;
+  actionType: string;
+  previousStatus: string | null;
+  newStatus: string | null;
   actorType: string;
   actorIdentifier: string | null;
   note: string | null;
@@ -324,6 +396,33 @@ type BuyDecisionRecord = {
   qualificationRiskNote: string | null;
   execution?: BuyExecutionRecord | null;
 };
+
+function toNumber(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  if (
+    typeof value === 'object' &&
+    value &&
+    'toString' in value &&
+    typeof value.toString === 'function'
+  ) {
+    const parsed = Number(value.toString());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
 
 type WorkflowRepository = {
   transaction: <T>(
@@ -365,6 +464,12 @@ type WorkflowRepository = {
   listWorkflowEvents: (
     workflowItemId: string,
   ) => Promise<WorkflowEventRecord[]>;
+  listBuyDecisionEvents: (
+    buyDecisionId: string,
+  ) => Promise<BuyDecisionEventRecord[]>;
+  listBuyExecutionEvents: (
+    buyExecutionId: string,
+  ) => Promise<BuyExecutionEventRecord[]>;
   findSupplierQualificationBySupplierId: (
     supplierId: string,
   ) => Promise<SupplierQualificationRecord | null>;
@@ -806,6 +911,10 @@ function createWorkflowRepository(
           emailDerivedOffer: {
             include: {
               sourceDocument: true,
+              offerCorrections: {
+                orderBy: { createdAt: 'desc' },
+                take: 5,
+              },
               resolutionCandidates: true,
               buyDecision: {
                 include: {
@@ -950,6 +1059,16 @@ function createWorkflowRepository(
         where: { workflowItemId },
         orderBy: { createdAt: 'asc' },
       })) as WorkflowEventRecord[],
+    listBuyDecisionEvents: async (buyDecisionId) =>
+      (await client.buyDecisionEvent.findMany({
+        where: { buyDecisionId },
+        orderBy: { createdAt: 'asc' },
+      })) as BuyDecisionEventRecord[],
+    listBuyExecutionEvents: async (buyExecutionId) =>
+      (await client.buyExecutionEvent.findMany({
+        where: { buyExecutionId },
+        orderBy: { createdAt: 'asc' },
+      })) as BuyExecutionEventRecord[],
     findSupplierQualificationBySupplierId: async (supplierId) =>
       client.supplierQualification.findUnique({
         where: { supplierId },
@@ -1342,6 +1461,12 @@ async function logWorkflowEvent(
   actor: NormalizedActor,
   note?: string | null,
   metadata?: unknown,
+  auditContext?: Partial<
+    Pick<
+      CommercialAuditMetadataInput,
+      'source' | 'confidence' | 'changedFields'
+    >
+  >,
 ): Promise<void> {
   await repository.createWorkflowEvent({
     workflowItemId,
@@ -1351,7 +1476,21 @@ async function logWorkflowEvent(
     actorType: actor.actorType,
     actorIdentifier: actor.actorIdentifier,
     note: note?.trim() || null,
-    metadata: metadata ?? null,
+    metadata: buildCommercialAuditMetadata(
+      {
+        entityType: 'OFFER_WORKFLOW_ITEM',
+        entityId: workflowItemId,
+        action: actionType,
+        status: {
+          previous: previousStatus,
+          next: newStatus,
+        },
+        source: auditContext?.source,
+        confidence: auditContext?.confidence,
+        changedFields: auditContext?.changedFields,
+      },
+      metadata,
+    ),
   });
 }
 
@@ -1366,6 +1505,12 @@ async function logBuyDecisionEvent(
   actor: NormalizedActor,
   note?: string | null,
   metadata?: unknown,
+  auditContext?: Partial<
+    Pick<
+      CommercialAuditMetadataInput,
+      'source' | 'confidence' | 'changedFields'
+    >
+  >,
 ): Promise<void> {
   await repository.createBuyDecisionEvent({
     buyDecisionId,
@@ -1377,7 +1522,25 @@ async function logBuyDecisionEvent(
     actorType: actor.actorType,
     actorIdentifier: actor.actorIdentifier,
     note: note?.trim() || null,
-    metadata: metadata ?? null,
+    metadata: buildCommercialAuditMetadata(
+      {
+        entityType: 'BUY_DECISION',
+        entityId: buyDecisionId,
+        action: actionType,
+        approvalStatus: {
+          previous: previousApprovalStatus,
+          next: newApprovalStatus,
+        },
+        orderStatus: {
+          previous: previousOrderStatus,
+          next: newOrderStatus,
+        },
+        source: auditContext?.source,
+        confidence: auditContext?.confidence,
+        changedFields: auditContext?.changedFields,
+      },
+      metadata,
+    ),
   });
 }
 
@@ -1443,6 +1606,42 @@ function buildBuyDecisionSnapshot(
   };
 }
 
+function buildWorkflowAuditSource(workflow: WorkflowRecord) {
+  return {
+    inboundEmailId: workflow.inboundEmailId,
+    emailDerivedOfferId: workflow.emailDerivedOfferId,
+    offerWorkflowItemId: workflow.id,
+    sourceKind: workflow.sourceKind ?? workflow.emailDerivedOffer?.sourceKind,
+    sourceReviewReason:
+      workflow.sourceReviewReason ?? workflow.emailDerivedOffer?.reviewReason,
+  };
+}
+
+function buildWorkflowAuditConfidence(workflow: WorkflowRecord) {
+  return {
+    promotionConfidence: toNumber(
+      (workflow.emailDerivedOffer as Record<string, unknown> | undefined)
+        ?.promotionConfidence,
+    ),
+    sourceTrustScore: toNumber(
+      (workflow.emailDerivedOffer as Record<string, unknown> | undefined)
+        ?.sourceTrustScore,
+    ),
+    structureConfidence: toNumber(
+      (workflow.emailDerivedOffer as Record<string, unknown> | undefined)
+        ?.structureConfidence,
+    ),
+    fieldConfidence: toNumber(
+      (workflow.emailDerivedOffer as Record<string, unknown> | undefined)
+        ?.fieldConfidence,
+    ),
+    entityResolutionConfidence: toNumber(
+      (workflow.emailDerivedOffer as Record<string, unknown> | undefined)
+        ?.entityResolutionConfidence,
+    ),
+  };
+}
+
 function buildExecutionUpdateFromWorkflow(
   input: WorkflowActionInput,
 ): BuyExecutionUpdateInput {
@@ -1459,6 +1658,72 @@ function buildExecutionUpdateFromWorkflow(
     confirmedAvailability: input.confirmedAvailability,
     expectedDeliveryDate: input.expectedDeliveryDate,
     fulfillmentStatus: 'ORDER_PLACED',
+  };
+}
+
+function mapWorkflowAuditEntry(
+  event: WorkflowEventRecord,
+): WorkflowAuditHistoryEntry {
+  return {
+    id: event.id,
+    entityType: 'OFFER_WORKFLOW_ITEM',
+    entityId: event.workflowItemId,
+    actionType: event.actionType,
+    previousStatus: event.previousStatus,
+    newStatus: event.newStatus,
+    actorType: event.actorType,
+    actorIdentifier: event.actorIdentifier,
+    note: event.note,
+    metadata: event.metadata,
+    createdAt: event.createdAt,
+  };
+}
+
+function mapBuyDecisionAuditEntry(
+  event: BuyDecisionEventRecord,
+): WorkflowAuditHistoryEntry {
+  return {
+    id: event.id,
+    entityType: 'BUY_DECISION',
+    entityId: event.buyDecisionId,
+    actionType: event.actionType,
+    previousStatus:
+      [event.previousApprovalStatus, event.previousOrderStatus]
+        .filter(Boolean)
+        .join(' / ') || null,
+    newStatus:
+      [event.newApprovalStatus, event.newOrderStatus]
+        .filter(Boolean)
+        .join(' / ') || null,
+    actorType: event.actorType,
+    actorIdentifier: event.actorIdentifier,
+    note: event.note,
+    metadata: event.metadata,
+    createdAt: event.createdAt,
+  };
+}
+
+function mapBuyExecutionAuditEntry(
+  event: BuyExecutionEventRecord,
+): WorkflowAuditHistoryEntry {
+  return {
+    id: event.id,
+    entityType: 'BUY_EXECUTION',
+    entityId: event.buyExecutionId,
+    actionType: event.actionType,
+    previousStatus:
+      [event.previousFulfillmentStatus, event.previousReconciliationStatus]
+        .filter(Boolean)
+        .join(' / ') || null,
+    newStatus:
+      [event.newFulfillmentStatus, event.newReconciliationStatus]
+        .filter(Boolean)
+        .join(' / ') || null,
+    actorType: event.actorType,
+    actorIdentifier: event.actorIdentifier,
+    note: event.note,
+    metadata: event.metadata,
+    createdAt: event.createdAt,
   };
 }
 
@@ -1585,6 +1850,11 @@ export function createOfferWorkflowService(
           allowQualificationRisk: input.allowQualificationRisk === true,
           supplierDetails,
         }),
+        {
+          source: buildWorkflowAuditSource(existing),
+          confidence: buildWorkflowAuditConfidence(existing),
+          changedFields: ['status', 'supplierQualificationStatus'],
+        },
       );
 
       const snapshot = buildBuyDecisionSnapshot(updatedWorkflow, qualification);
@@ -1619,6 +1889,16 @@ export function createOfferWorkflowService(
             qualificationRiskNote: qualification.qualificationRiskNote,
             supplierDetails,
           }),
+          {
+            source: buildWorkflowAuditSource(existing),
+            confidence: buildWorkflowAuditConfidence(existing),
+            changedFields: [
+              'approvalStatus',
+              'quotedUnitPrice',
+              'quotedCurrencyCode',
+              'supplierQualificationStatus',
+            ],
+          },
         );
 
         decisionForTradeSync = createdDecision;
@@ -1650,6 +1930,11 @@ export function createOfferWorkflowService(
               qualificationRiskNote: qualification.qualificationRiskNote,
               supplierDetails,
             }),
+            {
+              source: buildWorkflowAuditSource(existing),
+              confidence: buildWorkflowAuditConfidence(existing),
+              changedFields: ['approvalStatus', 'supplierQualificationStatus'],
+            },
           );
         }
 
@@ -1836,6 +2121,34 @@ export function createOfferWorkflowService(
       return repository.listWorkflowEvents(workflowItemId);
     },
 
+    async getWorkflowAuditHistory(
+      workflowItemId: string,
+    ): Promise<WorkflowAuditHistoryEntry[] | null> {
+      const detail = await repository.findWorkflowDetailById(workflowItemId);
+      if (!detail) {
+        return null;
+      }
+
+      const workflowEvents =
+        await repository.listWorkflowEvents(workflowItemId);
+      const buyDecisionId = detail.buyDecision?.id ?? null;
+      const buyDecisionEvents = buyDecisionId
+        ? await repository.listBuyDecisionEvents(buyDecisionId)
+        : [];
+      const buyExecutionId = detail.buyDecision?.execution?.id ?? null;
+      const buyExecutionEvents = buyExecutionId
+        ? await repository.listBuyExecutionEvents(buyExecutionId)
+        : [];
+
+      return [
+        ...workflowEvents.map(mapWorkflowAuditEntry),
+        ...buyDecisionEvents.map(mapBuyDecisionAuditEntry),
+        ...buyExecutionEvents.map(mapBuyExecutionAuditEntry),
+      ].sort(
+        (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
+      );
+    },
+
     async getWorkflowItem(
       workflowItemId: string,
     ): Promise<WorkflowDetailRecord | null> {
@@ -1914,6 +2227,12 @@ export function createOfferWorkflowService(
           existing.status,
           actor,
           input.note,
+          null,
+          {
+            source: buildWorkflowAuditSource(existing),
+            confidence: buildWorkflowAuditConfidence(existing),
+            changedFields: ['status'],
+          },
         );
 
         return updated;
@@ -2024,6 +2343,12 @@ export function createOfferWorkflowService(
           'REJECTED',
           actor,
           input.note,
+          null,
+          {
+            source: buildWorkflowAuditSource(existing),
+            confidence: buildWorkflowAuditConfidence(existing),
+            changedFields: ['status'],
+          },
         );
 
         const existingDecision = await txRepository.findBuyDecisionByOfferId(
@@ -2063,6 +2388,12 @@ export function createOfferWorkflowService(
               updatedDecision.orderStatus,
               actor,
               input.note,
+              null,
+              {
+                source: buildWorkflowAuditSource(existing),
+                confidence: buildWorkflowAuditConfidence(existing),
+                changedFields: ['approvalStatus', 'orderStatus'],
+              },
             );
           }
 
@@ -2144,6 +2475,11 @@ export function createOfferWorkflowService(
             externalOrderReference:
               input.externalOrderReference?.trim() || null,
           }),
+          {
+            source: buildWorkflowAuditSource(existing),
+            confidence: buildWorkflowAuditConfidence(existing),
+            changedFields: ['status', 'externalOrderReference'],
+          },
         );
 
         const existingDecision = await txRepository.findBuyDecisionByOfferId(
@@ -2183,6 +2519,11 @@ export function createOfferWorkflowService(
             buildSideEffectAuditMetadata('REVIEW_QUEUE_MARK_ORDERED', {
               externalOrderReference,
             }),
+            {
+              source: buildWorkflowAuditSource(existing),
+              confidence: buildWorkflowAuditConfidence(existing),
+              changedFields: ['orderStatus', 'externalOrderReference'],
+            },
           );
         }
 

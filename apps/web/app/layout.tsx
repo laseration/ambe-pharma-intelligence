@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
+import { logoutAction } from './auth/actions';
 import { InboxNavBadge } from './components/InboxNavBadge';
+import { getCurrentWebSession } from '../lib/serverWebAuth';
 import { listInboundEmails } from '../lib/inboxApi';
 import './globals.css';
 
@@ -15,9 +17,10 @@ type RootLayoutProps = {
 };
 
 export default async function RootLayout({ children }: RootLayoutProps) {
-  const recentInboxEmails = await listInboundEmails({ take: 25 }).catch(
-    () => [],
-  );
+  const session = await getCurrentWebSession();
+  const recentInboxEmails = session
+    ? await listInboundEmails({ take: 25 }).catch(() => [])
+    : [];
   const recentEmailTimestamps = recentInboxEmails
     .map((email) => {
       const createdAt = email.createdAt
@@ -51,17 +54,32 @@ export default async function RootLayout({ children }: RootLayoutProps) {
             </div>
             <nav className="nav">
               <Link href="/">Login</Link>
-              <Link href="/dashboard">Overview</Link>
-              <InboxNavBadge
-                href="/dashboard/inbox"
-                label="Bot Inbox"
-                recentEmailTimestamps={recentEmailTimestamps}
-              />
-              <Link href="/dashboard/imports">Imports</Link>
-              <Link href="/dashboard/opportunities">Opportunities</Link>
-              <Link href="/dashboard/deals">Deals</Link>
-              <Link href="/dashboard/review">Review</Link>
-              <Link href="/dashboard/products">Product Records</Link>
+              {session ? (
+                <>
+                  <Link href="/dashboard">Overview</Link>
+                  <InboxNavBadge
+                    href="/dashboard/inbox"
+                    label="Bot Inbox"
+                    recentEmailTimestamps={recentEmailTimestamps}
+                  />
+                  <Link href="/dashboard/imports">Imports</Link>
+                  <Link href="/dashboard/opportunities">Opportunities</Link>
+                  <Link href="/dashboard/deals">Deals</Link>
+                  <Link href="/dashboard/review">Review</Link>
+                  <Link href="/dashboard/products">Product Records</Link>
+                  <Link href="/dashboard/setup">Setup</Link>
+                  <div className="nav-session">
+                    <span>
+                      {session.username} · {session.role}
+                    </span>
+                    <form action={logoutAction}>
+                      <button className="nav-button" type="submit">
+                        Logout
+                      </button>
+                    </form>
+                  </div>
+                </>
+              ) : null}
             </nav>
           </aside>
           <main className="content">{children}</main>

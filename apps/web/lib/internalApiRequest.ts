@@ -89,6 +89,8 @@ function knownSecrets(source: InternalApiEnv): string[] {
     source.INTERNAL_ADMIN_API_KEY,
     source.ACCOUNT_OPENING_EXPORT_DOWNLOAD_TOKEN,
     source.DASHBOARD_OPERATOR_TOKEN,
+    source.WEB_AUTH_PASSWORD,
+    source.WEB_AUTH_SESSION_SECRET,
   ]
     .map((value) => value?.trim() ?? '')
     .filter((value) => value.length >= 4);

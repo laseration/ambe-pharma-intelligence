@@ -2,10 +2,16 @@ import Link from 'next/link';
 
 import {
   getReviewWorkflowItem,
+  listReviewWorkflowAuditHistory,
   listReviewWorkflowItems,
+  type ReviewWorkflowAuditEntry,
   type ReviewWorkflowDetail,
   type ReviewWorkflowListItem,
 } from '../../../../lib/reviewApi';
+import {
+  buildReviewProvenanceSummary,
+  truncateSourceText,
+} from '../../../../lib/reviewProvenance';
 import { submitInboundEmailReviewAction } from './actions';
 import { SubmitButton } from './submit-button';
 
@@ -202,6 +208,60 @@ function renderDocumentTitle(
   >['documents'][number],
 ) {
   return document.label || `${document.kind} #${document.documentIndex}`;
+}
+
+function formatAuditEntityType(
+  entityType: ReviewWorkflowAuditEntry['entityType'],
+) {
+  switch (entityType) {
+    case 'OFFER_WORKFLOW_ITEM':
+      return 'Review item';
+    case 'BUY_DECISION':
+      return 'Buy decision';
+    case 'BUY_EXECUTION':
+      return 'Execution';
+  }
+}
+
+function formatAuditAction(actionType: string): string {
+  return actionType
+    .replace(/[_-]+/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatAuditTimestamp(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('en-GB');
+}
+
+function getAuditSourceSummary(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return null;
+  }
+
+  const audit = (metadata as { commercialAudit?: unknown }).commercialAudit;
+  if (!audit || typeof audit !== 'object' || Array.isArray(audit)) {
+    return null;
+  }
+
+  const source = (audit as { source?: unknown }).source;
+  if (!source || typeof source !== 'object' || Array.isArray(source)) {
+    return null;
+  }
+
+  const record = source as Record<string, unknown>;
+  const parts = [
+    typeof record.sourceKind === 'string' ? record.sourceKind : null,
+    typeof record.sourceReviewReason === 'string'
+      ? formatReasonLabel(record.sourceReviewReason)
+      : null,
+    typeof record.inboundEmailId === 'string'
+      ? `email ${record.inboundEmailId}`
+      : null,
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(' / ') : null;
 }
 
 function summarizeReason(items: ReviewWorkflowListItem[]) {
@@ -740,10 +800,15 @@ export default async function ReviewInboundEmailPage({
 
     const detailedVisibleItems = await Promise.all(
       visibleItems.map(async (item) => {
-        const detail = await getReviewWorkflowItem(item.id);
+        const [detail, auditHistory] = await Promise.all([
+          getReviewWorkflowItem(item.id),
+          listReviewWorkflowAuditHistory(item.id),
+        ]);
         return {
           item,
           detail,
+          auditHistory,
+          provenance: buildReviewProvenanceSummary(detail),
           summary: buildOperatorSummary(detail),
         };
       }),
@@ -759,6 +824,7 @@ export default async function ReviewInboundEmailPage({
       firstDetailForSummary,
       supplierContact,
     );
+    const rawEmailPreview = truncateSourceText(inboundEmail?.rawText, 4000);
 
     return (
       <section className="review-layout">
@@ -974,256 +1040,479 @@ export default async function ReviewInboundEmailPage({
                 pendingLabel="Rejecting..."
               />
             </form>
+
+            <form
+              action={submitInboundEmailReviewAction}
+              className="action-form"
+            >
+              <input
+                name="inboundEmailId"
+                type="hidden"
+                value={inboundEmailId}
+              />
+              <input name="action" type="hidden" value="NEEDS_INFO" />
+              {renderReturnToInput(returnTo)}
+              <label>
+                What information is needed?
+                <textarea
+                  name="note"
+                  placeholder="Example: confirm supplier identity, pack size, or expiry date"
+                  rows={3}
+                />
+              </label>
+              <SubmitButton
+                className="button button-large"
+                idleLabel="Needs info"
+                pendingLabel="Saving..."
+              />
+            </form>
+
+            <form
+              action={submitInboundEmailReviewAction}
+              className="action-form"
+            >
+              <input
+                name="inboundEmailId"
+                type="hidden"
+                value={inboundEmailId}
+              />
+              <input name="action" type="hidden" value="ADD_NOTE" />
+              {renderReturnToInput(returnTo)}
+              <label>
+                Note
+                <textarea
+                  name="note"
+                  placeholder="Add decision context for the audit trail"
+                  required
+                  rows={3}
+                />
+              </label>
+              <SubmitButton
+                className="button button-large"
+                idleLabel="Add note"
+                pendingLabel="Saving..."
+              />
+            </form>
           </div>
         </section>
 
         <section className="panel review-section">
           <h3 className="section-title">Offers found</h3>
           <div className="offer-row-list">
-            {detailedVisibleItems.map(({ item, detail, summary }) => {
-              const resolutionEvidenceGroups =
-                getResolutionEvidenceGroups(detail);
-              const supplierEvidence = getSupplierEvidence(detail);
+            {detailedVisibleItems.map(
+              ({ item, detail, auditHistory, provenance, summary }) => {
+                const resolutionEvidenceGroups =
+                  getResolutionEvidenceGroups(detail);
+                const supplierEvidence = getSupplierEvidence(detail);
 
-              return (
-                <article className="offer-row-card" key={item.id}>
-                  <div className="offer-row-header">
-                    <p className="offer-row-title">
-                      {extractDisplayProductName(item)}
-                    </p>
-                    <p className="offer-row-price">
-                      {renderValue(item.emailDerivedOffer?.priceCandidate)}{' '}
-                      {item.emailDerivedOffer?.currencyCandidate ?? ''}
-                    </p>
-                  </div>
-
-                  <dl className="offer-row-fields">
-                    <div>
-                      <dt>Strength</dt>
-                      <dd>
-                        {renderValue(item.emailDerivedOffer?.strengthCandidate)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Form</dt>
-                      <dd>
-                        {renderValue(
-                          item.emailDerivedOffer?.dosageFormCandidate,
-                        )}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Pack</dt>
-                      <dd>
-                        {renderValue(item.emailDerivedOffer?.packSizeCandidate)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Supplier</dt>
-                      <dd className="offer-field-stack">
-                        <span>{renderValue(supplierEvidence.displayName)}</span>
-                        {supplierEvidence.needsSupplierCheck ? (
-                          <span className="pill pill-neutral">
-                            Needs supplier check
-                          </span>
-                        ) : null}
-                        {supplierEvidence.sourceLabel ? (
-                          <span className="offer-field-note">
-                            {supplierEvidence.sourceLabel}
-                          </span>
-                        ) : null}
-                        {supplierEvidence.aliases.length > 0 ? (
-                          <span className="offer-field-note">
-                            Also seen as: {supplierEvidence.aliases.join(', ')}
-                          </span>
-                        ) : null}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Manufacturer</dt>
-                      <dd>
-                        {renderValue(
-                          item.emailDerivedOffer?.manufacturerCandidate,
-                        )}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>MOQ</dt>
-                      <dd>
-                        {renderValue(
-                          item.emailDerivedOffer?.minimumOrderQuantityCandidate,
-                        )}
-                      </dd>
-                    </div>
-                  </dl>
-
-                  <p className="offer-row-copy">
-                    Needs checking because{' '}
-                    {formatOperatorReason(
-                      item.sourceReviewReason ??
-                        item.qualificationRiskNote ??
-                        item.latestNote ??
-                        'this offer still needs review.',
-                    )}
-                  </p>
-                  <dl className="offer-row-summary">
-                    <div>
-                      <dt>What the bot found</dt>
-                      <dd>{summary.recognized}</dd>
-                    </div>
-                    <div>
-                      <dt>Needs checking</dt>
-                      <dd>{summary.unclear}</dd>
-                    </div>
-                    <div>
-                      <dt>Recommended next step</dt>
-                      <dd>{summary.action}</dd>
-                    </div>
-                    <div>
-                      <dt>Why this needs review</dt>
-                      <dd>
-                        <ul className="simple-list compact-list">
-                          {summary.confidenceLimits.map((limit) => (
-                            <li key={`${detail.id}-${limit}`}>{limit}</li>
-                          ))}
-                        </ul>
-                      </dd>
-                    </div>
-                  </dl>
-                  {summary.technicalDetails.length > 0 ? (
-                    <details className="document-card technical-details-card">
-                      <summary>Technical details</summary>
-                      <dl className="duplicate-product-details technical-details-grid">
-                        {summary.technicalDetails.map((technicalDetail) => (
-                          <div key={`${detail.id}-${technicalDetail.label}`}>
-                            <dt>{technicalDetail.label}</dt>
-                            <dd>{technicalDetail.value}</dd>
-                          </div>
-                        ))}
-                      </dl>
-                    </details>
-                  ) : null}
-                  <section className="resolution-evidence">
-                    <div className="resolution-evidence-header">
-                      <div>
-                        <h4 className="subsection-title">
-                          Resolution Evidence
-                        </h4>
-                        <p className="copy resolution-evidence-copy">
-                          Candidate matches stored for this offer&apos;s
-                          supplier, product, and manufacturer checks.
-                        </p>
-                      </div>
-                    </div>
-                    {resolutionEvidenceGroups.length > 0 ? (
-                      <div className="resolution-evidence-groups">
-                        {resolutionEvidenceGroups.map((group) => (
-                          <section
-                            className="resolution-evidence-group"
-                            key={`${detail.id}-${group.entityType}`}
-                          >
-                            <div className="resolution-evidence-group-header">
-                              <p className="resolution-evidence-group-title">
-                                {group.label}
-                              </p>
-                              <p className="resolution-evidence-group-copy">
-                                {group.selectedCandidate
-                                  ? `Selected candidate: ${group.selectedCandidate.candidateName}`
-                                  : 'No candidate was selected automatically.'}
-                              </p>
-                            </div>
-                            <div className="resolution-candidate-list">
-                              {group.candidates.map((candidate) => (
-                                <article
-                                  className={`resolution-candidate-card${candidate.selected ? ' resolution-candidate-card-selected' : ''}`}
-                                  key={`${detail.id}-${group.entityType}-${candidate.candidateId ?? candidate.candidateName}-${candidate.reason}`}
-                                >
-                                  <div className="resolution-candidate-top">
-                                    <p className="resolution-candidate-title">
-                                      {candidate.candidateName}
-                                    </p>
-                                    <div className="resolution-candidate-pills">
-                                      {candidate.selected ? (
-                                        <span className="pill pill-high">
-                                          Selected
-                                        </span>
-                                      ) : null}
-                                      <span className="pill pill-neutral">
-                                        {formatPctFromScore(
-                                          candidate.confidence,
-                                        ) ?? 'Unknown confidence'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <p className="resolution-candidate-copy">
-                                    Why this looks like a match:{' '}
-                                    {formatReasonLabel(candidate.reason)}.
-                                  </p>
-                                  <p className="resolution-candidate-copy resolution-candidate-copy-secondary">
-                                    {candidate.candidateId
-                                      ? 'Linked to an existing canonical record.'
-                                      : 'Stored as a text cue only, without a canonical record link.'}
-                                  </p>
-                                </article>
-                              ))}
-                            </div>
-                          </section>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="copy resolution-evidence-copy">
-                        No candidate supplier, product, or manufacturer evidence
-                        was stored for this row.
+                return (
+                  <article className="offer-row-card" key={item.id}>
+                    <div className="offer-row-header">
+                      <p className="offer-row-title">
+                        {extractDisplayProductName(item)}
                       </p>
-                    )}
-                  </section>
-                  <div className="offer-row-actions">
-                    <form action={submitInboundEmailReviewAction}>
-                      <input
-                        name="inboundEmailId"
-                        type="hidden"
-                        value={inboundEmailId}
-                      />
-                      <input
-                        name="workflowItemId"
-                        type="hidden"
-                        value={item.id}
-                      />
-                      <input
-                        name="action"
-                        type="hidden"
-                        value="APPROVE_TO_BUY"
-                      />
-                      {renderReturnToInput(returnTo)}
-                      <SubmitButton
-                        className="button button-primary"
-                        idleLabel="Approve"
-                        pendingLabel="Approving..."
-                      />
-                    </form>
-                    <form action={submitInboundEmailReviewAction}>
-                      <input
-                        name="inboundEmailId"
-                        type="hidden"
-                        value={inboundEmailId}
-                      />
-                      <input
-                        name="workflowItemId"
-                        type="hidden"
-                        value={item.id}
-                      />
-                      <input name="action" type="hidden" value="REJECT" />
-                      {renderReturnToInput(returnTo)}
-                      <SubmitButton
-                        className="button"
-                        idleLabel="Reject"
-                        pendingLabel="Rejecting..."
-                      />
-                    </form>
-                  </div>
-                </article>
-              );
-            })}
+                      <p className="offer-row-price">
+                        {renderValue(item.emailDerivedOffer?.priceCandidate)}{' '}
+                        {item.emailDerivedOffer?.currencyCandidate ?? ''}
+                      </p>
+                    </div>
+
+                    <dl className="offer-row-fields">
+                      <div>
+                        <dt>Strength</dt>
+                        <dd>
+                          {renderValue(
+                            item.emailDerivedOffer?.strengthCandidate,
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Form</dt>
+                        <dd>
+                          {renderValue(
+                            item.emailDerivedOffer?.dosageFormCandidate,
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Pack</dt>
+                        <dd>
+                          {renderValue(
+                            item.emailDerivedOffer?.packSizeCandidate,
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Supplier</dt>
+                        <dd className="offer-field-stack">
+                          <span>
+                            {renderValue(supplierEvidence.displayName)}
+                          </span>
+                          {supplierEvidence.needsSupplierCheck ? (
+                            <span className="pill pill-neutral">
+                              Needs supplier check
+                            </span>
+                          ) : null}
+                          {supplierEvidence.sourceLabel ? (
+                            <span className="offer-field-note">
+                              {supplierEvidence.sourceLabel}
+                            </span>
+                          ) : null}
+                          {supplierEvidence.aliases.length > 0 ? (
+                            <span className="offer-field-note">
+                              Also seen as:{' '}
+                              {supplierEvidence.aliases.join(', ')}
+                            </span>
+                          ) : null}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Manufacturer</dt>
+                        <dd>
+                          {renderValue(
+                            item.emailDerivedOffer?.manufacturerCandidate,
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>MOQ</dt>
+                        <dd>
+                          {renderValue(
+                            item.emailDerivedOffer
+                              ?.minimumOrderQuantityCandidate,
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    <p className="offer-row-copy">
+                      Needs checking because{' '}
+                      {formatOperatorReason(
+                        item.sourceReviewReason ??
+                          item.qualificationRiskNote ??
+                          item.latestNote ??
+                          'this offer still needs review.',
+                      )}
+                    </p>
+                    <dl className="offer-row-summary">
+                      <div>
+                        <dt>What the bot found</dt>
+                        <dd>{summary.recognized}</dd>
+                      </div>
+                      <div>
+                        <dt>Needs checking</dt>
+                        <dd>{summary.unclear}</dd>
+                      </div>
+                      <div>
+                        <dt>Recommended next step</dt>
+                        <dd>{summary.action}</dd>
+                      </div>
+                      <div>
+                        <dt>Why this needs review</dt>
+                        <dd>
+                          <ul className="simple-list compact-list">
+                            {summary.confidenceLimits.map((limit) => (
+                              <li key={`${detail.id}-${limit}`}>{limit}</li>
+                            ))}
+                          </ul>
+                        </dd>
+                      </div>
+                    </dl>
+                    {summary.technicalDetails.length > 0 ? (
+                      <details className="document-card technical-details-card">
+                        <summary>Technical details</summary>
+                        <dl className="duplicate-product-details technical-details-grid">
+                          {summary.technicalDetails.map((technicalDetail) => (
+                            <div key={`${detail.id}-${technicalDetail.label}`}>
+                              <dt>{technicalDetail.label}</dt>
+                              <dd>{technicalDetail.value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </details>
+                    ) : null}
+                    <section className="resolution-evidence provenance-card">
+                      <div className="resolution-evidence-header">
+                        <div>
+                          <h4 className="subsection-title">Trust and Source</h4>
+                          <p className="copy resolution-evidence-copy">
+                            Where this candidate came from, why it was held for
+                            review, and what prior operator learning exists.
+                          </p>
+                        </div>
+                        <span className="pill pill-neutral">
+                          {provenance.extractionMethodLabel}
+                        </span>
+                      </div>
+                      <p className="copy resolution-evidence-copy">
+                        {provenance.extractionMethodDetail}
+                      </p>
+                      <dl className="offer-row-summary provenance-summary">
+                        <div>
+                          <dt>Source</dt>
+                          <dd>{provenance.sourceLabel}</dd>
+                        </div>
+                        <div>
+                          <dt>Auto-promotion blocked by</dt>
+                          <dd>{provenance.blockedReason}</dd>
+                        </div>
+                        <div>
+                          <dt>Warnings</dt>
+                          <dd>
+                            {provenance.warnings.length > 0 ? (
+                              <ul className="simple-list compact-list">
+                                {provenance.warnings.map((warning) => (
+                                  <li key={`${detail.id}-${warning}`}>
+                                    {warning}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              'No additional warnings stored.'
+                            )}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Missing fields</dt>
+                          <dd>
+                            {provenance.missingFields.length > 0
+                              ? provenance.missingFields.join(', ')
+                              : 'No critical missing fields recorded.'}
+                          </dd>
+                        </div>
+                      </dl>
+                      <details className="document-card technical-details-card">
+                        <summary>Source snippet</summary>
+                        <div className="source-block">
+                          <p className="copy resolution-evidence-copy">
+                            {provenance.sourceSnippet.label}
+                          </p>
+                          <pre>
+                            {provenance.sourceSnippet.text ??
+                              'No row-level source text was stored for this offer.'}
+                          </pre>
+                        </div>
+                      </details>
+                      <details className="document-card technical-details-card">
+                        <summary>Prior corrections</summary>
+                        {provenance.correctionSummaries.length > 0 ? (
+                          <ul className="simple-list compact-list provenance-corrections">
+                            {provenance.correctionSummaries.map(
+                              (correction) => (
+                                <li key={`${detail.id}-${correction}`}>
+                                  {correction}
+                                </li>
+                              ),
+                            )}
+                          </ul>
+                        ) : (
+                          <p className="copy provenance-empty">
+                            No prior operator corrections are stored for this
+                            offer.
+                          </p>
+                        )}
+                      </details>
+                    </section>
+                    <section className="resolution-evidence audit-history-card">
+                      <div className="resolution-evidence-header">
+                        <div>
+                          <h4 className="subsection-title">Audit History</h4>
+                          <p className="copy resolution-evidence-copy">
+                            Commercial decisions recorded for this review item,
+                            linked buy decision, and execution status.
+                          </p>
+                        </div>
+                      </div>
+                      {auditHistory.length > 0 ? (
+                        <ol className="audit-history-list">
+                          {auditHistory.map((event) => {
+                            const sourceSummary = getAuditSourceSummary(
+                              event.metadata,
+                            );
+                            return (
+                              <li className="audit-history-item" key={event.id}>
+                                <div className="audit-history-topline">
+                                  <span>
+                                    {formatAuditAction(event.actionType)}
+                                  </span>
+                                  <span className="pill pill-neutral">
+                                    {formatAuditEntityType(event.entityType)}
+                                  </span>
+                                </div>
+                                <p className="copy audit-history-meta">
+                                  {formatAuditTimestamp(event.createdAt)} by{' '}
+                                  {event.actorIdentifier ??
+                                    event.actorType ??
+                                    'Unknown actor'}
+                                </p>
+                                {event.previousStatus || event.newStatus ? (
+                                  <p className="copy audit-history-meta">
+                                    {event.previousStatus ??
+                                      'No previous status'}{' '}
+                                    {'->'} {event.newStatus ?? 'No new status'}
+                                  </p>
+                                ) : null}
+                                {sourceSummary ? (
+                                  <p className="copy audit-history-meta">
+                                    Source: {sourceSummary}
+                                  </p>
+                                ) : null}
+                                {event.note ? (
+                                  <p className="copy audit-history-note">
+                                    {event.note}
+                                  </p>
+                                ) : null}
+                              </li>
+                            );
+                          })}
+                        </ol>
+                      ) : (
+                        <p className="copy resolution-evidence-copy">
+                          No audit history has been recorded for this item yet.
+                        </p>
+                      )}
+                    </section>
+                    <section className="resolution-evidence">
+                      <div className="resolution-evidence-header">
+                        <div>
+                          <h4 className="subsection-title">
+                            Resolution Evidence
+                          </h4>
+                          <p className="copy resolution-evidence-copy">
+                            Candidate matches stored for this offer&apos;s
+                            supplier, product, and manufacturer checks.
+                          </p>
+                        </div>
+                      </div>
+                      {resolutionEvidenceGroups.length > 0 ? (
+                        <div className="resolution-evidence-groups">
+                          {resolutionEvidenceGroups.map((group) => (
+                            <section
+                              className="resolution-evidence-group"
+                              key={`${detail.id}-${group.entityType}`}
+                            >
+                              <div className="resolution-evidence-group-header">
+                                <p className="resolution-evidence-group-title">
+                                  {group.label}
+                                </p>
+                                <p className="resolution-evidence-group-copy">
+                                  {group.selectedCandidate
+                                    ? `Selected candidate: ${group.selectedCandidate.candidateName}`
+                                    : 'No candidate was selected automatically.'}
+                                </p>
+                              </div>
+                              <div className="resolution-candidate-list">
+                                {group.candidates.map((candidate) => (
+                                  <article
+                                    className={`resolution-candidate-card${candidate.selected ? ' resolution-candidate-card-selected' : ''}`}
+                                    key={`${detail.id}-${group.entityType}-${candidate.candidateId ?? candidate.candidateName}-${candidate.reason}`}
+                                  >
+                                    <div className="resolution-candidate-top">
+                                      <p className="resolution-candidate-title">
+                                        {candidate.candidateName}
+                                      </p>
+                                      <div className="resolution-candidate-pills">
+                                        {candidate.selected ? (
+                                          <span className="pill pill-high">
+                                            Selected
+                                          </span>
+                                        ) : null}
+                                        <span className="pill pill-neutral">
+                                          {formatPctFromScore(
+                                            candidate.confidence,
+                                          ) ?? 'Unknown confidence'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <p className="resolution-candidate-copy">
+                                      Why this looks like a match:{' '}
+                                      {formatReasonLabel(candidate.reason)}.
+                                    </p>
+                                    <p className="resolution-candidate-copy resolution-candidate-copy-secondary">
+                                      {candidate.candidateId
+                                        ? 'Linked to an existing canonical record.'
+                                        : 'Stored as a text cue only, without a canonical record link.'}
+                                    </p>
+                                  </article>
+                                ))}
+                              </div>
+                            </section>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="copy resolution-evidence-copy">
+                          No candidate supplier, product, or manufacturer
+                          evidence was stored for this row.
+                        </p>
+                      )}
+                    </section>
+                    <div className="offer-row-actions">
+                      <form action={submitInboundEmailReviewAction}>
+                        <input
+                          name="inboundEmailId"
+                          type="hidden"
+                          value={inboundEmailId}
+                        />
+                        <input
+                          name="workflowItemId"
+                          type="hidden"
+                          value={item.id}
+                        />
+                        <input
+                          name="action"
+                          type="hidden"
+                          value="APPROVE_TO_BUY"
+                        />
+                        {renderReturnToInput(returnTo)}
+                        <SubmitButton
+                          className="button button-primary"
+                          idleLabel="Approve"
+                          pendingLabel="Approving..."
+                        />
+                      </form>
+                      <form action={submitInboundEmailReviewAction}>
+                        <input
+                          name="inboundEmailId"
+                          type="hidden"
+                          value={inboundEmailId}
+                        />
+                        <input
+                          name="workflowItemId"
+                          type="hidden"
+                          value={item.id}
+                        />
+                        <input name="action" type="hidden" value="REJECT" />
+                        {renderReturnToInput(returnTo)}
+                        <SubmitButton
+                          className="button"
+                          idleLabel="Reject"
+                          pendingLabel="Rejecting..."
+                        />
+                      </form>
+                      <form action={submitInboundEmailReviewAction}>
+                        <input
+                          name="inboundEmailId"
+                          type="hidden"
+                          value={inboundEmailId}
+                        />
+                        <input
+                          name="workflowItemId"
+                          type="hidden"
+                          value={item.id}
+                        />
+                        <input name="action" type="hidden" value="NEEDS_INFO" />
+                        {renderReturnToInput(returnTo)}
+                        <SubmitButton
+                          className="button"
+                          idleLabel="Needs info"
+                          pendingLabel="Saving..."
+                        />
+                      </form>
+                    </div>
+                  </article>
+                );
+              },
+            )}
           </div>
         </section>
 
@@ -1252,8 +1541,11 @@ export default async function ReviewInboundEmailPage({
             <summary>Show email details</summary>
             <div className="review-context">
               <div className="source-block">
-                <h4 className="subsection-title">Raw email text</h4>
-                <pre>{inboundEmail?.rawText ?? 'No raw body text stored.'}</pre>
+                <h4 className="subsection-title">Raw email text preview</h4>
+                <p className="copy resolution-evidence-copy">
+                  {rawEmailPreview.label}
+                </p>
+                <pre>{rawEmailPreview.text ?? 'No raw body text stored.'}</pre>
               </div>
 
               <div className="source-block">

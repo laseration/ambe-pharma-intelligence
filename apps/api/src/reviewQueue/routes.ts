@@ -176,6 +176,22 @@ reviewQueueRouter.get(
 );
 
 reviewQueueRouter.get(
+  '/workflows/:id/audit-history',
+  asyncHandler(async (request, response) => {
+    const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {
+      params: idParamSchema,
+    });
+
+    response.json({
+      items: requireFound(
+        await offerWorkflowService.getWorkflowAuditHistory(params.id),
+        'Offer workflow item not found.',
+      ),
+    });
+  }),
+);
+
+reviewQueueRouter.get(
   '/workflows/:id',
   asyncHandler(async (request, response) => {
     const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {

@@ -6,6 +6,15 @@ import {
   correlationLogMeta,
 } from '../observability/correlation';
 import {
+  configurePollingWorkerStatus,
+  markPollingRunFinished,
+  markPollingRunStarted,
+  markPollingWorkerStarted,
+  markPollingWorkerStopped,
+  recordPollingWorkerError,
+  sanitizePollingErrorMessage,
+} from '../polling/status';
+import {
   getMicrosoftGraphAccessToken,
   isMicrosoftGraphConfigured,
 } from './graph';
@@ -67,6 +76,8 @@ type EmailInboundPollingDependencies = {
     externalMessageId: string,
   ) => Promise<{ id: string; processingStatus: string } | null>;
 };
+
+type EmailPollingMessageOutcome = 'processed' | 'skipped' | 'duplicate';
 
 function stripHtml(html: string): string {
   return html
@@ -199,7 +210,7 @@ async function markMessageRead(messageId: string): Promise<void> {
 async function processMessage(
   message: GraphMessage,
   dependencies: EmailInboundPollingDependencies,
-): Promise<void> {
+): Promise<EmailPollingMessageOutcome> {
   const correlation = {
     sourceSystem: 'MICROSOFT_GRAPH',
     externalMessageId: message.id ?? null,
@@ -216,7 +227,7 @@ async function processMessage(
         subject: message.subject ?? null,
       },
     );
-    return;
+    return 'skipped';
   }
 
   const inboundMessage = toInboundMessage(message);
@@ -233,7 +244,7 @@ async function processMessage(
       },
     );
     await dependencies.markMessageRead(message.id);
-    return;
+    return 'skipped';
   }
 
   const existingInboundEmail = await dependencies.lookupExistingInboundEmail(
@@ -254,7 +265,7 @@ async function processMessage(
       },
     );
     await dependencies.markMessageRead(message.id);
-    return;
+    return 'duplicate';
   }
 
   if (message.hasAttachments) {
@@ -289,6 +300,7 @@ async function processMessage(
   });
 
   await dependencies.markMessageRead(message.id);
+  return 'processed';
 }
 
 export function isEmailInboundPollingActive(): boolean {
@@ -322,6 +334,12 @@ export function createEmailInboundPollingWorker(
       }),
     ...overrides,
   };
+  configurePollingWorkerStatus('email-inbound', {
+    enabled: env.emailInboundPollingEnabled,
+    configured: isMicrosoftGraphConfigured(),
+    active: isEmailInboundPollingActive(),
+    intervalMs: env.emailInboundPollingIntervalMs,
+  });
 
   async function pollOnce(scheduleNext = true) {
     if (stopped || inFlight) {
@@ -329,14 +347,31 @@ export function createEmailInboundPollingWorker(
     }
 
     inFlight = true;
+    markPollingRunStarted('email-inbound');
+    let itemsSeen = 0;
+    let itemsProcessed = 0;
+    let itemsSkipped = 0;
+    let duplicateItemsSkipped = 0;
+    let itemsFailed = 0;
 
     try {
       const messages = await dependencies.listUnreadInboxMessages();
+      itemsSeen = messages.length;
 
       for (const message of messages) {
         try {
-          await processMessage(message, dependencies);
+          const outcome = await processMessage(message, dependencies);
+          if (outcome === 'processed') {
+            itemsProcessed += 1;
+          } else if (outcome === 'duplicate') {
+            duplicateItemsSkipped += 1;
+            itemsSkipped += 1;
+          } else {
+            itemsSkipped += 1;
+          }
         } catch (error) {
+          itemsFailed += 1;
+          recordPollingWorkerError('email-inbound', error);
           dependencies.logger.error(
             'Email inbox polling failed for one message and continued',
             {
@@ -347,7 +382,7 @@ export function createEmailInboundPollingWorker(
               }),
               error:
                 error instanceof Error
-                  ? error.message
+                  ? sanitizePollingErrorMessage(error)
                   : 'Unknown email inbox polling message error.',
               externalMessageId: message.id ?? null,
               internetMessageId: message.internetMessageId ?? null,
@@ -360,14 +395,23 @@ export function createEmailInboundPollingWorker(
         }
       }
     } catch (error) {
+      itemsFailed = Math.max(itemsFailed, 1);
+      recordPollingWorkerError('email-inbound', error);
       dependencies.logger.error('Email inbox polling failed', {
         error:
           error instanceof Error
-            ? error.message
+            ? sanitizePollingErrorMessage(error)
             : 'Unknown email inbox polling error.',
       });
     } finally {
       inFlight = false;
+      markPollingRunFinished('email-inbound', {
+        itemsSeen,
+        itemsProcessed,
+        itemsSkipped,
+        itemsFailed,
+        duplicateItemsSkipped,
+      });
 
       if (scheduleNext && !stopped) {
         timer = setTimeout(() => {
@@ -384,6 +428,13 @@ export function createEmailInboundPollingWorker(
       }
 
       stopped = false;
+      configurePollingWorkerStatus('email-inbound', {
+        enabled: env.emailInboundPollingEnabled,
+        configured: isMicrosoftGraphConfigured(),
+        active: isEmailInboundPollingActive(),
+        intervalMs: env.emailInboundPollingIntervalMs,
+      });
+      markPollingWorkerStarted('email-inbound');
 
       dependencies.logger.info('Email inbox polling started', {
         mailbox: env.microsoftGraphSenderMailbox,
@@ -397,6 +448,7 @@ export function createEmailInboundPollingWorker(
     },
     stop() {
       stopped = true;
+      markPollingWorkerStopped('email-inbound');
 
       if (timer) {
         clearTimeout(timer);

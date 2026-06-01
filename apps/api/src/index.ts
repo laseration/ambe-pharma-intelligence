@@ -52,6 +52,15 @@ async function start() {
       );
     }
 
+    if (env.emailInboundPollingEnabled && !isEmailInboundPollingActive()) {
+      logger.warn(
+        'Email inbox polling is enabled but Microsoft Graph mail configuration is incomplete',
+        {
+          mailboxConfigured: Boolean(env.microsoftGraphSenderMailbox),
+        },
+      );
+    }
+
     if (isTelegramPollingActive()) {
       telegramPollingWorker.start();
     }

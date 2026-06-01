@@ -331,6 +331,16 @@ function createRepositoryHarness() {
           (item) => item.workflowItemId === workflowItemId,
         ) as never;
       },
+      async listBuyDecisionEvents(buyDecisionId: string) {
+        return buyDecisionEvents.filter(
+          (item) => item.buyDecisionId === buyDecisionId,
+        ) as never;
+      },
+      async listBuyExecutionEvents(buyExecutionId: string) {
+        return buyExecutionEvents.filter(
+          (item) => item.buyExecutionId === buyExecutionId,
+        ) as never;
+      },
       async findSupplierQualificationBySupplierId(supplierId: string) {
         return (supplierQualifications.find(
           (item) => item.supplierId === supplierId,
@@ -791,9 +801,26 @@ test('approving a workflow item creates exactly one buy decision and reapproval 
     'REVIEW_QUEUE_APPROVE_TO_BUY',
   );
   assert.equal(
+    harness.workflowEvents.find(
+      (event) => event.actionType === 'APPROVED_TO_BUY',
+    )?.metadata?.commercialAudit?.entityType,
+    'OFFER_WORKFLOW_ITEM',
+  );
+  assert.equal(
+    harness.workflowEvents.find(
+      (event) => event.actionType === 'APPROVED_TO_BUY',
+    )?.metadata?.commercialAudit?.source?.inboundEmailId,
+    'email-1',
+  );
+  assert.equal(
     harness.buyDecisionEvents.find((event) => event.actionType === 'CREATED')
       ?.metadata?.sideEffectPolicy?.mayCreateOrUpdateBuyDecisions,
     true,
+  );
+  assert.equal(
+    harness.buyDecisionEvents.find((event) => event.actionType === 'CREATED')
+      ?.metadata?.commercialAudit?.approvalStatus?.next,
+    'APPROVED',
   );
   assert.equal(
     harness.tradeOpportunities[0]?.buyDecisionId,
@@ -1089,6 +1116,52 @@ test('marking ordered updates the linked buy decision and does not duplicate ord
       (event) => event.actionType === 'ORDER_PLACED',
     ).length,
     1,
+  );
+  assert.equal(
+    harness.buyExecutionEvents.find(
+      (event) => event.actionType === 'ORDER_PLACED',
+    )?.metadata?.commercialAudit?.entityType,
+    'BUY_EXECUTION',
+  );
+});
+
+test('workflow audit history combines workflow buy decision and execution events chronologically', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  harness.workflowItems.push(harness.makeWorkflowRecord());
+
+  await service.approveToBuy({
+    workflowItemId: harness.workflowItems[0]!.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+  await service.markOrdered({
+    workflowItemId: harness.workflowItems[0]!.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+    externalOrderReference: 'PO-001',
+  });
+
+  const history = await service.getWorkflowAuditHistory(
+    harness.workflowItems[0]!.id,
+  );
+
+  assert.ok(history);
+  assert.equal(
+    history.some((event) => event.entityType === 'OFFER_WORKFLOW_ITEM'),
+    true,
+  );
+  assert.equal(
+    history.some((event) => event.entityType === 'BUY_DECISION'),
+    true,
+  );
+  assert.equal(
+    history.some((event) => event.entityType === 'BUY_EXECUTION'),
+    true,
+  );
+  assert.deepEqual(
+    history.map((event) => event.createdAt.getTime()),
+    history.map((event) => event.createdAt.getTime()).sort((a, b) => a - b),
   );
 });
 

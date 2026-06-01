@@ -1,4 +1,5 @@
 import { db } from '../lib/db';
+import { buildCommercialAuditMetadata } from '../audit/commercialAudit';
 
 export type AutomationGlobalMode =
   | 'OBSERVE_ONLY'
@@ -344,6 +345,27 @@ function normalizeActor(actor?: OperatorFeedbackActor) {
     actorType: actor?.actorType?.trim() || 'SYSTEM',
     actorIdentifier: actor?.actorIdentifier?.trim() || null,
   };
+}
+
+function buildAutomationAuditMetadata(input: {
+  policyId: string;
+  actionType: AutomationReadinessActionType;
+  previousGlobalMode: AutomationGlobalMode | null;
+  newGlobalMode: AutomationGlobalMode | null;
+  metadata?: unknown;
+}) {
+  return buildCommercialAuditMetadata(
+    {
+      entityType: 'AUTOMATION_READINESS_POLICY',
+      entityId: input.policyId,
+      action: input.actionType,
+      status: {
+        previous: input.previousGlobalMode,
+        next: input.newGlobalMode,
+      },
+    },
+    input.metadata,
+  );
 }
 
 function normalizeString(value: string | null | undefined): string | null {
@@ -1159,7 +1181,12 @@ export function createAutomationService(
               actorType: actor.actorType,
               actorIdentifier: actor.actorIdentifier,
               note: updated.notes,
-              metadata: null,
+              metadata: buildAutomationAuditMetadata({
+                policyId: updated.id,
+                actionType: 'CREATED',
+                previousGlobalMode: null,
+                newGlobalMode: updated.globalMode,
+              }),
             });
           }
         }
@@ -1176,9 +1203,18 @@ export function createAutomationService(
             actorType: actor.actorType,
             actorIdentifier: actor.actorIdentifier,
             note: normalizeString(input.notes),
-            metadata: {
-              attemptedActualSend,
-            },
+            metadata: buildAutomationAuditMetadata({
+              policyId: updated.id,
+              actionType:
+                existing.globalMode !== updated.globalMode
+                  ? 'MODE_CHANGED'
+                  : 'UPDATED',
+              previousGlobalMode: existing.globalMode,
+              newGlobalMode: updated.globalMode,
+              metadata: {
+                attemptedActualSend,
+              },
+            }),
           });
         } else if (normalizeString(input.notes)) {
           await txRepository.createReadinessEvent({
@@ -1189,7 +1225,12 @@ export function createAutomationService(
             actorType: actor.actorType,
             actorIdentifier: actor.actorIdentifier,
             note: normalizeString(input.notes),
-            metadata: null,
+            metadata: buildAutomationAuditMetadata({
+              policyId: updated.id,
+              actionType: 'NOTE_ADDED',
+              previousGlobalMode: updated.globalMode,
+              newGlobalMode: updated.globalMode,
+            }),
           });
         }
 
@@ -1202,9 +1243,15 @@ export function createAutomationService(
             actorType: actor.actorType,
             actorIdentifier: actor.actorIdentifier,
             note: 'Live autonomous sending remains blocked in this pass.',
-            metadata: {
-              attemptedAllowActualSend: true,
-            },
+            metadata: buildAutomationAuditMetadata({
+              policyId: updated.id,
+              actionType: 'SEND_BLOCKED',
+              previousGlobalMode: updated.globalMode,
+              newGlobalMode: updated.globalMode,
+              metadata: {
+                attemptedAllowActualSend: true,
+              },
+            }),
           });
         }
 
@@ -1232,10 +1279,16 @@ export function createAutomationService(
             actorType: actor.actorType,
             actorIdentifier: actor.actorIdentifier,
             note: 'Automation eligibility changed under the current readiness thresholds.',
-            metadata: {
-              previousEligibility: JSON.parse(previousEligibility),
-              nextEligibility: JSON.parse(nextEligibility),
-            },
+            metadata: buildAutomationAuditMetadata({
+              policyId: updated.id,
+              actionType: 'SEND_ELIGIBILITY_CHANGED',
+              previousGlobalMode: updated.globalMode,
+              newGlobalMode: updated.globalMode,
+              metadata: {
+                previousEligibility: JSON.parse(previousEligibility),
+                nextEligibility: JSON.parse(nextEligibility),
+              },
+            }),
           });
         }
 

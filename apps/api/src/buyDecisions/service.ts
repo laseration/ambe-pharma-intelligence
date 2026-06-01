@@ -1,4 +1,5 @@
 import { db } from '../lib/db';
+import { buildCommercialAuditMetadata } from '../audit/commercialAudit';
 import {
   summarizeBuyExecution,
   upsertExecutionForBuyDecision,
@@ -517,7 +518,22 @@ async function logBuyDecisionEvent(
     actorType: actor.actorType,
     actorIdentifier: actor.actorIdentifier,
     note: note?.trim() || null,
-    metadata: metadata ?? null,
+    metadata: buildCommercialAuditMetadata(
+      {
+        entityType: 'BUY_DECISION',
+        entityId: buyDecisionId,
+        action: actionType,
+        approvalStatus: {
+          previous: previousApprovalStatus,
+          next: newApprovalStatus,
+        },
+        orderStatus: {
+          previous: previousOrderStatus,
+          next: newOrderStatus,
+        },
+      },
+      metadata,
+    ),
   });
 }
 

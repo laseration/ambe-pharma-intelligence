@@ -14,6 +14,7 @@ import { productsRouter } from '../products/routes';
 import { regulatoryRouter } from '../regulatory/routes';
 import { reviewQueueRouter } from '../reviewQueue/routes';
 import { suppliersRouter } from '../suppliers/routes';
+import { systemRouter } from '../system/routes';
 import { telegramRouter } from '../telegram/routes';
 import { createPlaceholderRouter } from './createPlaceholderRouter';
 
@@ -33,6 +34,7 @@ apiRouter.use('/products', productsRouter);
 apiRouter.use('/regulatory', regulatoryRouter);
 apiRouter.use('/sources', sourceProfilesRouter);
 apiRouter.use('/suppliers', suppliersRouter);
+apiRouter.use('/system', systemRouter);
 apiRouter.use('/inventory', createPlaceholderRouter('inventory'));
 apiRouter.use('/customers', createPlaceholderRouter('customers'));
 apiRouter.use('/opportunities', opportunitiesRouter);

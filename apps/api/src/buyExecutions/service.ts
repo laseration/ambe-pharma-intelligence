@@ -1,4 +1,5 @@
 import { db } from '../lib/db';
+import { buildCommercialAuditMetadata } from '../audit/commercialAudit';
 import { syncTradeOpportunityCommercialState } from '../deals/service';
 
 export type BuyDecisionOrderStatus =
@@ -742,7 +743,29 @@ async function logExecutionEvent(
     actorType: actor.actorType,
     actorIdentifier: actor.actorIdentifier,
     note: note?.trim() || null,
-    metadata: metadata ?? null,
+    metadata: buildCommercialAuditMetadata(
+      {
+        entityType: 'BUY_EXECUTION',
+        entityId: buyExecutionId,
+        action: actionType,
+        fulfillmentStatus: {
+          previous: previousFulfillmentStatus,
+          next: newFulfillmentStatus,
+        },
+        reconciliationStatus: {
+          previous: previousReconciliationStatus,
+          next: newReconciliationStatus,
+        },
+        changedFields:
+          metadata &&
+          typeof metadata === 'object' &&
+          !Array.isArray(metadata) &&
+          Array.isArray((metadata as { changedFields?: unknown }).changedFields)
+            ? (metadata as { changedFields: string[] }).changedFields
+            : undefined,
+      },
+      metadata,
+    ),
   });
 }
 
