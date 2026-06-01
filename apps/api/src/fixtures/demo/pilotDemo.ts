@@ -93,7 +93,8 @@ export function loadPilotDemoFixture() {
       structureConfidence: 88,
       businessWorthinessScore: 91,
       parserConfidence: 'HIGH',
-      reviewReason: 'Demo: one offer awaits approval and one is already ordered.',
+      reviewReason:
+        'Demo: one offer awaits approval and one is already ordered.',
       receivedAt,
       processedAt: receivedAt,
     },

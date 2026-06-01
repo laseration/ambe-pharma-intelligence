@@ -50,9 +50,28 @@ test('local runtime smoke accepts docker-compose postgres service with disposabl
   assert.equal(result.databaseName, 'ambe_dev');
 });
 
+test('local runtime smoke accepts demo smoke and ci database names', () => {
+  const demo = classifyDatabaseUrlForLocalSmoke(
+    'postgresql://ambe:secret@localhost:5432/ambe_demo?schema=public',
+  );
+  const smoke = classifyDatabaseUrlForLocalSmoke(
+    'postgresql://ambe:secret@127.0.0.1:5432/ambe_smoke?schema=public',
+  );
+  const ci = classifyDatabaseUrlForLocalSmoke(
+    'postgresql://ci:ci@localhost:5432/ambe_ci?schema=public',
+  );
+
+  assert.equal(demo.safe, true);
+  assert.equal(demo.databaseName, 'ambe_demo');
+  assert.equal(smoke.safe, true);
+  assert.equal(smoke.databaseName, 'ambe_smoke');
+  assert.equal(ci.safe, true);
+  assert.equal(ci.databaseName, 'ambe_ci');
+});
+
 test('local runtime smoke rejects Neon database URLs', () => {
   const result = classifyDatabaseUrlForLocalSmoke(
-    'postgresql://user:redacted@ep-example.eu-west-2.aws.neon.tech/neondb?sslmode=require',
+    'postgresql://user:redacted@ep-example.eu-west-2.aws.neon.tech/ambe_demo?sslmode=require',
   );
 
   assert.equal(result.safe, false);
@@ -116,7 +135,7 @@ test('local runtime smoke rejects local hosts without disposable database names'
 
   assert.equal(result.safe, false);
   assert.equal(result.classification, 'local');
-  assert.match(result.reason, /dev, test, or local/i);
+  assert.match(result.reason, /local, dev, test, demo, smoke, or ci/i);
 });
 
 test('local runtime smoke integration guard accepts disabled integrations with present credentials', () => {

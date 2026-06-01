@@ -596,13 +596,12 @@ function correctedFieldNames(correction: OfferCorrectionRecord): string[] {
     ['correctedManufacturer', correction.correctedManufacturer],
     ['correctedUnitPrice', correction.correctedUnitPrice],
     ['correctedCurrencyCode', correction.correctedCurrencyCode],
-    [
-      'correctedMinimumOrderQuantity',
-      correction.correctedMinimumOrderQuantity,
-    ],
+    ['correctedMinimumOrderQuantity', correction.correctedMinimumOrderQuantity],
     ['correctedAvailability', correction.correctedAvailability],
   ]
-    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .filter(
+      ([, value]) => value !== null && value !== undefined && value !== '',
+    )
     .map(([field]) => String(field));
 }
 
@@ -1637,9 +1636,7 @@ export function createOfferCorrectionService(
           metadata: buildCorrectionEventMetadata({
             correction: created,
             actionType:
-              created.correctionStatus === 'REJECTED'
-                ? 'REJECTED'
-                : 'APPLIED',
+              created.correctionStatus === 'REJECTED' ? 'REJECTED' : 'APPLIED',
             previousStatus: null,
             newStatus: created.correctionStatus,
           }),

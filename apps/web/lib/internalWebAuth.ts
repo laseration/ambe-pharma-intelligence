@@ -112,8 +112,7 @@ function constantTimeEqual(left: string, right: string): boolean {
   const maxLength = Math.max(left.length, right.length);
 
   for (let index = 0; index < maxLength; index += 1) {
-    diff |=
-      (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0);
+    diff |= (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0);
   }
 
   return diff === 0;
@@ -177,7 +176,9 @@ async function signValue(value: string, secret: string): Promise<string> {
   return bytesToBase64Url(new Uint8Array(signature));
 }
 
-function isSessionPayload(value: SessionPayload | null): value is SessionPayload {
+function isSessionPayload(
+  value: SessionPayload | null,
+): value is SessionPayload {
   return (
     value?.v === 1 &&
     typeof value.sub === 'string' &&

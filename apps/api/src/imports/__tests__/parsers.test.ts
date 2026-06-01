@@ -5,10 +5,7 @@ import assert from 'node:assert/strict';
 import XLSX from 'xlsx';
 
 import { parseUploadedFile } from '../parsers';
-import {
-  buildImportDiagnostics,
-  redactImportRawRow,
-} from '../service';
+import { buildImportDiagnostics, redactImportRawRow } from '../service';
 import {
   validateInventoryRows,
   validateSalesRows,
@@ -189,17 +186,14 @@ test('diagnostics summarize invalid rows, columns, fixes, and duplicate product 
 
   assert.equal(diagnostics.detectedColumns.length, 5);
   assert.equal(diagnostics.dataQualityMetrics.invalidRows, 1);
-  assert.equal(
-    diagnostics.productMatchingSummary.candidateConfidence.high,
-    2,
-  );
+  assert.equal(diagnostics.productMatchingSummary.candidateConfidence.high, 2);
   assert.equal(
     diagnostics.productMatchingSummary.duplicateCandidateGroups.length,
     1,
   );
   assert.equal(
-    diagnostics.productMatchingSummary.duplicateCandidateGroups[0]
-      ?.rowNumbers.length,
+    diagnostics.productMatchingSummary.duplicateCandidateGroups[0]?.rowNumbers
+      .length,
     2,
   );
   assert.match(diagnostics.suggestedFixes.join(' '), /unit prices/i);

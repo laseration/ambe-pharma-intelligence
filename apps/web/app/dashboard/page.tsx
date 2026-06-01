@@ -415,8 +415,8 @@ export default async function DashboardPage({
             <h3 className="section-title">Supplier emails awaiting decision</h3>
             <p className="copy">
               {pendingSupplierEmailCount} supplier email
-              {pendingSupplierEmailCount === 1 ? '' : 's'} currently have
-              staged offers that need operator judgment.
+              {pendingSupplierEmailCount === 1 ? '' : 's'} currently have staged
+              offers that need operator judgment.
             </p>
           </div>
           <Link className="button" href="/dashboard/review">
@@ -542,7 +542,9 @@ export default async function DashboardPage({
 
         {bestBuyingSignals.length === 0 ? (
           <div className="dashboard-proof-callout">
-            <p className="dashboard-proof-title">No buy-side signal to act on</p>
+            <p className="dashboard-proof-title">
+              No buy-side signal to act on
+            </p>
             <p className="dashboard-proof-copy">
               Import supplier prices, stock, and sales data, then refresh
               opportunities. If data is already loaded, there may simply be no
@@ -578,11 +580,10 @@ export default async function DashboardPage({
                     <span className="pill pill-high">Score {item.score}</span>
                   </div>
                 </div>
-                <p className="dashboard-opportunity-copy">
-                  {item.description}
-                </p>
+                <p className="dashboard-opportunity-copy">{item.description}</p>
                 <p className="dashboard-triage-meta">
-                  Signal refreshed {formatDateTime(item.updatedAt) ?? 'recently'}
+                  Signal refreshed{' '}
+                  {formatDateTime(item.updatedAt) ?? 'recently'}
                 </p>
                 <ul className="dashboard-signal-list">
                   {buildOpportunitySignals(item).map((signal) => (
@@ -634,12 +635,17 @@ export default async function DashboardPage({
         <div className="dashboard-section-header">
           <div>
             <p className="eyebrow">Recent Decisions</p>
-            <h3 className="section-title">Recently approved, rejected, or actioned</h3>
+            <h3 className="section-title">
+              Recently approved, rejected, or actioned
+            </h3>
             <p className="copy">
               A short audit-friendly view of work the team has already touched.
             </p>
           </div>
-          <Link className="button" href="/dashboard/opportunities?status=ACTIONED">
+          <Link
+            className="button"
+            href="/dashboard/opportunities?status=ACTIONED"
+          >
             View actioned
           </Link>
         </div>
@@ -725,7 +731,9 @@ export default async function DashboardPage({
         <div className="dashboard-section-header">
           <div>
             <p className="eyebrow">Trust And Data Quality</p>
-            <h3 className="section-title">Issues to clear before relying on automation</h3>
+            <h3 className="section-title">
+              Issues to clear before relying on automation
+            </h3>
             <p className="copy">
               These are not cosmetic. They affect product matching, signal
               usefulness, and whether operators can trust recommendations.

@@ -24,7 +24,10 @@ test('pilot demo fixture is clearly fake and uses stable identifiers', () => {
   assert.equal(new Set(ids).size, ids.length);
   assert.ok(ids.every((id) => id.startsWith('demo-pilot-')));
   assert.match(fixture.user.email, /@example\.test$/);
-  assert.match(fixture.supplier.contactEmail, /@northstar-demo\.example\.test$/);
+  assert.match(
+    fixture.supplier.contactEmail,
+    /@northstar-demo\.example\.test$/,
+  );
   assert.match(
     fixture.customer.primaryContactEmail,
     /@citycare-demo\.example\.test$/,

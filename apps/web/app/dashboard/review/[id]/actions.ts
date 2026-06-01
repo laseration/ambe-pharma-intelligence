@@ -173,10 +173,7 @@ function buildNonApprovalMessage(action: string): string {
 function buildCorrectionBody(formData: FormData): Record<string, unknown> {
   const body: Record<string, unknown> = {
     correctedSupplierName: optionalValue(formData, 'correctedSupplierName'),
-    correctedRawProductText: optionalValue(
-      formData,
-      'correctedRawProductText',
-    ),
+    correctedRawProductText: optionalValue(formData, 'correctedRawProductText'),
     correctedNormalizedProductName: optionalValue(
       formData,
       'correctedNormalizedProductName',
@@ -251,9 +248,7 @@ export async function submitReviewOfferCorrection(formData: FormData) {
         inboundEmailId,
         {
           error:
-            error instanceof Error
-              ? error.message
-              : 'Offer correction failed.',
+            error instanceof Error ? error.message : 'Offer correction failed.',
         },
         returnTo,
       ),

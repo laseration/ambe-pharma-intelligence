@@ -1004,10 +1004,7 @@ test('approval uses the latest applied offer correction for buy decision values'
     harness.buyDecisions[0]?.manufacturerCandidate,
     'Corrected Manufacturer',
   );
-  assert.equal(
-    harness.buyDecisions[0]?.quotedUnitPrice,
-    7.95,
-  );
+  assert.equal(harness.buyDecisions[0]?.quotedUnitPrice, 7.95);
   assert.equal(harness.buyDecisions[0]?.quotedMinimumOrderQuantity, 50);
   assert.equal(harness.buyDecisions[0]?.quotedAvailability, 'Available now');
   assert.equal(

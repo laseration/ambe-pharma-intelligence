@@ -152,7 +152,10 @@ function categorizeWarning(message: string): ImportWarningCategory['category'] {
   if (normalized.includes('worksheet')) {
     return 'worksheet';
   }
-  if (normalized.includes('blank header') || normalized.includes('header row')) {
+  if (
+    normalized.includes('blank header') ||
+    normalized.includes('header row')
+  ) {
     return 'header';
   }
   if (normalized.includes('duplicate header')) {
@@ -211,7 +214,9 @@ function buildProductMatchingSummary(
         break;
     }
 
-    const existing = byNormalizedKey.get(row.productCandidates.normalizedKey) ?? {
+    const existing = byNormalizedKey.get(
+      row.productCandidates.normalizedKey,
+    ) ?? {
       rowNumbers: [],
       rawProductNames: new Set<string>(),
     };

@@ -69,7 +69,9 @@ function getNextAction(batch: {
   };
 }): string {
   if (batch.errorCount > 0) {
-    return batch.diagnostics.suggestedFixes[0] ?? 'Fix row errors and re-import.';
+    return (
+      batch.diagnostics.suggestedFixes[0] ?? 'Fix row errors and re-import.'
+    );
   }
   if (batch.diagnostics.dataQualityMetrics.unresolvedProducts > 0) {
     return 'Review unresolved product names before relying on downstream signals.';
@@ -204,24 +206,35 @@ export default async function ImportBatchDetailPage({ params }: PageProps) {
             </div>
             <div>
               <dt>Duplicate candidates</dt>
-              <dd>{batch.diagnostics.dataQualityMetrics.duplicateCandidates}</dd>
+              <dd>
+                {batch.diagnostics.dataQualityMetrics.duplicateCandidates}
+              </dd>
             </div>
             <div>
               <dt>High confidence names</dt>
               <dd>
-                {batch.diagnostics.productMatchingSummary.candidateConfidence.high}
+                {
+                  batch.diagnostics.productMatchingSummary.candidateConfidence
+                    .high
+                }
               </dd>
             </div>
             <div>
               <dt>Medium confidence names</dt>
               <dd>
-                {batch.diagnostics.productMatchingSummary.candidateConfidence.medium}
+                {
+                  batch.diagnostics.productMatchingSummary.candidateConfidence
+                    .medium
+                }
               </dd>
             </div>
             <div>
               <dt>Low confidence names</dt>
               <dd>
-                {batch.diagnostics.productMatchingSummary.candidateConfidence.low}
+                {
+                  batch.diagnostics.productMatchingSummary.candidateConfidence
+                    .low
+                }
               </dd>
             </div>
           </dl>

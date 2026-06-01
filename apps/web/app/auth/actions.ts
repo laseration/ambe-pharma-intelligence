@@ -23,7 +23,10 @@ function normalizeDashboardRedirect(value: string): string {
   return '/dashboard';
 }
 
-function loginRedirect(error: 'invalid' | 'not-configured', next: string): never {
+function loginRedirect(
+  error: 'invalid' | 'not-configured',
+  next: string,
+): never {
   const searchParams = new URLSearchParams({
     error,
     next,

@@ -992,7 +992,9 @@ function createWorkflowRepository(
       const senderDomain = detail.inboundEmail.senderDomain;
       const templateFingerprint = detail.inboundEmail.sourceTemplateFingerprint;
       const relatedCorrectionFilters = [
-        senderEmail ? { inboundEmail: { is: { fromEmail: senderEmail } } } : null,
+        senderEmail
+          ? { inboundEmail: { is: { fromEmail: senderEmail } } }
+          : null,
         senderDomain && templateFingerprint
           ? {
               inboundEmail: {

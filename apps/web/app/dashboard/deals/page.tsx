@@ -357,17 +357,11 @@ export default async function DealsPage() {
                               event.previousStage ||
                               event.newStage ? (
                                 <p className="copy audit-history-meta">
-                                  {[
-                                    event.previousStatus,
-                                    event.previousStage,
-                                  ]
+                                  {[event.previousStatus, event.previousStage]
                                     .filter(Boolean)
                                     .join(' / ') || 'No previous status'}{' '}
                                   {'->'}{' '}
-                                  {[
-                                    event.newStatus,
-                                    event.newStage,
-                                  ]
+                                  {[event.newStatus, event.newStage]
                                     .filter(Boolean)
                                     .join(' / ') || 'No new status'}
                                 </p>

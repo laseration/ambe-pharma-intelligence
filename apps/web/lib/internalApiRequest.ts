@@ -229,7 +229,10 @@ export async function requestInternalJson<T>(
   });
 
   if (!response.ok) {
-    throw buildInternalApiError(response, await safeErrorMessage(response, source));
+    throw buildInternalApiError(
+      response,
+      await safeErrorMessage(response, source),
+    );
   }
 
   return (await response.json()) as T;
@@ -261,7 +264,10 @@ export async function requestInternalTextFile(
   });
 
   if (!response.ok) {
-    throw buildInternalApiError(response, await safeErrorMessage(response, source));
+    throw buildInternalApiError(
+      response,
+      await safeErrorMessage(response, source),
+    );
   }
 
   return {
@@ -292,7 +298,10 @@ export async function requestInternalBinaryFile(
   });
 
   if (!response.ok) {
-    throw buildInternalApiError(response, await safeErrorMessage(response, source));
+    throw buildInternalApiError(
+      response,
+      await safeErrorMessage(response, source),
+    );
   }
 
   return {
