@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import {
+  createReviewWorkflowCorrection,
   listReviewWorkflowItems,
   type ReviewWorkflowActionOutcome,
   updateReviewWorkflowItem,
@@ -12,6 +13,21 @@ import {
 function value(formData: FormData, key: string): string {
   const rawValue = formData.get(key);
   return typeof rawValue === 'string' ? rawValue.trim() : '';
+}
+
+function optionalValue(formData: FormData, key: string): string | undefined {
+  const trimmed = value(formData, key);
+  return trimmed || undefined;
+}
+
+function optionalNumber(formData: FormData, key: string): number | undefined {
+  const rawValue = optionalValue(formData, key);
+  if (!rawValue) {
+    return undefined;
+  }
+
+  const parsed = Number(rawValue);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function buildSupplierDetails(
@@ -154,12 +170,121 @@ function buildNonApprovalMessage(action: string): string {
   return 'Saved.';
 }
 
+function buildCorrectionBody(formData: FormData): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    correctedSupplierName: optionalValue(formData, 'correctedSupplierName'),
+    correctedRawProductText: optionalValue(
+      formData,
+      'correctedRawProductText',
+    ),
+    correctedNormalizedProductName: optionalValue(
+      formData,
+      'correctedNormalizedProductName',
+    ),
+    correctedManufacturer: optionalValue(formData, 'correctedManufacturer'),
+    correctedUnitPrice: optionalValue(formData, 'correctedUnitPrice'),
+    correctedCurrencyCode: optionalValue(formData, 'correctedCurrencyCode'),
+    correctedMinimumOrderQuantity: optionalNumber(
+      formData,
+      'correctedMinimumOrderQuantity',
+    ),
+    correctedAvailability: optionalValue(formData, 'correctedAvailability'),
+    note: optionalValue(formData, 'note'),
+    actorType: 'OPERATOR',
+    actorIdentifier: 'web-review-console',
+  };
+
+  return Object.fromEntries(
+    Object.entries(body).filter(([, fieldValue]) => fieldValue !== undefined),
+  );
+}
+
 function buildReviewSuccessRedirectTarget(
   inboundEmailId: string,
   params: Record<string, string>,
   returnTo: string,
 ): string {
   return buildReviewRedirectTarget(inboundEmailId, params, returnTo);
+}
+
+export async function submitReviewOfferCorrection(formData: FormData) {
+  const inboundEmailId = value(formData, 'inboundEmailId');
+  const workflowItemId = value(formData, 'workflowItemId');
+  const correctionNextAction = value(formData, 'correctionNextAction');
+  const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
+
+  if (!inboundEmailId || !workflowItemId) {
+    redirect('/dashboard/review?error=Missing+correction+input');
+  }
+
+  const body = buildCorrectionBody(formData);
+  const hasCorrectionInput = Object.keys(body).some(
+    (key) => !['actorType', 'actorIdentifier'].includes(key),
+  );
+
+  if (!hasCorrectionInput) {
+    redirect(
+      buildReviewRedirectTarget(
+        inboundEmailId,
+        {
+          error: 'Enter at least one correction field before saving.',
+        },
+        returnTo,
+      ),
+    );
+  }
+
+  try {
+    await createReviewWorkflowCorrection(workflowItemId, body);
+    if (correctionNextAction === 'APPROVE_TO_BUY') {
+      await updateReviewWorkflowItem(workflowItemId, {
+        action: 'APPROVE_TO_BUY',
+        note: optionalValue(formData, 'approveNote') ?? body.note,
+        allowQualificationRisk: true,
+        actorType: 'OPERATOR',
+        actorIdentifier: 'web-review-console',
+      });
+    }
+  } catch (error) {
+    redirect(
+      buildReviewRedirectTarget(
+        inboundEmailId,
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Offer correction failed.',
+        },
+        returnTo,
+      ),
+    );
+  }
+
+  revalidatePath('/dashboard/review');
+  revalidatePath('/dashboard/deals');
+  revalidatePath(`/dashboard/review/${inboundEmailId}`);
+  if (correctionNextAction === 'APPROVE_TO_BUY') {
+    const searchParams = new URLSearchParams({
+      updated: 'CORRECTION_APPROVED',
+      message:
+        'Correction saved and offer approved. The buy decision uses the corrected commercial values.',
+    });
+    redirect(
+      `${returnTo}${returnTo.includes('?') ? '&' : '?'}${searchParams.toString()}`,
+    );
+  }
+
+  redirect(
+    buildReviewSuccessRedirectTarget(
+      inboundEmailId,
+      {
+        updated: 'CORRECTION',
+        message:
+          'Correction saved. It will be used as a bounded hint for future review, not as automatic approval.',
+      },
+      returnTo,
+    ),
+  );
 }
 
 export async function submitInboundEmailReviewAction(formData: FormData) {

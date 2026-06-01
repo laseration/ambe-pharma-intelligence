@@ -43,6 +43,29 @@ export type ReviewWorkflowListItem = {
   } | null;
 };
 
+export type ReviewOfferCorrectionRecord = {
+  id: string;
+  correctionStatus: string;
+  correctedSupplierId: string | null;
+  correctedSupplierName: string | null;
+  correctedProductId: string | null;
+  correctedRawProductText: string | null;
+  correctedNormalizedProductName: string | null;
+  correctedStrength: string | null;
+  correctedDosageForm: string | null;
+  correctedPackSize: string | null;
+  correctedManufacturer: string | null;
+  correctedUnitPrice: string | number | null;
+  correctedCurrencyCode: string | null;
+  correctedMinimumOrderQuantity: number | null;
+  correctedAvailability: string | null;
+  actorType: string;
+  actorIdentifier: string | null;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ReviewWorkflowDetail = ReviewWorkflowListItem & {
   emailDerivedOffer?: {
     id: string;
@@ -89,28 +112,8 @@ export type ReviewWorkflowDetail = ReviewWorkflowListItem & {
       textContent: string;
       metadata: unknown;
     } | null;
-    offerCorrections?: Array<{
-      id: string;
-      correctionStatus: string;
-      correctedSupplierId: string | null;
-      correctedSupplierName: string | null;
-      correctedProductId: string | null;
-      correctedRawProductText: string | null;
-      correctedNormalizedProductName: string | null;
-      correctedStrength: string | null;
-      correctedDosageForm: string | null;
-      correctedPackSize: string | null;
-      correctedManufacturer: string | null;
-      correctedUnitPrice: string | number | null;
-      correctedCurrencyCode: string | null;
-      correctedMinimumOrderQuantity: number | null;
-      correctedAvailability: string | null;
-      actorType: string;
-      actorIdentifier: string | null;
-      note: string | null;
-      createdAt: string;
-      updatedAt: string;
-    }>;
+    offerCorrections?: Array<ReviewOfferCorrectionRecord>;
+    relatedOfferCorrections?: Array<ReviewOfferCorrectionRecord>;
   } | null;
   inboundEmail?: {
     id: string;
@@ -174,6 +177,10 @@ export type ReviewWorkflowAuditEntry = {
   metadata: unknown;
   createdAt: string;
 };
+
+export type ReviewOfferCorrection = NonNullable<
+  NonNullable<ReviewWorkflowDetail['emailDerivedOffer']>['offerCorrections']
+>[number];
 
 export type ReviewWorkflowActionOutcome = {
   action: 'APPROVE_TO_BUY' | 'REJECT';
@@ -319,4 +326,18 @@ export async function updateReviewWorkflowItem(
     method: 'PATCH',
     body: JSON.stringify(body),
   });
+}
+
+export async function createReviewWorkflowCorrection(
+  workflowItemId: string,
+  body: Record<string, unknown>,
+): Promise<ReviewOfferCorrection> {
+  const payload = await requestJson<{ item: ReviewOfferCorrection }>(
+    `/review-queue/workflows/${encodeURIComponent(workflowItemId)}/corrections`,
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    },
+  );
+  return payload.item;
 }

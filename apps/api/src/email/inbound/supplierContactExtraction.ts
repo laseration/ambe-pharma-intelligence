@@ -38,6 +38,7 @@ export type SupplierContactEvidenceItem = {
   confidenceContribution: number;
   snippet?: string;
   attachmentId?: string;
+  sourceDocumentId?: string;
   pageNumber?: number;
 };
 
@@ -51,10 +52,12 @@ export type SupplierContactExtractionInput = {
   bodyText?: string | null;
   attachmentRows?: Array<{
     attachmentId?: string | null;
+    sourceDocumentId?: string | null;
     row: Record<string, unknown>;
   }>;
   attachmentTexts?: Array<{
     attachmentId?: string | null;
+    sourceDocumentId?: string | null;
     text?: string | null;
     pageNumber?: number | null;
   }>;
@@ -85,6 +88,9 @@ export type SupplierContactExtractionResult = {
   conflicts: string[];
   reason: string;
 };
+
+export type SupplierContactExtractionCandidate =
+  SupplierContactExtractionResult;
 
 const SUPPLIER_NAME_PATTERN =
   /\b([A-Z][A-Za-z0-9&.,' -]{1,70}?(?:pharma|pharmaceuticals|laboratories|labs|healthcare|health|medical|wholesale|trading|ltd|limited|gmbh|bv|nv|plc|inc|llc|corp|company|co)\b)\.?/i;
@@ -349,7 +355,7 @@ function addAttachmentRowEvidence(
   rows: NonNullable<SupplierContactExtractionInput['attachmentRows']>,
   evidence: SupplierContactEvidenceItem[],
 ) {
-  for (const { row, attachmentId } of rows) {
+  for (const { row, attachmentId, sourceDocumentId } of rows) {
     for (const [key, value] of Object.entries(row)) {
       const raw = String(value ?? '').trim();
       if (!raw) {
@@ -367,6 +373,7 @@ function addAttachmentRowEvidence(
             30,
             raw,
             attachmentId,
+            sourceDocumentId,
           ),
         );
       }
@@ -379,6 +386,7 @@ function addAttachmentRowEvidence(
             14,
             raw,
             attachmentId,
+            sourceDocumentId,
           ),
         );
       }
@@ -391,6 +399,7 @@ function addAttachmentRowEvidence(
             8,
             raw,
             attachmentId,
+            sourceDocumentId,
           ),
         );
       }
@@ -403,6 +412,7 @@ function addAttachmentRowEvidence(
             5,
             raw,
             attachmentId,
+            sourceDocumentId,
           ),
         );
       }
@@ -426,6 +436,7 @@ function addAttachmentTextEvidence(
           8,
           value,
           text.attachmentId,
+          text.sourceDocumentId,
           text.pageNumber ?? undefined,
         ),
       );
@@ -462,6 +473,7 @@ function contactEvidence(
   confidenceContribution: number,
   snippet?: string | null,
   attachmentId?: string | null,
+  sourceDocumentId?: string | null,
   pageNumber?: number,
 ): SupplierContactEvidenceItem {
   return {
@@ -475,6 +487,7 @@ function contactEvidence(
     confidenceContribution,
     snippet: safeSnippet(snippet),
     ...(attachmentId ? { attachmentId } : {}),
+    ...(sourceDocumentId ? { sourceDocumentId } : {}),
     ...(pageNumber ? { pageNumber } : {}),
   };
 }

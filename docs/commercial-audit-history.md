@@ -41,7 +41,13 @@ It returns chronological events for:
 - the linked buy decision, when present
 - the linked buy execution, when present
 
-The review detail page displays this history in the “Audit History” section for each visible offer row.
+The review detail page displays this history in the "Audit History" section for each visible offer row.
+
+## Offer Correction Audit
+
+The review detail page can create structured offer corrections from the reviewed workflow item. The API binds the correction to the server-loaded `OfferWorkflowItem`, `EmailDerivedOffer`, and `InboundEmail` rather than trusting those IDs from the browser form.
+
+Correction submissions write `OfferCorrection` rows and `OfferCorrectionEvent` history through the corrections service. These corrections are bounded learning hints for future supplier/product/source resolution; they do not approve the workflow item, create buy decisions, or bypass AI-fallback review gates.
 
 ## Known Limitations
 
@@ -50,10 +56,11 @@ The review detail page displays this history in the “Audit History” section 
 - Event metadata stores safe provenance references, not full raw source text.
 - Read requests are not logged to avoid noisy and low-value audit rows.
 - Field-level before/after is currently limited to status transitions, changed field names, and safe action metadata.
+- Correction events capture the corrected values and note, but they do not currently show a dedicated before/after diff in the combined workflow audit endpoint.
 
 ## Recommended Next Steps
 
 - Add a buy-decision detail audit endpoint if operators need history outside the review screen.
-- Add correction-entry UI that writes explicit `OfferCorrectionEvent` rows from the review page.
+- Consider including `OfferCorrectionEvent` entries in the combined review audit endpoint if operators need one chronological history that includes correction edits alongside approval and order events.
 - Add observability dashboards for audit event volume and failed commercial mutations.
 - Consider a dedicated immutable audit ledger only if compliance requirements exceed the current domain-event model.

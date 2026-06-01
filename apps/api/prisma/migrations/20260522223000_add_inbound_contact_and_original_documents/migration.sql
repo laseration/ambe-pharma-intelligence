@@ -1,14 +1,15 @@
 -- CreateEnum
-CREATE TYPE "SupplierContactStatus" AS ENUM ('STAGED', 'AUTO_ACCEPTED', 'APPROVED', 'REJECTED');
+CREATE TYPE "SupplierContactStatus" AS ENUM ('STAGED', 'AUTO_ACCEPTED', 'APPROVED', 'REJECTED', 'SUPERSEDED');
 
 -- CreateTable
 CREATE TABLE "SupplierContact" (
     "id" TEXT NOT NULL,
     "supplierId" TEXT,
-    "supplierNameCandidate" TEXT NOT NULL,
-    "normalizedSupplierName" TEXT NOT NULL,
+    "supplierNameCandidate" TEXT,
+    "normalizedSupplierName" TEXT,
     "contactName" TEXT,
     "contactEmail" TEXT,
+    "contactPhone" TEXT,
     "contactPhoneRaw" TEXT,
     "contactPhoneCanonical" TEXT,
     "contactRole" TEXT,
@@ -19,6 +20,12 @@ CREATE TABLE "SupplierContact" (
     "status" "SupplierContactStatus" NOT NULL DEFAULT 'STAGED',
     "autoAttached" BOOLEAN NOT NULL DEFAULT false,
     "conflictFlags" JSONB,
+    "evidence" JSONB,
+    "extractionMetadata" JSONB,
+    "reviewedAt" TIMESTAMP(3),
+    "reviewedByType" TEXT,
+    "reviewedByIdentifier" TEXT,
+    "reviewNote" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "lastSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -42,6 +49,22 @@ CREATE TABLE "SupplierContactEvidence" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "SupplierContactEvidence_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "SupplierContactEvent" (
+    "id" TEXT NOT NULL,
+    "supplierContactId" TEXT NOT NULL,
+    "actionType" TEXT NOT NULL,
+    "previousStatus" "SupplierContactStatus",
+    "newStatus" "SupplierContactStatus",
+    "actorType" TEXT NOT NULL DEFAULT 'SYSTEM',
+    "actorIdentifier" TEXT,
+    "note" TEXT,
+    "metadata" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "SupplierContactEvent_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -77,10 +100,19 @@ CREATE UNIQUE INDEX "SupplierContact_sourceFingerprint_key" ON "SupplierContact"
 CREATE INDEX "SupplierContact_supplierId_status_idx" ON "SupplierContact"("supplierId", "status");
 
 -- CreateIndex
+CREATE INDEX "SupplierContact_supplierId_idx" ON "SupplierContact"("supplierId");
+
+-- CreateIndex
+CREATE INDEX "SupplierContact_normalizedSupplierName_idx" ON "SupplierContact"("normalizedSupplierName");
+
+-- CreateIndex
 CREATE INDEX "SupplierContact_normalizedSupplierName_status_idx" ON "SupplierContact"("normalizedSupplierName", "status");
 
 -- CreateIndex
 CREATE INDEX "SupplierContact_contactEmail_idx" ON "SupplierContact"("contactEmail");
+
+-- CreateIndex
+CREATE INDEX "SupplierContact_status_createdAt_idx" ON "SupplierContact"("status", "createdAt");
 
 -- CreateIndex
 CREATE INDEX "SupplierContact_sourceInboundEmailId_idx" ON "SupplierContact"("sourceInboundEmailId");
@@ -96,6 +128,9 @@ CREATE INDEX "SupplierContactEvidence_sourceDocumentId_idx" ON "SupplierContactE
 
 -- CreateIndex
 CREATE INDEX "SupplierContactEvidence_fieldName_idx" ON "SupplierContactEvidence"("fieldName");
+
+-- CreateIndex
+CREATE INDEX "SupplierContactEvent_supplierContactId_createdAt_idx" ON "SupplierContactEvent"("supplierContactId", "createdAt");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "AccountOpeningOriginalDocument_sourceFingerprint_key" ON "AccountOpeningOriginalDocument"("sourceFingerprint");
@@ -129,6 +164,9 @@ ALTER TABLE "SupplierContactEvidence" ADD CONSTRAINT "SupplierContactEvidence_su
 
 -- AddForeignKey
 ALTER TABLE "SupplierContactEvidence" ADD CONSTRAINT "SupplierContactEvidence_sourceDocumentId_fkey" FOREIGN KEY ("sourceDocumentId") REFERENCES "InboundEmailDocument"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SupplierContactEvent" ADD CONSTRAINT "SupplierContactEvent_supplierContactId_fkey" FOREIGN KEY ("supplierContactId") REFERENCES "SupplierContact"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "AccountOpeningOriginalDocument" ADD CONSTRAINT "AccountOpeningOriginalDocument_accountOpeningCaseId_fkey" FOREIGN KEY ("accountOpeningCaseId") REFERENCES "AccountOpeningCase"("id") ON DELETE SET NULL ON UPDATE CASCADE;

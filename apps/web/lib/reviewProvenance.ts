@@ -17,6 +17,7 @@ export type ReviewProvenanceSummary = {
   missingFields: string[];
   warnings: string[];
   correctionSummaries: string[];
+  relatedCorrectionSummaries: string[];
 };
 
 function compact(value: string | null | undefined): string | null {
@@ -195,6 +196,22 @@ export function summarizeOfferCorrections(
 ): string[] {
   const corrections = item.emailDerivedOffer?.offerCorrections ?? [];
 
+  return summarizeCorrections(corrections);
+}
+
+export function summarizeRelatedOfferCorrections(
+  item: ReviewWorkflowDetail,
+): string[] {
+  const corrections = item.emailDerivedOffer?.relatedOfferCorrections ?? [];
+
+  return summarizeCorrections(corrections);
+}
+
+function summarizeCorrections(
+  corrections: NonNullable<
+    NonNullable<ReviewWorkflowDetail['emailDerivedOffer']>['offerCorrections']
+  >,
+): string[] {
   return corrections.slice(0, 3).map((correction) => {
     const parts = [
       correction.correctedSupplierName
@@ -240,5 +257,6 @@ export function buildReviewProvenanceSummary(
     missingFields: getMissingReviewFields(item),
     warnings: getReviewWarnings(item),
     correctionSummaries: summarizeOfferCorrections(item),
+    relatedCorrectionSummaries: summarizeRelatedOfferCorrections(item),
   };
 }

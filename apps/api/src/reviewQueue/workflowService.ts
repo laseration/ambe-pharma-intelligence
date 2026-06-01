@@ -205,6 +205,7 @@ type WorkflowRecord = {
     availabilityCandidate: string | null;
     metadata: unknown;
     resolutionCandidates: ResolutionCandidate[];
+    offerCorrections?: WorkflowOfferCorrectionRecord[];
     buyDecision?: {
       id: string;
       approvalStatus: BuyDecisionApprovalStatus;
@@ -218,6 +219,8 @@ type WorkflowRecord = {
     fromName: string | null;
     subject: string | null;
     receivedAt: Date | null;
+    senderDomain?: string | null;
+    sourceTemplateFingerprint?: string | null;
   } | null;
   buyDecision?: {
     id: string;
@@ -292,6 +295,7 @@ type WorkflowDetailRecord = WorkflowRecord & {
         promotionConfidence: number | null;
         sourceDocument?: WorkflowInboundEmailDocumentRecord | null;
         offerCorrections?: WorkflowOfferCorrectionRecord[];
+        relatedOfferCorrections?: WorkflowOfferCorrectionRecord[];
       })
     | null;
   inboundEmail?:
@@ -301,6 +305,8 @@ type WorkflowDetailRecord = WorkflowRecord & {
         triageStatus: string | null;
         processingStatus: string;
         reviewReason: string | null;
+        senderDomain?: string | null;
+        sourceTemplateFingerprint?: string | null;
         documents: WorkflowInboundEmailDocumentRecord[];
       })
     | null;
@@ -860,6 +866,11 @@ function createWorkflowRepository(
           },
           emailDerivedOffer: {
             include: {
+              offerCorrections: {
+                where: { correctionStatus: 'APPLIED' },
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+              },
               resolutionCandidates: true,
               buyDecision: {
                 include: {
@@ -882,6 +893,11 @@ function createWorkflowRepository(
           },
           emailDerivedOffer: {
             include: {
+              offerCorrections: {
+                where: { correctionStatus: 'APPLIED' },
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+              },
               resolutionCandidates: true,
               buyDecision: {
                 include: {
@@ -892,8 +908,8 @@ function createWorkflowRepository(
           },
         },
       }) as Promise<WorkflowRecord | null>,
-    findWorkflowDetailById: async (workflowItemId) =>
-      client.offerWorkflowItem.findUnique({
+    findWorkflowDetailById: async (workflowItemId) => {
+      const detail = (await client.offerWorkflowItem.findUnique({
         where: { id: workflowItemId },
         include: {
           inboundEmail: {
@@ -924,7 +940,46 @@ function createWorkflowRepository(
             },
           },
         },
-      }) as Promise<WorkflowDetailRecord | null>,
+      })) as WorkflowDetailRecord | null;
+
+      if (!detail?.emailDerivedOffer || !detail.inboundEmail) {
+        return detail;
+      }
+
+      const senderEmail = detail.inboundEmail.fromEmail;
+      const senderDomain = detail.inboundEmail.senderDomain;
+      const templateFingerprint = detail.inboundEmail.sourceTemplateFingerprint;
+      const relatedCorrectionFilters = [
+        senderEmail ? { inboundEmail: { is: { fromEmail: senderEmail } } } : null,
+        senderDomain && templateFingerprint
+          ? {
+              inboundEmail: {
+                is: {
+                  senderDomain,
+                  sourceTemplateFingerprint: templateFingerprint,
+                },
+              },
+            }
+          : null,
+      ].filter(Boolean) as Array<Record<string, unknown>>;
+
+      if (relatedCorrectionFilters.length === 0) {
+        return detail;
+      }
+
+      detail.emailDerivedOffer.relatedOfferCorrections =
+        (await client.offerCorrection.findMany({
+          where: {
+            correctionStatus: 'APPLIED',
+            emailDerivedOfferId: { not: detail.emailDerivedOfferId },
+            OR: relatedCorrectionFilters,
+          },
+          orderBy: [{ createdAt: 'desc' }, { updatedAt: 'desc' }],
+          take: 5,
+        })) as WorkflowOfferCorrectionRecord[];
+
+      return detail;
+    },
     createWorkflowItem: async (data) =>
       client.offerWorkflowItem.create({
         data: data as never,
@@ -937,6 +992,11 @@ function createWorkflowRepository(
           },
           emailDerivedOffer: {
             include: {
+              offerCorrections: {
+                where: { correctionStatus: 'APPLIED' },
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+              },
               resolutionCandidates: true,
               buyDecision: {
                 include: {
@@ -960,6 +1020,11 @@ function createWorkflowRepository(
           },
           emailDerivedOffer: {
             include: {
+              offerCorrections: {
+                where: { correctionStatus: 'APPLIED' },
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+              },
               resolutionCandidates: true,
               buyDecision: {
                 include: {
@@ -1041,6 +1106,11 @@ function createWorkflowRepository(
           },
           emailDerivedOffer: {
             include: {
+              offerCorrections: {
+                where: { correctionStatus: 'APPLIED' },
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+              },
               resolutionCandidates: true,
               buyDecision: {
                 include: {
@@ -1576,20 +1646,37 @@ function buildBuyDecisionSnapshot(
   }
 
   const selectedIds = resolveSelectedEntityIds(offer.resolutionCandidates);
+  const latestCorrection = getLatestAppliedCorrection(workflow);
+  const rawProductText =
+    latestCorrection?.correctedRawProductText ?? offer.rawProductText;
+  const normalizedProductNameCandidate =
+    latestCorrection?.correctedNormalizedProductName ??
+    offer.normalizedProductNameCandidate;
+  const manufacturerCandidate =
+    latestCorrection?.correctedManufacturer ?? offer.manufacturerCandidate;
+  const quotedUnitPrice =
+    latestCorrection?.correctedUnitPrice ?? offer.priceCandidate;
+  const quotedCurrencyCode =
+    latestCorrection?.correctedCurrencyCode ?? offer.currencyCandidate;
+  const quotedMinimumOrderQuantity =
+    latestCorrection?.correctedMinimumOrderQuantity ??
+    offer.minimumOrderQuantityCandidate;
+  const quotedAvailability =
+    latestCorrection?.correctedAvailability ?? offer.availabilityCandidate;
 
   return {
     emailDerivedOfferId: workflow.emailDerivedOfferId,
     offerWorkflowItemId: workflow.id,
     inboundEmailId: workflow.inboundEmailId,
-    supplierId: selectedIds.supplierId,
-    productId: selectedIds.productId,
-    rawProductText: offer.rawProductText,
-    normalizedProductNameCandidate: offer.normalizedProductNameCandidate,
-    manufacturerCandidate: offer.manufacturerCandidate,
-    quotedUnitPrice: offer.priceCandidate,
-    quotedCurrencyCode: offer.currencyCandidate,
-    quotedMinimumOrderQuantity: offer.minimumOrderQuantityCandidate,
-    quotedAvailability: offer.availabilityCandidate,
+    supplierId: latestCorrection?.correctedSupplierId ?? selectedIds.supplierId,
+    productId: latestCorrection?.correctedProductId ?? selectedIds.productId,
+    rawProductText,
+    normalizedProductNameCandidate,
+    manufacturerCandidate,
+    quotedUnitPrice,
+    quotedCurrencyCode,
+    quotedMinimumOrderQuantity,
+    quotedAvailability,
     sourceKind: workflow.sourceKind ?? offer.sourceKind,
     sourceBlockText: offer.sourceBlockText,
     supplierQualificationStatus: qualification.supplierQualificationStatus,
@@ -1602,8 +1689,34 @@ function buildBuyDecisionSnapshot(
       sourceReviewReason: workflow.sourceReviewReason,
       workflowPriority: workflow.priority,
       workflowPriorityReason: workflow.priorityReason,
+      appliedOfferCorrectionId: latestCorrection?.id ?? null,
+      originalExtractedValues: latestCorrection
+        ? {
+            rawProductText: offer.rawProductText,
+            normalizedProductNameCandidate:
+              offer.normalizedProductNameCandidate,
+            manufacturerCandidate: offer.manufacturerCandidate,
+            supplierCandidate: offer.supplierCandidate,
+            quotedUnitPrice: offer.priceCandidate,
+            quotedCurrencyCode: offer.currencyCandidate,
+            quotedMinimumOrderQuantity: offer.minimumOrderQuantityCandidate,
+            quotedAvailability: offer.availabilityCandidate,
+          }
+        : undefined,
     },
   };
+}
+
+function getLatestAppliedCorrection(
+  workflow: WorkflowRecord,
+): WorkflowOfferCorrectionRecord | null {
+  return (
+    workflow.emailDerivedOffer?.offerCorrections
+      ?.filter((correction) => correction.correctionStatus === 'APPLIED')
+      .sort(
+        (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
+      )[0] ?? null
+  );
 }
 
 function buildWorkflowAuditSource(workflow: WorkflowRecord) {
@@ -1971,7 +2084,10 @@ export function createOfferWorkflowService(
           {
             buyDecision: decisionForTradeSync,
             sourceSupplierNameSnapshot:
-              existing.emailDerivedOffer?.supplierCandidate ?? null,
+              getLatestAppliedCorrection(updatedWorkflow)
+                ?.correctedSupplierName ??
+              existing.emailDerivedOffer?.supplierCandidate ??
+              null,
             actor,
           },
         );

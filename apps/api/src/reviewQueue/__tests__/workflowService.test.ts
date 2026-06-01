@@ -94,6 +94,7 @@ function createRepositoryHarness() {
           selected: true,
         },
       ],
+      offerCorrections: [] as Array<Record<string, any>>,
       buyDecision: null,
       updatedAt: new Date(),
     },
@@ -358,6 +359,10 @@ function createRepositoryHarness() {
           offerWorkflowItemId: data.offerWorkflowItemId ?? null,
           supplierId: data.supplierId ?? null,
           productId: data.productId ?? null,
+          rawProductText: data.rawProductText ?? null,
+          normalizedProductNameCandidate:
+            data.normalizedProductNameCandidate ?? null,
+          manufacturerCandidate: data.manufacturerCandidate ?? null,
           quotedUnitPrice: data.quotedUnitPrice ?? null,
           quotedCurrencyCode: data.quotedCurrencyCode ?? null,
           quotedMinimumOrderQuantity: data.quotedMinimumOrderQuantity ?? null,
@@ -371,6 +376,7 @@ function createRepositoryHarness() {
           supplierQualificationStatus: data.supplierQualificationStatus,
           hasQualificationRisk: data.hasQualificationRisk,
           qualificationRiskNote: data.qualificationRiskNote ?? null,
+          metadata: data.metadata ?? null,
           execution: null,
         };
         buyDecisions.push(created);
@@ -910,6 +916,67 @@ test('approved offer with recent profitable sales creates one review-first trade
       ),
     ),
     false,
+  );
+});
+
+test('approval uses the latest applied offer correction for buy decision values', async () => {
+  const harness = createRepositoryHarness();
+  const service = createOfferWorkflowService(harness.repository as never);
+  const workflow = harness.makeWorkflowRecord();
+  workflow.emailDerivedOffer.offerCorrections = [
+    {
+      id: 'correction-1',
+      correctionStatus: 'APPLIED',
+      correctedSupplierId: null,
+      correctedSupplierName: 'Corrected Supplier',
+      correctedProductId: null,
+      correctedRawProductText: 'Corrected Amlodipine 5mg tablets 28',
+      correctedNormalizedProductName: 'corrected amlodipine 5mg tablets 28',
+      correctedStrength: null,
+      correctedDosageForm: null,
+      correctedPackSize: null,
+      correctedManufacturer: 'Corrected Manufacturer',
+      correctedUnitPrice: 7.95,
+      correctedCurrencyCode: 'GBP',
+      correctedMinimumOrderQuantity: 50,
+      correctedAvailability: 'Available now',
+      actorType: 'OPERATOR',
+      actorIdentifier: 'buyer-1',
+      note: 'Corrected before approval.',
+      createdAt: new Date('2026-04-21T12:00:00.000Z'),
+      updatedAt: new Date('2026-04-21T12:00:00.000Z'),
+    },
+  ];
+  harness.workflowItems.push(workflow);
+
+  await service.approveToBuy({
+    workflowItemId: workflow.id,
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+    allowQualificationRisk: true,
+  });
+
+  assert.equal(
+    harness.buyDecisions[0]?.rawProductText,
+    'Corrected Amlodipine 5mg tablets 28',
+  );
+  assert.equal(
+    harness.buyDecisions[0]?.manufacturerCandidate,
+    'Corrected Manufacturer',
+  );
+  assert.equal(
+    harness.buyDecisions[0]?.quotedUnitPrice,
+    7.95,
+  );
+  assert.equal(harness.buyDecisions[0]?.quotedMinimumOrderQuantity, 50);
+  assert.equal(harness.buyDecisions[0]?.quotedAvailability, 'Available now');
+  assert.equal(
+    harness.buyDecisions[0]?.metadata?.appliedOfferCorrectionId,
+    'correction-1',
+  );
+  assert.equal(
+    harness.buyDecisions[0]?.metadata?.originalExtractedValues.rawProductText,
+    'Amlodipine 5mg tabs 28',
   );
 });
 

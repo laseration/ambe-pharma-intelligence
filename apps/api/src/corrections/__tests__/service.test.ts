@@ -353,9 +353,15 @@ test('creating a correction stores corrected fields and writes source profile st
   assert.equal(correction.correctedProductId, 'product-1');
   assert.equal(correction.correctedCurrencyCode, 'GBP');
   assert.equal(harness.correctionEvents.length >= 2, true);
+  assert.deepEqual(
+    harness.correctionEvents.map((event) => event.actionType),
+    ['CREATED', 'APPLIED'],
+  );
   assert.equal(harness.sourceProfiles.length, 1);
   assert.equal(harness.sourceProfiles[0]?.sampleCount, 1);
   assert.equal(harness.sourceProfiles[0]?.correctedExtractionCount, 1);
+  assert.equal(harness.offers[0]?.status, 'REVIEW_REQUIRED');
+  assert.equal(harness.offers[0]?.workflowItem.status, 'NEW');
 });
 
 test('repeated applied corrections supersede the prior active correction safely', async () => {

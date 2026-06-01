@@ -12,6 +12,8 @@ import { offerWorkflowService } from '../../reviewQueue/workflowService';
 import { getLearnedResolutionHints } from '../../corrections/service';
 import { extractAttachmentText } from '../attachmentTextExtraction';
 import { classifyInboundDocument } from './documentClassifier';
+import { extractSupplierContact } from './supplierContactExtraction';
+import { persistSupplierContactCandidatesForInboundEmail } from './supplierContactPersistence';
 import {
   normalizeEmailTextForParsing,
   parseStructuredPriceEmailBody,
@@ -128,6 +130,69 @@ function tableHeadersFromDocumentText(text: string): string[] {
     .split(/,|\t|;/)
     .map((header) => header.trim())
     .filter(Boolean);
+}
+
+function tableRowsFromDocumentText(document: {
+  id: string;
+  documentIndex: number;
+  label: string | null;
+  textContent: string;
+}): Array<{
+  attachmentId: string;
+  sourceDocumentId: string;
+  row: Record<string, unknown>;
+}> {
+  const rows: Array<{
+    attachmentId: string;
+    sourceDocumentId: string;
+    row: Record<string, unknown>;
+  }> = [];
+
+  for (const line of document.textContent
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean)) {
+    const row = Object.fromEntries(
+      line
+        .split('|')
+        .map((part) => part.trim())
+        .map((part) => {
+          const separatorIndex = part.indexOf(':');
+          if (separatorIndex < 0) {
+            return null;
+          }
+
+          const key = part.slice(0, separatorIndex).trim();
+          const value = part.slice(separatorIndex + 1).trim();
+          return key ? [key, value] : null;
+        })
+        .filter((entry): entry is [string, string] => Boolean(entry)),
+    );
+
+    if (Object.keys(row).length > 0) {
+      rows.push({
+        attachmentId: classifierAttachmentId({
+          label: document.label,
+          documentIndex: document.documentIndex,
+        }),
+        sourceDocumentId: document.id,
+        row,
+      });
+    }
+  }
+
+  return rows;
+}
+
+function shouldPersistSupplierContactForClassification(
+  classification: ReturnType<typeof classifyInboundDocument>,
+): boolean {
+  return (
+    classification.routing === 'SUPPLIER_CONTACT_REVIEW' ||
+    classification.routing === 'SUPPLIER_ONBOARDING_REVIEW' ||
+    classification.primaryClass === 'SUPPLIER_CONTACT_FORM' ||
+    classification.primaryClass === 'SUPPLIER_ONBOARDING_OR_KYC'
+  );
 }
 
 function classifierAttachmentId(input: {
@@ -2055,6 +2120,69 @@ export async function stageInboundEmail(
       },
     },
   });
+
+  if (shouldPersistSupplierContactForClassification(documentClassification)) {
+    const supplierContactCandidate = extractSupplierContact({
+      fromEmail: message.from,
+      fromName: message.fromName ?? null,
+      senderEmail: message.sender ?? null,
+      senderName: message.senderName ?? null,
+      replyTo: message.replyTo ?? null,
+      internetMessageHeaders: message.internetMessageHeaders ?? null,
+      bodyText: message.bodyText ?? null,
+      attachmentRows: documents
+        .filter((document) => document.kind === 'ATTACHMENT_TABLE')
+        .flatMap((document) => tableRowsFromDocumentText(document)),
+      attachmentTexts: documents
+        .filter((document) => document.kind === 'ATTACHMENT_TEXT')
+        .map((document) => ({
+          attachmentId: classifierAttachmentId({
+            label: document.label,
+            documentIndex: document.documentIndex,
+          }),
+          sourceDocumentId: document.id,
+          text: document.textContent,
+        })),
+      attachmentFileNames: (message.attachments ?? []).map(
+        (attachment, index) => ({
+          attachmentId:
+            attachment.graphAttachmentId ??
+            attachment.contentId ??
+            attachment.fileName ??
+            `attachment-${index + 1}`,
+          fileName: attachment.fileName ?? null,
+        }),
+      ),
+      supplierMappings: env.emailInboundSupplierMappings,
+      internalDomains: env.emailInboundInternalDomains,
+    });
+    const persistedSupplierContacts =
+      await persistSupplierContactCandidatesForInboundEmail({
+        inboundEmailId: inboundEmail.id,
+        message,
+        documents: documents.map((document) => ({
+          id: document.id,
+          kind: document.kind,
+          label: document.label,
+          textContent: document.textContent,
+        })),
+        classification: documentClassification,
+        candidates: [supplierContactCandidate],
+      });
+
+    if (persistedSupplierContacts.length > 0) {
+      logger.info('Inbound supplier contact candidate staged for review', {
+        inboundEmailId: inboundEmail.id,
+        persistedSupplierContactIds: persistedSupplierContacts.map(
+          (candidate) => candidate.id,
+        ),
+        routing: documentClassification.routing,
+        primaryClass: documentClassification.primaryClass,
+        confidence: supplierContactCandidate.confidence,
+        conflictCount: supplierContactCandidate.conflicts.length,
+      });
+    }
+  }
 
   if (
     documentClassification.conflicts.length > 0 ||

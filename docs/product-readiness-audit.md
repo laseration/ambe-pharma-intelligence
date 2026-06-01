@@ -76,7 +76,7 @@ Visible product modules include:
 - Supplier qualification and scorecards: qualification status, risk burden, drift metrics, fulfilment metrics, and deterministic supplier tiering.
 - Trade opportunities: internal brokered deal records and controlled blind message drafts.
 - Automation readiness: shadow-mode evidence, operator feedback, readiness thresholds, and blocked automation decisions.
-- Corrections and source learning: operator-corrected values, source reliability profiles, and bounded future hints.
+- Corrections and source learning: operator-corrected values, source reliability profiles, and bounded future hints. See [`operator-corrections.md`](./operator-corrections.md).
 - Telegram and email alerts: internal-only previews/sends with dry-run and safe failure behavior.
 - Telegram inbound intake: allowlisted internal file intake.
 - Account opening: review-first account-opening cases, field mapping, safe draft/autofill controls, and Microsoft Drive/SharePoint storage checks.
@@ -193,6 +193,7 @@ The pilot should not sell broad automation. It should sell controlled commercial
 - [ ] Add onboarding or setup status so a pilot user knows which integrations and data sources are ready.
 - [x] Make provenance visible on review and approval screens: source email/file, row-level raw text, extracted fields, confidence, correction history, and why promotion is blocked or allowed.
 - [x] Make review queue actions faster for operators: clear priority, supplier qualification, confidence, next action, and decision consequences.
+- [x] Add field-level correction controls on the review detail screen for supplier, product text, manufacturer, price, currency, MOQ, availability, and correction notes.
 - [x] Show commercial audit history on the review detail screen for workflow, buy decision, and execution events.
 - [ ] Add customer-contact workflow only after customer data and opportunity provenance are strong enough.
 - [ ] Add empty states that explain what source data is missing without requiring README knowledge.
@@ -254,7 +255,7 @@ Tasks:
 - Review screens now show whether a candidate came from deterministic extraction or AI fallback. Operator correction history is visible when stored.
 - Review screens now show audit history for review, buy decision, and execution events when those records exist.
 - Make blocked states explicit: missing supplier qualification, weak entity resolution, AI-derived offer, policy issue, or unsafe draft.
-- Keep field-level corrections easy to enter after approval/rejection; the current page supports approve, reject, needs-info, and audit note actions but still needs a dedicated inline correction form.
+- Review screens now let operators enter field-level corrections for supplier, product text, manufacturer, unit price, currency, MOQ, availability, and note without approving or promoting the offer.
 
 Exit criteria:
 

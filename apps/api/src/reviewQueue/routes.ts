@@ -5,7 +5,7 @@ import {
   requireInternalOperatorAccess,
   resolveInternalActor,
 } from '../http/auth';
-import { asyncHandler, requireFound } from '../http/errors';
+import { BadRequestError, asyncHandler, requireFound } from '../http/errors';
 import { actorBodySchema, operatorFeedbackSchema } from '../http/routeSchemas';
 import {
   decimalInputSchema,
@@ -16,6 +16,8 @@ import {
   optionalTrimmedStringSchema,
   parseRequest,
 } from '../http/validation';
+import { offerCorrectionService } from '../corrections/service';
+import { automationService } from '../automation/service';
 import { listReviewQueueItems } from './service';
 import { offerWorkflowService } from './workflowService';
 
@@ -66,6 +68,23 @@ const workflowFeedbackSchema = operatorFeedbackSchema
   })
   .optional();
 
+const workflowCorrectionFieldsSchema = z.object({
+  correctedSupplierId: optionalTrimmedStringSchema,
+  correctedSupplierName: optionalTrimmedStringSchema,
+  correctedProductId: optionalTrimmedStringSchema,
+  correctedRawProductText: optionalTrimmedStringSchema,
+  correctedNormalizedProductName: optionalTrimmedStringSchema,
+  correctedManufacturer: optionalTrimmedStringSchema,
+  correctedUnitPrice: decimalInputSchema.optional(),
+  correctedCurrencyCode: optionalTrimmedStringSchema,
+  correctedMinimumOrderQuantity: z.number().optional(),
+  correctedAvailability: optionalTrimmedStringSchema,
+  note: optionalTrimmedStringSchema,
+});
+
+const workflowCorrectionBodySchema =
+  workflowCorrectionFieldsSchema.merge(actorBodySchema);
+
 const supplierReviewDetailsSchema = z
   .object({
     supplierName: nullableTrimmedStringSchema,
@@ -104,6 +123,7 @@ const decisionWorkflowActionSchema = z
     note: optionalTrimmedStringSchema,
     allowQualificationRisk: z.boolean().optional(),
     supplierDetails: supplierReviewDetailsSchema,
+    correction: workflowCorrectionFieldsSchema.optional(),
     feedback: workflowFeedbackSchema,
   })
   .merge(actorBodySchema);
@@ -132,6 +152,115 @@ const workflowActionBodySchema = z.union([
   decisionWorkflowActionSchema,
   markOrderedWorkflowBodySchema,
 ]);
+
+type WorkflowCorrectionInput = z.infer<typeof workflowCorrectionFieldsSchema>;
+
+function hasCorrectionInput(input: WorkflowCorrectionInput | undefined) {
+  if (!input) {
+    return false;
+  }
+
+  return Object.values(input).some(
+    (fieldValue) =>
+      fieldValue !== undefined && fieldValue !== null && fieldValue !== '',
+  );
+}
+
+function correctionFeedbackMetadata(input: WorkflowCorrectionInput) {
+  return {
+    createdFrom: 'review_workflow_correction',
+    correctedFields: Object.entries(input)
+      .filter(
+        ([key, value]) =>
+          key !== 'note' &&
+          value !== undefined &&
+          value !== null &&
+          value !== '',
+      )
+      .map(([key]) => key),
+  };
+}
+
+async function createWorkflowCorrectionAndFeedback(input: {
+  workflowItemId: string;
+  correction: WorkflowCorrectionInput;
+  actor: ReturnType<typeof resolveInternalActor>;
+}) {
+  const workflowItem = requireFound(
+    await offerWorkflowService.getWorkflowItem(input.workflowItemId),
+    'Offer workflow item not found.',
+  );
+  const emailDerivedOfferId = workflowItem.emailDerivedOffer?.id;
+
+  if (!emailDerivedOfferId) {
+    throw new BadRequestError(
+      'Review workflow item is missing an extracted offer.',
+    );
+  }
+
+  const metadata = {
+    ...correctionFeedbackMetadata(input.correction),
+    workflowItemStatus: workflowItem.status,
+    sourceKind:
+      workflowItem.sourceKind ?? workflowItem.emailDerivedOffer?.sourceKind ?? null,
+    reviewReason:
+      workflowItem.sourceReviewReason ??
+      workflowItem.emailDerivedOffer?.reviewReason ??
+      null,
+  };
+  const correction = await offerCorrectionService.createCorrection({
+    ...input.correction,
+    emailDerivedOfferId,
+    offerWorkflowItemId: workflowItem.id,
+    inboundEmailId:
+      workflowItem.inboundEmailId ?? workflowItem.inboundEmail?.id ?? null,
+    metadata,
+    ...input.actor,
+  });
+
+  await automationService.recordFeedback({
+    emailDerivedOfferId,
+    offerWorkflowItemId: workflowItem.id,
+    feedbackType: 'EXTRACTION',
+    verdict: 'PARTIALLY_CORRECT',
+    productTextCorrect:
+      input.correction.correctedRawProductText ||
+      input.correction.correctedNormalizedProductName
+        ? false
+        : null,
+    priceCorrect:
+      input.correction.correctedUnitPrice !== undefined ? false : null,
+    currencyCorrect: input.correction.correctedCurrencyCode ? false : null,
+    manufacturerCorrect: input.correction.correctedManufacturer ? false : null,
+    availabilityCorrect:
+      input.correction.correctedAvailability ? false : null,
+    moqCorrect:
+      input.correction.correctedMinimumOrderQuantity !== undefined
+        ? false
+        : null,
+    note: input.correction.note ?? null,
+    metadata,
+    ...input.actor,
+  });
+
+  if (
+    input.correction.correctedSupplierId ||
+    input.correction.correctedSupplierName
+  ) {
+    await automationService.recordFeedback({
+      emailDerivedOfferId,
+      offerWorkflowItemId: workflowItem.id,
+      feedbackType: 'SUPPLIER_RESOLUTION',
+      verdict: 'PARTIALLY_CORRECT',
+      supplierCorrect: false,
+      note: input.correction.note ?? null,
+      metadata,
+      ...input.actor,
+    });
+  }
+
+  return correction;
+}
 
 reviewQueueRouter.get(
   '/',
@@ -207,6 +336,31 @@ reviewQueueRouter.get(
   }),
 );
 
+reviewQueueRouter.post(
+  '/workflows/:id/corrections',
+  requireInternalOperatorAccess,
+  asyncHandler(async (request, response) => {
+    const { params, body } = parseRequest<
+      z.infer<typeof idParamSchema>,
+      unknown,
+      z.infer<typeof workflowCorrectionBodySchema>
+    >(request, {
+      params: idParamSchema,
+      body: workflowCorrectionBodySchema,
+    });
+
+    const actor = resolveInternalActor(request, body);
+
+    response.json({
+      item: await createWorkflowCorrectionAndFeedback({
+        workflowItemId: params.id,
+        correction: body,
+        actor,
+      }),
+    });
+  }),
+);
+
 reviewQueueRouter.patch(
   '/workflows/:id',
   requireInternalOperatorAccess,
@@ -221,6 +375,16 @@ reviewQueueRouter.patch(
     });
 
     const actor = resolveInternalActor(request, body);
+    if (
+      body.action === 'APPROVE_TO_BUY' &&
+      hasCorrectionInput(body.correction)
+    ) {
+      await createWorkflowCorrectionAndFeedback({
+        workflowItemId: params.id,
+        correction: body.correction!,
+        actor,
+      });
+    }
 
     let actionOutcome: Record<string, unknown> | null = null;
 

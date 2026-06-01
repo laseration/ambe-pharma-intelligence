@@ -3,7 +3,9 @@ import type { AddressInfo } from 'node:net';
 import test, { type TestContext } from 'node:test';
 
 import { createApp } from '../../app';
+import { automationService } from '../../automation/service';
 import { env } from '../../config/env';
+import { offerCorrectionService } from '../../corrections/service';
 import { offerWorkflowService } from '../workflowService';
 
 function overrideEnv(context: TestContext, overrides: Partial<typeof env>) {
@@ -410,6 +412,123 @@ test('workflow audit history route returns combined commercial audit entries', a
     'email-1',
   );
   assert.equal(payload.items[1].entityType, 'BUY_DECISION');
+});
+
+test('workflow correction route binds corrections to the reviewed offer and actor', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
+  stubMethod(
+    t,
+    offerWorkflowService,
+    'getWorkflowItem',
+    (async () =>
+      ({
+        id: 'workflow-1',
+        emailDerivedOfferId: 'offer-1',
+        inboundEmailId: 'email-1',
+        status: 'NEW',
+        sourceKind: 'STRICT_ATTACHMENT_TABLE',
+        sourceReviewReason: 'missing_price',
+        emailDerivedOffer: {
+          id: 'offer-1',
+          reviewReason: 'missing_price',
+          sourceKind: 'STRICT_ATTACHMENT_TABLE',
+        },
+        inboundEmail: {
+          id: 'email-1',
+        },
+      }) as any) as typeof offerWorkflowService.getWorkflowItem,
+  );
+
+  let capturedCorrection: any = null;
+  const capturedFeedback: Record<string, unknown>[] = [];
+  stubMethod(
+    t,
+    offerCorrectionService,
+    'createCorrection',
+    (async (input) => {
+      capturedCorrection = input;
+      return {
+        id: 'correction-1',
+        emailDerivedOfferId: input.emailDerivedOfferId,
+        offerWorkflowItemId: input.offerWorkflowItemId,
+        inboundEmailId: input.inboundEmailId,
+        correctionStatus: 'APPLIED',
+        correctedSupplierId: null,
+        correctedSupplierName: input.correctedSupplierName ?? null,
+        correctedProductId: null,
+        correctedRawProductText: input.correctedRawProductText ?? null,
+        correctedNormalizedProductName:
+          input.correctedNormalizedProductName ?? null,
+        correctedStrength: null,
+        correctedDosageForm: null,
+        correctedPackSize: null,
+        correctedManufacturer: input.correctedManufacturer ?? null,
+        correctedUnitPrice: input.correctedUnitPrice ?? null,
+        correctedCurrencyCode: input.correctedCurrencyCode ?? null,
+        correctedMinimumOrderQuantity:
+          input.correctedMinimumOrderQuantity ?? null,
+        correctedAvailability: input.correctedAvailability ?? null,
+        actorType: input.actorType ?? 'OPERATOR',
+        actorIdentifier: input.actorIdentifier ?? null,
+        note: input.note ?? null,
+        metadata: input.metadata ?? null,
+        createdAt: new Date('2026-04-22T09:03:00.000Z'),
+        updatedAt: new Date('2026-04-22T09:03:00.000Z'),
+      };
+    }) as typeof offerCorrectionService.createCorrection,
+  );
+  stubMethod(
+    t,
+    automationService,
+    'recordFeedback',
+    (async (input) => {
+      capturedFeedback.push(input as Record<string, unknown>);
+      return { id: `feedback-${capturedFeedback.length}` } as any;
+    }) as typeof automationService.recordFeedback,
+  );
+
+  const baseUrl = await startServer(t);
+  const response = await fetch(
+    `${baseUrl}/api/review-queue/workflows/workflow-1/corrections`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-api-key': 'test-secret',
+        'x-internal-caller-name': 'web-review-console',
+      },
+      body: JSON.stringify({
+        correctedSupplierName: 'Shortline Pharma',
+        correctedNormalizedProductName: 'Amlodipine 5mg tablets 28',
+        correctedUnitPrice: '8.40',
+        correctedCurrencyCode: 'gbp',
+        correctedMinimumOrderQuantity: 20,
+        note: 'Confirmed against source row.',
+      }),
+    },
+  );
+
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.item.id, 'correction-1');
+  assert.equal(capturedCorrection?.emailDerivedOfferId, 'offer-1');
+  assert.equal(capturedCorrection?.offerWorkflowItemId, 'workflow-1');
+  assert.equal(capturedCorrection?.inboundEmailId, 'email-1');
+  assert.equal(
+    capturedCorrection?.actorIdentifier,
+    'internal-operator:web-review-console',
+  );
+  assert.equal(
+    (capturedCorrection?.metadata as Record<string, unknown>)?.createdFrom,
+    'review_workflow_correction',
+  );
+  assert.equal(capturedFeedback.length, 2);
+  assert.equal(capturedFeedback[0]?.feedbackType, 'EXTRACTION');
+  assert.equal(capturedFeedback[1]?.feedbackType, 'SUPPLIER_RESOLUTION');
 });
 
 test('workflow list route accepts inboundEmailId filter', async (t) => {

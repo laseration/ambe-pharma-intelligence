@@ -12,7 +12,10 @@ import {
   buildReviewProvenanceSummary,
   truncateSourceText,
 } from '../../../../lib/reviewProvenance';
-import { submitInboundEmailReviewAction } from './actions';
+import {
+  submitInboundEmailReviewAction,
+  submitReviewOfferCorrection,
+} from './actions';
 import { SubmitButton } from './submit-button';
 
 export const dynamic = 'force-dynamic';
@@ -764,6 +767,133 @@ function renderSupplierDetailsFields(defaults: SupplierDetailsDefaults) {
   );
 }
 
+function renderOfferCorrectionForm(
+  detail: ReviewWorkflowDetail,
+  inboundEmailId: string,
+  returnTo: string,
+) {
+  const offer = detail.emailDerivedOffer;
+
+  return (
+    <form
+      action={submitReviewOfferCorrection}
+      className="action-form correction-form"
+    >
+      <input name="inboundEmailId" type="hidden" value={inboundEmailId} />
+      <input name="workflowItemId" type="hidden" value={detail.id} />
+      {renderReturnToInput(returnTo)}
+      <div className="resolution-evidence-header">
+        <div>
+          <h4 className="subsection-title">Correct extracted fields</h4>
+          <p className="copy resolution-evidence-copy">
+            Save corrected values for this offer. Corrections improve future
+            hints, but they do not approve or promote the offer.
+          </p>
+        </div>
+      </div>
+      <div className="form-grid form-grid-two">
+        <label>
+          Supplier
+          <input
+            name="correctedSupplierName"
+            type="text"
+            defaultValue={offer?.supplierCandidate ?? ''}
+          />
+        </label>
+        <label>
+          Product
+          <input
+            name="correctedNormalizedProductName"
+            type="text"
+            defaultValue={offer?.normalizedProductNameCandidate ?? ''}
+          />
+        </label>
+        <label>
+          Raw product text
+          <input
+            name="correctedRawProductText"
+            type="text"
+            defaultValue={offer?.rawProductText ?? ''}
+          />
+        </label>
+        <label>
+          Manufacturer
+          <input
+            name="correctedManufacturer"
+            type="text"
+            defaultValue={offer?.manufacturerCandidate ?? ''}
+          />
+        </label>
+        <label>
+          Unit price
+          <input
+            name="correctedUnitPrice"
+            step="0.01"
+            type="number"
+            defaultValue={offer?.priceCandidate ?? ''}
+          />
+        </label>
+        <label>
+          Currency
+          <input
+            name="correctedCurrencyCode"
+            type="text"
+            defaultValue={offer?.currencyCandidate ?? ''}
+          />
+        </label>
+        <label>
+          MOQ
+          <input
+            min="0"
+            name="correctedMinimumOrderQuantity"
+            step="1"
+            type="number"
+            defaultValue={offer?.minimumOrderQuantityCandidate ?? ''}
+          />
+        </label>
+        <label>
+          Availability
+          <input
+            name="correctedAvailability"
+            type="text"
+            defaultValue={offer?.availabilityCandidate ?? ''}
+          />
+        </label>
+      </div>
+      <label>
+        Correction note
+        <textarea
+          name="note"
+          placeholder="What did you change or confirm?"
+          rows={3}
+        />
+      </label>
+      <label>
+        Approval note
+        <textarea
+          name="approveNote"
+          placeholder="Optional note if saving and approving this row"
+          rows={2}
+        />
+      </label>
+      <div className="offer-row-actions">
+        <SubmitButton
+          className="button"
+          idleLabel="Save correction"
+          pendingLabel="Saving..."
+        />
+        <SubmitButton
+          className="button button-primary"
+          idleLabel="Save correction and approve"
+          name="correctionNextAction"
+          pendingLabel="Approving..."
+          value="APPROVE_TO_BUY"
+        />
+      </div>
+    </form>
+  );
+}
+
 function renderReturnToInput(returnTo: string) {
   return <input name="returnTo" type="hidden" value={returnTo} />;
 }
@@ -1294,7 +1424,7 @@ export default async function ReviewInboundEmailPage({
                         </div>
                       </details>
                       <details className="document-card technical-details-card">
-                        <summary>Prior corrections</summary>
+                        <summary>Prior corrections for this offer</summary>
                         {provenance.correctionSummaries.length > 0 ? (
                           <ul className="simple-list compact-list provenance-corrections">
                             {provenance.correctionSummaries.map(
@@ -1309,6 +1439,25 @@ export default async function ReviewInboundEmailPage({
                           <p className="copy provenance-empty">
                             No prior operator corrections are stored for this
                             offer.
+                          </p>
+                        )}
+                      </details>
+                      <details className="document-card technical-details-card">
+                        <summary>Related sender/template corrections</summary>
+                        {provenance.relatedCorrectionSummaries.length > 0 ? (
+                          <ul className="simple-list compact-list provenance-corrections">
+                            {provenance.relatedCorrectionSummaries.map(
+                              (correction) => (
+                                <li key={`${detail.id}-related-${correction}`}>
+                                  {correction}
+                                </li>
+                              ),
+                            )}
+                          </ul>
+                        ) : (
+                          <p className="copy provenance-empty">
+                            No prior corrections from the same sender or source
+                            template are stored.
                           </p>
                         )}
                       </details>
@@ -1444,6 +1593,13 @@ export default async function ReviewInboundEmailPage({
                           No candidate supplier, product, or manufacturer
                           evidence was stored for this row.
                         </p>
+                      )}
+                    </section>
+                    <section className="resolution-evidence correction-card">
+                      {renderOfferCorrectionForm(
+                        detail,
+                        inboundEmailId,
+                        returnTo,
                       )}
                     </section>
                     <div className="offer-row-actions">

@@ -387,6 +387,7 @@ enum SupplierContactStatus {
   AUTO_ACCEPTED
   APPROVED
   REJECTED
+  SUPERSEDED
 }
 
 enum RegulatoryEventType {
@@ -1492,10 +1493,11 @@ model PromotionDecision {
 model SupplierContact {
   id                    String                @id @default(cuid())
   supplierId            String?
-  supplierNameCandidate String
-  normalizedSupplierName String
+  supplierNameCandidate String?
+  normalizedSupplierName String?
   contactName           String?
   contactEmail          String?
+  contactPhone          String?
   contactPhoneRaw       String?
   contactPhoneCanonical String?
   contactRole           String?
@@ -1506,17 +1508,27 @@ model SupplierContact {
   status                SupplierContactStatus @default(STAGED)
   autoAttached          Boolean               @default(false)
   conflictFlags         Json?
+  evidence              Json?
+  extractionMetadata    Json?
   supplier              Supplier?             @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   sourceInboundEmail    InboundEmail?         @relation(fields: [sourceInboundEmailId], references: [id], onDelete: SetNull)
   sourceDocument        InboundEmailDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
-  evidence              SupplierContactEvidence[]
+  evidenceItems         SupplierContactEvidence[]
+  events                SupplierContactEvent[]
+  reviewedAt            DateTime?
+  reviewedByType        String?
+  reviewedByIdentifier  String?
+  reviewNote            String?
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
   lastSeenAt            DateTime              @default(now())
 
+  @@index([supplierId])
   @@index([supplierId, status])
+  @@index([normalizedSupplierName])
   @@index([normalizedSupplierName, status])
   @@index([contactEmail])
+  @@index([status, createdAt])
   @@index([sourceInboundEmailId])
   @@index([sourceDocumentId])
 }
@@ -1540,6 +1552,22 @@ model SupplierContactEvidence {
   @@index([supplierContactId])
   @@index([sourceDocumentId])
   @@index([fieldName])
+}
+
+model SupplierContactEvent {
+  id                   String                 @id @default(cuid())
+  supplierContactId    String
+  actionType           String
+  previousStatus       SupplierContactStatus?
+  newStatus            SupplierContactStatus?
+  actorType            String                 @default("SYSTEM")
+  actorIdentifier      String?
+  note                 String?
+  metadata             Json?
+  supplierContact      SupplierContact        @relation(fields: [supplierContactId], references: [id], onDelete: Cascade)
+  createdAt            DateTime               @default(now())
+
+  @@index([supplierContactId, createdAt])
 }
 
 model AccountOpeningOriginalDocument {

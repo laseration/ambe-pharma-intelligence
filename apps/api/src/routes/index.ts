@@ -7,6 +7,7 @@ import { buyExecutionsRouter } from '../buyExecutions/routes';
 import { correctionsRouter, sourceProfilesRouter } from '../corrections/routes';
 import { dealsRouter } from '../deals/routes';
 import { emailRouter } from '../email/routes';
+import { supplierContactRouter } from '../email/inbound/supplierContactRoutes';
 import { requireInternalViewerAccess } from '../http/auth';
 import { importsRouter } from '../imports/routes';
 import { opportunitiesRouter } from '../opportunities/routes';
@@ -24,6 +25,7 @@ apiRouter.use(requireInternalViewerAccess);
 
 apiRouter.use('/account-opening', accountOpeningRouter);
 apiRouter.use('/automation', automationRouter);
+apiRouter.use('/email/inbound/supplier-contacts', supplierContactRouter);
 apiRouter.use('/email', emailRouter);
 apiRouter.use('/buy-decisions', buyDecisionsRouter);
 apiRouter.use('/buy-executions', buyExecutionsRouter);
