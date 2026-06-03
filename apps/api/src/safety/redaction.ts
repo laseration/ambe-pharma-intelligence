@@ -66,10 +66,7 @@ function redactRawBodyLikeFields(value: string): string {
       /(["']?(?:body|bodyText|bodyHtml|messageBody|rawBody|rawText|contentBytes|attachmentContent|fileContent)["']?\s*[:=]\s*)["']?[^"',}\n]+["']?/gi,
       `$1${REDACTED}`,
     )
-    .replace(
-      /(["']?content["']?\s*:\s*["'])[^"']+(["'])/gi,
-      `$1${REDACTED}$2`,
-    );
+    .replace(/(["']?content["']?\s*:\s*["'])[^"']+(["'])/gi, `$1${REDACTED}$2`);
 }
 
 export function redactSafeOutputString(value: string): string {
@@ -155,7 +152,6 @@ export function sanitizeSafeOutputRecord(
 export function sanitizeSafeErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return (
-    redactSafeOutputString(message).trim().slice(0, 500) ||
-    'Unknown error.'
+    redactSafeOutputString(message).trim().slice(0, 500) || 'Unknown error.'
   );
 }

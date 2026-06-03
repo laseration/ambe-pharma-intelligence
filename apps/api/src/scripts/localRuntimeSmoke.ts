@@ -76,8 +76,7 @@ export function buildLocalRuntimeSmokeSummary(
     ),
     'Endpoint checks:',
     ...endpoints.map(
-      (endpoint) =>
-        `- ${endpoint.method} ${endpoint.path}: ${endpoint.status}`,
+      (endpoint) => `- ${endpoint.method} ${endpoint.path}: ${endpoint.status}`,
     ),
   ];
 }

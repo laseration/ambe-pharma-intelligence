@@ -79,8 +79,7 @@ test('sanitizes structured diagnostic records without losing useful metadata', (
     code: 'GRAPH_RATE_LIMITED',
     statusCode: 429,
     nextAction: 'Retry after the configured cooldown.',
-    databaseUrl:
-      'postgresql://fake_user:fake_password@localhost:5432/ambe_ci',
+    databaseUrl: 'postgresql://fake_user:fake_password@localhost:5432/ambe_ci',
     graphPayload: {
       access_token: 'fake-access-token-canary',
       body: {
@@ -141,4 +140,3 @@ test('email address redaction keeps only the domain when useful', () => {
   );
   assert.equal(redactEmailAddress('not-an-email'), '[redacted-email]');
 });
-
