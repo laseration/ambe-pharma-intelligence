@@ -6,6 +6,7 @@ import type { Opportunity, TelegramPost } from '@prisma/client';
 import { env } from '../config/env';
 import { db } from '../lib/db';
 import { logger } from '../lib/logger';
+import { assertOpportunityReviewedForNotification } from '../safety/commercialApprovalGuard';
 import { buildDailySummaryMessage, buildOpportunityMessage } from './templates';
 
 const INTERNAL_CHANNEL_KEY = 'internal-ops';
@@ -146,6 +147,7 @@ export async function previewOpportunityMessage(opportunityId: string) {
   if (!opportunity) {
     throw new Error('Opportunity not found.');
   }
+  assertOpportunityReviewedForNotification(opportunity);
 
   const messageText = buildOpportunityMessage(opportunity);
 
@@ -162,6 +164,7 @@ export async function publishOpportunity(opportunityId: string) {
   if (!opportunity) {
     throw new Error('Opportunity not found.');
   }
+  assertOpportunityReviewedForNotification(opportunity);
 
   const messageText = buildOpportunityMessage(opportunity);
   const contentHash = hashMessage(messageText);
@@ -274,7 +277,7 @@ export async function publishOpportunity(opportunityId: string) {
 export async function publishOpenOpportunities() {
   const opportunities = await db.opportunity.findMany({
     where: {
-      status: 'OPEN',
+      status: 'REVIEWED',
     },
     orderBy: [{ score: 'desc' }, { createdAt: 'asc' }],
   });
@@ -294,7 +297,7 @@ export async function publishOpenOpportunities() {
 export async function previewDailySummary() {
   const opportunities = await db.opportunity.findMany({
     where: {
-      status: 'OPEN',
+      status: 'REVIEWED',
     },
     include: {
       product: {

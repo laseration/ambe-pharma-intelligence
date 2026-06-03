@@ -1,0 +1,17 @@
+{
+  "id": "fixture-irrelevant-v1",
+  "description": "Sanitized non-commercial supplier email fixture used to prove safe skip behavior.",
+  "message": {
+    "sourceSystem": "FIXTURE_EMAIL",
+    "externalMessageId": "fixture-irrelevant-v1",
+    "messageId": "<fixture-irrelevant-v1@example.test>",
+    "conversationId": "fixture-conversation-irrelevant-v1",
+    "from": "pricing@supplier.example",
+    "fromName": "Pricing Team",
+    "subject": "Sanitized operational note",
+    "bodyText": "This sanitized operational note confirms the fixture mailbox path is reachable. No business action is requested.",
+    "receivedAt": "2026-06-01T11:00:00.000Z",
+    "supplierName": "Supplier Example",
+    "attachments": []
+  }
+}

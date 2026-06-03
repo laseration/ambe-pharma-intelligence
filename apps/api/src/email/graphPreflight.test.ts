@@ -77,7 +77,7 @@ test('Graph mail preflight reports dry-run readiness and polling warning', (t) =
 
   assert.equal(status.graphConfigured, true);
   assert.equal(status.mailboxConfigured, true);
-  assert.equal(status.mailbox, 'supplier-intake@example.test');
+  assert.equal(status.mailbox, '***@example.test');
   assert.equal(status.credentialSource, 'mail-specific');
   assert.equal(status.credentialMode, 'client-secret');
   assert.equal(status.pollingEnabled, true);
@@ -88,6 +88,7 @@ test('Graph mail preflight reports dry-run readiness and polling warning', (t) =
   assert.match(status.warnings.join(' '), /polling/i);
   assert.doesNotMatch(serialized, /client-secret-value/);
   assert.doesNotMatch(serialized, /tenant-secret/);
+  assert.doesNotMatch(serialized, /supplier-intake@example\.test/);
 });
 
 test('Graph dry-run fails safely before live call when credentials are missing', async (t) => {
@@ -192,6 +193,7 @@ test('Graph dry-run lists redacted unread summaries without mutating or ingestin
 
   assert.equal(result.generatedAt, '2026-06-01T12:00:00.000Z');
   assert.equal(result.liveReadOnlyGraphCall, true);
+  assert.equal(result.mailbox, '***@example.test');
   assert.equal(result.messageCount, 1);
   assert.equal(result.messages[0]?.senderDomain, 'supplier.example');
   assert.equal(result.messages[0]?.senderPreview, '***@supplier.example');
@@ -204,6 +206,7 @@ test('Graph dry-run lists redacted unread summaries without mutating or ingestin
   assert.equal(calls.length, 2);
   assert.doesNotMatch(serialized, /alice@supplier\.example/);
   assert.doesNotMatch(serialized, /Alice Supplier/);
+  assert.doesNotMatch(serialized, /supplier-intake@example\.test/);
   assert.doesNotMatch(serialized, /raw body/);
   assert.doesNotMatch(serialized, /access-token-secret/);
   assert.doesNotMatch(serialized, /attachment-1/);

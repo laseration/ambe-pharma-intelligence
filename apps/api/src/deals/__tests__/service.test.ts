@@ -119,6 +119,9 @@ function createRepositoryHarness() {
             approvalStatus: buyDecisions.find(
               (item) => item.id === tradeOpportunity.buyDecisionId,
             )!.approvalStatus,
+            approvedAt: buyDecisions.find(
+              (item) => item.id === tradeOpportunity.buyDecisionId,
+            )!.approvedAt,
             orderStatus: buyDecisions.find(
               (item) => item.id === tradeOpportunity.buyDecisionId,
             )!.orderStatus,
@@ -692,6 +695,92 @@ test('buyer-facing and supplier-facing drafts are blocked when identity leakage 
   assert.match(
     JSON.stringify(supplierDraft.policyViolations),
     /buyer_identity_leak_detected/,
+  );
+});
+
+test('outward draft approval is blocked until the linked buy decision is approved', async () => {
+  const harness = createRepositoryHarness();
+  const service = createService(harness);
+  seedOffer(harness);
+
+  const tradeOpportunity = await service.createTradeOpportunity({
+    emailDerivedOfferId: 'offer-1',
+    targetSellUnitPrice: 10.25,
+    targetSellCurrencyCode: 'GBP',
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+  const draft = await service.generateTradeMessageDraft(tradeOpportunity.id, {
+    direction: 'TO_BUYER',
+    messagePurpose: 'INITIAL_BUYER_OFFER',
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+
+  await assert.rejects(
+    () =>
+      service.updateTradeMessageDraft(draft.id, {
+        action: 'APPROVE',
+        actorType: 'USER',
+        actorIdentifier: 'buyer-1',
+      }),
+    /Approval required/,
+  );
+  assert.equal(harness.drafts[0]?.status, 'READY_FOR_REVIEW');
+  assert.equal(harness.drafts[0]?.approvedAt, null);
+});
+
+test('approved outward draft can be marked sent exactly once', async () => {
+  const harness = createRepositoryHarness();
+  const service = createService(harness);
+  seedOffer(harness);
+
+  const tradeOpportunity = await service.createTradeOpportunity({
+    emailDerivedOfferId: 'offer-1',
+    targetSellUnitPrice: 10.25,
+    targetSellCurrencyCode: 'GBP',
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+  harness.buyDecisions.push({
+    id: 'buy-approved',
+    emailDerivedOfferId: 'offer-1',
+    approvalStatus: 'APPROVED',
+    approvedAt: new Date('2026-04-21T08:00:00.000Z'),
+    orderStatus: 'NOT_ORDERED',
+    supplierQualificationStatus: 'APPROVED',
+    hasQualificationRisk: false,
+  });
+  harness.tradeOpportunities[0]!.buyDecisionId = 'buy-approved';
+
+  const draft = await service.generateTradeMessageDraft(tradeOpportunity.id, {
+    direction: 'TO_BUYER',
+    messagePurpose: 'INITIAL_BUYER_OFFER',
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+  const approved = await service.updateTradeMessageDraft(draft.id, {
+    action: 'APPROVE',
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+  assert.equal(approved.status, 'APPROVED');
+
+  const sent = await service.updateTradeMessageDraft(draft.id, {
+    action: 'MARK_SENT',
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+  });
+
+  assert.equal(sent.status, 'SENT');
+  await assert.rejects(
+    () =>
+      service.updateTradeMessageDraft(draft.id, {
+        action: 'MARK_SENT',
+        actorType: 'USER',
+        actorIdentifier: 'buyer-1',
+      }),
+    /Only approved drafts can be marked as sent/,
   );
 });
 

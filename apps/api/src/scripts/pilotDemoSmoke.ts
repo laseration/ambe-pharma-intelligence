@@ -4,6 +4,7 @@ import { PILOT_DEMO_MARKER } from '../fixtures/demo/pilotDemo';
 import { db } from '../lib/db';
 import { assertSafePilotDemoDatabase, seedPilotDemo } from './seedPilotDemo';
 import { env } from '../config/env';
+import { sanitizeSafeErrorMessage } from '../safety/redaction';
 
 export type PilotDemoSmokeVerification = {
   pendingWorkflowId: string;
@@ -117,9 +118,7 @@ export async function runPilotDemoSmoke(): Promise<void> {
 
 if (require.main === module) {
   runPilotDemoSmoke().catch(async (error) => {
-    console.error(
-      `FAIL: ${error instanceof Error ? error.message : 'Pilot demo smoke failed.'}`,
-    );
+    console.error(`FAIL: ${sanitizeSafeErrorMessage(error)}`);
     await db.$disconnect();
     process.exit(1);
   });
