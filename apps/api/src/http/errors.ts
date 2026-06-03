@@ -83,6 +83,10 @@ function isConflictMessage(message: string): boolean {
   return (
     /requires explicit operator confirmation/i.test(message) ||
     /cannot .* before /i.test(message) ||
+    /approval required/i.test(message) ||
+    /needs review before execution/i.test(message) ||
+    /corrected after approval; review again/i.test(message) ||
+    /already executed/i.test(message) ||
     /blocked supplier/i.test(message) ||
     /already exists/i.test(message) ||
     /duplicate/i.test(message)

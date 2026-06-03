@@ -1,6 +1,11 @@
 import { db } from '../lib/db';
 import { buildCommercialAuditMetadata } from '../audit/commercialAudit';
 import { syncTradeOpportunityCommercialState } from '../deals/service';
+import {
+  assertBuyDecisionApprovedForExecution,
+  assertOrderPlacementIsIdempotent,
+  type AppliedCorrectionSnapshot,
+} from '../safety/commercialApprovalGuard';
 
 export type BuyDecisionOrderStatus =
   | 'NOT_ORDERED'
@@ -120,6 +125,10 @@ export type BuyDecisionExecutionSnapshot = {
   hasQualificationRisk: boolean;
   approvalStatus: 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
   approvedAt: Date | null;
+  metadata?: unknown;
+  emailDerivedOffer?: {
+    offerCorrections?: AppliedCorrectionSnapshot[];
+  } | null;
 };
 
 export type BuyExecutionUpdateInput = BuyExecutionActor & {
@@ -455,6 +464,12 @@ function datesEqual(
   return (left?.getTime() ?? null) === (right?.getTime() ?? null);
 }
 
+function latestAppliedCorrection(
+  buyDecision: BuyDecisionExecutionSnapshot,
+): AppliedCorrectionSnapshot {
+  return buyDecision.emailDerivedOffer?.offerCorrections?.[0] ?? null;
+}
+
 function buildEventAction(
   previous: BuyExecutionRecord | null,
   next: BuyExecutionRecord,
@@ -779,6 +794,10 @@ export async function upsertExecutionForBuyDecision(
 ): Promise<BuyExecutionRecord> {
   const actor = normalizeActor(input);
   const existing = await repository.findByBuyDecisionId(buyDecision.id);
+  assertBuyDecisionApprovedForExecution({
+    buyDecision,
+    latestAppliedCorrection: latestAppliedCorrection(buyDecision),
+  });
 
   const orderedQuantity =
     input.orderedQuantity === undefined
@@ -949,6 +968,15 @@ export async function upsertExecutionForBuyDecision(
       return previousValue !== value;
     })
     .map(([field]) => field);
+
+  assertOrderPlacementIsIdempotent({
+    existingExecution: existing,
+    nextFulfillmentStatus: fulfillmentStatus,
+    changedFields,
+    requestedOrderPlacement:
+      input.fulfillmentStatus === 'ORDER_PLACED' ||
+      input.orderPlacedAt !== undefined,
+  });
 
   if (changedFields.length === 0 && !input.note?.trim()) {
     return existing;
@@ -1145,6 +1173,21 @@ export function createBuyExecutionRepository(
     findBuyDecisionById: async (buyDecisionId) =>
       client.buyDecision.findUnique({
         where: { id: buyDecisionId },
+        include: {
+          emailDerivedOffer: {
+            select: {
+              offerCorrections: {
+                where: { correctionStatus: 'APPLIED' },
+                orderBy: { updatedAt: 'desc' },
+                take: 1,
+                select: {
+                  id: true,
+                  updatedAt: true,
+                },
+              },
+            },
+          },
+        },
       }) as Promise<BuyDecisionExecutionSnapshot | null>,
     updateBuyDecision: async (buyDecisionId, data) =>
       client.buyDecision.update({
