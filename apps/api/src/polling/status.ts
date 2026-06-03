@@ -1,3 +1,5 @@
+import { sanitizeSafeErrorMessage } from '../safety/redaction';
+
 export type PollingWorkerName = 'email-inbound' | 'telegram';
 
 export type PollingWorkerSnapshot = {
@@ -54,17 +56,7 @@ function nowIso(): string {
 }
 
 export function sanitizePollingErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  const redacted = message
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]')
-    .replace(
-      /\b(token|secret|password|api[_-]?key|authorization)\b\s*[:=]\s*["']?[^"',\s}]+/gi,
-      '$1=[redacted]',
-    )
-    .replace(/postgres(?:ql)?:\/\/[^\s"']+/gi, 'postgresql://[redacted]')
-    .replace(/bot[A-Za-z0-9:_-]{20,}/g, 'bot[redacted]');
-
-  return redacted.trim().slice(0, 500) || 'Unknown polling worker error.';
+  return sanitizeSafeErrorMessage(error);
 }
 
 function createInitialStatus(name: PollingWorkerName): PollingWorkerSnapshot {

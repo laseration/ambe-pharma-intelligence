@@ -11,6 +11,7 @@ import {
   evaluateExternalIntegrationsForLocalSmoke,
   forceDisableExternalIntegrationsForLocalSmoke,
 } from '../startup/localSmokeSafety';
+import { sanitizeSafeErrorMessage } from '../safety/redaction';
 
 type EndpointCheck = {
   method: 'GET';
@@ -58,26 +59,40 @@ async function checkGet(
   };
 }
 
+export function buildLocalRuntimeSmokeSummary(
+  database: ReturnType<typeof classifyDatabaseUrlForLocalSmoke>,
+  integrations: ReturnType<typeof evaluateExternalIntegrationsForLocalSmoke>,
+  endpoints: EndpointCheck[],
+): string[] {
+  return [
+    'AMBE local runtime smoke summary',
+    `Database host: ${database.host ?? 'unknown'}`,
+    `Database name: ${database.databaseName ?? 'unknown'}`,
+    `Database classification: ${database.classification}`,
+    `Database safety: ${database.reason}`,
+    'External integration checks:',
+    ...integrations.checks.map(
+      (check) => `- ${check.name}: ${check.status} (${check.reason})`,
+    ),
+    'Endpoint checks:',
+    ...endpoints.map(
+      (endpoint) =>
+        `- ${endpoint.method} ${endpoint.path}: ${endpoint.status}`,
+    ),
+  ];
+}
+
 function printSafeSummary(
   database: ReturnType<typeof classifyDatabaseUrlForLocalSmoke>,
   integrations: ReturnType<typeof evaluateExternalIntegrationsForLocalSmoke>,
   endpoints: EndpointCheck[],
 ): void {
-  console.log('AMBE local runtime smoke summary');
-  console.log(`Database host: ${database.host ?? 'unknown'}`);
-  console.log(`Database name: ${database.databaseName ?? 'unknown'}`);
-  console.log(`Database classification: ${database.classification}`);
-  console.log(`Database safety: ${database.reason}`);
-  console.log('External integration checks:');
-
-  for (const check of integrations.checks) {
-    console.log(`- ${check.name}: ${check.status} (${check.reason})`);
-  }
-
-  console.log('Endpoint checks:');
-
-  for (const endpoint of endpoints) {
-    console.log(`- ${endpoint.method} ${endpoint.path}: ${endpoint.status}`);
+  for (const line of buildLocalRuntimeSmokeSummary(
+    database,
+    integrations,
+    endpoints,
+  )) {
+    console.log(line);
   }
 }
 
@@ -164,9 +179,7 @@ export async function runLocalRuntimeSmoke(): Promise<void> {
 
 if (require.main === module) {
   runLocalRuntimeSmoke().catch(async (error) => {
-    console.error(
-      `FAIL: ${error instanceof Error ? error.message : 'Local runtime smoke failed.'}`,
-    );
+    console.error(`FAIL: ${sanitizeSafeErrorMessage(error)}`);
     await db.$disconnect();
     process.exit(1);
   });
