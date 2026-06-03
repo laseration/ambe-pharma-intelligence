@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { AiParsedOfferResponse } from '../aiParsing/schema';
+import { validateAiParsedOfferResponse } from '../aiParsing/schema';
 import type { AiOfferParsingAttemptResult } from '../aiParsing/service';
 import {
   parseStructuredPriceText,
@@ -16,6 +16,11 @@ export type ExtractionEvalExpectedOffer = {
   productIncludes: string;
   price?: number | null;
   currencyCode?: string | null;
+  strength?: string | null;
+  dosageForm?: string | null;
+  packSize?: string | null;
+  minimumOrderQuantity?: number | null;
+  availabilityIncludes?: string | null;
 };
 
 export type ExtractionEvalDocument = {
@@ -32,7 +37,7 @@ export type ExtractionEvalCase = {
   subject?: string;
   bodyText?: string;
   documents?: ExtractionEvalDocument[];
-  mockAiResult?: AiParsedOfferResponse;
+  mockAiResult?: unknown;
   expected: {
     commerciallyRelevant: boolean;
     offerCount: number;
@@ -46,8 +51,13 @@ export type ExtractionEvalCase = {
 export type ExtractedEvalOffer = {
   sourceLabel: string;
   productText: string;
+  strength: string | null;
+  dosageForm: string | null;
+  packSize: string | null;
   price: number;
   currencyCode: string | null;
+  minimumOrderQuantity: number | null;
+  availability: string | null;
   confidence: string;
   parsingSource: string;
 };
@@ -65,6 +75,7 @@ export type ExtractionEvalCaseResult = {
   parsingSources: string[];
   documentClass: string | null;
   mismatches: string[];
+  mismatchFields: string[];
   extractedOffers: ExtractedEvalOffer[];
 };
 
@@ -82,6 +93,11 @@ export type ExtractionEvalSummary = {
     caseId: string;
     title: string;
     mismatches: string[];
+    fields: string[];
+  }>;
+  fieldMismatchCounts: Array<{
+    fieldName: string;
+    count: number;
   }>;
   caseResults: ExtractionEvalCaseResult[];
 };
@@ -123,16 +139,97 @@ function priceEquals(actual: number, expected: number | null | undefined) {
   return Math.abs(actual - expected) < 0.01;
 }
 
-function rowMatchesExpected(
+function productMatchesExpected(
   row: ExtractedEvalOffer,
   expected: ExtractionEvalExpectedOffer,
 ): boolean {
-  return (
-    normalize(row.productText).includes(normalize(expected.productIncludes)) &&
-    priceEquals(row.price, expected.price) &&
-    (expected.currencyCode === undefined ||
-      currencyEquals(row.currencyCode, expected.currencyCode))
-  );
+  return normalize(row.productText).includes(normalize(expected.productIncludes));
+}
+
+function normalizedNullableStringEquals(
+  actual: string | null | undefined,
+  expected: string | null | undefined,
+): boolean {
+  if (expected === undefined) {
+    return true;
+  }
+
+  return normalize(actual ?? '') === normalize(expected ?? '');
+}
+
+function numberEquals(
+  actual: number | null | undefined,
+  expected: number | null | undefined,
+): boolean {
+  if (expected === undefined) {
+    return true;
+  }
+
+  if (expected === null) {
+    return actual === null || actual === undefined;
+  }
+
+  return typeof actual === 'number' && Math.abs(actual - expected) < 0.01;
+}
+
+function availabilityMatches(
+  actual: string | null | undefined,
+  expected: string | null | undefined,
+): boolean {
+  if (expected === undefined) {
+    return true;
+  }
+
+  if (expected === null) {
+    return actual === null || actual === undefined;
+  }
+
+  return normalize(actual ?? '').includes(normalize(expected));
+}
+
+function compareExpectedFields(
+  row: ExtractedEvalOffer,
+  expected: ExtractionEvalExpectedOffer,
+): string[] {
+  const fields: string[] = [];
+
+  if (!priceEquals(row.price, expected.price)) {
+    fields.push('price');
+  }
+
+  if (
+    expected.currencyCode !== undefined &&
+    !currencyEquals(row.currencyCode, expected.currencyCode)
+  ) {
+    fields.push('currencyCode');
+  }
+
+  if (!normalizedNullableStringEquals(row.strength, expected.strength)) {
+    fields.push('strength');
+  }
+
+  if (!normalizedNullableStringEquals(row.dosageForm, expected.dosageForm)) {
+    fields.push('dosageForm');
+  }
+
+  if (!normalizedNullableStringEquals(row.packSize, expected.packSize)) {
+    fields.push('packSize');
+  }
+
+  if (
+    !numberEquals(
+      row.minimumOrderQuantity,
+      expected.minimumOrderQuantity,
+    )
+  ) {
+    fields.push('minimumOrderQuantity');
+  }
+
+  if (!availabilityMatches(row.availability, expected.availabilityIncludes)) {
+    fields.push('availability');
+  }
+
+  return fields;
 }
 
 function flattenSourceEvaluations(
@@ -142,8 +239,13 @@ function flattenSourceEvaluations(
     evaluation.result.parsedRows.map((row) => ({
       sourceLabel: evaluation.sourceLabel,
       productText: row.rawProductText,
+      strength: row.strength,
+      dosageForm: row.formulation,
+      packSize: row.packSize,
       price: row.price,
       currencyCode: row.currencyCode,
+      minimumOrderQuantity: row.minimumOrderQuantity ?? null,
+      availability: row.availability ?? null,
       confidence: row.confidence,
       parsingSource: evaluation.result.parsingSource ?? 'DETERMINISTIC',
     })),
@@ -175,17 +277,34 @@ function buildMockAiParser(
     return undefined;
   }
 
+  const validation = validateAiParsedOfferResponse(fixture.mockAiResult);
+
   return {
-    parseText: async () => ({
-      status: 'success',
-      reason:
-        'Deterministic extraction eval fixture supplied a mocked AI result.',
-      decision: 'accepted',
-      requestId: `eval-${fixture.id}`,
-      promptVersion: 'eval-fixture',
-      reducedText: fixture.bodyText ?? '',
-      result: fixture.mockAiResult!,
-    }),
+    parseText: async () => {
+      if (!validation.valid || !validation.data) {
+        return {
+          status: 'unusable',
+          reason:
+            'Extraction eval fixture supplied schema-invalid mocked AI output.',
+          decision: 'response_unusable',
+          issues: validation.issues,
+          requestId: `eval-${fixture.id}`,
+          promptVersion: 'eval-fixture',
+          reducedText: fixture.bodyText ?? '',
+        };
+      }
+
+      return {
+        status: 'success',
+        reason:
+          'Deterministic extraction eval fixture supplied a mocked AI result.',
+        decision: 'accepted',
+        requestId: `eval-${fixture.id}`,
+        promptVersion: 'eval-fixture',
+        reducedText: fixture.bodyText ?? '',
+        result: validation.data,
+      };
+    },
   };
 }
 
@@ -322,22 +441,36 @@ export function evaluateCaseMetrics(input: {
   const unmatchedActual = new Set(extractedOffers.map((_, index) => index));
   let matchedExpected = 0;
   const mismatches: string[] = [];
+  const mismatchFields = new Set<string>();
 
-  for (const expectedOffer of input.fixture.expected.offers) {
+  input.fixture.expected.offers.forEach((expectedOffer, expectedIndex) => {
     const matchedIndex = Array.from(unmatchedActual).find((index) =>
-      rowMatchesExpected(extractedOffers[index]!, expectedOffer),
+      productMatchesExpected(extractedOffers[index]!, expectedOffer),
     );
 
     if (matchedIndex === undefined) {
-      mismatches.push(
-        `Missing expected offer containing "${expectedOffer.productIncludes}".`,
-      );
-      continue;
+      mismatches.push(`Expected offer ${expectedIndex + 1} was not extracted.`);
+      mismatchFields.add('productText');
+      return;
     }
 
     matchedExpected += 1;
     unmatchedActual.delete(matchedIndex);
-  }
+    const fieldMismatches = compareExpectedFields(
+      extractedOffers[matchedIndex]!,
+      expectedOffer,
+    );
+
+    for (const field of fieldMismatches) {
+      mismatchFields.add(field);
+    }
+
+    if (fieldMismatches.length > 0) {
+      mismatches.push(
+        `Expected offer ${expectedIndex + 1} had field mismatch(es): ${fieldMismatches.join(', ')}.`,
+      );
+    }
+  });
 
   const falseNegatives = input.fixture.expected.offers.length - matchedExpected;
   const falsePositives = unmatchedActual.size;
@@ -363,12 +496,14 @@ export function evaluateCaseMetrics(input: {
     mismatches.push(
       `Expected ${input.fixture.expected.offerCount} extracted offer(s), got ${extractedOffers.length}.`,
     );
+    mismatchFields.add('offerCount');
   }
 
   if (reviewRequired !== input.fixture.expected.reviewRequired) {
     mismatches.push(
       `Expected reviewRequired=${input.fixture.expected.reviewRequired}, got ${reviewRequired}.`,
     );
+    mismatchFields.add('reviewRequired');
   }
 
   if (
@@ -378,6 +513,7 @@ export function evaluateCaseMetrics(input: {
     mismatches.push(
       `Expected parsing source ${input.fixture.expected.parsingSource}, got ${parsingSources.join(', ') || 'none'}.`,
     );
+    mismatchFields.add('parsingSource');
   }
 
   if (
@@ -387,13 +523,14 @@ export function evaluateCaseMetrics(input: {
     mismatches.push(
       `Expected document class ${input.fixture.expected.documentClass}, got ${documentClass ?? 'none'}.`,
     );
+    mismatchFields.add('documentClass');
   }
 
-  for (const index of unmatchedActual) {
-    const offer = extractedOffers[index]!;
+  if (unmatchedActual.size > 0) {
     mismatches.push(
-      `Unexpected offer "${offer.productText}" at ${offer.price} ${offer.currencyCode ?? ''}.`.trim(),
+      `${unmatchedActual.size} unexpected extracted offer(s) were present.`,
     );
+    mismatchFields.add('unexpectedOffer');
   }
 
   const autoPromotionEligible =
@@ -415,6 +552,7 @@ export function evaluateCaseMetrics(input: {
     parsingSources,
     documentClass,
     mismatches,
+    mismatchFields: Array.from(mismatchFields).sort(),
     extractedOffers,
   };
 }
@@ -422,6 +560,14 @@ export function evaluateCaseMetrics(input: {
 export function summarizeExtractionEvalResults(
   caseResults: ExtractionEvalCaseResult[],
 ): ExtractionEvalSummary {
+  const fieldMismatchCounter = new Map<string, number>();
+
+  for (const result of caseResults) {
+    for (const field of result.mismatchFields) {
+      fieldMismatchCounter.set(field, (fieldMismatchCounter.get(field) ?? 0) + 1);
+    }
+  }
+
   return {
     totalCases: caseResults.length,
     passedCases: caseResults.filter((result) => result.passed).length,
@@ -452,7 +598,13 @@ export function summarizeExtractionEvalResults(
         caseId: result.id,
         title: result.title,
         mismatches: result.mismatches,
+        fields: result.mismatchFields,
       })),
+    fieldMismatchCounts: Array.from(fieldMismatchCounter.entries())
+      .map(([fieldName, count]) => ({ fieldName, count }))
+      .sort((left, right) =>
+        left.fieldName.localeCompare(right.fieldName),
+      ),
     caseResults,
   };
 }
