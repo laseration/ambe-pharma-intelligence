@@ -4,11 +4,14 @@ import test, { type TestContext } from 'node:test';
 import { db } from '../../../lib/db';
 import { env } from '../../../config/env';
 import { createReviewQueueService as createReviewQueueServiceBase } from '../../../reviewQueue/service';
+import { parseStructuredPriceEmailBody } from '../../parsing';
+import { buildEmailFixtureSmokeSummary, loadEmailInboundFixture } from '../fixtureSmoke';
 import {
   mergeResolvedOffers,
   persistPromotion,
   stageInboundEmail,
 } from '../pipeline';
+import { createEmailInboundService } from '../service';
 import type { EmailInboundResult } from '../types';
 
 function createReviewQueueService(
@@ -68,6 +71,27 @@ function createInboundResult(
         ...overrides,
       },
     ],
+  };
+}
+
+function createFixtureLogger() {
+  return {
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+  };
+}
+
+function createFixtureImportResponse() {
+  return {
+    importBatchId: 'fixture-import-batch-1',
+    summary: {
+      totalRows: 2,
+      validRows: 2,
+      invalidRows: 0,
+      warnings: [],
+    },
+    errors: [],
   };
 }
 
@@ -800,6 +824,161 @@ test('same inbound email processed twice does not duplicate staged offers', asyn
       .length,
     2,
   );
+});
+
+test('fixture supplier price-list email stages provenance and replays idempotently', async (t) => {
+  const state = installDbMocks(t);
+  overrideEnv(t, {
+    emailInboundSupplierMappings: [
+      { pattern: 'pricing@supplier.example', supplierName: 'Supplier Example' },
+    ],
+    emailInboundAllowedSenders: ['pricing@supplier.example'],
+    openAiApiKey: '',
+    openAiParserEnabled: false,
+    openAiEmailReviewEnabled: false,
+  });
+
+  const fixture = loadEmailInboundFixture('supplier-price-list.fixture.json');
+  const service = createEmailInboundService({
+    allowedSenders: ['pricing@supplier.example'],
+    supplierMappings: [
+      { pattern: 'pricing@supplier.example', supplierName: 'Supplier Example' },
+    ],
+    emailReviewEnabled: false,
+    logger: createFixtureLogger(),
+    parseTextMessage: async (rawText) =>
+      parseStructuredPriceEmailBody(rawText),
+    importSupplierPriceList: async ({ file, supplierName }) => {
+      assert.equal(file.originalname, 'supplier-example-price-list.csv');
+      assert.equal(file.mimetype, 'text/csv');
+      assert.equal(supplierName, 'Supplier Example');
+      return createFixtureImportResponse();
+    },
+    importInventory: async () => {
+      throw new Error('inventory import must not run for fixture smoke');
+    },
+    importSales: async () => {
+      throw new Error('sales import must not run for fixture smoke');
+    },
+  });
+
+  const firstResult = await service.ingestMessage(fixture.message);
+  await stageInboundEmail(fixture.message, firstResult);
+
+  const firstCounts = {
+    inboundEmails: state.inboundEmails.length,
+    documents: state.documents.length,
+    extractionRuns: state.runs.length,
+    offers: state.offers.length,
+    workflowItems: state.workflowItems.length,
+  };
+
+  const secondResult = await service.ingestMessage(fixture.message);
+  await stageInboundEmail(fixture.message, secondResult);
+
+  const secondCounts = {
+    inboundEmails: state.inboundEmails.length,
+    documents: state.documents.length,
+    extractionRuns: state.runs.length,
+    offers: state.offers.length,
+    workflowItems: state.workflowItems.length,
+  };
+
+  assert.equal(firstResult.ignored, false);
+  assert.equal(firstCounts.inboundEmails, 1);
+  assert.ok(firstCounts.documents >= 2);
+  assert.equal(firstCounts.extractionRuns, 1);
+  assert.ok(firstCounts.offers > 0);
+  assert.ok(firstCounts.workflowItems > 0);
+  assert.deepEqual(secondCounts, firstCounts);
+
+  const inboundEmail = state.inboundEmails[0];
+  assert.ok(inboundEmail);
+  assert.equal(inboundEmail.sourceSystem, 'FIXTURE_EMAIL');
+  assert.equal(inboundEmail.externalMessageId, fixture.id);
+  assert.equal(inboundEmail.internetMessageId, fixture.message.messageId);
+  assert.equal(inboundEmail.senderDomain, 'supplier.example');
+  assert.equal(inboundEmail.sourceTemplateFingerprint.length, 40);
+
+  const attachmentSummary = inboundEmail.attachmentSummary as Array<{
+    fileName: string | null;
+    checksumSha256: string | null;
+    fingerprint: string | null;
+  }>;
+  assert.equal(attachmentSummary.length, 1);
+  assert.equal(
+    attachmentSummary[0]?.checksumSha256,
+    fixture.attachmentChecksums[0]?.checksumSha256,
+  );
+  assert.equal(attachmentSummary[0]?.fingerprint?.length, 64);
+
+  const summary = buildEmailFixtureSmokeSummary({
+    fixture,
+    result: firstResult,
+    durableCounts: secondCounts,
+    replay: { duplicateFree: true },
+  });
+  const serializedSummary = JSON.stringify(summary);
+
+  assert.equal(summary.senderDomain, 'supplier.example');
+  assert.equal(summary.attachments[0]?.checksumSha256?.length, 64);
+  assert.doesNotMatch(
+    serializedSummary,
+    /Amlodipine 5mg tablets 28 - GBP 8\.40/,
+  );
+  assert.doesNotMatch(serializedSummary, /supplierName,productName/);
+  assert.doesNotMatch(serializedSummary, /contentText|contentBase64|bodyText/);
+});
+
+test('irrelevant email fixture is safely skipped without durable offers', async (t) => {
+  const state = installDbMocks(t);
+  overrideEnv(t, {
+    emailInboundSupplierMappings: [
+      { pattern: 'pricing@supplier.example', supplierName: 'Supplier Example' },
+    ],
+    emailInboundAllowedSenders: ['pricing@supplier.example'],
+    openAiApiKey: '',
+    openAiParserEnabled: false,
+    openAiEmailReviewEnabled: false,
+  });
+
+  const fixture = loadEmailInboundFixture('irrelevant.fixture.json');
+  const service = createEmailInboundService({
+    allowedSenders: ['pricing@supplier.example'],
+    supplierMappings: [
+      { pattern: 'pricing@supplier.example', supplierName: 'Supplier Example' },
+    ],
+    emailReviewEnabled: false,
+    logger: createFixtureLogger(),
+    parseTextMessage: async (rawText) =>
+      parseStructuredPriceEmailBody(rawText),
+  });
+
+  const result = await service.ingestMessage(fixture.message);
+  await stageInboundEmail(fixture.message, result);
+
+  assert.equal(result.ignored, true);
+  assert.equal(state.inboundEmails.length, 1);
+  assert.equal(state.offers.length, 0);
+  assert.equal(state.workflowItems.length, 0);
+  assert.equal(state.inboundEmails[0]?.processingStatus, 'REJECTED');
+
+  const summary = buildEmailFixtureSmokeSummary({
+    fixture,
+    result,
+    durableCounts: {
+      inboundEmails: state.inboundEmails.length,
+      documents: state.documents.length,
+      extractionRuns: state.runs.length,
+      offers: state.offers.length,
+      workflowItems: state.workflowItems.length,
+    },
+  });
+  const serializedSummary = JSON.stringify(summary);
+
+  assert.equal(summary.result.ignored, true);
+  assert.doesNotMatch(serializedSummary, /fixture mailbox path is reachable/);
+  assert.doesNotMatch(serializedSummary, /bodyText|contentText|contentBase64/);
 });
 
 test('staging uses installed Prisma mocks when local env points at managed database', async (t) => {
