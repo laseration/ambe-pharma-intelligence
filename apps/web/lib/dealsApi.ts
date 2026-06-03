@@ -41,6 +41,7 @@ export type TradeOpportunityListItem = {
   estimatedMarginPct: number | string | null;
   quantityTarget: number | null;
   rationale: string | null;
+  riskFlags: string[] | null;
   metadata: {
     createdFrom?: string | null;
     recentDemandWindowDays?: number | null;
@@ -68,6 +69,7 @@ export type TradeOpportunityListItem = {
   buyDecision: {
     id: string;
     approvalStatus: string;
+    approvedAt?: string | null;
     orderStatus: string;
     supplierQualificationStatus: string;
     hasQualificationRisk: boolean;

@@ -1,6 +1,7 @@
 import { env } from '../config/env';
 import { db } from '../lib/db';
 import { logger } from '../lib/logger';
+import { assertOpportunityReviewedForNotification } from '../safety/commercialApprovalGuard';
 import {
   buildDailySummaryMessage,
   buildOpportunityMessage,
@@ -137,6 +138,7 @@ export async function previewOpportunityEmail(opportunityId: string) {
   if (!opportunity) {
     throw new Error('Opportunity not found.');
   }
+  assertOpportunityReviewedForNotification(opportunity);
 
   return {
     configured: isEmailConfigured(),
@@ -173,7 +175,7 @@ export async function previewDailySummaryEmail() {
   const generatedAt = new Date();
   const opportunities = await db.opportunity.findMany({
     where: {
-      status: 'OPEN',
+      status: 'REVIEWED',
     },
     include: {
       product: {
