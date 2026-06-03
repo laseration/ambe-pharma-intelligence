@@ -10,6 +10,7 @@ import {
 } from '../automation/service';
 import { offerCorrectionService } from '../corrections/service';
 import { db } from '../lib/db';
+import { assertTradeOpportunityApprovedForExternalAction } from '../safety/commercialApprovalGuard';
 
 export type TradeOpportunityStatus =
   | 'OPEN'
@@ -145,6 +146,7 @@ export type TradeOpportunityRecord = {
   buyDecision?: {
     id: string;
     approvalStatus: 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+    approvedAt?: Date | null;
     orderStatus:
       | 'NOT_ORDERED'
       | 'ORDERED'
@@ -685,6 +687,14 @@ const STAGE_ORDER: TradeOpportunityStage[] = [
   'CLOSED',
 ];
 
+const EXTERNAL_TRADE_STAGES = new Set<TradeOpportunityStage>([
+  'READY_FOR_SUPPLIER_OUTREACH',
+  'READY_FOR_BUYER_OUTREACH',
+  'BUYER_CONTACTED',
+  'NEGOTIATING',
+  'DEAL_CONFIRMED',
+]);
+
 function normalizeActor(actor?: TradeOpportunityActor): {
   actorType: string;
   actorIdentifier: string | null;
@@ -693,6 +703,10 @@ function normalizeActor(actor?: TradeOpportunityActor): {
     actorType: actor?.actorType?.trim() || 'SYSTEM',
     actorIdentifier: actor?.actorIdentifier?.trim() || null,
   };
+}
+
+function isOutwardDraft(direction: TradeMessageDraftDirection): boolean {
+  return direction === 'TO_SUPPLIER' || direction === 'TO_BUYER';
 }
 
 function normalizeString(value: string | null | undefined): string | null {
@@ -1832,6 +1846,7 @@ export function createTradeOpportunityRepository(
             select: {
               id: true,
               approvalStatus: true,
+              approvedAt: true,
               orderStatus: true,
               supplierQualificationStatus: true,
               hasQualificationRisk: true,
@@ -1889,6 +1904,7 @@ export function createTradeOpportunityRepository(
             select: {
               id: true,
               approvalStatus: true,
+              approvedAt: true,
               orderStatus: true,
               supplierQualificationStatus: true,
               hasQualificationRisk: true,
@@ -1940,6 +1956,7 @@ export function createTradeOpportunityRepository(
             select: {
               id: true,
               approvalStatus: true,
+              approvedAt: true,
               orderStatus: true,
               supplierQualificationStatus: true,
               hasQualificationRisk: true,
@@ -2106,6 +2123,7 @@ export function createTradeOpportunityRepository(
             select: {
               id: true,
               approvalStatus: true,
+              approvedAt: true,
               orderStatus: true,
               supplierQualificationStatus: true,
               hasQualificationRisk: true,
@@ -2688,6 +2706,14 @@ export function createTradeOpportunityService(
           nextStage = 'CLOSED';
           nextClosedAt = existing.closedAt ?? new Date();
         }
+
+        if (
+          (input.stage && EXTERNAL_TRADE_STAGES.has(input.stage)) ||
+          nextStatus === 'WON'
+        ) {
+          assertTradeOpportunityApprovedForExternalAction(existing);
+        }
+
         const updatedBase = await txRepository.update(existing.id, {
           status: nextStatus,
           stage: nextStage,
@@ -2945,6 +2971,12 @@ export function createTradeOpportunityService(
           throw new Error(
             'Draft has messaging policy violations and cannot be approved.',
           );
+        }
+        if (
+          (input.action === 'APPROVE' || input.action === 'MARK_SENT') &&
+          isOutwardDraft(existing.direction)
+        ) {
+          assertTradeOpportunityApprovedForExternalAction(tradeOpportunity);
         }
         if (input.action === 'MARK_SENT' && existing.status !== 'APPROVED') {
           throw new Error('Only approved drafts can be marked as sent.');

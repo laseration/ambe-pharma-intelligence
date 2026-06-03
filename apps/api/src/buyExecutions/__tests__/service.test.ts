@@ -175,6 +175,86 @@ test('recording invoice reconciles matched terms and does not duplicate events o
   );
 });
 
+test('blocks buy execution when the buy decision is not approved', async () => {
+  const harness = createHarness();
+  harness.buyDecisions[0]!.approvalStatus = 'PENDING_APPROVAL';
+  harness.buyDecisions[0]!.approvedAt = null;
+
+  await assert.rejects(() => createOrderedExecution(harness), /Approval required/i);
+
+  assert.equal(harness.executions.length, 0);
+  assert.equal(harness.executionEvents.length, 0);
+});
+
+test('blocks buy execution when an approval is stale after correction', async () => {
+  const harness = createHarness();
+  harness.buyDecisions[0]!.metadata = {
+    appliedOfferCorrectionId: 'correction-old',
+  };
+  harness.buyDecisions[0]!.emailDerivedOffer = {
+    offerCorrections: [
+      {
+        id: 'correction-new',
+        updatedAt: new Date('2026-04-21T08:30:00.000Z'),
+      },
+    ],
+  };
+
+  await assert.rejects(
+    () => createOrderedExecution(harness),
+    /Corrected after approval; review again/i,
+  );
+
+  assert.equal(harness.executions.length, 0);
+});
+
+test('blocks non-idempotent repeated order placement', async () => {
+  const harness = createHarness();
+  await createOrderedExecution(harness);
+
+  await assert.rejects(
+    () =>
+      upsertExecutionForBuyDecision(
+        harness.repository as never,
+        harness.buyDecisions[0] as BuyDecisionExecutionSnapshot,
+        {
+          actorType: 'USER',
+          actorIdentifier: 'buyer-1',
+          externalOrderReference: 'PO-002',
+          orderPlacedAt: new Date('2026-04-21T09:30:00.000Z'),
+          orderedQuantity: 100,
+          orderedUnitPrice: '10.00',
+          orderedCurrencyCode: 'GBP',
+          fulfillmentStatus: 'ORDER_PLACED',
+        },
+      ),
+    /Already executed/i,
+  );
+
+  assert.equal(harness.executions.length, 1);
+  assert.equal(harness.executions[0]?.externalOrderReference, 'PO-001');
+  assert.equal(
+    harness.executionEvents.filter(
+      (event) => event.actionType === 'ORDER_PLACED',
+    ).length,
+    1,
+  );
+});
+
+test('approved buy execution repeat placement is idempotent when unchanged', async () => {
+  const harness = createHarness();
+  await createOrderedExecution(harness);
+  await createOrderedExecution(harness);
+
+  assert.equal(harness.executions.length, 1);
+  assert.equal(
+    harness.executionEvents.filter(
+      (event) => event.actionType === 'ORDER_PLACED',
+    ).length,
+    1,
+  );
+});
+
 test('price drift is flagged when invoiced unit price exceeds the configured threshold', async () => {
   const harness = createHarness();
   const execution = await createOrderedExecution(harness);
