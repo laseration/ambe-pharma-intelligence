@@ -92,7 +92,10 @@ function decodeAttachmentContent(attachment: FixtureAttachment): Buffer | null {
   return null;
 }
 
-function loadFixtureJson(fileName: string, fixtureDir: string): EmailFixtureFile {
+function loadFixtureJson(
+  fileName: string,
+  fixtureDir: string,
+): EmailFixtureFile {
   return JSON.parse(
     readFileSync(path.join(fixtureDir, fileName), 'utf8'),
   ) as EmailFixtureFile;
@@ -108,10 +111,7 @@ export function loadEmailInboundFixture(
     const normalized: EmailAttachmentInput = {
       fileName: attachment.fileName ?? null,
       mimeType: attachment.mimeType ?? null,
-      size:
-        attachment.size ??
-        attachmentContentBuffer(content)?.length ??
-        null,
+      size: attachment.size ?? attachmentContentBuffer(content)?.length ?? null,
       contentId: attachment.contentId ?? null,
       disposition: attachment.disposition ?? null,
       graphAttachmentId: attachment.graphAttachmentId ?? null,

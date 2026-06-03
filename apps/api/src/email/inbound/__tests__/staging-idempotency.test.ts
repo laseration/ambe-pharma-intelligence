@@ -5,7 +5,10 @@ import { db } from '../../../lib/db';
 import { env } from '../../../config/env';
 import { createReviewQueueService as createReviewQueueServiceBase } from '../../../reviewQueue/service';
 import { parseStructuredPriceEmailBody } from '../../parsing';
-import { buildEmailFixtureSmokeSummary, loadEmailInboundFixture } from '../fixtureSmoke';
+import {
+  buildEmailFixtureSmokeSummary,
+  loadEmailInboundFixture,
+} from '../fixtureSmoke';
 import {
   mergeResolvedOffers,
   persistPromotion,
@@ -846,8 +849,7 @@ test('fixture supplier price-list email stages provenance and replays idempotent
     ],
     emailReviewEnabled: false,
     logger: createFixtureLogger(),
-    parseTextMessage: async (rawText) =>
-      parseStructuredPriceEmailBody(rawText),
+    parseTextMessage: async (rawText) => parseStructuredPriceEmailBody(rawText),
     importSupplierPriceList: async ({ file, supplierName }) => {
       assert.equal(file.originalname, 'supplier-example-price-list.csv');
       assert.equal(file.mimetype, 'text/csv');
@@ -950,8 +952,7 @@ test('irrelevant email fixture is safely skipped without durable offers', async 
     ],
     emailReviewEnabled: false,
     logger: createFixtureLogger(),
-    parseTextMessage: async (rawText) =>
-      parseStructuredPriceEmailBody(rawText),
+    parseTextMessage: async (rawText) => parseStructuredPriceEmailBody(rawText),
   });
 
   const result = await service.ingestMessage(fixture.message);

@@ -55,7 +55,9 @@ export function safeSubjectPreview(
     : normalized;
 }
 
-export function safeSenderDomain(email: string | null | undefined): string | null {
+export function safeSenderDomain(
+  email: string | null | undefined,
+): string | null {
   const domain = email?.split('@')[1]?.trim().toLowerCase();
   return domain || null;
 }
