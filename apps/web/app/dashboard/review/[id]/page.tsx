@@ -13,6 +13,10 @@ import {
   truncateSourceText,
 } from '../../../../lib/reviewProvenance';
 import {
+  redactDashboardText,
+  summarizeCommercialActionState,
+} from '../../../../lib/operatorTrust';
+import {
   submitInboundEmailReviewAction,
   submitReviewOfferCorrection,
 } from './actions';
@@ -941,6 +945,7 @@ export default async function ReviewInboundEmailPage({
         return {
           item,
           detail,
+          actionState: summarizeCommercialActionState(detail),
           auditHistory,
           provenance: buildReviewProvenanceSummary(detail),
           summary: buildOperatorSummary(detail),
@@ -954,6 +959,9 @@ export default async function ReviewInboundEmailPage({
     const inboundEmail = firstDetailForSummary.inboundEmail;
     const supplierContact = getSupplierContact(firstDetailForSummary);
     const approvalGuidance = buildApprovalGuidance(detailedVisibleItems);
+    const globalApprovalBlockReason =
+      detailedVisibleItems.find(({ actionState }) => !actionState.canApprove)
+        ?.actionState.blockedReason ?? null;
     const supplierDetailsDefaults = buildSupplierDetailsDefaults(
       firstDetailForSummary,
       supplierContact,
@@ -978,7 +986,9 @@ export default async function ReviewInboundEmailPage({
         </div>
 
         {query?.error ? (
-          <p className="alert alert-error">{query.error}</p>
+          <p className="alert alert-error">
+            {redactDashboardText(query.error)}
+          </p>
         ) : null}
         {query?.message ? (
           <p className="alert alert-success">
@@ -1104,9 +1114,25 @@ export default async function ReviewInboundEmailPage({
           ) : null}
           {query?.error ? (
             <p className="alert alert-error review-inline-alert">
-              {query.error}
+              {redactDashboardText(query.error)}
             </p>
           ) : null}
+          <section className="resolution-evidence action-state-card">
+            <div className="resolution-evidence-header">
+              <div>
+                <h4 className="subsection-title">Action readiness</h4>
+                <p className="copy resolution-evidence-copy">
+                  {globalApprovalBlockReason ??
+                    'Approval required before execution'}
+                </p>
+              </div>
+              <span
+                className={`pill ${globalApprovalBlockReason ? 'pill-low' : 'pill-medium'}`}
+              >
+                {globalApprovalBlockReason ?? 'Approval required'}
+              </span>
+            </div>
+          </section>
 
           <div className="action-row action-row-stacked-mobile">
             <form
@@ -1141,6 +1167,8 @@ export default async function ReviewInboundEmailPage({
               </p>
               <SubmitButton
                 className="button button-primary button-large"
+                disabled={globalApprovalBlockReason !== null}
+                disabledReason={globalApprovalBlockReason ?? undefined}
                 idleLabel={getApproveButtonLabel(
                   approvalGuidance,
                   supplierDetailsDefaults.supplierName,
@@ -1234,7 +1262,14 @@ export default async function ReviewInboundEmailPage({
           <h3 className="section-title">Offers found</h3>
           <div className="offer-row-list">
             {detailedVisibleItems.map(
-              ({ item, detail, auditHistory, provenance, summary }) => {
+              ({
+                item,
+                detail,
+                actionState,
+                auditHistory,
+                provenance,
+                summary,
+              }) => {
                 const resolutionEvidenceGroups =
                   getResolutionEvidenceGroups(detail);
                 const supplierEvidence = getSupplierEvidence(detail);
@@ -1352,6 +1387,31 @@ export default async function ReviewInboundEmailPage({
                         </dd>
                       </div>
                     </dl>
+                    <section className="resolution-evidence action-state-card">
+                      <div className="resolution-evidence-header">
+                        <div>
+                          <h4 className="subsection-title">Action status</h4>
+                          <p className="copy resolution-evidence-copy">
+                            {actionState.nextStep}
+                          </p>
+                        </div>
+                        <span
+                          className={`pill ${actionState.canApprove ? 'pill-medium' : 'pill-low'}`}
+                        >
+                          {actionState.label}
+                        </span>
+                      </div>
+                      <dl className="offer-row-summary provenance-summary">
+                        <div>
+                          <dt>Current state</dt>
+                          <dd>{actionState.status}</dd>
+                        </div>
+                        <div>
+                          <dt>Blocked or allowed reason</dt>
+                          <dd>{actionState.blockedReason}</dd>
+                        </div>
+                      </dl>
+                    </section>
                     {summary.technicalDetails.length > 0 ? (
                       <details className="document-card technical-details-card">
                         <summary>Technical details</summary>
@@ -1626,6 +1686,8 @@ export default async function ReviewInboundEmailPage({
                         {renderReturnToInput(returnTo)}
                         <SubmitButton
                           className="button button-primary"
+                          disabled={!actionState.canApprove}
+                          disabledReason={actionState.blockedReason}
                           idleLabel="Approve"
                           pendingLabel="Approving..."
                         />
@@ -1742,7 +1804,7 @@ export default async function ReviewInboundEmailPage({
         <h2 className="title">Couldn&apos;t load this review</h2>
         <p className="copy">
           {error instanceof Error
-            ? error.message
+            ? redactDashboardText(error.message)
             : 'Failed to load review email.'}
         </p>
         <div className="actions">

@@ -6,6 +6,10 @@ import {
   type ReviewQueueItem,
   type ReviewWorkflowListItem,
 } from '../../../lib/reviewApi';
+import {
+  redactDashboardText,
+  summarizeCommercialActionState,
+} from '../../../lib/operatorTrust';
 
 export const dynamic = 'force-dynamic';
 
@@ -175,7 +179,9 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
         </div>
 
         {query?.error ? (
-          <p className="alert alert-error">{query.error}</p>
+          <p className="alert alert-error">
+            {redactDashboardText(query.error)}
+          </p>
         ) : null}
         {query?.message ? (
           <p className="alert alert-success">
@@ -252,35 +258,48 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
                   </div>
                 </div>
                 <div className="review-grid">
-                  {emailGroups.map((group) => (
-                    <Link
-                      className="review-card"
-                      href={`/dashboard/review/${group.id}?returnTo=${encodeURIComponent(returnTo)}`}
-                      key={group.id}
-                    >
-                      <div className="review-card-top">
-                        <span
-                          className={`pill pill-${group.highestPriority.toLowerCase()}`}
-                        >
-                          {group.highestPriority}
-                        </span>
-                        <span className="pill pill-neutral">
-                          {group.rowCount}{' '}
-                          {group.rowCount === 1 ? 'offer' : 'offers'}
-                        </span>
-                      </div>
-                      <h3 className="review-card-title">{group.subject}</h3>
-                      <p className="review-card-meta">
-                        {group.fromEmail}
-                        {group.receivedAt
-                          ? ` | ${formatDateTime(group.receivedAt)}`
-                          : ''}
-                      </p>
-                      <p className="review-card-copy">
-                        Needs checking because {group.primaryReason}
-                      </p>
-                    </Link>
-                  ))}
+                  {emailGroups.map((group) => {
+                    const actionState = summarizeCommercialActionState(
+                      group.items[0]!,
+                    );
+
+                    return (
+                      <Link
+                        className="review-card"
+                        href={`/dashboard/review/${group.id}?returnTo=${encodeURIComponent(returnTo)}`}
+                        key={group.id}
+                      >
+                        <div className="review-card-top">
+                          <span
+                            className={`pill pill-${group.highestPriority.toLowerCase()}`}
+                          >
+                            {group.highestPriority}
+                          </span>
+                          <span className="pill pill-neutral">
+                            {group.rowCount}{' '}
+                            {group.rowCount === 1 ? 'offer' : 'offers'}
+                          </span>
+                        </div>
+                        <h3 className="review-card-title">{group.subject}</h3>
+                        <p className="review-card-meta">
+                          {group.fromEmail}
+                          {group.receivedAt
+                            ? ` | ${formatDateTime(group.receivedAt)}`
+                            : ''}
+                        </p>
+                        <p className="review-card-meta">
+                          Source: EMAIL_DERIVED_OFFER | State:{' '}
+                          {actionState.label}
+                        </p>
+                        <p className="review-card-copy">
+                          Needs checking because {group.primaryReason}
+                        </p>
+                        <p className="review-card-copy">
+                          Next action: {actionState.blockedReason}
+                        </p>
+                      </Link>
+                    );
+                  })}
                 </div>
               </section>
             ) : null}
@@ -295,7 +314,7 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
         <h2 className="title">Review queue unavailable</h2>
         <p className="copy">
           {error instanceof Error
-            ? error.message
+            ? redactDashboardText(error.message)
             : 'Failed to load review workflows.'}
         </p>
       </section>

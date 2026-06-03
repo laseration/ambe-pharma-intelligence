@@ -9,6 +9,11 @@ import {
   type SystemReadinessStatus,
 } from '../../../lib/systemApi';
 import { getCurrentWebSession } from '../../../lib/serverWebAuth';
+import {
+  redactDashboardText,
+  summarizeWorkerFreshness,
+  type WorkerFreshnessSummary,
+} from '../../../lib/operatorTrust';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +35,17 @@ function statusPillClass(status: SystemReadinessStatus): string {
     case 'warning':
       return 'pill-medium';
     case 'not_configured':
+      return 'pill-low';
+  }
+}
+
+function freshnessPillClass(tone: WorkerFreshnessSummary['tone']): string {
+  switch (tone) {
+    case 'ready':
+      return 'pill-high';
+    case 'warning':
+      return 'pill-medium';
+    case 'blocked':
       return 'pill-low';
   }
 }
@@ -112,6 +128,7 @@ function workerMeaning(status: PollingWorkerStatus): string {
 
 function WorkerStatusCard({ status }: { status: PollingWorkerStatus }) {
   const readinessStatus = workerStatus(status);
+  const freshness = summarizeWorkerFreshness(status);
 
   return (
     <article className="dashboard-opportunity-card setup-card">
@@ -147,8 +164,20 @@ function WorkerStatusCard({ status }: { status: PollingWorkerStatus }) {
           <dd>{formatOptionalDateTime(status.lastSuccessAt)}</dd>
         </div>
         <div>
+          <dt>freshness</dt>
+          <dd>
+            <span className={`pill ${freshnessPillClass(freshness.tone)}`}>
+              {freshness.label}
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt>freshness reason</dt>
+          <dd>{freshness.blockedReason ?? freshness.detail}</dd>
+        </div>
+        <div>
           <dt>last error</dt>
-          <dd>{status.lastError ?? 'none'}</dd>
+          <dd>{redactDashboardText(status.lastError)}</dd>
         </div>
         <div>
           <dt>processed</dt>
@@ -346,7 +375,7 @@ export default async function SetupPage() {
         <h2 className="title">Setup Checklist Unavailable</h2>
         <p className="copy">
           {error instanceof Error
-            ? error.message
+            ? redactDashboardText(error.message)
             : 'Failed to load setup readiness checks.'}
         </p>
         <div className="actions">
