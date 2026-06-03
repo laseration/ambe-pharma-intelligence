@@ -1,4 +1,5 @@
 import { env } from '../config/env';
+import { redactEmailAddress } from '../safety/redaction';
 import {
   getMicrosoftGraphAccessToken,
   isMicrosoftGraphConfigured,
@@ -142,7 +143,9 @@ export function getGraphMailPreflightStatus(): GraphMailPreflightStatus {
 
   return {
     mailboxConfigured,
-    mailbox: mailboxConfigured ? env.microsoftGraphSenderMailbox : null,
+    mailbox: mailboxConfigured
+      ? redactEmailAddress(env.microsoftGraphSenderMailbox)
+      : null,
     credentialSource: env.microsoftMailCredentialSource,
     credentialMode: credentialMode(),
     tenantConfigured: Boolean(env.microsoftMailTenantId),
@@ -386,7 +389,7 @@ export function createGraphMailDryRunService(
       return {
         generatedAt: dependencies.now().toISOString(),
         liveReadOnlyGraphCall: true,
-        mailbox: env.microsoftGraphSenderMailbox,
+        mailbox: redactEmailAddress(env.microsoftGraphSenderMailbox),
         requestedTake: take,
         messageCount: summaries.length,
         messages: summaries,

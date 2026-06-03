@@ -8,7 +8,7 @@ test('sanitizeLogMeta redacts secrets, tokens, message bodies, and connection st
     authorization: 'Bearer live-token-value',
     databaseUrl: 'postgresql://user:password@db.example.test/app',
     nested: {
-      apiKey: 'sk-live-looking-key',
+      apiKey: 'sk-fake-redaction-canary',
       messageBody: 'Full supplier email body should not be logged.',
       safeCount: 3,
     },

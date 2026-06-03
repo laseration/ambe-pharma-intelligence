@@ -129,6 +129,7 @@ test('system readiness report contains safe setup signals without secret values'
   assert.doesNotMatch(serialized, /openai-key-secret/);
   assert.doesNotMatch(serialized, /sharepoint-site-secret/);
   assert.doesNotMatch(serialized, /sharepoint-drive-secret/);
+  assert.doesNotMatch(serialized, /mailbox@example\.test/);
 });
 
 test('system readiness reports configured but unreachable database as warning', async (t) => {
@@ -300,7 +301,7 @@ test('system readiness includes Graph mail preflight without secrets', async (t)
   const serialized = JSON.stringify(graphCheck);
 
   assert.equal(graphCheck?.status, 'ready');
-  assert.equal(graphCheck?.details.mailbox, 'supplier-intake@example.test');
+  assert.equal(graphCheck?.details.mailbox, '***@example.test');
   assert.equal(graphCheck?.details.credentialSource, 'mail-specific');
   assert.equal(graphCheck?.details.credentialMode, 'client-secret');
   assert.equal(graphCheck?.details.allowedSenderCount, 1);
@@ -308,6 +309,7 @@ test('system readiness includes Graph mail preflight without secrets', async (t)
   assert.equal(graphCheck?.details.dryRunSafe, true);
   assert.doesNotMatch(serialized, /tenant-secret/);
   assert.doesNotMatch(serialized, /client-secret-value/);
+  assert.doesNotMatch(serialized, /supplier-intake@example\.test/);
 });
 
 test('Graph mail dry-run endpoint requires admin access and returns safe summaries', async (t) => {
@@ -319,7 +321,7 @@ test('Graph mail dry-run endpoint requires admin access and returns safe summari
   stubMethod(t, graphMailDryRunService, 'runDryRun', async () => ({
     generatedAt: '2026-06-01T12:00:00.000Z',
     liveReadOnlyGraphCall: true,
-    mailbox: 'supplier-intake@example.test',
+    mailbox: '***@example.test',
     requestedTake: 2,
     messageCount: 1,
     messages: [
@@ -368,6 +370,7 @@ test('Graph mail dry-run endpoint requires admin access and returns safe summari
   const payload = await adminResponse.json();
   assert.equal(payload.item.messageCount, 1);
   assert.equal(payload.item.messages[0].senderPreview, '***@supplier.example');
+  assert.equal(payload.item.mailbox, '***@example.test');
   assert.equal(payload.item.safety.markedRead, false);
   assert.equal(payload.item.safety.ingested, false);
   assert.doesNotMatch(JSON.stringify(payload), /test-secret|admin-secret/);
