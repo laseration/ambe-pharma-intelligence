@@ -246,62 +246,62 @@ function WorkerDiagnostics({ workers }: { workers: PollingWorkerStatus[] }) {
         className="dashboard-opportunity-card setup-card"
         key={worker.name}
       >
-      <div className="dashboard-opportunity-top">
-        <div>
-          <p className="dashboard-opportunity-title">
-            {workerDisplayName(worker.name)}
-          </p>
-          <p className="dashboard-opportunity-meta">{worker.name}</p>
+        <div className="dashboard-opportunity-top">
+          <div>
+            <p className="dashboard-opportunity-title">
+              {workerDisplayName(worker.name)}
+            </p>
+            <p className="dashboard-opportunity-meta">{worker.name}</p>
+          </div>
+          <span
+            className={`pill ${
+              worker.running && worker.consecutiveFailures === 0
+                ? 'pill-high'
+                : 'pill-medium'
+            }`}
+          >
+            {worker.running ? 'Running' : 'Not running'}
+          </span>
         </div>
-        <span
-          className={`pill ${
-            worker.running && worker.consecutiveFailures === 0
-              ? 'pill-high'
-              : 'pill-medium'
-          }`}
-        >
-          {worker.running ? 'Running' : 'Not running'}
-        </span>
-      </div>
-      <p className="dashboard-opportunity-copy">{freshness.detail}</p>
-      <dl className="setup-detail-list">
-        <div>
-          <dt>enabled</dt>
-          <dd>{worker.enabled ? 'yes' : 'no'}</dd>
+        <p className="dashboard-opportunity-copy">{freshness.detail}</p>
+        <dl className="setup-detail-list">
+          <div>
+            <dt>enabled</dt>
+            <dd>{worker.enabled ? 'yes' : 'no'}</dd>
+          </div>
+          <div>
+            <dt>configured</dt>
+            <dd>{worker.configured ? 'yes' : 'no'}</dd>
+          </div>
+          <div>
+            <dt>freshness</dt>
+            <dd>
+              <span className={`pill ${freshnessPillClass(freshness.tone)}`}>
+                {freshness.label}
+              </span>
+            </dd>
+          </div>
+          <div>
+            <dt>last run</dt>
+            <dd>{formatDateTime(worker.lastRunFinishedAt)}</dd>
+          </div>
+          <div>
+            <dt>last success</dt>
+            <dd>{formatDateTime(worker.lastSuccessAt)}</dd>
+          </div>
+          <div>
+            <dt>last error</dt>
+            <dd>{redactDashboardText(worker.lastError)}</dd>
+          </div>
+          <div>
+            <dt>failures</dt>
+            <dd>{worker.consecutiveFailures}</dd>
+          </div>
+        </dl>
+        <div className="setup-next-action">
+          <p className="dashboard-summary-label">What to check next</p>
+          <p className="dashboard-summary-note">{workerNextAction(worker)}</p>
         </div>
-        <div>
-          <dt>configured</dt>
-          <dd>{worker.configured ? 'yes' : 'no'}</dd>
-        </div>
-        <div>
-          <dt>freshness</dt>
-          <dd>
-            <span className={`pill ${freshnessPillClass(freshness.tone)}`}>
-              {freshness.label}
-            </span>
-          </dd>
-        </div>
-        <div>
-          <dt>last run</dt>
-          <dd>{formatDateTime(worker.lastRunFinishedAt)}</dd>
-        </div>
-        <div>
-          <dt>last success</dt>
-          <dd>{formatDateTime(worker.lastSuccessAt)}</dd>
-        </div>
-        <div>
-          <dt>last error</dt>
-          <dd>{redactDashboardText(worker.lastError)}</dd>
-        </div>
-        <div>
-          <dt>failures</dt>
-          <dd>{worker.consecutiveFailures}</dd>
-        </div>
-      </dl>
-      <div className="setup-next-action">
-        <p className="dashboard-summary-label">What to check next</p>
-        <p className="dashboard-summary-note">{workerNextAction(worker)}</p>
-      </div>
       </article>
     );
   });

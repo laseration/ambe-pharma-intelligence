@@ -8,11 +8,9 @@ import {
   type ReviewWorkflowDetail,
   type ReviewWorkflowListItem,
 } from '../../../../lib/reviewApi';
+import { buildReviewProvenanceSummary } from '../../../../lib/reviewProvenance';
 import {
-  buildReviewProvenanceSummary,
-  truncateSourceText,
-} from '../../../../lib/reviewProvenance';
-import {
+  formatSafeSenderLabel,
   redactDashboardText,
   summarizeCommercialActionState,
 } from '../../../../lib/operatorTrust';
@@ -966,7 +964,6 @@ export default async function ReviewInboundEmailPage({
       firstDetailForSummary,
       supplierContact,
     );
-    const rawEmailPreview = truncateSourceText(inboundEmail?.rawText, 4000);
 
     return (
       <section className="review-layout">
@@ -1063,8 +1060,8 @@ export default async function ReviewInboundEmailPage({
               ) : null}
               {supplierContact.email ? (
                 <div>
-                  <dt>Email</dt>
-                  <dd>{supplierContact.email}</dd>
+                  <dt>Email domain</dt>
+                  <dd>{formatSafeSenderLabel(supplierContact.email)}</dd>
                 </div>
               ) : null}
               {supplierContact.phone ? (
@@ -1088,8 +1085,8 @@ export default async function ReviewInboundEmailPage({
           <p className="copy review-summary-copy">
             {visibleItems.length}{' '}
             {visibleItems.length === 1 ? 'offer' : 'offers'} from{' '}
-            {inboundEmail?.fromEmail ?? 'Not found'}. Why this needs checking:{' '}
-            {summarizeReason(items)}
+            {formatSafeSenderLabel(inboundEmail?.fromEmail)}. Why this needs
+            checking: {summarizeReason(items)}
           </p>
           {approvalGuidance ? (
             <div
@@ -1476,15 +1473,11 @@ export default async function ReviewInboundEmailPage({
                         </div>
                       </dl>
                       <details className="document-card technical-details-card">
-                        <summary>Source snippet</summary>
+                        <summary>Source evidence summary</summary>
                         <div className="source-block">
                           <p className="copy resolution-evidence-copy">
                             {provenance.sourceSnippet.label}
                           </p>
-                          <pre>
-                            {provenance.sourceSnippet.text ??
-                              'No row-level source text was stored for this offer.'}
-                          </pre>
                         </div>
                       </details>
                       <details className="document-card technical-details-card">
@@ -1742,8 +1735,8 @@ export default async function ReviewInboundEmailPage({
           <h3 className="section-title">Original email</h3>
           <dl className="detail-list">
             <div>
-              <dt>From</dt>
-              <dd>{inboundEmail?.fromEmail ?? 'Not found'}</dd>
+              <dt>Sender</dt>
+              <dd>{formatSafeSenderLabel(inboundEmail?.fromEmail)}</dd>
             </div>
             <div>
               <dt>Subject</dt>
@@ -1760,14 +1753,15 @@ export default async function ReviewInboundEmailPage({
           </dl>
 
           <details className="document-card">
-            <summary>Show email details</summary>
+            <summary>Show safe email metadata</summary>
             <div className="review-context">
               <div className="source-block">
-                <h4 className="subsection-title">Raw email text preview</h4>
+                <h4 className="subsection-title">Email body</h4>
                 <p className="copy resolution-evidence-copy">
-                  {rawEmailPreview.label}
+                  {inboundEmail?.rawText || inboundEmail?.rawHtml
+                    ? 'Raw email body content is stored for traceability but hidden from the dashboard.'
+                    : 'No raw email body content is stored for this message.'}
                 </p>
-                <pre>{rawEmailPreview.text ?? 'No raw body text stored.'}</pre>
               </div>
 
               <div className="source-block">
@@ -1782,7 +1776,20 @@ export default async function ReviewInboundEmailPage({
                           {renderDocumentTitle(document)}{' '}
                           <span>{document.kind}</span>
                         </summary>
-                        <pre>{document.textContent}</pre>
+                        <dl className="detail-list">
+                          <div>
+                            <dt>Document index</dt>
+                            <dd>{document.documentIndex}</dd>
+                          </div>
+                          <div>
+                            <dt>Text content</dt>
+                            <dd>
+                              {document.textContent
+                                ? 'Stored but hidden from the dashboard.'
+                                : 'No parsed text stored.'}
+                            </dd>
+                          </div>
+                        </dl>
                       </details>
                     ))}
                   </div>

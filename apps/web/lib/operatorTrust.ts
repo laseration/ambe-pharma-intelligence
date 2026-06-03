@@ -29,6 +29,26 @@ export type CommercialActionTrustSummary = {
   nextStep: string;
 };
 
+export function formatSafeSenderLabel(
+  value: string | null | undefined,
+): string {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return 'Unknown sender';
+  }
+
+  const emailMatch = trimmed.match(
+    /\b[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})\b/,
+  );
+
+  if (emailMatch?.[1]) {
+    return `sender domain ${emailMatch[1].toLowerCase()}`;
+  }
+
+  return redactDashboardText(trimmed);
+}
+
 export function redactDashboardText(value: string | null | undefined): string {
   const trimmed = value?.trim();
 
@@ -144,10 +164,7 @@ export function summarizeCommercialActionState(
   const status = item.status;
   const buyDecision = 'buyDecision' in item ? item.buyDecision : null;
   const hasBuyExecution = getOptionalBoolean(item, 'hasBuyExecution');
-  const executionStatus = getOptionalString(
-    item,
-    'executionFulfillmentStatus',
-  );
+  const executionStatus = getOptionalString(item, 'executionFulfillmentStatus');
   const corrections =
     item.emailDerivedOffer && 'offerCorrections' in item.emailDerivedOffer
       ? (item.emailDerivedOffer.offerCorrections ?? [])
@@ -191,7 +208,10 @@ export function summarizeCommercialActionState(
     };
   }
 
-  if (buyDecision?.approvalStatus === 'APPROVED' || status === 'APPROVED_TO_BUY') {
+  if (
+    buyDecision?.approvalStatus === 'APPROVED' ||
+    status === 'APPROVED_TO_BUY'
+  ) {
     return {
       label: 'Approved',
       status,

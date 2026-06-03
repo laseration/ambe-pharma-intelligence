@@ -7,6 +7,7 @@ import {
   type ReviewWorkflowListItem,
 } from '../../../lib/reviewApi';
 import {
+  formatSafeSenderLabel,
   redactDashboardText,
   summarizeCommercialActionState,
 } from '../../../lib/operatorTrust';
@@ -24,7 +25,7 @@ type PageProps = {
 
 type ReviewEmailGroup = {
   id: string;
-  fromEmail: string;
+  senderLabel: string;
   subject: string;
   receivedAt: string | null;
   rowCount: number;
@@ -94,7 +95,7 @@ function groupWorkflowItemsByInboundEmail(
     if (!existing) {
       groups.set(inboundEmailId, {
         id: inboundEmailId,
-        fromEmail: item.inboundEmail?.fromEmail ?? 'Unknown sender',
+        senderLabel: formatSafeSenderLabel(item.inboundEmail?.fromEmail),
         subject:
           item.inboundEmail?.subject ??
           item.emailDerivedOffer?.rawProductText ??
@@ -234,7 +235,7 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
                           {item.subject ?? 'Account opening form'}
                         </h3>
                         <p className="review-card-meta">
-                          {item.sender ?? 'Unknown sender'}
+                          {formatSafeSenderLabel(item.sender)}
                           {item.receivedAt
                             ? ` | ${formatDateTime(item.receivedAt)}`
                             : ''}
@@ -282,7 +283,7 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
                         </div>
                         <h3 className="review-card-title">{group.subject}</h3>
                         <p className="review-card-meta">
-                          {group.fromEmail}
+                          {group.senderLabel}
                           {group.receivedAt
                             ? ` | ${formatDateTime(group.receivedAt)}`
                             : ''}

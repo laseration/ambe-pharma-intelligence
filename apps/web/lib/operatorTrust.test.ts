@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  formatSafeSenderLabel,
   redactDashboardText,
   summarizeCommercialActionState,
   summarizeWorkerFreshness,
@@ -109,6 +110,22 @@ test('dashboard redaction removes secrets, credentials, and raw contact addresse
     '[redacted] failed for [redacted] and user [redacted] with [redacted]',
   );
   assert.equal(redactDashboardText(null), 'none');
+});
+
+test('safe sender labels expose domains without raw contact addresses', () => {
+  assert.equal(
+    formatSafeSenderLabel('Supplier Person <pilot-supplier@example.test>'),
+    'sender domain example.test',
+  );
+  assert.equal(formatSafeSenderLabel(null), 'Unknown sender');
+  assert.equal(
+    formatSafeSenderLabel('token=abc123 supplier@example.test'),
+    'sender domain example.test',
+  );
+  assert.equal(
+    formatSafeSenderLabel('token=abc123 without an email'),
+    '[redacted] without an email',
+  );
 });
 
 test('worker freshness reports fresh, stale, and setup-blocked states safely', () => {
