@@ -111,7 +111,7 @@ test('internal API request helper redacts known secrets and live-looking URLs fr
     Response.json(
       {
         error:
-          'Failed with operator-secret-redacted and postgresql://user:pass@ep-example.eu-west-2.aws.neon.tech/neondb and sk-live-looking-key',
+          'Failed with operator-secret-redacted and postgresql://user:pass@ep-example.eu-west-2.aws.neon.tech/neondb and sk-fake-redaction-canary',
       },
       { status: 500 },
     );
@@ -126,7 +126,7 @@ test('internal API request helper redacts known secrets and live-looking URLs fr
       assert.ok(error instanceof Error);
       assert.doesNotMatch(error.message, /operator-secret-redacted/);
       assert.doesNotMatch(error.message, /postgresql:\/\//);
-      assert.doesNotMatch(error.message, /sk-live-looking-key/);
+      assert.doesNotMatch(error.message, /sk-fake-redaction-canary/);
       assert.match(error.message, /\[redacted\]/);
       return true;
     },

@@ -202,7 +202,7 @@ test('diagnostics summarize invalid rows, columns, fixes, and duplicate product 
 test('import raw row redaction removes obvious secrets from API previews', () => {
   const redacted = redactImportRawRow({
     productName: 'Amlodipine 5mg',
-    apiKey: 'sk-live-secret',
+    apiKey: 'sk-fake-redaction-canary',
     Notes: 'Bearer abcdef12345',
   });
 

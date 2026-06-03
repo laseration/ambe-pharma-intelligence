@@ -158,6 +158,30 @@ function buildDealSignals(item: TradeOpportunityListItem): string[] {
   return signals.filter((value): value is string => Boolean(value));
 }
 
+function blockedStateMessage(item: TradeOpportunityListItem): string | null {
+  const riskFlags = Array.isArray(item.riskFlags) ? item.riskFlags : [];
+
+  if (riskFlags.includes('approval_stale_after_correction')) {
+    return 'Corrected after approval; review again';
+  }
+
+  if (!item.buyDecision || item.buyDecision.approvalStatus !== 'APPROVED') {
+    return 'Approval required';
+  }
+
+  if (
+    riskFlags.includes('no_execution') &&
+    item.stage !== 'BUY_ORDERED' &&
+    item.stage !== 'BUYER_CONTACTED' &&
+    item.stage !== 'NEGOTIATING' &&
+    item.stage !== 'DEAL_CONFIRMED'
+  ) {
+    return 'Needs review before execution';
+  }
+
+  return null;
+}
+
 function resolveProductLabel(item: TradeOpportunityListItem) {
   return (
     item.product?.name ??
@@ -227,6 +251,7 @@ export default async function DealsPage() {
                 const estimatedMarginPct = formatMarginPct(
                   deal.estimatedMarginPct,
                 );
+                const blockedMessage = blockedStateMessage(deal);
 
                 return (
                   <article className="dashboard-opportunity-card" key={deal.id}>
@@ -257,6 +282,10 @@ export default async function DealsPage() {
                       <p className="dashboard-opportunity-copy">
                         {deal.rationale}
                       </p>
+                    ) : null}
+
+                    {blockedMessage ? (
+                      <p className="review-inline-alert">{blockedMessage}</p>
                     ) : null}
 
                     <dl className="duplicate-product-details">

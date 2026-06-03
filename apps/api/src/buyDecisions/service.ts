@@ -1,5 +1,6 @@
 import { db } from '../lib/db';
 import { buildCommercialAuditMetadata } from '../audit/commercialAudit';
+import type { AppliedCorrectionSnapshot } from '../safety/commercialApprovalGuard';
 import {
   summarizeBuyExecution,
   upsertExecutionForBuyDecision,
@@ -53,6 +54,9 @@ export type BuyDecisionRecord = BuyDecisionExecutionSnapshot & {
   approvedByType: string | null;
   approvedByIdentifier: string | null;
   metadata: unknown;
+  emailDerivedOffer?: {
+    offerCorrections?: AppliedCorrectionSnapshot[];
+  } | null;
   createdAt: Date;
   updatedAt: Date;
   supplier?: {
@@ -252,6 +256,8 @@ function buildDecisionExecutionSnapshot(
     hasQualificationRisk: decision.hasQualificationRisk,
     approvalStatus: decision.approvalStatus,
     approvedAt: decision.approvedAt,
+    metadata: decision.metadata,
+    emailDerivedOffer: decision.emailDerivedOffer,
   };
 }
 
@@ -299,6 +305,19 @@ export function createBuyDecisionRepository(
               createdAt: 'asc',
             },
           },
+          emailDerivedOffer: {
+            select: {
+              offerCorrections: {
+                where: { correctionStatus: 'APPLIED' },
+                orderBy: { updatedAt: 'desc' },
+                take: 1,
+                select: {
+                  id: true,
+                  updatedAt: true,
+                },
+              },
+            },
+          },
         },
       }) as Promise<BuyDecisionRecord | null>,
     findById: async (buyDecisionId) =>
@@ -329,6 +348,19 @@ export function createBuyDecisionRepository(
           events: {
             orderBy: {
               createdAt: 'asc',
+            },
+          },
+          emailDerivedOffer: {
+            select: {
+              offerCorrections: {
+                where: { correctionStatus: 'APPLIED' },
+                orderBy: { updatedAt: 'desc' },
+                take: 1,
+                select: {
+                  id: true,
+                  updatedAt: true,
+                },
+              },
             },
           },
         },

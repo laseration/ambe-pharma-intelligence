@@ -19,6 +19,7 @@ import {
   syncTradeOpportunityCommercialState,
 } from '../deals/service';
 import { buildSideEffectAuditMetadata } from '../safety/sideEffectPolicy';
+import type { AppliedCorrectionSnapshot } from '../safety/commercialApprovalGuard';
 import type { SupplierQualificationStatus } from '../suppliers/qualificationService';
 
 type WorkflowStatus =
@@ -434,6 +435,10 @@ type BuyDecisionRecord = {
   hasQualificationRisk: boolean;
   qualificationRiskNote: string | null;
   execution?: BuyExecutionRecord | null;
+  metadata?: unknown;
+  emailDerivedOffer?: {
+    offerCorrections?: AppliedCorrectionSnapshot[];
+  } | null;
 };
 
 function toNumber(value: unknown): number | null {
@@ -1243,6 +1248,19 @@ function createWorkflowRepository(
         where: { emailDerivedOfferId },
         include: {
           execution: true,
+          emailDerivedOffer: {
+            select: {
+              offerCorrections: {
+                where: { correctionStatus: 'APPLIED' },
+                orderBy: { updatedAt: 'desc' },
+                take: 1,
+                select: {
+                  id: true,
+                  updatedAt: true,
+                },
+              },
+            },
+          },
         },
       }) as Promise<BuyDecisionRecord | null>,
     createBuyDecision: async (data) =>
@@ -1250,6 +1268,19 @@ function createWorkflowRepository(
         data: data as never,
         include: {
           execution: true,
+          emailDerivedOffer: {
+            select: {
+              offerCorrections: {
+                where: { correctionStatus: 'APPLIED' },
+                orderBy: { updatedAt: 'desc' },
+                take: 1,
+                select: {
+                  id: true,
+                  updatedAt: true,
+                },
+              },
+            },
+          },
         },
       }) as Promise<BuyDecisionRecord>,
     updateBuyDecision: async (buyDecisionId, data) =>
@@ -1258,6 +1289,19 @@ function createWorkflowRepository(
         data: data as never,
         include: {
           execution: true,
+          emailDerivedOffer: {
+            select: {
+              offerCorrections: {
+                where: { correctionStatus: 'APPLIED' },
+                orderBy: { updatedAt: 'desc' },
+                take: 1,
+                select: {
+                  id: true,
+                  updatedAt: true,
+                },
+              },
+            },
+          },
         },
       }) as Promise<BuyDecisionRecord>,
     createBuyDecisionEvent: async (data) => {
