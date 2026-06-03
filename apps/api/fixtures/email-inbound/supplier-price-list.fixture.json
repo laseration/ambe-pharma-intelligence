@@ -1,0 +1,25 @@
+{
+  "id": "fixture-supplier-price-list-v1",
+  "description": "Sanitized deterministic supplier price-list email fixture for local ingestion smoke tests.",
+  "message": {
+    "sourceSystem": "FIXTURE_EMAIL",
+    "externalMessageId": "fixture-supplier-price-list-v1",
+    "messageId": "<fixture-supplier-price-list-v1@example.test>",
+    "conversationId": "fixture-conversation-supplier-price-list-v1",
+    "from": "pricing@supplier.example",
+    "fromName": "Pricing Team",
+    "subject": "Sanitized supplier price list - June",
+    "bodyText": "Supplier Example June offer\nAmlodipine 5mg tablets 28 - GBP 8.40 MOQ 20 available\nParacetamol 500mg caplets 16 - GBP 1.25 MOQ 30 available",
+    "receivedAt": "2026-06-01T10:30:00.000Z",
+    "supplierName": "Supplier Example",
+    "attachments": [
+      {
+        "fileName": "supplier-example-price-list.csv",
+        "mimeType": "text/csv",
+        "contentId": "fixture-price-list-csv",
+        "disposition": "attachment",
+        "contentText": "supplierName,productName,strength,dosageForm,packSize,unitPrice,currencyCode,minimumOrderQuantity,availability\nSupplier Example,Amlodipine,5mg,tablets,28,8.40,GBP,20,available\nSupplier Example,Paracetamol,500mg,caplets,16,1.25,GBP,30,available\n"
+      }
+    ]
+  }
+}

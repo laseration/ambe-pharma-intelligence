@@ -30,6 +30,10 @@ import {
   extractSenderDomain,
   normalizeFingerprintText,
 } from './sourceFingerprint';
+import {
+  attachmentChecksumSha256,
+  attachmentMetadataFingerprint,
+} from './provenance';
 import type { EmailInboundMessage, EmailInboundResult } from './types';
 
 const EXTRACTOR_VERSION = 'email-staging-v1';
@@ -617,6 +621,8 @@ function buildAttachmentSummary(
     size: attachment.size ?? null,
     contentId: attachment.contentId ?? null,
     disposition: attachment.disposition ?? null,
+    checksumSha256: attachmentChecksumSha256(attachment),
+    fingerprint: attachmentMetadataFingerprint(attachment),
   })) as Prisma.InputJsonValue;
 }
 
@@ -2268,7 +2274,10 @@ export async function stageInboundEmail(
     sourceLearningContext,
   );
 
-  if (shouldAttemptAiFallback(resolvedOffers, result)) {
+  if (
+    sourceSystem !== 'FIXTURE_EMAIL' &&
+    shouldAttemptAiFallback(resolvedOffers, result)
+  ) {
     const aiSourceText = documents
       .filter((document) =>
         ['BODY_MAIN', 'BODY_FORWARDED'].includes(document.kind),
