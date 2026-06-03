@@ -21,12 +21,10 @@ export class CommercialApprovalBlockedError extends Error {
   }
 }
 
-export type AppliedCorrectionSnapshot =
-  | {
-      id: string;
-      updatedAt?: Date | string | null;
-    }
-  | null;
+export type AppliedCorrectionSnapshot = {
+  id: string;
+  updatedAt?: Date | string | null;
+} | null;
 
 export type CommercialApprovalState = {
   approvalStatus?: string | null;
@@ -72,9 +70,7 @@ export function getCommercialApprovalBlockReason(
   return null;
 }
 
-export function assertCommercialApproval(
-  state: CommercialApprovalState,
-): void {
+export function assertCommercialApproval(state: CommercialApprovalState): void {
   const reason = getCommercialApprovalBlockReason(state);
   if (reason) {
     throw new CommercialApprovalBlockedError(reason);

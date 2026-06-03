@@ -5,9 +5,7 @@ import type { Opportunity, Prisma } from '@prisma/client';
 import { db } from '../../lib/db';
 import { sendOpportunityEmail } from '../service';
 
-function createOpportunity(
-  overrides?: Partial<Opportunity>,
-): Opportunity & {
+function createOpportunity(overrides?: Partial<Opportunity>): Opportunity & {
   product: { name: string } | null;
   supplier: { name: string } | null;
 } {

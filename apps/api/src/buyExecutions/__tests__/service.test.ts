@@ -180,7 +180,10 @@ test('blocks buy execution when the buy decision is not approved', async () => {
   harness.buyDecisions[0]!.approvalStatus = 'PENDING_APPROVAL';
   harness.buyDecisions[0]!.approvedAt = null;
 
-  await assert.rejects(() => createOrderedExecution(harness), /Approval required/i);
+  await assert.rejects(
+    () => createOrderedExecution(harness),
+    /Approval required/i,
+  );
 
   assert.equal(harness.executions.length, 0);
   assert.equal(harness.executionEvents.length, 0);

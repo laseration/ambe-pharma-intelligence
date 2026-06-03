@@ -5,9 +5,7 @@ import type { Opportunity, Prisma } from '@prisma/client';
 import { db } from '../../lib/db';
 import { publishOpportunity } from '../service';
 
-function createOpportunity(
-  overrides?: Partial<Opportunity>,
-): Opportunity & {
+function createOpportunity(overrides?: Partial<Opportunity>): Opportunity & {
   product: { name: string } | null;
   supplier: { name: string } | null;
 } {
@@ -36,7 +34,10 @@ function createOpportunity(
   };
 }
 
-function installOpportunityMock(t: TestContext, opportunity: ReturnType<typeof createOpportunity>) {
+function installOpportunityMock(
+  t: TestContext,
+  opportunity: ReturnType<typeof createOpportunity>,
+) {
   const originalFindUnique = db.opportunity.findUnique;
 
   db.opportunity.findUnique = (async ({ where }) => {
