@@ -346,8 +346,7 @@ test('eval command exits non-zero on fixture regression without leaking raw body
       {
         id: 'regression-case',
         title: 'Regression Case',
-        bodyText:
-          'RAW_REGRESSION_SENTINEL Amlodipine 5mg tabs 28 - 8.40 GBP',
+        bodyText: 'RAW_REGRESSION_SENTINEL Amlodipine 5mg tabs 28 - 8.40 GBP',
         expected: {
           commerciallyRelevant: true,
           offerCount: 1,

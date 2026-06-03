@@ -143,7 +143,9 @@ function productMatchesExpected(
   row: ExtractedEvalOffer,
   expected: ExtractionEvalExpectedOffer,
 ): boolean {
-  return normalize(row.productText).includes(normalize(expected.productIncludes));
+  return normalize(row.productText).includes(
+    normalize(expected.productIncludes),
+  );
 }
 
 function normalizedNullableStringEquals(
@@ -216,12 +218,7 @@ function compareExpectedFields(
     fields.push('packSize');
   }
 
-  if (
-    !numberEquals(
-      row.minimumOrderQuantity,
-      expected.minimumOrderQuantity,
-    )
-  ) {
+  if (!numberEquals(row.minimumOrderQuantity, expected.minimumOrderQuantity)) {
     fields.push('minimumOrderQuantity');
   }
 
@@ -564,7 +561,10 @@ export function summarizeExtractionEvalResults(
 
   for (const result of caseResults) {
     for (const field of result.mismatchFields) {
-      fieldMismatchCounter.set(field, (fieldMismatchCounter.get(field) ?? 0) + 1);
+      fieldMismatchCounter.set(
+        field,
+        (fieldMismatchCounter.get(field) ?? 0) + 1,
+      );
     }
   }
 
@@ -602,9 +602,7 @@ export function summarizeExtractionEvalResults(
       })),
     fieldMismatchCounts: Array.from(fieldMismatchCounter.entries())
       .map(([fieldName, count]) => ({ fieldName, count }))
-      .sort((left, right) =>
-        left.fieldName.localeCompare(right.fieldName),
-      ),
+      .sort((left, right) => left.fieldName.localeCompare(right.fieldName)),
     caseResults,
   };
 }

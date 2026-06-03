@@ -11,9 +11,7 @@ function formatFieldCounts(
     return 'none';
   }
 
-  return counts
-    .map((item) => `${item.fieldName}=${item.count}`)
-    .join(', ');
+  return counts.map((item) => `${item.fieldName}=${item.count}`).join(', ');
 }
 
 export function formatExtractionEvalReport(
