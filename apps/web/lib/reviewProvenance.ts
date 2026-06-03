@@ -61,6 +61,27 @@ export function truncateSourceText(
   };
 }
 
+function summarizeHiddenSourceText(
+  value: string | null | undefined,
+): SourceSnippet {
+  const text = compact(value);
+
+  if (!text) {
+    return {
+      text: null,
+      truncated: false,
+      label: 'No row-level source text was stored for this offer.',
+    };
+  }
+
+  return {
+    text: null,
+    truncated: text.length > DEFAULT_SNIPPET_LIMIT,
+    label:
+      'Row-level source text is stored for traceability but hidden from the dashboard.',
+  };
+}
+
 export function getExtractionMethod(item: ReviewWorkflowDetail): {
   label: string;
   detail: string;
@@ -220,14 +241,12 @@ function summarizeCorrections(
       correction.correctedNormalizedProductName
         ? `product ${correction.correctedNormalizedProductName}`
         : null,
-      correction.correctedRawProductText
-        ? `raw text ${correction.correctedRawProductText}`
-        : null,
+      correction.correctedRawProductText ? 'raw product text corrected' : null,
       correction.correctedUnitPrice !== null &&
       correction.correctedUnitPrice !== undefined
         ? `price ${correction.correctedUnitPrice}`
         : null,
-      correction.note ? `note: ${correction.note}` : null,
+      correction.note ? 'operator note recorded' : null,
     ].filter(Boolean);
 
     const actor = correction.actorIdentifier ?? correction.actorType;
@@ -252,7 +271,7 @@ export function buildReviewProvenanceSummary(
     extractionMethodLabel: extractionMethod.label,
     extractionMethodDetail: extractionMethod.detail,
     sourceLabel: getSourceLabel(item),
-    sourceSnippet: truncateSourceText(sourceText),
+    sourceSnippet: summarizeHiddenSourceText(sourceText),
     blockedReason: getPromotionBlockedReason(item),
     missingFields: getMissingReviewFields(item),
     warnings: getReviewWarnings(item),

@@ -108,13 +108,54 @@ test('builds source and missing-field context from review detail', () => {
   );
 
   assert.equal(summary.sourceLabel, 'price-list.xlsx (ATTACHMENT_TABLE)');
-  assert.equal(summary.sourceSnippet.text, 'Amlodipine 5mg tabs 28 - GBP 8.40');
+  assert.equal(summary.sourceSnippet.text, null);
+  assert.match(summary.sourceSnippet.label, /hidden from the dashboard/i);
   assert.deepEqual(summary.missingFields, [
     'supplier',
     'currency',
     'supplier/product match evidence',
   ]);
   assert.match(summary.blockedReason, /Promotion Threshold Not Met/);
+});
+
+test('correction summaries do not expose raw text or operator note contents', () => {
+  const summary = buildReviewProvenanceSummary(
+    makeReviewDetail({
+      emailDerivedOffer: {
+        ...makeReviewDetail().emailDerivedOffer!,
+        offerCorrections: [
+          {
+            id: 'correction-1',
+            correctionStatus: 'APPLIED',
+            correctedSupplierId: null,
+            correctedSupplierName: 'Safe Supplier',
+            correctedProductId: null,
+            correctedRawProductText: 'raw forwarded email row',
+            correctedNormalizedProductName: null,
+            correctedStrength: null,
+            correctedDosageForm: null,
+            correctedPackSize: null,
+            correctedManufacturer: null,
+            correctedUnitPrice: '8.40',
+            correctedCurrencyCode: 'GBP',
+            correctedMinimumOrderQuantity: null,
+            correctedAvailability: null,
+            actorType: 'OPERATOR',
+            actorIdentifier: 'pilot-operator',
+            note: 'private source note',
+            createdAt: '2026-06-03T09:00:00.000Z',
+            updatedAt: '2026-06-03T09:00:00.000Z',
+          },
+        ],
+      },
+    }),
+  );
+
+  assert.equal(summary.correctionSummaries.length, 1);
+  assert.match(summary.correctionSummaries[0]!, /raw product text corrected/);
+  assert.match(summary.correctionSummaries[0]!, /operator note recorded/);
+  assert.doesNotMatch(summary.correctionSummaries[0]!, /raw forwarded/);
+  assert.doesNotMatch(summary.correctionSummaries[0]!, /private source note/);
 });
 
 test('truncates long source text honestly', () => {

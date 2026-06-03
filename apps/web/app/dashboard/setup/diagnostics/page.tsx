@@ -7,6 +7,11 @@ import {
   type SystemReadinessCheck,
   type SystemReadinessReport,
 } from '../../../../lib/systemApi';
+import {
+  redactDashboardText,
+  summarizeWorkerFreshness,
+  type WorkerFreshnessSummary,
+} from '../../../../lib/operatorTrust';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,9 +43,11 @@ function formatDateTime(value: string | null): string {
 }
 
 function formatError(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : 'The dashboard could not load this diagnostic check.';
+  return redactDashboardText(
+    error instanceof Error
+      ? error.message
+      : 'The dashboard could not load this diagnostic check.',
+  );
 }
 
 function readinessCounts(report: SystemReadinessReport) {
@@ -63,6 +70,12 @@ function workerDisplayName(name: PollingWorkerStatus['name']): string {
 }
 
 function workerNextAction(worker: PollingWorkerStatus): string {
+  const freshness = summarizeWorkerFreshness(worker);
+
+  if (freshness.blockedReason) {
+    return freshness.blockedReason;
+  }
+
   if (!worker.enabled) {
     return 'Enable polling only after credentials, allowlists, and intake ownership are ready.';
   }
@@ -80,6 +93,17 @@ function workerNextAction(worker: PollingWorkerStatus): string {
   }
 
   return 'No action needed. Keep monitoring processed and failed counts during pilot runs.';
+}
+
+function freshnessPillClass(tone: WorkerFreshnessSummary['tone']): string {
+  switch (tone) {
+    case 'ready':
+      return 'pill-high';
+    case 'warning':
+      return 'pill-medium';
+    case 'blocked':
+      return 'pill-low';
+  }
 }
 
 function formatDetailValue(
@@ -214,60 +238,73 @@ function WorkerDiagnostics({ workers }: { workers: PollingWorkerStatus[] }) {
     );
   }
 
-  return workers.map((worker) => (
-    <article
-      className="dashboard-opportunity-card setup-card"
-      key={worker.name}
-    >
-      <div className="dashboard-opportunity-top">
-        <div>
-          <p className="dashboard-opportunity-title">
-            {workerDisplayName(worker.name)}
-          </p>
-          <p className="dashboard-opportunity-meta">{worker.name}</p>
+  return workers.map((worker) => {
+    const freshness = summarizeWorkerFreshness(worker);
+
+    return (
+      <article
+        className="dashboard-opportunity-card setup-card"
+        key={worker.name}
+      >
+        <div className="dashboard-opportunity-top">
+          <div>
+            <p className="dashboard-opportunity-title">
+              {workerDisplayName(worker.name)}
+            </p>
+            <p className="dashboard-opportunity-meta">{worker.name}</p>
+          </div>
+          <span
+            className={`pill ${
+              worker.running && worker.consecutiveFailures === 0
+                ? 'pill-high'
+                : 'pill-medium'
+            }`}
+          >
+            {worker.running ? 'Running' : 'Not running'}
+          </span>
         </div>
-        <span
-          className={`pill ${
-            worker.running && worker.consecutiveFailures === 0
-              ? 'pill-high'
-              : 'pill-medium'
-          }`}
-        >
-          {worker.running ? 'Running' : 'Not running'}
-        </span>
-      </div>
-      <dl className="setup-detail-list">
-        <div>
-          <dt>enabled</dt>
-          <dd>{worker.enabled ? 'yes' : 'no'}</dd>
+        <p className="dashboard-opportunity-copy">{freshness.detail}</p>
+        <dl className="setup-detail-list">
+          <div>
+            <dt>enabled</dt>
+            <dd>{worker.enabled ? 'yes' : 'no'}</dd>
+          </div>
+          <div>
+            <dt>configured</dt>
+            <dd>{worker.configured ? 'yes' : 'no'}</dd>
+          </div>
+          <div>
+            <dt>freshness</dt>
+            <dd>
+              <span className={`pill ${freshnessPillClass(freshness.tone)}`}>
+                {freshness.label}
+              </span>
+            </dd>
+          </div>
+          <div>
+            <dt>last run</dt>
+            <dd>{formatDateTime(worker.lastRunFinishedAt)}</dd>
+          </div>
+          <div>
+            <dt>last success</dt>
+            <dd>{formatDateTime(worker.lastSuccessAt)}</dd>
+          </div>
+          <div>
+            <dt>last error</dt>
+            <dd>{redactDashboardText(worker.lastError)}</dd>
+          </div>
+          <div>
+            <dt>failures</dt>
+            <dd>{worker.consecutiveFailures}</dd>
+          </div>
+        </dl>
+        <div className="setup-next-action">
+          <p className="dashboard-summary-label">What to check next</p>
+          <p className="dashboard-summary-note">{workerNextAction(worker)}</p>
         </div>
-        <div>
-          <dt>configured</dt>
-          <dd>{worker.configured ? 'yes' : 'no'}</dd>
-        </div>
-        <div>
-          <dt>last run</dt>
-          <dd>{formatDateTime(worker.lastRunFinishedAt)}</dd>
-        </div>
-        <div>
-          <dt>last success</dt>
-          <dd>{formatDateTime(worker.lastSuccessAt)}</dd>
-        </div>
-        <div>
-          <dt>last error</dt>
-          <dd>{worker.lastError ?? 'none'}</dd>
-        </div>
-        <div>
-          <dt>failures</dt>
-          <dd>{worker.consecutiveFailures}</dd>
-        </div>
-      </dl>
-      <div className="setup-next-action">
-        <p className="dashboard-summary-label">What to check next</p>
-        <p className="dashboard-summary-note">{workerNextAction(worker)}</p>
-      </div>
-    </article>
-  ));
+      </article>
+    );
+  });
 }
 
 export default async function DiagnosticsPage() {

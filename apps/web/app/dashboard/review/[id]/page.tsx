@@ -8,10 +8,12 @@ import {
   type ReviewWorkflowDetail,
   type ReviewWorkflowListItem,
 } from '../../../../lib/reviewApi';
+import { buildReviewProvenanceSummary } from '../../../../lib/reviewProvenance';
 import {
-  buildReviewProvenanceSummary,
-  truncateSourceText,
-} from '../../../../lib/reviewProvenance';
+  formatSafeSenderLabel,
+  redactDashboardText,
+  summarizeCommercialActionState,
+} from '../../../../lib/operatorTrust';
 import {
   submitInboundEmailReviewAction,
   submitReviewOfferCorrection,
@@ -941,6 +943,7 @@ export default async function ReviewInboundEmailPage({
         return {
           item,
           detail,
+          actionState: summarizeCommercialActionState(detail),
           auditHistory,
           provenance: buildReviewProvenanceSummary(detail),
           summary: buildOperatorSummary(detail),
@@ -954,11 +957,13 @@ export default async function ReviewInboundEmailPage({
     const inboundEmail = firstDetailForSummary.inboundEmail;
     const supplierContact = getSupplierContact(firstDetailForSummary);
     const approvalGuidance = buildApprovalGuidance(detailedVisibleItems);
+    const globalApprovalBlockReason =
+      detailedVisibleItems.find(({ actionState }) => !actionState.canApprove)
+        ?.actionState.blockedReason ?? null;
     const supplierDetailsDefaults = buildSupplierDetailsDefaults(
       firstDetailForSummary,
       supplierContact,
     );
-    const rawEmailPreview = truncateSourceText(inboundEmail?.rawText, 4000);
 
     return (
       <section className="review-layout">
@@ -978,7 +983,9 @@ export default async function ReviewInboundEmailPage({
         </div>
 
         {query?.error ? (
-          <p className="alert alert-error">{query.error}</p>
+          <p className="alert alert-error">
+            {redactDashboardText(query.error)}
+          </p>
         ) : null}
         {query?.message ? (
           <p className="alert alert-success">
@@ -1053,8 +1060,8 @@ export default async function ReviewInboundEmailPage({
               ) : null}
               {supplierContact.email ? (
                 <div>
-                  <dt>Email</dt>
-                  <dd>{supplierContact.email}</dd>
+                  <dt>Email domain</dt>
+                  <dd>{formatSafeSenderLabel(supplierContact.email)}</dd>
                 </div>
               ) : null}
               {supplierContact.phone ? (
@@ -1078,8 +1085,8 @@ export default async function ReviewInboundEmailPage({
           <p className="copy review-summary-copy">
             {visibleItems.length}{' '}
             {visibleItems.length === 1 ? 'offer' : 'offers'} from{' '}
-            {inboundEmail?.fromEmail ?? 'Not found'}. Why this needs checking:{' '}
-            {summarizeReason(items)}
+            {formatSafeSenderLabel(inboundEmail?.fromEmail)}. Why this needs
+            checking: {summarizeReason(items)}
           </p>
           {approvalGuidance ? (
             <div
@@ -1104,9 +1111,25 @@ export default async function ReviewInboundEmailPage({
           ) : null}
           {query?.error ? (
             <p className="alert alert-error review-inline-alert">
-              {query.error}
+              {redactDashboardText(query.error)}
             </p>
           ) : null}
+          <section className="resolution-evidence action-state-card">
+            <div className="resolution-evidence-header">
+              <div>
+                <h4 className="subsection-title">Action readiness</h4>
+                <p className="copy resolution-evidence-copy">
+                  {globalApprovalBlockReason ??
+                    'Approval required before execution'}
+                </p>
+              </div>
+              <span
+                className={`pill ${globalApprovalBlockReason ? 'pill-low' : 'pill-medium'}`}
+              >
+                {globalApprovalBlockReason ?? 'Approval required'}
+              </span>
+            </div>
+          </section>
 
           <div className="action-row action-row-stacked-mobile">
             <form
@@ -1141,6 +1164,8 @@ export default async function ReviewInboundEmailPage({
               </p>
               <SubmitButton
                 className="button button-primary button-large"
+                disabled={globalApprovalBlockReason !== null}
+                disabledReason={globalApprovalBlockReason ?? undefined}
                 idleLabel={getApproveButtonLabel(
                   approvalGuidance,
                   supplierDetailsDefaults.supplierName,
@@ -1234,7 +1259,14 @@ export default async function ReviewInboundEmailPage({
           <h3 className="section-title">Offers found</h3>
           <div className="offer-row-list">
             {detailedVisibleItems.map(
-              ({ item, detail, auditHistory, provenance, summary }) => {
+              ({
+                item,
+                detail,
+                actionState,
+                auditHistory,
+                provenance,
+                summary,
+              }) => {
                 const resolutionEvidenceGroups =
                   getResolutionEvidenceGroups(detail);
                 const supplierEvidence = getSupplierEvidence(detail);
@@ -1352,6 +1384,31 @@ export default async function ReviewInboundEmailPage({
                         </dd>
                       </div>
                     </dl>
+                    <section className="resolution-evidence action-state-card">
+                      <div className="resolution-evidence-header">
+                        <div>
+                          <h4 className="subsection-title">Action status</h4>
+                          <p className="copy resolution-evidence-copy">
+                            {actionState.nextStep}
+                          </p>
+                        </div>
+                        <span
+                          className={`pill ${actionState.canApprove ? 'pill-medium' : 'pill-low'}`}
+                        >
+                          {actionState.label}
+                        </span>
+                      </div>
+                      <dl className="offer-row-summary provenance-summary">
+                        <div>
+                          <dt>Current state</dt>
+                          <dd>{actionState.status}</dd>
+                        </div>
+                        <div>
+                          <dt>Blocked or allowed reason</dt>
+                          <dd>{actionState.blockedReason}</dd>
+                        </div>
+                      </dl>
+                    </section>
                     {summary.technicalDetails.length > 0 ? (
                       <details className="document-card technical-details-card">
                         <summary>Technical details</summary>
@@ -1416,15 +1473,11 @@ export default async function ReviewInboundEmailPage({
                         </div>
                       </dl>
                       <details className="document-card technical-details-card">
-                        <summary>Source snippet</summary>
+                        <summary>Source evidence summary</summary>
                         <div className="source-block">
                           <p className="copy resolution-evidence-copy">
                             {provenance.sourceSnippet.label}
                           </p>
-                          <pre>
-                            {provenance.sourceSnippet.text ??
-                              'No row-level source text was stored for this offer.'}
-                          </pre>
                         </div>
                       </details>
                       <details className="document-card technical-details-card">
@@ -1626,6 +1679,8 @@ export default async function ReviewInboundEmailPage({
                         {renderReturnToInput(returnTo)}
                         <SubmitButton
                           className="button button-primary"
+                          disabled={!actionState.canApprove}
+                          disabledReason={actionState.blockedReason}
                           idleLabel="Approve"
                           pendingLabel="Approving..."
                         />
@@ -1680,8 +1735,8 @@ export default async function ReviewInboundEmailPage({
           <h3 className="section-title">Original email</h3>
           <dl className="detail-list">
             <div>
-              <dt>From</dt>
-              <dd>{inboundEmail?.fromEmail ?? 'Not found'}</dd>
+              <dt>Sender</dt>
+              <dd>{formatSafeSenderLabel(inboundEmail?.fromEmail)}</dd>
             </div>
             <div>
               <dt>Subject</dt>
@@ -1698,14 +1753,15 @@ export default async function ReviewInboundEmailPage({
           </dl>
 
           <details className="document-card">
-            <summary>Show email details</summary>
+            <summary>Show safe email metadata</summary>
             <div className="review-context">
               <div className="source-block">
-                <h4 className="subsection-title">Raw email text preview</h4>
+                <h4 className="subsection-title">Email body</h4>
                 <p className="copy resolution-evidence-copy">
-                  {rawEmailPreview.label}
+                  {inboundEmail?.rawText || inboundEmail?.rawHtml
+                    ? 'Raw email body content is stored for traceability but hidden from the dashboard.'
+                    : 'No raw email body content is stored for this message.'}
                 </p>
-                <pre>{rawEmailPreview.text ?? 'No raw body text stored.'}</pre>
               </div>
 
               <div className="source-block">
@@ -1720,7 +1776,20 @@ export default async function ReviewInboundEmailPage({
                           {renderDocumentTitle(document)}{' '}
                           <span>{document.kind}</span>
                         </summary>
-                        <pre>{document.textContent}</pre>
+                        <dl className="detail-list">
+                          <div>
+                            <dt>Document index</dt>
+                            <dd>{document.documentIndex}</dd>
+                          </div>
+                          <div>
+                            <dt>Text content</dt>
+                            <dd>
+                              {document.textContent
+                                ? 'Stored but hidden from the dashboard.'
+                                : 'No parsed text stored.'}
+                            </dd>
+                          </div>
+                        </dl>
                       </details>
                     ))}
                   </div>
@@ -1742,7 +1811,7 @@ export default async function ReviewInboundEmailPage({
         <h2 className="title">Couldn&apos;t load this review</h2>
         <p className="copy">
           {error instanceof Error
-            ? error.message
+            ? redactDashboardText(error.message)
             : 'Failed to load review email.'}
         </p>
         <div className="actions">
