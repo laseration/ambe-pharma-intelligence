@@ -200,5 +200,8 @@ jobs:
             }
           "
 
+      - name: Generate Prisma client
+        run: pnpm --filter @ambe/api db:generate
+
       - name: Run disposable database-backed browser smoke
         run: pnpm --filter @ambe/web test:e2e:local-runtime
