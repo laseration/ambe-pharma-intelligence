@@ -87,7 +87,7 @@ test('pilot local-runtime smoke uses real API with disposable fake data', async 
   await expect(page.getByText(/operator note recorded/)).toBeVisible();
 
   await expect(page.getByText('Audit History')).toBeVisible();
-  await expect(page.getByText('Applied')).toBeVisible();
+  await expect(page.getByText('Applied', { exact: true })).toBeVisible();
   await expect(
     page.getByText(
       'Safe fake correction recorded for local-runtime browser smoke.',
