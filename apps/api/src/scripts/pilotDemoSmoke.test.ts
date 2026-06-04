@@ -18,6 +18,12 @@ test('pilot demo smoke summary contains safe routes and no connection string', (
       buyDecisionId: 'demo-pilot-buy-decision-cetirizine',
       buyExecutionId: 'demo-pilot-buy-execution-cetirizine',
       tradeOpportunityId: 'demo-pilot-trade-opportunity-cetirizine',
+      scenarioWorkflowIds: [
+        'demo-pilot-workflow-clean-offer',
+        'demo-pilot-workflow-blocked-supplier',
+      ],
+      scenarioTradeOpportunityIds: ['demo-pilot-trade-opportunity-low-margin'],
+      scenarioOpportunityIds: ['demo-pilot-dead-stock-push-opportunity'],
       routes: {
         pendingReview: '/dashboard/review/demo-pilot-workflow-amlodipine',
         completedReview: '/dashboard/review/demo-pilot-workflow-cetirizine',
@@ -31,6 +37,8 @@ test('pilot demo smoke summary contains safe routes and no connection string', (
 
   assert.match(output, /AMBE pilot demo smoke summary/);
   assert.match(output, /Open pending review/);
+  assert.match(output, /Scenario workflows/);
+  assert.match(output, /demo-pilot-workflow-blocked-supplier/);
   assert.match(output, /External services called: false/);
   assert.doesNotMatch(output, /postgresql:\/\//);
   assert.doesNotMatch(output, /secret/i);
