@@ -20,6 +20,8 @@ export type ReviewWorkflowListItem = {
   hasRestrictedSupplier: boolean;
   hasBlockedSupplier: boolean;
   qualificationRiskNote: string | null;
+  hasBuyExecution?: boolean;
+  executionFulfillmentStatus?: string | null;
   updatedAt: string;
   inboundEmailId?: string | null;
   inboundEmail?: {
@@ -40,6 +42,19 @@ export type ReviewWorkflowListItem = {
     currencyCandidate: string | null;
     availabilityCandidate?: string | null;
     minimumOrderQuantityCandidate?: number | null;
+    offerCorrections?: Array<ReviewOfferCorrectionRecord>;
+    buyDecision?: {
+      id: string;
+      approvalStatus: string;
+      orderStatus: string;
+    } | null;
+  } | null;
+  buyDecision?: {
+    id: string;
+    approvalStatus: string;
+    orderStatus: string;
+    externalOrderReference?: string | null;
+    orderedAt?: string | null;
   } | null;
 };
 
@@ -227,6 +242,7 @@ export type ReviewQueueItem = {
 
 type ListReviewWorkflowItemsOptions = {
   inboundEmailId?: string;
+  includeAllOpenStatuses?: boolean;
   onlyOpen?: boolean;
   staleFirst?: boolean;
   status?:
@@ -276,7 +292,9 @@ export async function listReviewWorkflowItems(
   const payload = await requestJson<{ items: ReviewWorkflowListItem[] }>(
     `/review-queue/workflows?${searchParams.toString()}`,
   );
-  return options?.status || options?.onlyOpen === false
+  return options?.includeAllOpenStatuses ||
+    options?.status ||
+    options?.onlyOpen === false
     ? payload.items
     : payload.items.filter((item) =>
         MANUAL_REVIEW_WORKFLOW_STATUSES.has(item.status),

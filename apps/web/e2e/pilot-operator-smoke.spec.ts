@@ -61,7 +61,19 @@ test('pilot operator walkthrough smoke uses sanitized browser paths', async ({
   ).toBeVisible();
   await expect(page.getByText('Commercial email reviews')).toBeVisible();
   await expect(page.getByText('sender domain example.test')).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Supplier risk (1)' }),
+  ).toBeVisible();
   await expect(page.getByText('Approval required')).toHaveCount(2);
+  await expectSensitiveCanariesHidden(page);
+
+  await page.getByRole('link', { name: 'Supplier risk (1)' }).click();
+  await expect(page).toHaveURL(/filter=supplier-risk/);
+  await expect(page.getByText('Current filter')).toBeVisible();
+  await expect(
+    page.getByText('Blocked, restricted, or unknown supplier qualification.'),
+  ).toBeVisible();
+  await expect(page.getByText('Pilot sanitized supplier offer')).toBeVisible();
   await expectSensitiveCanariesHidden(page);
 
   await page.goto(
