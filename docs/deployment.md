@@ -176,6 +176,11 @@ Before enabling polling, run the read-only preflight:
 pnpm --filter @ambe/api email:graph-preflight
 ```
 
+For the controlled real-mailbox procedure, use
+[`docs/graph-readonly-mailbox-dry-run.md`](graph-readonly-mailbox-dry-run.md).
+That runbook requires a dedicated pilot mailbox, read-only Graph access,
+polling disabled, and explicit operator sign-off before any real inbound pilot.
+
 The command reports mailbox configuration, credential source/mode, polling
 state, allowed sender count, supplier mapping count, and dry-run readiness. When
 credentials are present and polling is disabled, it clearly announces a live
