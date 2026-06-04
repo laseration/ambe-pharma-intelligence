@@ -20,6 +20,20 @@ pnpm --filter @ambe/api demo:smoke-pilot
 
 That command uses the same local/disposable database guard, runs the fake pilot demo seed, and verifies the seeded review, buy decision, buy execution, and trade opportunity records. It does not run migrations or call external services.
 
+For a browser smoke that uses the real API, real dashboard, migrations, and the
+same fake pilot data, run:
+
+```bash
+pnpm --filter @ambe/web test:e2e:local-runtime
+```
+
+This command starts the API and web app locally for Playwright. It refuses
+managed or live-looking database URLs before migrations run, applies Prisma
+migrations only to the accepted disposable database, seeds only fake
+`AMBE_FAKE_PILOT_DEMO` records, then checks the setup/readiness page,
+diagnostics page, review queue, review detail provenance, correction/audit
+summary, and approval-required state through the browser.
+
 ## Local Postgres Prerequisite
 
 The smoke command expects a running disposable local PostgreSQL database. It does not create a database, run migrations, seed data, or start Docker for you.
@@ -120,6 +134,13 @@ After the database and integration guards pass, the command:
 7. disconnects Prisma.
 
 It does not run migrations, seeds, `prisma migrate status`, mutating API routes, send routes, upload routes, or supplier-facing actions.
+
+The browser local-runtime command is intentionally broader than
+`smoke:local-runtime`: it runs `prisma migrate deploy` and the fake pilot demo
+seed before starting the API. It still refuses unsafe databases first and keeps
+all live-capable integrations disabled. It does not submit approvals,
+corrections, messages, uploads, mailbox polling, or supplier/customer-facing
+actions.
 
 ## Expected Output
 

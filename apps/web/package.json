@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint . --ext .ts,.tsx --ignore-pattern next-env.d.ts",
     "test": "node ../../scripts/run-ts-tests.mjs lib app",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:local-runtime": "playwright test --config=playwright.local-runtime.config.ts"
   },
   "dependencies": {
     "@ambe/shared": "workspace:*",

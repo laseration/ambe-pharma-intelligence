@@ -7,6 +7,7 @@ const mockApiBaseUrl = `http://127.0.0.1:${mockApiPort}/api`;
 
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: /pilot-local-runtime-smoke\.spec\.ts/,
   timeout: 45_000,
   expect: {
     timeout: 10_000,
