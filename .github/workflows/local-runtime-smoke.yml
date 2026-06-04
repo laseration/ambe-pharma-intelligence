@@ -107,3 +107,98 @@ jobs:
 
       - name: Run guarded local runtime smoke
         run: pnpm --filter @ambe/api smoke:local-runtime
+
+  browser-local-runtime-smoke:
+    name: Disposable PostgreSQL browser smoke
+    runs-on: ubuntu-latest
+    env:
+      CI: true
+      NODE_ENV: test
+      CI_DB_HOST: 127.0.0.1
+      CI_DB_NAME: ambe_local_browser_smoke
+      CI_DB_USER: ambe_ci_smoke
+      CI_DB_PASSWORD: ambe_ci_smoke
+      OPENAI_API_KEY: ''
+      OPENAI_PARSER_ENABLED: 'false'
+      OPENAI_EMAIL_REVIEW_ENABLED: 'false'
+      TELEGRAM_BOT_TOKEN: ''
+      TELEGRAM_INTERNAL_CHAT_ID: ''
+      TELEGRAM_DRY_RUN: 'true'
+      TELEGRAM_POLLING_ENABLED: 'false'
+      EMAIL_ALERTS_ENABLED: 'false'
+      EMAIL_INBOUND_POLLING_ENABLED: 'false'
+      MICROSOFT_MAIL_TENANT_ID: ''
+      MICROSOFT_MAIL_CLIENT_ID: ''
+      MICROSOFT_MAIL_CLIENT_SECRET: ''
+      MICROSOFT_GRAPH_TENANT_ID: ''
+      MICROSOFT_GRAPH_CLIENT_ID: ''
+      MICROSOFT_GRAPH_CLIENT_SECRET: ''
+      MICROSOFT_GRAPH_REFRESH_TOKEN: ''
+      MICROSOFT_GRAPH_SENDER_MAILBOX: ''
+      MICROSOFT_STORAGE_TENANT_ID: ''
+      MICROSOFT_STORAGE_CLIENT_ID: ''
+      MICROSOFT_STORAGE_CLIENT_SECRET: ''
+      MICROSOFT_TENANT_ID: ''
+      MICROSOFT_CLIENT_ID: ''
+      MICROSOFT_CLIENT_SECRET: ''
+      SHAREPOINT_ACCOUNT_OPENING_ENABLED: 'false'
+      ONEDRIVE_ACCOUNT_OPENING_ENABLED: 'false'
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ambe_local_browser_smoke
+          POSTGRES_USER: ambe_ci_smoke
+          POSTGRES_PASSWORD: ambe_ci_smoke
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ambe_ci_smoke -d ambe_local_browser_smoke"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium for Playwright
+        run: pnpm --filter @ambe/web exec playwright install chromium
+
+      - name: Configure disposable database URL
+        run: |
+          echo "DATABASE_URL=postgresql://${CI_DB_USER}:${CI_DB_PASSWORD}@${CI_DB_HOST}:5432/${CI_DB_NAME}?schema=public" >> "$GITHUB_ENV"
+
+      - name: Confirm disposable browser smoke database target
+        run: |
+          pnpm --filter @ambe/api exec tsx -e "
+            import { classifyDatabaseUrlForLocalSmoke } from './src/startup/localSmokeSafety';
+
+            const result = classifyDatabaseUrlForLocalSmoke(process.env.DATABASE_URL ?? '');
+
+            console.log('Database host:', result.host ?? 'unknown');
+            console.log('Database name:', result.databaseName ?? 'unknown');
+            console.log('Database classification:', result.classification);
+            console.log('Database decision:', result.safe ? 'safe' : 'refused');
+
+            if (!result.safe) {
+              throw new Error(result.reason);
+            }
+          "
+
+      - name: Run disposable database-backed browser smoke
+        run: pnpm --filter @ambe/web test:e2e:local-runtime
