@@ -8,6 +8,7 @@ import {
   type ReviewWorkflowDetail,
   type ReviewWorkflowListItem,
 } from '../../../../lib/reviewApi';
+import { buildBuyDecisionEvidenceSummary } from '../../../../lib/buyDecisionEvidence';
 import { buildReviewProvenanceSummary } from '../../../../lib/reviewProvenance';
 import {
   formatSafeSenderLabel,
@@ -946,6 +947,7 @@ export default async function ReviewInboundEmailPage({
           actionState: summarizeCommercialActionState(detail),
           auditHistory,
           provenance: buildReviewProvenanceSummary(detail),
+          buyEvidence: buildBuyDecisionEvidenceSummary(detail),
           summary: buildOperatorSummary(detail),
         };
       }),
@@ -1265,6 +1267,7 @@ export default async function ReviewInboundEmailPage({
                 actionState,
                 auditHistory,
                 provenance,
+                buyEvidence,
                 summary,
               }) => {
                 const resolutionEvidenceGroups =
@@ -1406,6 +1409,89 @@ export default async function ReviewInboundEmailPage({
                         <div>
                           <dt>Blocked or allowed reason</dt>
                           <dd>{actionState.blockedReason}</dd>
+                        </div>
+                      </dl>
+                    </section>
+                    <section className="resolution-evidence buy-evidence-card">
+                      <div className="resolution-evidence-header">
+                        <div>
+                          <h4 className="subsection-title">
+                            Buy-decision evidence
+                          </h4>
+                          <p className="copy resolution-evidence-copy">
+                            Safe commercial evidence behind this fake/demo buy
+                            recommendation or blocked state.
+                          </p>
+                        </div>
+                        <span
+                          className={`pill ${buyEvidence.blocked.length > 0 ? 'pill-low' : 'pill-neutral'}`}
+                        >
+                          {buyEvidence.blocked.length > 0
+                            ? 'Blocked'
+                            : 'Review evidence'}
+                        </span>
+                      </div>
+                      <dl className="offer-row-summary provenance-summary">
+                        <div>
+                          <dt>Evidence present</dt>
+                          <dd>
+                            {buyEvidence.present.length > 0 ? (
+                              <ul className="simple-list compact-list">
+                                {buyEvidence.present.map((evidenceItem) => (
+                                  <li
+                                    key={`${detail.id}-present-${evidenceItem.label}-${evidenceItem.value}`}
+                                  >
+                                    <strong>{evidenceItem.label}:</strong>{' '}
+                                    {evidenceItem.value}. {evidenceItem.detail}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              'No supporting evidence is attached yet.'
+                            )}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Evidence missing</dt>
+                          <dd>
+                            {buyEvidence.missing.length > 0 ? (
+                              <ul className="simple-list compact-list">
+                                {buyEvidence.missing.map((evidenceItem) => (
+                                  <li
+                                    key={`${detail.id}-missing-${evidenceItem.label}-${evidenceItem.value}`}
+                                  >
+                                    <strong>{evidenceItem.label}:</strong>{' '}
+                                    {evidenceItem.value}. {evidenceItem.detail}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              'No evidence gaps are recorded.'
+                            )}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Blocked because...</dt>
+                          <dd>
+                            {buyEvidence.blocked.length > 0 ? (
+                              <ul className="simple-list compact-list">
+                                {buyEvidence.blocked.map((evidenceItem) => (
+                                  <li
+                                    key={`${detail.id}-blocked-${evidenceItem.label}-${evidenceItem.value}`}
+                                  >
+                                    <strong>{evidenceItem.label}:</strong>{' '}
+                                    {evidenceItem.value}. {evidenceItem.detail}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              'No approval or execution blocker is recorded.'
+                            )}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Next recommended operator action</dt>
+                          <dd>{buyEvidence.nextRecommendedAction}</dd>
                         </div>
                       </dl>
                     </section>

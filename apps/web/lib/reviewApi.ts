@@ -150,6 +150,20 @@ export type ReviewWorkflowDetail = ReviewWorkflowListItem & {
     externalOrderReference?: string | null;
     orderedAt?: string | null;
   } | null;
+  buyDecisionEvidence?: {
+    estimatedMarginAmount?: number | string | null;
+    estimatedMarginCurrencyCode?: string | null;
+    estimatedMarginPct?: number | string | null;
+    recentUnitsSold?: number | null;
+    recentDemandWindowDays?: number | null;
+    stockOnHand?: number | null;
+    stockPositionLabel?: string | null;
+    stockRisk?: string | null;
+    expiryRisk?: string | null;
+    priceConfidence?: number | null;
+    missingEvidence?: string[] | null;
+    nextRecommendedAction?: string | null;
+  } | null;
 };
 
 export type ReviewWorkflowEvent = {
