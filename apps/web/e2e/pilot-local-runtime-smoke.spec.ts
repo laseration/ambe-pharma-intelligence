@@ -61,7 +61,7 @@ test('pilot local-runtime smoke uses real API with disposable fake data', async 
     page.getByText('sender domain northstar-demo.example.test'),
   ).toBeVisible();
   await expect(page.getByText('FAKE DEMO supplier offer')).toBeVisible();
-  await expect(page.getByText('Approval required')).toBeVisible();
+  await expect(page.getByText('Approval required').first()).toBeVisible();
   await expectSensitiveCanariesHidden(page);
 
   await page.goto(
