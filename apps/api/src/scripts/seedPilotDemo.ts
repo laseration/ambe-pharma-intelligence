@@ -618,6 +618,93 @@ async function upsertWorkflow(input: {
   return workflow;
 }
 
+async function upsertSafeCorrection(input: {
+  workflowId: string;
+  offerId: string;
+  inboundEmailId: string;
+  correctedProductId: string;
+}) {
+  const correction = await db.offerCorrection.upsert({
+    where: { id: `${input.workflowId}-safe-correction` },
+    update: {
+      emailDerivedOfferId: input.offerId,
+      offerWorkflowItemId: input.workflowId,
+      inboundEmailId: input.inboundEmailId,
+      correctionStatus: 'APPLIED',
+      correctedProductId: input.correctedProductId,
+      correctedRawProductText:
+        'LOCAL_RUNTIME_CORRECTED_RAW_TEXT_SHOULD_NOT_RENDER',
+      correctedNormalizedProductName: 'demo amlodipine 5mg tablets 28',
+      correctedStrength: '5mg',
+      correctedDosageForm: 'Tablet',
+      correctedPackSize: '28 tablets',
+      correctedManufacturer: 'Demo Generics Ltd',
+      correctedUnitPrice: new Prisma.Decimal('7.90'),
+      correctedCurrencyCode: 'GBP',
+      correctedMinimumOrderQuantity: 100,
+      correctedAvailability: 'Available now',
+      actorType: fixture.actor.actorType,
+      actorIdentifier: fixture.actor.actorIdentifier,
+      note: 'LOCAL_RUNTIME_CORRECTION_NOTE_SHOULD_NOT_RENDER',
+      metadata: demoMetadata({
+        source: 'disposable-db-backed-browser-smoke',
+      }),
+    },
+    create: {
+      id: `${input.workflowId}-safe-correction`,
+      emailDerivedOfferId: input.offerId,
+      offerWorkflowItemId: input.workflowId,
+      inboundEmailId: input.inboundEmailId,
+      correctionStatus: 'APPLIED',
+      correctedProductId: input.correctedProductId,
+      correctedRawProductText:
+        'LOCAL_RUNTIME_CORRECTED_RAW_TEXT_SHOULD_NOT_RENDER',
+      correctedNormalizedProductName: 'demo amlodipine 5mg tablets 28',
+      correctedStrength: '5mg',
+      correctedDosageForm: 'Tablet',
+      correctedPackSize: '28 tablets',
+      correctedManufacturer: 'Demo Generics Ltd',
+      correctedUnitPrice: new Prisma.Decimal('7.90'),
+      correctedCurrencyCode: 'GBP',
+      correctedMinimumOrderQuantity: 100,
+      correctedAvailability: 'Available now',
+      actorType: fixture.actor.actorType,
+      actorIdentifier: fixture.actor.actorIdentifier,
+      note: 'LOCAL_RUNTIME_CORRECTION_NOTE_SHOULD_NOT_RENDER',
+      metadata: demoMetadata({
+        source: 'disposable-db-backed-browser-smoke',
+      }),
+    },
+  });
+
+  await db.offerCorrectionEvent.upsert({
+    where: { id: `${correction.id}-applied-event` },
+    update: {
+      previousStatus: null,
+      newStatus: 'APPLIED',
+      actorType: fixture.actor.actorType,
+      actorIdentifier: fixture.actor.actorIdentifier,
+      note: 'Safe fake correction recorded for local-runtime browser smoke.',
+      metadata: demoMetadata({
+        source: 'disposable-db-backed-browser-smoke',
+      }),
+    },
+    create: {
+      id: `${correction.id}-applied-event`,
+      offerCorrectionId: correction.id,
+      actionType: 'APPLIED',
+      previousStatus: null,
+      newStatus: 'APPLIED',
+      actorType: fixture.actor.actorType,
+      actorIdentifier: fixture.actor.actorIdentifier,
+      note: 'Safe fake correction recorded for local-runtime browser smoke.',
+      metadata: demoMetadata({
+        source: 'disposable-db-backed-browser-smoke',
+      }),
+    },
+  });
+}
+
 async function upsertCommercialContext(input: {
   supplierId: string;
   customerId: string;
@@ -1129,6 +1216,12 @@ export async function seedPilotDemo() {
     inboundEmailId: email.inboundEmail.id,
     status: 'ORDERED',
     note: fixture.offers.completed.reviewReason,
+  });
+  await upsertSafeCorrection({
+    workflowId: pendingWorkflow.id,
+    offerId: email.pendingOffer.id,
+    inboundEmailId: email.inboundEmail.id,
+    correctedProductId: base.pendingProduct.id,
   });
   const commercial = await upsertCommercialContext({
     supplierId: base.supplier.id,
