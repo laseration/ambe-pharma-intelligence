@@ -8,11 +8,12 @@ const hiddenCanaries = [
   'buyer@citycare-demo.example.test',
   'postgresql://',
   'Bearer ',
+  'local-runtime-e2e-admin-key',
+  'local-runtime-e2e-internal-api-key',
+  'local-runtime-e2e-password',
+  'local-runtime-e2e-session-secret-that-is-long-enough',
   'GRAPH_PAYLOAD_SHOULD_NOT_RENDER',
   'TELEGRAM_PAYLOAD_SHOULD_NOT_RENDER',
-  'MICROSOFT_GRAPH_CLIENT_SECRET',
-  'OPENAI_API_KEY',
-  'TELEGRAM_BOT_TOKEN',
 ];
 
 async function expectSensitiveCanariesHidden(page: Page) {
