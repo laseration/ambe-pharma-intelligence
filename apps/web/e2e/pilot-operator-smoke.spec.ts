@@ -64,7 +64,9 @@ test('pilot operator walkthrough smoke uses sanitized browser paths', async ({
   await expect(page.getByText('Approval required')).toHaveCount(2);
   await expectSensitiveCanariesHidden(page);
 
-  await page.goto('/dashboard/review/inbound-email-1?returnTo=%2Fdashboard%2Freview');
+  await page.goto(
+    '/dashboard/review/inbound-email-1?returnTo=%2Fdashboard%2Freview',
+  );
   await expect(
     page.getByRole('heading', { name: 'Pilot sanitized supplier offer' }),
   ).toBeVisible();
