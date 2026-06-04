@@ -102,6 +102,12 @@ The preflight and dry-run do not mark messages read, ingest messages, persist
 email content, download attachment content, call OpenAI, call Telegram, send
 email, or upload files.
 
+Use
+[`docs/graph-readonly-mailbox-dry-run.md`](graph-readonly-mailbox-dry-run.md)
+for the controlled dedicated-mailbox readiness plan before any real inbound
+pilot. Do not run the dry-run against a production shared mailbox or a mailbox
+that is already part of an operational workflow.
+
 Expected behavior:
 
 - unread messages are read oldest-first
