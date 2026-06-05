@@ -2,26 +2,32 @@ import Link from 'next/link';
 
 const serviceCards = [
   {
+    marker: 'CS',
     title: 'Comparator Drug Sourcing',
     copy: 'Structured sourcing support for comparator medicine requirements, with clear commercial discussion and documentation-led supplier engagement.',
   },
   {
+    marker: 'PT',
     title: 'Pharmaceutical Trading',
     copy: 'Relationship-led pharmaceutical trading support across qualified supplier and customer networks.',
   },
   {
+    marker: 'PP',
     title: 'Product Procurement',
     copy: 'Practical pharmaceutical procurement assistance for defined product requirements, availability checks, and supplier conversations.',
   },
   {
+    marker: 'RM',
     title: 'Route to Market Support',
     copy: 'Commercial support for route to market planning, customer introductions, and trade discussions.',
   },
   {
+    marker: 'SO',
     title: 'Supplier & Customer Onboarding',
     copy: 'A documentation-aware process for supplier onboarding and customer onboarding before trade discussions progress.',
   },
   {
+    marker: 'DS',
     title: 'Documentation Support',
     copy: 'Coordination around standard trade documents including GDP questionnaires, account opening forms, licences, and compliance details.',
   },
@@ -31,22 +37,45 @@ const trustItems = [
   'UK Pharmaceutical Sector',
   'Comparator Sourcing',
   'Supplier & Customer Network',
-  'Compliance-Aware Processes',
-  'Responsive Communication',
+  'Documentation-Led Process',
 ];
 
 const floatingCards = [
-  'Comparator Sourcing',
-  'Product Procurement',
-  'Supplier Documentation',
-  'Route to Market',
+  {
+    title: 'Comparator Sourcing',
+    detail: 'Requirement-led review',
+  },
+  {
+    title: 'Procurement',
+    detail: 'Availability conversations',
+  },
+  {
+    title: 'Supplier Documentation',
+    detail: 'Onboarding materials',
+  },
+  {
+    title: 'Route to Market',
+    detail: 'Commercial next steps',
+  },
 ];
 
 const workflowSteps = [
-  'Enquiry',
-  'Product / Requirement Review',
-  'Documentation',
-  'Trade Discussion',
+  {
+    title: 'Enquiry',
+    copy: 'Share the product, market, timing, and commercial context.',
+  },
+  {
+    title: 'Product / Requirement Review',
+    copy: 'Review pack, strength, presentation, sourcing route, and practical constraints.',
+  },
+  {
+    title: 'Documentation',
+    copy: 'Coordinate GDP questionnaires, account opening forms, licences, and compliance details.',
+  },
+  {
+    title: 'Trade Discussion',
+    copy: 'Progress qualified supplier or customer conversations with clear next actions.',
+  },
 ];
 
 // TODO: Replace these placeholders when public contact details are verified in source material.
@@ -56,6 +85,7 @@ const contactPhone = 'Phone to be confirmed';
 export default function PublicHomePage() {
   return (
     <main className="public-site">
+      <div className="public-depth-layer" aria-hidden="true" />
       <header className="public-header">
         <Link
           className="public-wordmark"
@@ -88,6 +118,14 @@ export default function PublicHomePage() {
             sourcing, trading relationships, procurement support, and
             route-to-market solutions.
           </p>
+          <div
+            className="public-hero-proof"
+            aria-label="Homepage service summary"
+          >
+            <span>Pharmaceutical procurement</span>
+            <span>Supplier onboarding</span>
+            <span>Customer onboarding</span>
+          </div>
           <div className="public-hero-actions">
             <a className="public-button public-button-primary" href="#contact">
               Contact Ambe
@@ -105,10 +143,14 @@ export default function PublicHomePage() {
           aria-label="Trading service focus areas"
         >
           {floatingCards.map((card) => (
-            <div className="public-floating-card" key={card}>
-              <span>{card}</span>
+            <div className="public-floating-card" key={card.title}>
+              <span>{card.title}</span>
+              <small>{card.detail}</small>
             </div>
           ))}
+          <div className="public-visual-core">
+            <span>Trade review</span>
+          </div>
         </div>
       </section>
 
@@ -149,7 +191,7 @@ export default function PublicHomePage() {
             steps.
           </p>
         </div>
-        <div className="public-depth-panel">
+        <aside className="public-depth-panel">
           <p>Typical review points</p>
           <ul>
             <li>Product name, pack, strength, and presentation</li>
@@ -157,7 +199,7 @@ export default function PublicHomePage() {
             <li>Supplier documentation and account status</li>
             <li>Customer onboarding and route to market considerations</li>
           </ul>
-        </div>
+        </aside>
       </section>
 
       <section className="public-section" id="services">
@@ -168,6 +210,7 @@ export default function PublicHomePage() {
         <div className="public-service-grid">
           {serviceCards.map((service) => (
             <article className="public-service-card" key={service.title}>
+              <span className="public-service-marker">{service.marker}</span>
               <h3>{service.title}</h3>
               <p>{service.copy}</p>
             </article>
@@ -188,7 +231,10 @@ export default function PublicHomePage() {
         </div>
         <ol className="public-workflow-list">
           {workflowSteps.map((step) => (
-            <li key={step}>{step}</li>
+            <li key={step.title}>
+              <span>{step.title}</span>
+              <p>{step.copy}</p>
+            </li>
           ))}
         </ol>
       </section>
@@ -209,13 +255,16 @@ export default function PublicHomePage() {
       <section className="public-contact" id="contact">
         <div>
           <p className="public-eyebrow">Contact</p>
-          <h2>Supplier / Customer Enquiry</h2>
+          <h2>Start a focused trade conversation</h2>
           <p>
             Share your product requirement, sourcing enquiry, or onboarding
             question and the team will review the most appropriate next step.
           </p>
         </div>
         <div className="public-contact-card">
+          <p className="public-contact-card-heading">
+            Supplier / Customer Enquiry
+          </p>
           <p>
             <span>Email</span>
             {contactEmail}
