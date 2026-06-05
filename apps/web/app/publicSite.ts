@@ -1,4 +1,14 @@
-export const publicSiteUrl = 'https://www.ambemedical.com';
+const DEFAULT_PUBLIC_SITE_URL = 'https://ambemedical.com';
+
+function normalizePublicSiteUrl(value: string | undefined): string {
+  const trimmed = value?.trim().replace(/\/+$/, '');
+
+  return trimmed || DEFAULT_PUBLIC_SITE_URL;
+}
+
+export const publicSiteUrl = normalizePublicSiteUrl(
+  process.env.NEXT_PUBLIC_SITE_URL,
+);
 
 export const publicContact = {
   email: 'info@ambemedical.com',

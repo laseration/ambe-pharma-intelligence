@@ -32,7 +32,9 @@ The public website should not claim any of the following unless verified source 
 
 ## Remaining human-verification TODOs
 
-- Confirm the canonical production domain. The current SEO configuration uses `https://www.ambemedical.com`.
+- Confirm the canonical production domain. The current default SEO configuration
+  uses `https://ambemedical.com` and can be overridden with
+  `NEXT_PUBLIC_SITE_URL`.
 - Confirm whether a public physical address should be displayed.
 - Confirm any licence, regulatory, or operating-site statements before publishing them.
 - Confirm whether a privacy policy, cookie notice, and legal footer links are required before launch.

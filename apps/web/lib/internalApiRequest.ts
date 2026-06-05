@@ -57,8 +57,19 @@ export class InternalApiError extends Error {
 export function getInternalApiBaseUrl(
   source: InternalApiEnv = process.env,
 ): string {
+  const configuredBaseUrl = source.INTERNAL_API_BASE_URL?.trim();
+
+  if (configuredBaseUrl) {
+    return configuredBaseUrl.replace(/\/+$/, '');
+  }
+
+  if (source.NODE_ENV === 'production') {
+    throw new Error(
+      'INTERNAL_API_BASE_URL is required in production for dashboard API requests.',
+    );
+  }
+
   return (
-    source.INTERNAL_API_BASE_URL?.trim() ||
     source.NEXT_PUBLIC_INTERNAL_API_BASE_URL?.trim() ||
     DEFAULT_INTERNAL_API_BASE_URL
   ).replace(/\/+$/, '');

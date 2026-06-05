@@ -19,12 +19,30 @@ const source = {
   DASHBOARD_OPERATOR_TOKEN: '',
 };
 
-test('internal API request helper resolves configured base URL and safe default', () => {
+test('internal API request helper resolves configured base URL and local defaults', () => {
   assert.equal(
     getInternalApiBaseUrl(source),
     'https://internal-api.example.test/api',
   );
+  assert.equal(
+    getInternalApiBaseUrl({
+      NEXT_PUBLIC_INTERNAL_API_BASE_URL: 'http://127.0.0.1:4001/api/',
+    }),
+    'http://127.0.0.1:4001/api',
+  );
   assert.equal(getInternalApiBaseUrl({}), 'http://127.0.0.1:4000/api');
+});
+
+test('internal API request helper requires server-side API URL in production', () => {
+  assert.throws(
+    () =>
+      getInternalApiBaseUrl({
+        NODE_ENV: 'production',
+        NEXT_PUBLIC_INTERNAL_API_BASE_URL:
+          'https://public-api.example.test/api',
+      }),
+    /INTERNAL_API_BASE_URL is required in production/,
+  );
 });
 
 test('internal API request helper attaches server credentials and caller label only when configured', () => {

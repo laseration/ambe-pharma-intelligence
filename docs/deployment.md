@@ -8,7 +8,8 @@ Intelligence. It is factual to this repo and does not include real secrets.
 The repo is a pnpm monorepo:
 
 - `apps/api`: Express API, Prisma, PostgreSQL
-- `apps/web`: Next.js internal dashboard
+- `apps/web`: Next.js public website with internal dashboard routes behind
+  `/login` and `/dashboard`
 - `packages/shared`: shared TypeScript utilities
 
 Required runtime tools:
@@ -42,19 +43,25 @@ Required API values for a pilot:
 
 Required web values for a pilot:
 
-| Variable                                | Required    | Purpose                                          |
-| --------------------------------------- | ----------- | ------------------------------------------------ |
-| `WEB_AUTH_USERNAME`                     | yes         | Internal dashboard username.                     |
-| `WEB_AUTH_PASSWORD`                     | yes         | Internal dashboard password.                     |
-| `WEB_AUTH_ROLE`                         | yes         | `viewer`, `operator`, or `admin`.                |
-| `WEB_AUTH_SESSION_SECRET`               | yes         | At least 32 random characters.                   |
-| `WEB_AUTH_SESSION_TTL_SECONDS`          | optional    | Session duration, default is 8 hours.            |
-| `INTERNAL_API_BASE_URL`                 | recommended | Server-side web URL for the API `/api` base.     |
-| `ACCOUNT_OPENING_EXPORT_DOWNLOAD_TOKEN` | optional    | Download token for account-opening export files. |
+| Variable                                | Required | Purpose                                                           |
+| --------------------------------------- | -------- | ----------------------------------------------------------------- |
+| `NEXT_PUBLIC_SITE_URL`                  | yes      | Canonical public site URL, for example `https://ambemedical.com`. |
+| `WEB_AUTH_USERNAME`                     | yes      | Internal dashboard username.                                      |
+| `WEB_AUTH_PASSWORD`                     | yes      | Internal dashboard password.                                      |
+| `WEB_AUTH_ROLE`                         | yes      | `viewer`, `operator`, or `admin`.                                 |
+| `WEB_AUTH_SESSION_SECRET`               | yes      | At least 32 random characters.                                    |
+| `WEB_AUTH_SESSION_TTL_SECONDS`          | optional | Session duration, default is 8 hours.                             |
+| `INTERNAL_API_BASE_URL`                 | yes      | Server-side web URL for the API `/api` base.                      |
+| `INTERNAL_API_KEY`                      | yes      | Server-side API key for dashboard API requests.                   |
+| `ACCOUNT_OPENING_EXPORT_DOWNLOAD_TOKEN` | optional | Download token for account-opening export files.                  |
 
 Do not use `NEXT_PUBLIC_*` for secrets. The dashboard auth secret, dashboard
 password, internal API keys, Graph credentials, Telegram token, OpenAI key, and
 database URL must stay server-side.
+
+Do not use local development or end-to-end smoke credentials in production.
+`NEXT_PUBLIC_INTERNAL_API_BASE_URL` is only for local browser smoke setups; the
+production dashboard uses the server-side `INTERNAL_API_BASE_URL`.
 
 ## Database And Prisma
 
@@ -107,6 +114,10 @@ Start built services:
 pnpm --filter @ambe/api start
 pnpm --filter @ambe/web start
 ```
+
+The public website is served from the web app at `/`. The internal dashboard
+entry points remain `/login` and `/dashboard`. In production, unauthenticated
+requests to `/dashboard` and child routes must redirect to `/login?next=...`.
 
 Local development can use:
 
@@ -304,8 +315,21 @@ pnpm build
 
 Dashboard checks:
 
+- `/dashboard` redirects unauthenticated users to `/login?next=%2Fdashboard`
+- `/login` loads the internal sign-in form
 - `/dashboard/setup`
 - `/dashboard/setup/diagnostics`
+
+Public website checks:
+
+- `/`
+- `/about`
+- `/services`
+- `/comparator-sourcing`
+- `/onboarding`
+- `/contact`
+- `/sitemap.xml` includes only public routes
+- `/robots.txt` disallows `/login` and `/dashboard`
 
 API checks:
 
