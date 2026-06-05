@@ -956,6 +956,154 @@ summary {
   border-top: 1px solid rgba(25, 118, 178, 0.12);
 }
 
+.public-page-hero,
+.public-page-section,
+.public-page-cta {
+  width: min(1220px, calc(100% - 48px));
+  margin: 0 auto;
+}
+
+.public-page-hero {
+  display: grid;
+  gap: 22px;
+  padding: 112px 0 78px;
+}
+
+.public-page-hero h1 {
+  max-width: 880px;
+  margin: 0;
+  color: #0a2c4d;
+  font-size: clamp(3rem, 6vw, 5.7rem);
+  line-height: 0.98;
+  letter-spacing: 0;
+}
+
+.public-page-hero p:last-child {
+  max-width: 760px;
+  margin: 0;
+  color: #486274;
+  font-size: 1.13rem;
+  line-height: 1.75;
+}
+
+.public-page-section {
+  padding: 72px 0;
+}
+
+.public-page-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
+  gap: 52px;
+  align-items: start;
+}
+
+.public-copy-block h2,
+.public-page-cta h2 {
+  margin: 10px 0 0;
+  color: #0b2945;
+  font-size: clamp(2rem, 4vw, 3.15rem);
+  line-height: 1.06;
+  letter-spacing: 0;
+}
+
+.public-copy-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.public-copy-stack p,
+.public-page-card p,
+.public-check-list p,
+.public-page-cta p {
+  margin: 0;
+  color: #506a7d;
+  line-height: 1.7;
+}
+
+.public-page-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.public-page-card {
+  min-height: 230px;
+  padding: 28px;
+  border: 1px solid rgba(25, 118, 178, 0.12);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, #ffffff 0%, rgba(246, 251, 252, 0.94) 100%), #ffffff;
+  box-shadow: 0 20px 54px rgba(11, 41, 69, 0.08);
+}
+
+.public-page-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(13, 148, 136, 0.24);
+  box-shadow: 0 26px 64px rgba(11, 41, 69, 0.12);
+}
+
+.public-page-card h2,
+.public-page-card h3 {
+  margin: 0 0 14px;
+  color: #0b2945;
+  font-size: 1.18rem;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.public-check-list {
+  display: grid;
+  gap: 12px;
+}
+
+.public-check-list p {
+  position: relative;
+  padding: 18px 18px 18px 42px;
+  border: 1px solid rgba(25, 118, 178, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 12px 34px rgba(11, 41, 69, 0.06);
+}
+
+.public-check-list p::before {
+  position: absolute;
+  top: 24px;
+  left: 20px;
+  width: 8px;
+  height: 8px;
+  content: '';
+  border-radius: 50%;
+  background: #0d9488;
+  box-shadow: 0 0 0 5px rgba(13, 148, 136, 0.1);
+}
+
+.public-page-cta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 32px;
+  align-items: center;
+  margin-top: 32px;
+  margin-bottom: 72px;
+  padding: 34px;
+  border: 1px solid rgba(25, 118, 178, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 22px 62px rgba(11, 41, 69, 0.09);
+}
+
+.public-page-cta p {
+  max-width: 720px;
+  margin-top: 12px;
+}
+
+.public-workflow-list-wide {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.public-contact-page {
+  padding-top: 34px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -2169,6 +2317,15 @@ summary {
     display: none;
   }
 
+  .public-page-grid,
+  .public-page-cta {
+    grid-template-columns: 1fr;
+  }
+
+  .public-page-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .dashboard-proof-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -2194,6 +2351,9 @@ summary {
   .public-trust-strip,
   .public-section,
   .public-contact,
+  .public-page-hero,
+  .public-page-section,
+  .public-page-cta,
   .public-footer {
     width: min(100% - 32px, 1180px);
   }
@@ -2288,8 +2448,30 @@ summary {
 
   .public-service-grid,
   .public-workflow-list,
+  .public-page-card-grid,
   .public-footer {
     grid-template-columns: 1fr;
+  }
+
+  .public-page-hero {
+    padding: 54px 0 28px;
+  }
+
+  .public-page-hero h1 {
+    font-size: 2.6rem;
+  }
+
+  .public-page-section {
+    padding: 44px 0;
+  }
+
+  .public-page-card {
+    min-height: auto;
+  }
+
+  .public-page-cta {
+    margin-bottom: 46px;
+    padding: 24px;
   }
 
   .public-service-card {

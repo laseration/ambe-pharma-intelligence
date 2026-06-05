@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { PublicFooter, PublicHeader } from './components/PublicSiteChrome';
 
 const serviceCards = [
   {
@@ -86,26 +86,7 @@ export default function PublicHomePage() {
   return (
     <main className="public-site">
       <div className="public-depth-layer" aria-hidden="true" />
-      <header className="public-header">
-        <Link
-          className="public-wordmark"
-          href="/"
-          aria-label="Ambe Medical Group home"
-        >
-          <span className="public-wordmark-mark">AM</span>
-          <span>Ambe Medical Group</span>
-        </Link>
-        <nav className="public-nav" aria-label="Public website navigation">
-          <a href="#about">About</a>
-          <a href="#services">Services</a>
-          <a href="#comparator-sourcing">Comparator Sourcing</a>
-          <a href="#onboarding">Onboarding</a>
-          <a href="#contact">Contact</a>
-        </nav>
-        <a className="public-header-cta" href="#contact">
-          Supplier / Customer Enquiry
-        </a>
-      </header>
+      <PublicHeader />
 
       <section className="public-hero" aria-labelledby="public-hero-title">
         <div className="public-hero-content">
@@ -127,12 +108,12 @@ export default function PublicHomePage() {
             <span>Customer onboarding</span>
           </div>
           <div className="public-hero-actions">
-            <a className="public-button public-button-primary" href="#contact">
+            <a className="public-button public-button-primary" href="/contact">
               Contact Ambe
             </a>
             <a
               className="public-button public-button-secondary"
-              href="#contact"
+              href="/contact"
             >
               Supplier / Customer Enquiries
             </a>
@@ -279,22 +260,7 @@ export default function PublicHomePage() {
         </div>
       </section>
 
-      <footer className="public-footer">
-        <div>
-          <p className="public-footer-brand">Ambe Medical Group</p>
-          <p>
-            Pharmaceutical trading, comparator drug sourcing, procurement
-            support, and supplier/customer onboarding.
-          </p>
-        </div>
-        <nav aria-label="Footer quick links">
-          <a href="#about">About</a>
-          <a href="#services">Services</a>
-          <a href="#onboarding">Onboarding</a>
-          <a href="#contact">Contact</a>
-          <Link href="/login">Staff Login</Link>
-        </nav>
-      </footer>
+      <PublicFooter />
     </main>
   );
 }
