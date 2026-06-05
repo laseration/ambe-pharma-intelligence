@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { PublicFooter, PublicHeader } from '../components/PublicSiteChrome';
+import { publicUrl } from '../publicSite';
 
 const steps = [
   {
@@ -26,11 +27,15 @@ export const metadata: Metadata = {
   title: 'Supplier & Customer Onboarding | Ambe Medical Group',
   description:
     'Supplier onboarding and customer onboarding support for pharmaceutical trading, including documentation-led account review and trade discussion steps.',
+  alternates: {
+    canonical: '/onboarding',
+  },
   openGraph: {
     title: 'Supplier & Customer Onboarding | Ambe Medical Group',
     description:
       'Documentation-led supplier and customer onboarding support for pharmaceutical trading relationships.',
     type: 'website',
+    url: publicUrl('/onboarding'),
   },
 };
 

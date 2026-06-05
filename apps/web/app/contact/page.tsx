@@ -1,20 +1,21 @@
 import type { Metadata } from 'next';
 
 import { PublicFooter, PublicHeader } from '../components/PublicSiteChrome';
-
-// TODO: Replace placeholders once public contact details are verified in source material.
-const contactEmail = 'Email to be confirmed';
-const contactPhone = 'Phone to be confirmed';
+import { publicContact, publicUrl } from '../publicSite';
 
 export const metadata: Metadata = {
   title: 'Contact Ambe Medical Group | Pharmaceutical Trading Enquiries',
   description:
     'Contact Ambe Medical Group about pharmaceutical trading, comparator drug sourcing, procurement, route to market, supplier onboarding, or customer onboarding.',
+  alternates: {
+    canonical: '/contact',
+  },
   openGraph: {
     title: 'Contact Ambe Medical Group | Pharmaceutical Trading Enquiries',
     description:
       'Contact Ambe Medical Group for pharmaceutical trading, comparator sourcing, procurement, and onboarding enquiries.',
     type: 'website',
+    url: publicUrl('/contact'),
   },
 };
 
@@ -51,15 +52,22 @@ export default function ContactPage() {
           </p>
           <p>
             <span>Email</span>
-            {contactEmail}
+            <a href={publicContact.emailHref}>{publicContact.email}</a>
           </p>
           <p>
             <span>Phone</span>
-            {contactPhone}
+            <a href={publicContact.phoneHref}>{publicContact.phone}</a>
           </p>
           <p className="public-contact-note">
-            Direct public enquiry details should be published once verified.
+            Prefer email for product requirements and documentation-led
+            onboarding enquiries.
           </p>
+          <a
+            className="public-button public-button-primary"
+            href={publicContact.emailHref}
+          >
+            Email Ambe Medical Group
+          </a>
         </div>
       </section>
 

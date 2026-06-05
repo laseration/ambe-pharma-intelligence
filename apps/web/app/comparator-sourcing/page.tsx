@@ -2,16 +2,21 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { PublicFooter, PublicHeader } from '../components/PublicSiteChrome';
+import { publicUrl } from '../publicSite';
 
 export const metadata: Metadata = {
   title: 'Comparator Drug Sourcing | Ambe Medical Group',
   description:
     'Comparator drug sourcing support for pharmaceutical businesses, including requirement review, procurement context, documentation, and trade discussion.',
+  alternates: {
+    canonical: '/comparator-sourcing',
+  },
   openGraph: {
     title: 'Comparator Drug Sourcing | Ambe Medical Group',
     description:
       'Requirement-led comparator drug sourcing support with procurement context and documentation-aware next steps.',
     type: 'website',
+    url: publicUrl('/comparator-sourcing'),
   },
 };
 

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { PublicFooter, PublicHeader } from '../components/PublicSiteChrome';
+import { publicUrl } from '../publicSite';
 
 const services = [
   {
@@ -34,11 +35,15 @@ export const metadata: Metadata = {
   title: 'Pharmaceutical Trading & Procurement Services | Ambe Medical Group',
   description:
     'Explore Ambe Medical Group services for pharmaceutical trading, comparator drug sourcing, procurement, route to market support, and onboarding.',
+  alternates: {
+    canonical: '/services',
+  },
   openGraph: {
     title: 'Pharmaceutical Trading & Procurement Services | Ambe Medical Group',
     description:
       'Pharmaceutical trading, comparator sourcing, procurement, route to market support, and onboarding services.',
     type: 'website',
+    url: publicUrl('/services'),
   },
 };
 

@@ -1,12 +1,6 @@
 import Link from 'next/link';
 
-const publicNavLinks = [
-  { href: '/about', label: 'About' },
-  { href: '/services', label: 'Services' },
-  { href: '/comparator-sourcing', label: 'Comparator Sourcing' },
-  { href: '/onboarding', label: 'Onboarding' },
-  { href: '/contact', label: 'Contact' },
-];
+import { publicContact, publicRoutes } from '../publicSite';
 
 export function PublicHeader() {
   return (
@@ -20,8 +14,8 @@ export function PublicHeader() {
         <span>Ambe Medical Group</span>
       </Link>
       <nav className="public-nav" aria-label="Public website navigation">
-        {publicNavLinks.map((link) => (
-          <Link href={link.href} key={link.href}>
+        {publicRoutes.map((link) => (
+          <Link href={link.path} key={link.path}>
             {link.label}
           </Link>
         ))}
@@ -42,10 +36,14 @@ export function PublicFooter() {
           Pharmaceutical trading, comparator drug sourcing, procurement support,
           and supplier/customer onboarding.
         </p>
+        <p className="public-footer-contact">
+          <a href={publicContact.emailHref}>{publicContact.email}</a>
+          <a href={publicContact.phoneHref}>{publicContact.phone}</a>
+        </p>
       </div>
       <nav aria-label="Footer quick links">
-        {publicNavLinks.map((link) => (
-          <Link href={link.href} key={link.href}>
+        {publicRoutes.map((link) => (
+          <Link href={link.path} key={link.path}>
             {link.label}
           </Link>
         ))}

@@ -1,16 +1,21 @@
 import type { Metadata } from 'next';
 
 import { PublicFooter, PublicHeader } from '../components/PublicSiteChrome';
+import { publicUrl } from '../publicSite';
 
 export const metadata: Metadata = {
   title: 'About Ambe Medical Group | Pharmaceutical Trading Experience',
   description:
     'Learn about Ambe Medical Group and its relationship-led pharmaceutical trading, comparator sourcing, procurement, and onboarding support.',
+  alternates: {
+    canonical: '/about',
+  },
   openGraph: {
     title: 'About Ambe Medical Group | Pharmaceutical Trading Experience',
     description:
       'Relationship-led pharmaceutical trading, comparator sourcing, procurement, and onboarding support.',
     type: 'website',
+    url: publicUrl('/about'),
   },
 };
 
