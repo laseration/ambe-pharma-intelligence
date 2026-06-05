@@ -48,7 +48,7 @@ test('dashboard middleware redirects unauthenticated requests to login', async (
     assert.equal(response.status, 307);
     assert.equal(
       response.headers.get('location'),
-      'http://localhost:3000/?next=%2Fdashboard%2Freview%3Fstatus%3DNEW',
+      'http://localhost:3000/login?next=%2Fdashboard%2Freview%3Fstatus%3DNEW',
     );
   });
 });
