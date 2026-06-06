@@ -26,6 +26,15 @@ export const publicRoutes = [
   { path: '/contact', label: 'Contact' },
 ] as const;
 
+export const publicNavItems = [
+  { path: '/', label: 'Home' },
+  { path: '/about', label: 'About' },
+  { path: '/services', label: 'Services' },
+  { path: '/comparator-sourcing', label: 'Comparator Sourcing' },
+  { path: '/onboarding', label: 'Onboarding' },
+  { path: '/contact', label: 'Contact' },
+] as const;
+
 export function publicUrl(path: string): string {
   return new URL(path, publicSiteUrl).toString();
 }

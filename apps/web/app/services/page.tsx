@@ -2,50 +2,54 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { PublicFooter, PublicHeader } from '../components/PublicSiteChrome';
-import { publicUrl } from '../publicSite';
+import { buildPublicMetadata } from '../seo';
 
-const services = [
+const serviceGroups = [
   {
-    title: 'Comparator Drug Sourcing',
-    copy: 'Structured support for comparator requirements, with attention to product details, availability conversations, timing, and documentation.',
+    title: 'Comparator and procurement enquiries',
+    copy: 'Defined product requirements are reviewed against presentation, market, timing, quantity, documentation, and commercial context. This is the right route when the enquiry begins with a specific medicine, comparator need, or procurement brief.',
+    href: '/comparator-sourcing',
+    linkLabel: 'Comparator sourcing',
   },
   {
-    title: 'Pharmaceutical Trading',
-    copy: 'Relationship-led pharmaceutical trading support across supplier and customer conversations.',
+    title: 'Trading relationships and commercial supply discussions',
+    copy: 'Supplier and customer conversations are handled with attention to counterparty fit, product context, route to market, and realistic next steps. Ambe does not present the website as a public stock list or automated ordering channel.',
+    href: '/contact',
+    linkLabel: 'Discuss an enquiry',
   },
   {
-    title: 'Pharmaceutical Procurement',
-    copy: 'Practical procurement support for defined product requirements and supplier discussions.',
-  },
-  {
-    title: 'Route to Market Support',
-    copy: 'Commercial route to market discussion for qualified product and customer opportunities.',
-  },
-  {
-    title: 'Supplier Onboarding',
-    copy: 'Coordination around supplier documents, account information, licences, and compliance details where applicable.',
-  },
-  {
-    title: 'Customer Onboarding',
-    copy: 'Support for account opening workflows, documentation review, and customer qualification steps.',
+    title: 'Onboarding and documentation coordination',
+    copy: 'Company details, contacts, business type, relevant licences or registrations, GDP questionnaires, account forms, and supporting materials can be gathered before trade discussions progress.',
+    href: '/onboarding',
+    linkLabel: 'Onboarding process',
   },
 ];
 
-export const metadata: Metadata = {
-  title: 'Pharmaceutical Trading & Procurement Services | Ambe Medical Group',
+const reviewSteps = [
+  {
+    title: 'Define the enquiry',
+    copy: 'Product, party, timing, and commercial purpose are made clear before expectations are set.',
+  },
+  {
+    title: 'Check document context',
+    copy: 'Relevant account, licence, registration, questionnaire, or supporting material is identified where applicable.',
+  },
+  {
+    title: 'Agree the next route',
+    copy: 'The enquiry is directed towards account review, comparator sourcing, a supplier discussion, or a customer conversation.',
+  },
+];
+
+export const metadata: Metadata = buildPublicMetadata({
+  path: '/services',
+  title: 'Pharmaceutical Trading Services & Procurement Support | Ambe',
   description:
-    'Explore Ambe Medical Group services for pharmaceutical trading, comparator drug sourcing, procurement, route to market support, and onboarding.',
-  alternates: {
-    canonical: '/services',
-  },
-  openGraph: {
-    title: 'Pharmaceutical Trading & Procurement Services | Ambe Medical Group',
-    description:
-      'Pharmaceutical trading, comparator sourcing, procurement, route to market support, and onboarding services.',
-    type: 'website',
-    url: publicUrl('/services'),
-  },
-};
+    'Explore Ambe Medical Group services for pharmaceutical trading enquiries, procurement support, comparator requirements, and onboarding coordination.',
+  openGraphTitle:
+    'Pharmaceutical Trading Services & Procurement Support | Ambe',
+  openGraphDescription:
+    'Pharmaceutical trading services, procurement support, comparator requirements, and onboarding coordination from Ambe Medical Group.',
+});
 
 export default function ServicesPage() {
   return (
@@ -56,39 +60,60 @@ export default function ServicesPage() {
       <section className="public-page-hero" aria-labelledby="services-title">
         <p className="public-eyebrow">Services</p>
         <h1 id="services-title">
-          Pharmaceutical trading and procurement services
+          Pharmaceutical trade services with a defined commercial purpose
         </h1>
         <p>
-          Ambe Medical Group supports carefully scoped pharmaceutical trading,
-          comparator drug sourcing, pharmaceutical procurement, route to market,
-          supplier onboarding, and customer onboarding workflows.
+          Ambe Medical Group groups public enquiries into three practical
+          routes. Each route starts with enough information to decide whether
+          the discussion should progress and what should be checked first.
         </p>
       </section>
 
       <section className="public-page-section">
         <div className="public-page-card-grid">
-          {services.map((service) => (
+          {serviceGroups.map((service) => (
             <article className="public-page-card" key={service.title}>
               <h2>{service.title}</h2>
               <p>{service.copy}</p>
+              <Link href={service.href}>{service.linkLabel}</Link>
             </article>
           ))}
         </div>
       </section>
 
+      <section className="public-page-section">
+        <div className="public-section-heading">
+          <p className="public-eyebrow">How enquiries are handled</p>
+          <h2>Review before expectation-setting</h2>
+        </div>
+        <ol className="public-workflow-list public-workflow-list-wide">
+          {reviewSteps.map((step) => (
+            <li key={step.title}>
+              <span>{step.title}</span>
+              <p>{step.copy}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+
       <section className="public-page-cta">
         <div>
           <p className="public-eyebrow">Next step</p>
-          <h2>Discuss a specific product or onboarding requirement</h2>
+          <h2>Choose the route that matches the enquiry</h2>
           <p>
-            Share the product, supplier, customer, or route to market context so
-            the appropriate documentation and commercial next steps can be
-            reviewed.
+            Use account opening for company and document review, or contact
+            Ambe with a specific product, supplier, customer, or procurement
+            requirement.
           </p>
         </div>
-        <Link className="public-button public-button-primary" href="/contact">
-          Contact Ambe
-        </Link>
+        <div className="public-cta-actions">
+          <Link className="public-button public-button-primary" href="/contact">
+            Contact Ambe
+          </Link>
+          <Link className="public-button public-button-secondary" href="/comparator-sourcing">
+            Comparator Sourcing
+          </Link>
+        </div>
       </section>
 
       <PublicFooter />

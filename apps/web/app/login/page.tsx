@@ -1,7 +1,16 @@
+import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
 import { loginAction } from '../auth/actions';
 import { getCurrentWebSession } from '../../lib/serverWebAuth';
+
+export const metadata: Metadata = {
+  title: 'Internal Sign-In | Ambe Intelligence',
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 type LoginPageProps = {
   searchParams?: Promise<{

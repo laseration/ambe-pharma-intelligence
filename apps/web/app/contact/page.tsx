@@ -1,23 +1,19 @@
 import type { Metadata } from 'next';
 
 import { PublicFooter, PublicHeader } from '../components/PublicSiteChrome';
-import { publicContact, publicUrl } from '../publicSite';
+import { publicContact } from '../publicSite';
+import { buildPublicMetadata } from '../seo';
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildPublicMetadata({
+  path: '/contact',
   title: 'Contact Ambe Medical Group | Pharmaceutical Trading Enquiries',
   description:
-    'Contact Ambe Medical Group about pharmaceutical trading, comparator drug sourcing, procurement, route to market, supplier onboarding, or customer onboarding.',
-  alternates: {
-    canonical: '/contact',
-  },
-  openGraph: {
-    title: 'Contact Ambe Medical Group | Pharmaceutical Trading Enquiries',
-    description:
-      'Contact Ambe Medical Group for pharmaceutical trading, comparator sourcing, procurement, and onboarding enquiries.',
-    type: 'website',
-    url: publicUrl('/contact'),
-  },
-};
+    'Contact Ambe Medical Group with pharmaceutical trading, comparator sourcing, procurement, account review, or onboarding enquiries.',
+  openGraphTitle:
+    'Contact Ambe Medical Group | Pharmaceutical Trading Enquiries',
+  openGraphDescription:
+    'Contact Ambe Medical Group with pharmaceutical trading, comparator sourcing, procurement, account review, or onboarding enquiries.',
+});
 
 export default function ContactPage() {
   return (
@@ -29,26 +25,33 @@ export default function ContactPage() {
         <p className="public-eyebrow">Contact</p>
         <h1 id="contact-title">Contact Ambe Medical Group</h1>
         <p>
-          Share a pharmaceutical trading, comparator drug sourcing,
-          pharmaceutical procurement, route to market, supplier onboarding, or
-          customer onboarding enquiry for review.
+          Serious pharmaceutical trade enquiries should include enough company,
+          product, timing, and documentation context for Ambe to review the next
+          step.
         </p>
       </section>
 
       <section className="public-contact public-contact-page" id="contact">
         <div>
           <p className="public-eyebrow">Enquiry details</p>
-          <h2>What to include</h2>
+          <h2>Send the practical details first</h2>
           <p>
-            Include the product or service requirement, target timing, supplier
-            or customer context, and any documents already available. Do not
-            include sensitive personal data unless requested through an
-            appropriate channel.
+            Email is preferred for product requirements and documentation-led
+            enquiries because it gives both sides a clear record. Include only
+            information relevant to the business enquiry and avoid sensitive
+            personal data unless Ambe has requested it through an appropriate
+            channel.
           </p>
+          <div className="public-check-list">
+            <p>Company name, business type, and main contact</p>
+            <p>Product, comparator, supplier, or customer requirement</p>
+            <p>Quantity, market, timing, and commercial context where relevant</p>
+            <p>Current document status or account-opening position</p>
+          </div>
         </div>
         <div className="public-contact-card">
           <p className="public-contact-card-heading">
-            Supplier / Customer Enquiry
+            Trade enquiry contact
           </p>
           <p>
             <span>Email</span>
@@ -59,8 +62,8 @@ export default function ContactPage() {
             <a href={publicContact.phoneHref}>{publicContact.phone}</a>
           </p>
           <p className="public-contact-note">
-            Prefer email for product requirements and documentation-led
-            onboarding enquiries.
+            For urgent timing constraints, include the required date and any
+            immediate document limitations in the first email.
           </p>
           <a
             className="public-button public-button-primary"
@@ -71,28 +74,21 @@ export default function ContactPage() {
         </div>
       </section>
 
-      <section className="public-page-section public-page-card-grid">
-        <article className="public-page-card">
-          <h2>Comparator sourcing</h2>
+      <section className="public-page-cta">
+        <div>
+          <p className="public-eyebrow">Trade account application</p>
+          <h2>Use account opening when documents are ready</h2>
           <p>
-            Product name, strength, pack, presentation, timing, and target
-            market context are useful for comparator drug sourcing enquiries.
+            Email Ambe when you are ready to provide company details, business
+            type, relevant documents, and trading requirements for review.
           </p>
-        </article>
-        <article className="public-page-card">
-          <h2>Trading and procurement</h2>
-          <p>
-            Share commercial context, supplier or customer status, and any route
-            to market considerations.
-          </p>
-        </article>
-        <article className="public-page-card">
-          <h2>Onboarding</h2>
-          <p>
-            Account opening forms, GDP questionnaires, licences, and compliance
-            details may be relevant depending on the enquiry.
-          </p>
-        </article>
+        </div>
+        <a
+          className="public-button public-button-primary"
+          href={publicContact.emailHref}
+        >
+          Email Ambe Medical Group
+        </a>
       </section>
 
       <PublicFooter />
