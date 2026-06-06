@@ -46,7 +46,7 @@ export default function ContactPage() {
             <p>Company name, business type, and main contact</p>
             <p>Product, comparator, supplier, or customer requirement</p>
             <p>Quantity, market, timing, and commercial context where relevant</p>
-            <p>Current document status or account-opening position</p>
+            <p>Current document status or account-review position</p>
           </div>
         </div>
         <div className="public-contact-card">
@@ -76,8 +76,8 @@ export default function ContactPage() {
 
       <section className="public-page-cta">
         <div>
-          <p className="public-eyebrow">Trade account application</p>
-          <h2>Use account opening when documents are ready</h2>
+          <p className="public-eyebrow">Account review</p>
+          <h2>Prepare company and document context</h2>
           <p>
             Email Ambe when you are ready to provide company details, business
             type, relevant documents, and trading requirements for review.

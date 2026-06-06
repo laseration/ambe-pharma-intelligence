@@ -2586,48 +2586,50 @@ summary {
   font-weight: 720;
 }
 
-.public-contact-form {
+.public-enquiry-panel {
   display: grid;
-  gap: 16px;
+  gap: 18px;
   padding: 30px;
   border: 1px solid rgba(16, 42, 67, 0.12);
-  background: #ffffff;
+  border-top: 4px solid #0b4778;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #ffffff 62%, #f8fbfd 100%),
+    #ffffff;
   box-shadow: 0 18px 48px rgba(8, 33, 58, 0.08);
 }
 
-.public-form-grid {
+.public-enquiry-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 0;
+  border-top: 1px solid rgba(16, 42, 67, 0.12);
 }
 
-.public-contact-form label {
-  display: grid;
-  gap: 8px;
-  color: #08213a;
-  font-size: 0.9rem;
-  font-weight: 720;
+.public-enquiry-list p {
+  position: relative;
+  margin: 0;
+  padding: 14px 0 14px 28px;
+  border-bottom: 1px solid rgba(16, 42, 67, 0.12);
+  color: #49667b;
+  line-height: 1.55;
 }
 
-.public-contact-form input,
-.public-contact-form select,
-.public-contact-form textarea {
-  width: 100%;
-  border: 1px solid rgba(16, 42, 67, 0.16);
-  border-radius: 0;
-  background: #f8fbfd;
-  color: #102a43;
-  padding: 12px 13px;
-  resize: vertical;
+.public-enquiry-list p::before {
+  position: absolute;
+  top: 20px;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  content: '';
+  background: #0f766e;
 }
 
-.public-contact-form input:focus-visible,
-.public-contact-form select:focus-visible,
-.public-contact-form textarea:focus-visible {
-  border-color: rgba(11, 116, 109, 0.42);
+.public-enquiry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
-.public-form-note {
+.public-enquiry-note {
   margin: 0;
   color: #6a8192;
   font-size: 0.86rem;
@@ -2814,8 +2816,8 @@ summary {
   align-items: start;
 }
 
-.public-contact-form button {
-  width: 100%;
+.public-enquiry-actions .public-button {
+  flex: 1 1 190px;
 }
 
 /* Public footer: restrained corporate link directory and verified contact layer. */
@@ -3170,7 +3172,6 @@ summary {
   .public-premium-service-grid,
   .public-review-grid,
   .public-why-grid,
-  .public-form-grid,
   .public-footer-main,
   .public-footer-groups,
   .public-footer {
@@ -3204,7 +3205,7 @@ summary {
   }
 
   .public-premium-service-card,
-  .public-contact-form {
+  .public-enquiry-panel {
     padding: 24px;
   }
 

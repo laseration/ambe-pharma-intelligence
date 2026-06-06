@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { PublicFooter, PublicHeader } from '../components/PublicSiteChrome';
+import { publicContact } from '../publicSite';
 import { buildPublicMetadata } from '../seo';
 
 const serviceGroups = [
@@ -101,7 +102,7 @@ export default function ServicesPage() {
           <p className="public-eyebrow">Next step</p>
           <h2>Choose the route that matches the enquiry</h2>
           <p>
-            Use account opening for company and document review, or contact
+            Prepare company and document context for account review, or contact
             Ambe with a specific product, supplier, customer, or procurement
             requirement.
           </p>
@@ -110,9 +111,12 @@ export default function ServicesPage() {
           <Link className="public-button public-button-primary" href="/contact">
             Contact Ambe
           </Link>
-          <Link className="public-button public-button-secondary" href="/comparator-sourcing">
-            Comparator Sourcing
-          </Link>
+          <a
+            className="public-button public-button-secondary"
+            href={publicContact.emailHref}
+          >
+            Email Enquiry
+          </a>
         </div>
       </section>
 

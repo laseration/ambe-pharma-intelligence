@@ -222,66 +222,39 @@ function ProcessStep({
   );
 }
 
-function ContactForm() {
+function EnquiryPanel() {
   return (
-    <form
-      className="public-contact-form"
-      action={publicContact.emailHref}
-      method="post"
-      encType="text/plain"
+    <aside
+      className="public-enquiry-panel"
+      aria-label="Trade enquiry information"
     >
-      <div className="public-form-grid">
-        <label>
-          Name
-          <input name="name" type="text" autoComplete="name" required />
-        </label>
-        <label>
-          Company
-          <input
-            name="company"
-            type="text"
-            autoComplete="organization"
-            required
-          />
-        </label>
+      <p className="public-contact-card-heading">Before contacting Ambe</p>
+      <div className="public-enquiry-list">
+        <p>Company name, business type, and primary contact</p>
+        <p>Product, comparator, supplier, or customer requirement</p>
+        <p>Market, quantity, timing, and commercial context where relevant</p>
+        <p>Current document status or account-review position</p>
       </div>
-      <div className="public-form-grid">
-        <label>
-          Email
-          <input name="email" type="email" autoComplete="email" required />
-        </label>
-        <label>
-          Phone
-          <input name="phone" type="tel" autoComplete="tel" />
-        </label>
-      </div>
-      <label>
-        Business Type
-        <select name="businessType" required>
-          <option value="">Select a business type</option>
-          <option>Pharmacy</option>
-          <option>Wholesaler</option>
-          <option>Healthcare buyer</option>
-          <option>Supplier or manufacturer</option>
-          <option>Other healthcare trade partner</option>
-        </select>
-      </label>
-      <label>
-        Message
-        <textarea
-          name="message"
-          rows={5}
-          required
-        />
-      </label>
-      <p className="public-form-note">
-        This form opens your email client and does not store a website
-        submission.
+      <p className="public-enquiry-note">
+        Email is preferred for detailed product or document-led enquiries. For
+        urgent timing constraints, include the required date in the first
+        message.
       </p>
-      <button className="public-button public-button-primary" type="submit">
-        Send Enquiry
-      </button>
-    </form>
+      <div className="public-enquiry-actions">
+        <a
+          className="public-button public-button-primary"
+          href={publicContact.emailHref}
+        >
+          Email Ambe Medical Group
+        </a>
+        <a
+          className="public-button public-button-secondary"
+          href={publicContact.phoneHref}
+        >
+          Call Ambe
+        </a>
+      </div>
+    </aside>
   );
 }
 
@@ -309,9 +282,12 @@ export default function PublicHomePage() {
             </p>
             <div className="public-hero-actions">
               <Button href="/contact">Start a Trade Enquiry</Button>
-              <Button href="#contact" variant="secondary">
-                Contact Us
-              </Button>
+              <a
+                className="public-button public-button-secondary"
+                href={publicContact.emailHref}
+              >
+                Email Ambe
+              </a>
             </div>
           </div>
 
@@ -401,21 +377,21 @@ export default function PublicHomePage() {
           ))}
         </div>
         <div className="public-section-actions">
-          <Button href="/services" variant="secondary">
-            View Services
+          <Button href="/contact" variant="secondary">
+            Discuss an Enquiry
           </Button>
         </div>
       </Section>
 
-      <Section className="public-account-section" id="open-account">
+      <Section className="public-account-section" id="account-review">
         <div className="public-account-copy">
-          <p className="public-eyebrow">Open a Trade Account</p>
-          <h2>A structured account path before trade discussion</h2>
+          <p className="public-eyebrow">Account Review</p>
+          <h2>Prepare for account review before trade discussion</h2>
           <p>
-            Account opening can involve company information, named contacts,
+            Account review can involve company information, named contacts,
             business type, relevant documents, product interests, and other
-            supporting material. The application gives Ambe the context needed
-            to decide how the enquiry should be handled.
+            supporting material. Sharing that context helps Ambe decide how the
+            enquiry should be handled.
           </p>
           <Button href="/contact">Discuss Account Review</Button>
         </div>
@@ -457,7 +433,7 @@ export default function PublicHomePage() {
               <a href={publicContact.phoneHref}>{publicContact.phone}</a>
             </p>
           </div>
-          <ContactForm />
+          <EnquiryPanel />
         </Container>
       </section>
 
