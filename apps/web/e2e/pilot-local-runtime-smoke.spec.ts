@@ -27,7 +27,7 @@ test('pilot local-runtime smoke uses real API with disposable fake data', async 
   page,
 }) => {
   await page.goto('/dashboard/setup');
-  await expect(page).toHaveURL(/\/\?next=%2Fdashboard%2Fsetup$/);
+  await expect(page).toHaveURL(/\/login\?next=%2Fdashboard%2Fsetup$/);
   await expect(
     page.getByRole('heading', { name: 'Access Ambe Intelligence' }),
   ).toBeVisible();

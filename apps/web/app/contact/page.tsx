@@ -45,14 +45,14 @@ export default function ContactPage() {
           <div className="public-check-list">
             <p>Company name, business type, and main contact</p>
             <p>Product, comparator, supplier, or customer requirement</p>
-            <p>Quantity, market, timing, and commercial context where relevant</p>
+            <p>
+              Quantity, market, timing, and commercial context where relevant
+            </p>
             <p>Current document status or account-review position</p>
           </div>
         </div>
         <div className="public-contact-card">
-          <p className="public-contact-card-heading">
-            Trade enquiry contact
-          </p>
+          <p className="public-contact-card-heading">Trade enquiry contact</p>
           <p>
             <span>Email</span>
             <a href={publicContact.emailHref}>{publicContact.email}</a>

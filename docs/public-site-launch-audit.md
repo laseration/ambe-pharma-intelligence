@@ -56,15 +56,15 @@ material is added and reviewed:
 
 Use this section to record the decision owner and evidence before launch.
 
-| Item | Required decision | Evidence/source | Status |
-| --- | --- | --- | --- |
-| Legal entity display | Confirm whether legal entity name, company number, or registered address should appear publicly. | To be provided by Ambe/legal reviewer. | TODO |
-| Licence/regulatory wording | Confirm whether any licence or regulator wording is permitted. | To be provided by Ambe/legal reviewer. | TODO |
-| Facility/logistics wording | Confirm whether any facility, storage, fulfilment, or logistics wording is permitted. | To be provided by Ambe/operations reviewer. | TODO |
-| Privacy/cookie/legal pages | Confirm whether pages are required before launch and who supplies approved legal text. | To be provided by Ambe/legal reviewer. | TODO |
-| Public contact details | Confirm email and phone number remain correct for production. | Ambe business owner confirmation. | TODO |
-| Production domain | Confirm apex vs `www` canonical domain and redirects. | Hosting/DNS owner confirmation. | TODO |
-| Mobile header/footer QA | Confirm public navigation and footer remain usable on mobile. | Browser/device QA. | TODO |
+| Item                       | Required decision                                                                                | Evidence/source                             | Status |
+| -------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------- | ------ |
+| Legal entity display       | Confirm whether legal entity name, company number, or registered address should appear publicly. | To be provided by Ambe/legal reviewer.      | TODO   |
+| Licence/regulatory wording | Confirm whether any licence or regulator wording is permitted.                                   | To be provided by Ambe/legal reviewer.      | TODO   |
+| Facility/logistics wording | Confirm whether any facility, storage, fulfilment, or logistics wording is permitted.            | To be provided by Ambe/operations reviewer. | TODO   |
+| Privacy/cookie/legal pages | Confirm whether pages are required before launch and who supplies approved legal text.           | To be provided by Ambe/legal reviewer.      | TODO   |
+| Public contact details     | Confirm email and phone number remain correct for production.                                    | Ambe business owner confirmation.           | TODO   |
+| Production domain          | Confirm apex vs `www` canonical domain and redirects.                                            | Hosting/DNS owner confirmation.             | TODO   |
+| Mobile header/footer QA    | Confirm public navigation and footer remain usable on mobile.                                    | Browser/device QA.                          | TODO   |
 
 ## Current non-public decisions
 

@@ -424,9 +424,8 @@ export default function PublicHomePage() {
             <p className="public-eyebrow">Contact</p>
             <h2>Speak to Ambe Medical Group</h2>
             <p>
-              Send the company, counterparty, product, timing, and
-              documentation context needed for Ambe to review a serious trade
-              enquiry.
+              Send the company, counterparty, product, timing, and documentation
+              context needed for Ambe to review a serious trade enquiry.
             </p>
             <p className="public-contact-direct">
               <a href={publicContact.emailHref}>{publicContact.email}</a>

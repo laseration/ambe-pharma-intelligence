@@ -75,8 +75,8 @@ export default function OnboardingPage() {
           <article className="public-page-card">
             <h2>Supplier onboarding</h2>
             <p>
-              Used where a supplier, manufacturer, or commercial source wants
-              to discuss a possible trade relationship or product route.
+              Used where a supplier, manufacturer, or commercial source wants to
+              discuss a possible trade relationship or product route.
             </p>
             <div className="public-check-list">
               {supplierItems.map((item) => (
@@ -124,8 +124,8 @@ export default function OnboardingPage() {
           <p>
             Onboarding material may include account forms, GDP questionnaires,
             licences or registrations, company details, contacts, product
-            interests, and commercial context. The exact documents depend on
-            the role of the counterparty and the nature of the enquiry.
+            interests, and commercial context. The exact documents depend on the
+            role of the counterparty and the nature of the enquiry.
           </p>
           <p>
             Supplying documents does not confirm account approval or trading
@@ -148,7 +148,10 @@ export default function OnboardingPage() {
           <Link className="public-button public-button-primary" href="/contact">
             Contact Ambe
           </Link>
-          <Link className="public-button public-button-secondary" href="/services">
+          <Link
+            className="public-button public-button-secondary"
+            href="/services"
+          >
             View Services
           </Link>
         </div>

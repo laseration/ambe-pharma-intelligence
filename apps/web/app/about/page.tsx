@@ -41,15 +41,15 @@ export default function AboutPage() {
         </div>
         <div className="public-copy-stack">
           <p>
-            Pharmaceutical trade conversations are rarely helped by vague
-            public claims. Ambe therefore starts with the practical details:
-            who the counterparty is, what product or relationship is being
-            discussed, which documents are available, and what timing or market
-            constraints need to be understood.
+            Pharmaceutical trade conversations are rarely helped by vague public
+            claims. Ambe therefore starts with the practical details: who the
+            counterparty is, what product or relationship is being discussed,
+            which documents are available, and what timing or market constraints
+            need to be understood.
           </p>
           <p>
-            Licence status, regulatory roles, premises, storage, fulfilment,
-            and other operating responsibilities should be confirmed during the
+            Licence status, regulatory roles, premises, storage, fulfilment, and
+            other operating responsibilities should be confirmed during the
             relevant review process. The public site does not present those
             points as settled facts where they have not been verified for the
             specific relationship.
@@ -102,7 +102,10 @@ export default function AboutPage() {
           <Link className="public-button public-button-primary" href="/contact">
             Contact Ambe
           </Link>
-          <Link className="public-button public-button-secondary" href="/services">
+          <Link
+            className="public-button public-button-secondary"
+            href="/services"
+          >
             View Services
           </Link>
         </div>

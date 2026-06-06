@@ -136,7 +136,10 @@ export default function ComparatorSourcingPage() {
           <Link className="public-button public-button-primary" href="/contact">
             Start an Enquiry
           </Link>
-          <Link className="public-button public-button-secondary" href="/onboarding">
+          <Link
+            className="public-button public-button-secondary"
+            href="/onboarding"
+          >
             Onboarding Process
           </Link>
         </div>

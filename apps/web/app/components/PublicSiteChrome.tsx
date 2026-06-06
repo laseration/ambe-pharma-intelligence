@@ -79,9 +79,8 @@ export function PublicFooter() {
             </div>
           </dl>
           <p className="public-footer-note">
-            Public information is intentionally limited to trade enquiry
-            routing and should be reviewed with Ambe before commercial next
-            steps.
+            Public information is intentionally limited to trade enquiry routing
+            and should be reviewed with Ambe before commercial next steps.
           </p>
         </div>
         <nav className="public-footer-groups" aria-label="Footer links">
