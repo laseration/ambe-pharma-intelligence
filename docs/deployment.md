@@ -128,6 +128,25 @@ pnpm dev
 Do not enable live integrations in local development unless the operator knows
 which mailbox, Telegram bot, and database are being used.
 
+## GitHub Actions VPS Deployment
+
+The repository includes a conservative VPS deployment workflow at
+`.github/workflows/deploy-vps.yml`. It runs on pushes to `main` and can also be
+started manually with `workflow_dispatch`.
+
+The workflow requires GitHub Actions secrets for the VPS connection:
+
+- `VPS_HOST`
+- `VPS_USER`
+- `VPS_PORT`
+- `VPS_SSH_KEY`
+- `VPS_APP_DIR`
+
+It does not hardcode a process manager. The VPS must provide an executable
+server-local restart hook at `scripts/vps-restart.sh`. Use
+[`vps-deployment.md`](vps-deployment.md) for the full setup, SSH key, restart
+hook, PM2/systemctl/Docker examples, and manual test procedure.
+
 ## Microsoft Graph Mail
 
 Mail configuration is optional unless the pilot uses outbound email alerts or

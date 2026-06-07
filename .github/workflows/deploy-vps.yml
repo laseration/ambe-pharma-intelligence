@@ -1,0 +1,157 @@
+name: Deploy VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-vps-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy main to VPS
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - name: Validate deployment secrets
+        id: deployment_secrets
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+        run: |
+          set -euo pipefail
+
+          missing_names=""
+          for name in VPS_HOST VPS_USER VPS_PORT VPS_SSH_KEY VPS_APP_DIR; do
+            if [ -z "${!name}" ]; then
+              missing_names="$missing_names $name"
+            fi
+          done
+
+          if [ -n "$missing_names" ]; then
+            if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "::error::Missing required GitHub Actions secrets:$missing_names"
+              exit 1
+            fi
+
+            echo "::notice::Skipping VPS deployment because required GitHub Actions secrets are not configured:$missing_names"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare SSH
+        if: steps.deployment_secrets.outputs.configured == 'true'
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/vps_deploy_key"
+          chmod 600 "$HOME/.ssh/vps_deploy_key"
+
+          if ! ssh-keyscan -p "$VPS_PORT" -H "$VPS_HOST" >> "$HOME/.ssh/known_hosts"; then
+            echo "::error::Failed to scan SSH host key for VPS_HOST on VPS_PORT."
+            exit 1
+          fi
+
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Deploy on VPS
+        if: steps.deployment_secrets.outputs.configured == 'true'
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+        run: |
+          set -euo pipefail
+
+          app_dir_b64="$(printf '%s' "$VPS_APP_DIR" | base64 | tr -d '\n')"
+
+          ssh \
+            -i "$HOME/.ssh/vps_deploy_key" \
+            -p "$VPS_PORT" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$VPS_USER@$VPS_HOST" \
+            "APP_DIR_B64='$app_dir_b64' bash -se" <<'REMOTE'
+          set -euo pipefail
+
+          app_dir="$(printf '%s' "$APP_DIR_B64" | base64 -d)"
+
+          if [ -z "$app_dir" ]; then
+            echo "VPS_APP_DIR decoded to an empty path." >&2
+            exit 1
+          fi
+
+          if [ ! -d "$app_dir/.git" ]; then
+            echo "VPS_APP_DIR must point to an existing git checkout: $app_dir" >&2
+            exit 1
+          fi
+
+          cd "$app_dir"
+
+          git fetch origin main --prune
+          git reset --hard origin/main
+
+          corepack enable
+          pnpm install --frozen-lockfile
+
+          CI=true \
+            NODE_ENV=test \
+            DATABASE_URL="${DEPLOY_VERIFY_DATABASE_URL:-postgresql://ci:ci@localhost:5432/ambe_ci?schema=public}" \
+            INTERNAL_API_KEY="${DEPLOY_VERIFY_INTERNAL_API_KEY:-deploy-ci-internal-api-key}" \
+            INTERNAL_ADMIN_API_KEY="${DEPLOY_VERIFY_INTERNAL_ADMIN_API_KEY:-deploy-ci-internal-admin-api-key}" \
+            OPENAI_API_KEY='' \
+            OPENAI_PARSER_ENABLED='false' \
+            OPENAI_EMAIL_REVIEW_ENABLED='false' \
+            TELEGRAM_BOT_TOKEN='' \
+            TELEGRAM_INTERNAL_CHAT_ID='' \
+            TELEGRAM_DRY_RUN='true' \
+            TELEGRAM_POLLING_ENABLED='false' \
+            EMAIL_ALERTS_ENABLED='false' \
+            EMAIL_INBOUND_POLLING_ENABLED='false' \
+            MICROSOFT_MAIL_TENANT_ID='' \
+            MICROSOFT_MAIL_CLIENT_ID='' \
+            MICROSOFT_MAIL_CLIENT_SECRET='' \
+            MICROSOFT_GRAPH_TENANT_ID='' \
+            MICROSOFT_GRAPH_CLIENT_ID='' \
+            MICROSOFT_GRAPH_CLIENT_SECRET='' \
+            MICROSOFT_GRAPH_REFRESH_TOKEN='' \
+            MICROSOFT_GRAPH_SENDER_MAILBOX='' \
+            MICROSOFT_STORAGE_TENANT_ID='' \
+            MICROSOFT_STORAGE_CLIENT_ID='' \
+            MICROSOFT_STORAGE_CLIENT_SECRET='' \
+            MICROSOFT_TENANT_ID='' \
+            MICROSOFT_CLIENT_ID='' \
+            MICROSOFT_CLIENT_SECRET='' \
+            SHAREPOINT_ACCOUNT_OPENING_ENABLED='false' \
+            ONEDRIVE_ACCOUNT_OPENING_ENABLED='false' \
+            pnpm verify:safe
+
+          pnpm --filter @ambe/api build
+          pnpm --filter @ambe/web build
+
+          if [ ! -x ./scripts/vps-restart.sh ]; then
+            echo "Missing executable restart hook: $app_dir/scripts/vps-restart.sh" >&2
+            echo "Copy scripts/vps-restart.example.sh on the VPS, edit it for PM2/systemctl/Docker, and chmod +x it." >&2
+            exit 1
+          fi
+
+          ./scripts/vps-restart.sh
+          REMOTE

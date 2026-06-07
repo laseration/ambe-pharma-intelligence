@@ -12,6 +12,10 @@ website at `https://ambemedical.com` while keeping internal tooling behind
 - Build the web app with `pnpm --filter @ambe/web build`.
 - Start the built web app with `pnpm --filter @ambe/web start`.
 - Set the hosting platform port through its normal `PORT` mechanism if needed.
+- If deploying through the GitHub Actions VPS workflow, complete
+  [`docs/vps-deployment.md`](vps-deployment.md) first and confirm the
+  server-local `scripts/vps-restart.sh` hook matches the actual process
+  manager.
 
 ## Required Web Environment
 
