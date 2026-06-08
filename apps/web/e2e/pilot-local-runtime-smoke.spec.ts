@@ -123,14 +123,19 @@ test('pilot local-runtime smoke uses real API with disposable fake data', async 
       name: 'FAKE DEMO scenario: Stale correction after approval',
     }),
   ).toBeVisible();
-  const actionReadiness = page.locator('.action-state-card').filter({
-    has: page.getByRole('heading', { name: 'Action readiness' }),
+  const staleCorrectionOffer = page.locator('.offer-row-card').filter({
+    hasText: 'Corrected after approval; review again',
   });
+  const actionStatus = staleCorrectionOffer
+    .locator('.action-state-card')
+    .filter({
+      has: page.getByRole('heading', { name: 'Action status' }),
+    });
   await expect(
-    actionReadiness.getByText('Review again', { exact: true }),
+    actionStatus.getByText('Review again', { exact: true }),
   ).toBeVisible();
   await expect(
-    actionReadiness.getByText('Corrected after approval; review again', {
+    actionStatus.getByText('Corrected after approval; review again', {
       exact: true,
     }),
   ).toBeVisible();
