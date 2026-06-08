@@ -149,7 +149,7 @@ test('pilot local-runtime smoke uses real API with disposable fake data', async 
 
   await page.goto('/dashboard/deals');
   await expect(
-    page.getByRole('heading', { name: 'Trade opportunities' }),
+    page.getByRole('heading', { name: 'Trade opportunities', exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText('Fake scenario low margin; margin floor is not met.'),
