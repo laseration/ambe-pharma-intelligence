@@ -108,7 +108,13 @@ pnpm dev
 pnpm build
 pnpm lint
 pnpm test
+pnpm qa:trade
 ```
+
+`pnpm qa:trade` runs the focused Trade Access/RFQ QA pass with deterministic
+fake buyer data. It covers public RFQ validation and blocked submissions,
+protected dashboard route checks, sitemap/robots safety, and the Playwright
+public-submit-to-dashboard workflow against local fixture services only.
 
 ### CI quality gates
 

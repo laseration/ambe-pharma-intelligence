@@ -53,6 +53,20 @@ test('dashboard middleware redirects unauthenticated requests to login', async (
   });
 });
 
+test('dashboard middleware protects trade enquiry routes', async () => {
+  await withAuthEnv(async () => {
+    const response = await middleware(
+      new NextRequest('http://localhost:3000/dashboard/trade-enquiries'),
+    );
+
+    assert.equal(response.status, 307);
+    assert.equal(
+      response.headers.get('location'),
+      'http://localhost:3000/login?next=%2Fdashboard%2Ftrade-enquiries',
+    );
+  });
+});
+
 test('dashboard middleware allows valid internal web sessions', async () => {
   await withAuthEnv(async () => {
     const session = await createWebSessionCookieValue({

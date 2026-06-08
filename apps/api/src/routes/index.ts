@@ -17,6 +17,7 @@ import { reviewQueueRouter } from '../reviewQueue/routes';
 import { suppliersRouter } from '../suppliers/routes';
 import { systemRouter } from '../system/routes';
 import { telegramRouter } from '../telegram/routes';
+import { tradeEnquiriesRouter } from '../tradeEnquiries/routes';
 import { createPlaceholderRouter } from './createPlaceholderRouter';
 
 export const apiRouter = Router();
@@ -37,6 +38,7 @@ apiRouter.use('/regulatory', regulatoryRouter);
 apiRouter.use('/sources', sourceProfilesRouter);
 apiRouter.use('/suppliers', suppliersRouter);
 apiRouter.use('/system', systemRouter);
+apiRouter.use('/trade', tradeEnquiriesRouter);
 apiRouter.use('/inventory', createPlaceholderRouter('inventory'));
 apiRouter.use('/customers', createPlaceholderRouter('customers'));
 apiRouter.use('/opportunities', opportunitiesRouter);

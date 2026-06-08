@@ -16,12 +16,16 @@ const footerGroups = [
     links: [
       { href: '/services', label: 'Services' },
       { href: '/comparator-sourcing', label: 'Comparator Sourcing' },
+      { href: '/trade-access', label: 'Trade Access' },
       { href: '/onboarding', label: 'Onboarding' },
     ],
   },
   {
     title: 'Enquiries',
-    links: [{ href: '/contact', label: 'Trade Enquiries' }],
+    links: [
+      { href: '/trade-access', label: 'Submit Requirement' },
+      { href: '/contact', label: 'Trade Enquiries' },
+    ],
   },
   {
     title: 'Internal',

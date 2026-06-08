@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint . --ext .ts,.tsx --ignore-pattern next-env.d.ts",
     "test": "node ../../scripts/run-ts-tests.mjs lib app",
+    "test:trade": "pnpm exec tsx --test lib/tradeAccessValidation.test.ts app/trade-access/page.test.tsx app/sitemap.test.ts app/robots.test.ts lib/middleware.test.ts && pnpm exec playwright test e2e/trade-access-rfq.spec.ts",
     "test:e2e": "playwright test",
     "test:e2e:local-runtime": "playwright test --config=playwright.local-runtime.config.ts"
   },

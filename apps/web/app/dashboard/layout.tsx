@@ -56,6 +56,7 @@ export default async function DashboardLayout({
                 label="Bot Inbox"
                 recentEmailTimestamps={recentEmailTimestamps}
               />
+              <Link href="/dashboard/trade-enquiries">Trade Enquiries</Link>
               <Link href="/dashboard/imports">Imports</Link>
               <Link href="/dashboard/opportunities">Opportunities</Link>
               <Link href="/dashboard/deals">Deals</Link>
