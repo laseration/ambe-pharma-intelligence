@@ -139,7 +139,12 @@ test('pilot local-runtime smoke uses real API with disposable fake data', async 
       exact: true,
     }),
   ).toBeVisible();
-  await expect(page.getByText(/raw product text corrected/)).toBeVisible();
+  await staleCorrectionOffer
+    .getByText('Prior corrections for this offer', { exact: true })
+    .click();
+  await expect(
+    staleCorrectionOffer.getByText(/raw product text corrected/),
+  ).toBeVisible();
   await expectSensitiveCanariesHidden(page);
 
   await page.goto('/dashboard/deals');
