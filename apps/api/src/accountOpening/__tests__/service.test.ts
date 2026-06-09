@@ -159,13 +159,12 @@ test('account-opening case flags direct debit and guarantee wording', () => {
 
 test('signer recommendation keeps Aman as default and explains director/regulatory/high-risk escalation', () => {
   const summary = buildAccountOpeningSigningSummary(
-    'Director signature required. Sandeep Patel. Responsible Person RP GDP WDA Dilshad Moulana. Direct Debit guarantee indemnity.',
+    'Director signature required. Responsible Person RP GDP WDA. Direct Debit guarantee indemnity.',
   );
 
   assert.equal(summary.defaultSigner, 'Aman Dhillon');
   assert.equal(summary.canAmanSign, true);
-  assert.ok(summary.detectedNames.includes('Sandeep Patel'));
-  assert.ok(summary.detectedNames.includes('Dilshad Moulana'));
+  assert.equal(summary.detectedNames.length, 0);
   assert.ok(summary.detectedSignatureRoles.includes('Director'));
   assert.ok(
     summary.signingExplanation.includes(
@@ -255,10 +254,12 @@ test('unknown account-opening fields remain To be confirmed', () => {
     attachments: [],
   });
 
-  assert.equal(accountCase.structuredFields.companyName, 'AMBE LTD');
-  assert.equal(accountCase.structuredFields.tradingName, 'AMBE MEDICAL GROUP');
+  assert.equal(accountCase.structuredFields.companyName, 'To be confirmed');
+  assert.equal(accountCase.structuredFields.tradingName, 'To be confirmed');
   assert.equal(accountCase.structuredFields.companyNumber, 'To be confirmed');
   assert.equal(accountCase.structuredFields.vatNumber, 'To be confirmed');
+  assert.ok(accountCase.missingFields.includes('companyName'));
+  assert.ok(accountCase.missingFields.includes('tradingName'));
   assert.ok(accountCase.missingFields.includes('companyNumber'));
   assert.ok(accountCase.missingFields.includes('registeredAddress'));
   assert.ok(
@@ -394,7 +395,7 @@ function buildPersistedAccountOpeningCase(
     detectedNames: ['Sandeep Patel'],
     detectedRoles: ['Director', 'Direct Debit', 'bank authority'],
     escalationNotes: [
-      'The form mentions Director/Sandeep Patel. Reviewer should confirm the supplier does not specifically require a director-only signature.',
+      'The form mentions a director. Reviewer should confirm the supplier does not specifically require a director-only signature.',
     ],
     riskFlags: [
       'Direct Debit mandate',
@@ -511,6 +512,42 @@ function buildPersistedSourceEvidence(
     ...overrides,
   };
 }
+
+test('case detail exposes lifecycle document classifications and profile gaps', () => {
+  const detail = buildAccountOpeningCaseDetail(
+    buildPersistedAccountOpeningCase({
+      sourceEvidence: [
+        buildPersistedSourceEvidence({
+          safeSnippet:
+            'Credit application with Direct Debit mandate and bank authority.',
+        }),
+      ],
+      originalForms: [
+        buildPersistedOriginalForm({
+          fileName: 'credit-application-direct-debit.pdf',
+        }),
+      ],
+    }),
+  );
+
+  assert.equal(detail.lifecycle.legacyStatus, 'PENDING_REVIEW');
+  assert.equal(detail.lifecycle.currentStage, 'NEEDS_REVIEW');
+  assert.equal(detail.lifecycle.safety.noAutoSign, true);
+  assert.equal(detail.lifecycle.safety.noAutoSubmit, true);
+  assert.equal(detail.documentClassifications.length, 1);
+  assert.equal(
+    detail.documentClassifications[0]?.classification,
+    'DIRECT_DEBIT_MANDATE',
+  );
+  assert.equal(
+    detail.documentClassifications[0]?.safeForAutomaticCompletion,
+    false,
+  );
+  assert.equal(detail.companyProfile.profileId, 'ambe-account-opening-profile');
+  assert.ok(detail.companyProfile.missingProfileFields.length > 0);
+  assert.ok(detail.companyProfile.blockedFields.includes('Bank details'));
+  assert.equal(detail.companyProfile.safety.valuesInvented, false);
+});
 
 function buildPersistedFieldMapping(
   overrides: Partial<PersistedAccountOpeningFieldMapping> = {},
@@ -865,8 +902,8 @@ function buildDraftFixture(
           ? 'LOW'
           : 'BLOCKED'),
     isStored: true,
-    profileId: 'ambe-master-profile',
-    profileVersion: '2026-05-15',
+    profileId: 'ambe-account-opening-profile',
+    profileVersion: '2026-06-09',
     generatedAt: '2026-05-15T10:00:00.000Z',
     fields: [],
     summary: {
@@ -1080,7 +1117,7 @@ test('saving field mappings persists safe decisions and records safe audit metad
   const event = events[0];
 
   assert.equal(review.status, 'SAVED');
-  assert.equal(review.mappings[0]?.status, 'MAPPED_SAFE');
+  assert.equal(review.mappings[0]?.status, 'MAPPED_REVIEW_REQUIRED');
   assert.equal(review.mappings[1]?.status, 'BLOCKED');
   assert.equal(review.mappings[1]?.riskLevel, 'BLOCKED');
   assert.doesNotMatch(reviewText, /12345678/);
@@ -2565,7 +2602,7 @@ test('generate draft stores safe draft metadata and records blocked audit route 
   );
 
   assert.equal(detail.draftStatus, 'BLOCKED');
-  assert.equal(detail.draftVersion, '2026-05-19');
+  assert.equal(detail.draftVersion, '2026-06-09');
   assert.equal(detail.draftGeneratedAt, '2026-05-15T10:00:00.000Z');
   assert.equal(detail.completionDraft.isStored, true);
   assert.equal(detail.completionDraft.status, 'BLOCKED');

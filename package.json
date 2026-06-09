@@ -8,6 +8,7 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "qa:trade": "pnpm --filter @ambe/api test:trade && pnpm --filter @ambe/web test:trade",
+    "qa:account-opening": "pnpm --filter @ambe/api test:account-opening && pnpm --filter @ambe/web test:account-opening",
     "verify:safe": "pnpm lint && pnpm format && pnpm --filter @ambe/api db:generate && pnpm build && pnpm test",
     "format": "prettier --check .",
     "format:write": "prettier --write ."

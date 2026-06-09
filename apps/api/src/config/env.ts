@@ -378,6 +378,46 @@ export const env = {
     process.env.ACCOUNT_OPENING_MIN_CLASSIFIER_SCORE,
     75,
   ),
+  accountOpeningProfileLegalCompanyName:
+    process.env.ACCOUNT_OPENING_PROFILE_LEGAL_COMPANY_NAME?.trim() || '',
+  accountOpeningProfileTradingName:
+    process.env.ACCOUNT_OPENING_PROFILE_TRADING_NAME?.trim() || '',
+  accountOpeningProfileCompanyNumber:
+    process.env.ACCOUNT_OPENING_PROFILE_COMPANY_NUMBER?.trim() || '',
+  accountOpeningProfileVatNumber:
+    process.env.ACCOUNT_OPENING_PROFILE_VAT_NUMBER?.trim() || '',
+  accountOpeningProfileRegisteredAddress:
+    process.env.ACCOUNT_OPENING_PROFILE_REGISTERED_ADDRESS?.trim() || '',
+  accountOpeningProfileTradingAddress:
+    process.env.ACCOUNT_OPENING_PROFILE_TRADING_ADDRESS?.trim() || '',
+  accountOpeningProfileMainContactName:
+    process.env.ACCOUNT_OPENING_PROFILE_MAIN_CONTACT_NAME?.trim() || '',
+  accountOpeningProfileMainContactEmail:
+    process.env.ACCOUNT_OPENING_PROFILE_MAIN_CONTACT_EMAIL?.trim() || '',
+  accountOpeningProfileMainContactPhone:
+    process.env.ACCOUNT_OPENING_PROFILE_MAIN_CONTACT_PHONE?.trim() || '',
+  accountOpeningProfileAccountsContact:
+    process.env.ACCOUNT_OPENING_PROFILE_ACCOUNTS_CONTACT?.trim() || '',
+  accountOpeningProfileWebsite:
+    process.env.ACCOUNT_OPENING_PROFILE_WEBSITE?.trim() || '',
+  accountOpeningProfileBusinessHours:
+    process.env.ACCOUNT_OPENING_PROFILE_BUSINESS_HOURS?.trim() || '',
+  accountOpeningProfileCompanyType:
+    process.env.ACCOUNT_OPENING_PROFILE_COMPANY_TYPE?.trim() || '',
+  accountOpeningProfileBusinessDescription:
+    process.env.ACCOUNT_OPENING_PROFILE_BUSINESS_DESCRIPTION?.trim() || '',
+  accountOpeningProfileGphcPremisesNumber:
+    process.env.ACCOUNT_OPENING_PROFILE_GPHC_PREMISES_NUMBER?.trim() || '',
+  accountOpeningProfileResponsiblePerson:
+    process.env.ACCOUNT_OPENING_PROFILE_RESPONSIBLE_PERSON?.trim() || '',
+  accountOpeningProfileWholesaleDealerAuthorisation:
+    process.env.ACCOUNT_OPENING_PROFILE_WHOLESALE_DEALER_AUTHORISATION?.trim() ||
+    '',
+  accountOpeningProfileCqcRegistration:
+    process.env.ACCOUNT_OPENING_PROFILE_CQC_REGISTRATION?.trim() || '',
+  accountOpeningProfileStandardPaymentPreference:
+    process.env.ACCOUNT_OPENING_PROFILE_STANDARD_PAYMENT_PREFERENCE?.trim() ||
+    '',
   openAiApiKey: process.env.OPENAI_API_KEY?.trim() || '',
   openAiParserEnabled: readBoolean(process.env.OPENAI_PARSER_ENABLED, false),
   openAiParserModel: readString(
