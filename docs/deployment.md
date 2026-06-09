@@ -43,17 +43,18 @@ Required API values for a pilot:
 
 Required web values for a pilot:
 
-| Variable                                | Required | Purpose                                                           |
-| --------------------------------------- | -------- | ----------------------------------------------------------------- |
-| `NEXT_PUBLIC_SITE_URL`                  | yes      | Canonical public site URL, for example `https://ambemedical.com`. |
-| `WEB_AUTH_USERNAME`                     | yes      | Internal dashboard username.                                      |
-| `WEB_AUTH_PASSWORD`                     | yes      | Internal dashboard password.                                      |
-| `WEB_AUTH_ROLE`                         | yes      | `viewer`, `operator`, or `admin`.                                 |
-| `WEB_AUTH_SESSION_SECRET`               | yes      | At least 32 random characters.                                    |
-| `WEB_AUTH_SESSION_TTL_SECONDS`          | optional | Session duration, default is 8 hours.                             |
-| `INTERNAL_API_BASE_URL`                 | yes      | Server-side web URL for the API `/api` base.                      |
-| `INTERNAL_API_KEY`                      | yes      | Server-side API key for dashboard API requests.                   |
-| `ACCOUNT_OPENING_EXPORT_DOWNLOAD_TOKEN` | optional | Download token for account-opening export files.                  |
+| Variable                                | Required | Purpose                                                                                                    |
+| --------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SITE_URL`                  | yes      | Canonical public site URL, for example `https://ambemedical.com`.                                          |
+| `WEB_AUTH_USERNAME`                     | yes      | Internal dashboard username.                                                                               |
+| `WEB_AUTH_PASSWORD`                     | yes      | Internal dashboard password.                                                                               |
+| `WEB_AUTH_ROLE`                         | yes      | `viewer`, `operator`, or `admin`.                                                                          |
+| `WEB_AUTH_SESSION_SECRET`               | yes      | At least 32 random characters.                                                                             |
+| `WEB_AUTH_SESSION_TTL_SECONDS`          | optional | Session duration, default is 8 hours.                                                                      |
+| `INTERNAL_API_BASE_URL`                 | yes      | Server-side web URL for the API `/api` base.                                                               |
+| `PUBLIC_TRADE_API_BASE_URL`             | optional | Server-side web URL for the public API `/public` base. Defaults from `INTERNAL_API_BASE_URL` when omitted. |
+| `INTERNAL_API_KEY`                      | yes      | Server-side API key for dashboard API requests.                                                            |
+| `ACCOUNT_OPENING_EXPORT_DOWNLOAD_TOKEN` | optional | Download token for account-opening export files.                                                           |
 
 Do not use `NEXT_PUBLIC_*` for secrets. The dashboard auth secret, dashboard
 password, internal API keys, Graph credentials, Telegram token, OpenAI key, and

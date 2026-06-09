@@ -27,6 +27,8 @@ website at `https://ambemedical.com` while keeping internal tooling behind
 - `WEB_AUTH_SESSION_SECRET` with at least 32 random characters
 - `WEB_AUTH_SESSION_TTL_SECONDS`, optional, defaults to 8 hours
 - `INTERNAL_API_BASE_URL`, server-side API `/api` base URL
+- `PUBLIC_TRADE_API_BASE_URL`, optional public API `/public` base URL for the
+  Trade Access RFQ form
 - `INTERNAL_API_KEY`, server-side internal API key for dashboard requests
 - `ACCOUNT_OPENING_EXPORT_DOWNLOAD_TOKEN`, only if export downloads are enabled
 
@@ -42,6 +44,7 @@ Confirm these routes render as public SEO pages:
 - `/about`
 - `/services`
 - `/comparator-sourcing`
+- `/trade-access`
 - `/onboarding`
 - `/contact`
 
@@ -54,6 +57,7 @@ Confirm the public marketing sitemap contains only:
 - `/about`
 - `/services`
 - `/comparator-sourcing`
+- `/trade-access`
 - `/onboarding`
 - `/contact`
 
@@ -78,6 +82,8 @@ auth for dashboard routes but does not replace network access policy.
 - The web helper fails clearly in production when `INTERNAL_API_BASE_URL` is
   missing, instead of silently calling localhost.
 - Keep the API `/api` base URL reachable from the web server runtime.
+- Keep the API `/public` base URL reachable from the web server runtime if the
+  Trade Access RFQ form is enabled.
 
 ## SEO And Crawling
 
@@ -110,6 +116,10 @@ Before launch, confirm:
       canonical origin.
 - [ ] Mobile header and footer have been checked on phone-sized viewport.
 - [ ] `pnpm --filter @ambe/web build` passes.
+- [ ] `pnpm qa:trade` passes locally or in CI with fixture credentials only,
+      proving public RFQ submission, protected dashboard visibility, blocked
+      public submissions, status workflow checks, and sitemap/robots safety
+      without production services.
 
 ## Legal And Company Detail TODOs
 

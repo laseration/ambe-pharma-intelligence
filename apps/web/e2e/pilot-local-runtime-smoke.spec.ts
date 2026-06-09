@@ -123,16 +123,33 @@ test('pilot local-runtime smoke uses real API with disposable fake data', async 
       name: 'FAKE DEMO scenario: Stale correction after approval',
     }),
   ).toBeVisible();
-  await expect(page.getByText('Review again')).toBeVisible();
+  const staleCorrectionOffer = page.locator('.offer-row-card').filter({
+    hasText: 'Corrected after approval; review again',
+  });
+  const actionStatus = staleCorrectionOffer
+    .locator('.action-state-card')
+    .filter({
+      has: page.getByRole('heading', { name: 'Action status' }),
+    });
   await expect(
-    page.getByText('Corrected after approval; review again'),
+    actionStatus.getByText('Review again', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText(/raw product text corrected/)).toBeVisible();
+  await expect(
+    actionStatus.getByText('Corrected after approval; review again', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await staleCorrectionOffer
+    .getByText('Prior corrections for this offer', { exact: true })
+    .click();
+  await expect(
+    staleCorrectionOffer.getByText(/raw product text corrected/),
+  ).toBeVisible();
   await expectSensitiveCanariesHidden(page);
 
   await page.goto('/dashboard/deals');
   await expect(
-    page.getByRole('heading', { name: 'Trade opportunities' }),
+    page.getByRole('heading', { name: 'Trade opportunities', exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText('Fake scenario low margin; margin floor is not met.'),

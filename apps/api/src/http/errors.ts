@@ -17,6 +17,7 @@ type ErrorCode =
   | 'FORBIDDEN'
   | 'NOT_FOUND'
   | 'CONFLICT'
+  | 'RATE_LIMITED'
   | 'VALIDATION_ERROR'
   | 'PAYLOAD_TOO_LARGE'
   | 'INTERNAL_ERROR';
@@ -63,6 +64,12 @@ export class ConflictError extends AppError {
   }
 }
 
+export class RateLimitError extends AppError {
+  constructor(message = 'Too many requests. Try again later.') {
+    super(message, 429, 'RATE_LIMITED');
+  }
+}
+
 export class ValidationError extends AppError {
   constructor(message: string, details?: unknown) {
     super(message, 422, 'VALIDATION_ERROR', details);
@@ -96,6 +103,24 @@ function isConflictMessage(message: string): boolean {
 function normalizeError(error: unknown): AppError {
   if (error instanceof AppError) {
     return error;
+  }
+
+  if (
+    error &&
+    typeof error === 'object' &&
+    'type' in error &&
+    (error as { type?: string }).type === 'entity.too.large'
+  ) {
+    return new AppError('Request body is too large.', 413, 'PAYLOAD_TOO_LARGE');
+  }
+
+  if (
+    error &&
+    typeof error === 'object' &&
+    'type' in error &&
+    (error as { type?: string }).type === 'entity.parse.failed'
+  ) {
+    return new BadRequestError('Request body is not valid JSON.');
   }
 
   if (error instanceof ZodError) {
@@ -140,6 +165,8 @@ function nextActionForError(error: AppError): string {
       return 'Refresh the dashboard and confirm the item still exists.';
     case 'CONFLICT':
       return 'Review the item state, required confirmation, or duplicate record before retrying.';
+    case 'RATE_LIMITED':
+      return 'Wait before submitting another request.';
     case 'PAYLOAD_TOO_LARGE':
       return 'Use a smaller file, split the import, or check the configured upload size limit.';
     case 'INTERNAL_ERROR':

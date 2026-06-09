@@ -22,6 +22,7 @@ export const publicRoutes = [
   { path: '/about', label: 'About' },
   { path: '/services', label: 'Services' },
   { path: '/comparator-sourcing', label: 'Comparator Sourcing' },
+  { path: '/trade-access', label: 'Trade Access' },
   { path: '/onboarding', label: 'Onboarding' },
   { path: '/contact', label: 'Contact' },
 ] as const;
@@ -31,6 +32,7 @@ export const publicNavItems = [
   { path: '/about', label: 'About' },
   { path: '/services', label: 'Services' },
   { path: '/comparator-sourcing', label: 'Comparator Sourcing' },
+  { path: '/trade-access', label: 'Trade Access' },
   { path: '/onboarding', label: 'Onboarding' },
   { path: '/contact', label: 'Contact' },
 ] as const;
