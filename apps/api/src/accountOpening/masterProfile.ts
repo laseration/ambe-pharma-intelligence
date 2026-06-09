@@ -1,3 +1,5 @@
+import { env } from '../config/env';
+
 export type AccountOpeningMasterProfile = {
   profileId: string;
   version: string;
@@ -28,45 +30,57 @@ export type AccountOpeningMasterProfile = {
   };
 };
 
-export const AMBE_ACCOUNT_OPENING_MASTER_PROFILE: AccountOpeningMasterProfile =
-  {
-    profileId: 'ambe-master-profile',
-    version: '2026-05-19',
-    approvedBy: 'internal-operations',
-    approvedAt: '2026-05-15T00:00:00.000Z',
+const TO_BE_CONFIRMED = 'To be confirmed';
+const SECURE_REVIEW_PLACEHOLDER = 'To be confirmed in secure review';
+
+function profileValue(value: string): string {
+  return value.trim() || TO_BE_CONFIRMED;
+}
+
+export function buildAccountOpeningMasterProfile(): AccountOpeningMasterProfile {
+  return {
+    profileId: 'ambe-account-opening-profile',
+    version: '2026-06-09',
+    approvedBy: 'configurable-profile-source',
+    approvedAt: '2026-06-09T00:00:00.000Z',
     values: {
-      legalCompanyName: 'AMBE LTD',
-      tradingName: 'AMBE MEDICAL GROUP',
-      companyNumber: '03809178',
-      vatNumber: 'GB743707428',
-      registeredAddress:
-        'Unit 4 Green Lane Business Park, 238 Green Lane, London, SE9 3TL',
-      tradingAddress:
-        'Unit 4 Green Lane Business Park, 238 Green Lane, London, SE9 3TL',
-      mainContactName: 'Aman Dhillon',
-      mainContactEmail: 'To be confirmed',
-      mainContactPhone: 'To be confirmed',
-      accountsContact: 'To be confirmed',
-      website: 'To be confirmed',
-      businessHours: 'To be confirmed',
-      companyType: 'Private Limited Company',
-      businessDescription:
-        'Pharmaceutical wholesaler / distributor / manufacturer',
-      gphcPremisesNumber:
-        'N/A for wholesale accounts; use WDA/MHRA number 19460 where WDA is requested',
-      responsiblePerson: 'Dilshad Moulana',
-      wholesaleDealerAuthorisation:
-        'WDA Authorisation Number 19460; holder AMBE LTD; issuing authority MHRA; licensed site 1 Ascot Road, Bedfont, Feltham, TW14 8QH',
-      cqcRegistration: 'N/A unless specifically requested',
-      standardPaymentPreference:
-        'BACS unless a supplier specifically requires another method',
-      directDebitPlaceholder:
-        'To be confirmed in secure review. Do not complete Direct Debit or bank authority fields automatically.',
-      bankDetailsPlaceholder:
-        'To be confirmed in secure review. Bank account and sort code details must not be exposed in dashboard drafts.',
+      legalCompanyName: profileValue(env.accountOpeningProfileLegalCompanyName),
+      tradingName: profileValue(env.accountOpeningProfileTradingName),
+      companyNumber: profileValue(env.accountOpeningProfileCompanyNumber),
+      vatNumber: profileValue(env.accountOpeningProfileVatNumber),
+      registeredAddress: profileValue(
+        env.accountOpeningProfileRegisteredAddress,
+      ),
+      tradingAddress: profileValue(env.accountOpeningProfileTradingAddress),
+      mainContactName: profileValue(env.accountOpeningProfileMainContactName),
+      mainContactEmail: profileValue(env.accountOpeningProfileMainContactEmail),
+      mainContactPhone: profileValue(env.accountOpeningProfileMainContactPhone),
+      accountsContact: profileValue(env.accountOpeningProfileAccountsContact),
+      website: profileValue(env.accountOpeningProfileWebsite),
+      businessHours: profileValue(env.accountOpeningProfileBusinessHours),
+      companyType: profileValue(env.accountOpeningProfileCompanyType),
+      businessDescription: profileValue(
+        env.accountOpeningProfileBusinessDescription,
+      ),
+      gphcPremisesNumber: profileValue(
+        env.accountOpeningProfileGphcPremisesNumber,
+      ),
+      responsiblePerson: profileValue(
+        env.accountOpeningProfileResponsiblePerson,
+      ),
+      wholesaleDealerAuthorisation: profileValue(
+        env.accountOpeningProfileWholesaleDealerAuthorisation,
+      ),
+      cqcRegistration: profileValue(env.accountOpeningProfileCqcRegistration),
+      standardPaymentPreference: profileValue(
+        env.accountOpeningProfileStandardPaymentPreference,
+      ),
+      directDebitPlaceholder: `${SECURE_REVIEW_PLACEHOLDER}. Do not complete Direct Debit or bank authority fields automatically.`,
+      bankDetailsPlaceholder: `${SECURE_REVIEW_PLACEHOLDER}. Bank account and sort code details must not be exposed in dashboard drafts.`,
     },
   };
+}
 
 export function getAccountOpeningMasterProfile(): AccountOpeningMasterProfile {
-  return AMBE_ACCOUNT_OPENING_MASTER_PROFILE;
+  return buildAccountOpeningMasterProfile();
 }

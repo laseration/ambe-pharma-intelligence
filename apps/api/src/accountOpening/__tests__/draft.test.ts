@@ -36,7 +36,7 @@ test('completion draft uses master profile and reviewer responses while blocking
     (field) => field.key === 'responsiblePerson',
   );
 
-  assert.equal(draft.profileVersion, '2026-05-19');
+  assert.equal(draft.profileVersion, '2026-06-09');
   assert.equal(draft.status, 'BLOCKED');
   assert.equal(draft.overallConfidence, 'BLOCKED');
   assert.equal(draft.summary.safeToAutoFill, false);
@@ -50,7 +50,7 @@ test('completion draft uses master profile and reviewer responses while blocking
   assert.doesNotMatch(draftText, /12-34-56/);
 });
 
-test('completion draft uses populated master profile values while keeping unresolved placeholders review-required', () => {
+test('completion draft keeps unconfigured master profile values as review-required placeholders', () => {
   const draft = buildAccountOpeningCompletionDraft({
     missingInfoResponses: {},
     riskFlags: [],
@@ -68,12 +68,12 @@ test('completion draft uses populated master profile values while keeping unreso
   );
   const website = draft.fields.find((field) => field.key === 'website');
 
-  assert.equal(companyNumber?.proposedValue, '[redacted bank account number]');
-  assert.equal(companyNumber?.valueSource, 'AMBE_MASTER_PROFILE');
-  assert.equal(companyNumber?.confidence, 'HIGH');
-  assert.equal(companyNumber?.requiresReview, false);
-  assert.equal(registeredAddress?.valueSource, 'AMBE_MASTER_PROFILE');
-  assert.equal(registeredAddress?.requiresReview, false);
+  assert.equal(companyNumber?.proposedValue, 'To be confirmed');
+  assert.equal(companyNumber?.valueSource, 'SYSTEM_PLACEHOLDER');
+  assert.equal(companyNumber?.confidence, 'LOW');
+  assert.equal(companyNumber?.requiresReview, true);
+  assert.equal(registeredAddress?.valueSource, 'SYSTEM_PLACEHOLDER');
+  assert.equal(registeredAddress?.requiresReview, true);
   assert.equal(website?.valueSource, 'SYSTEM_PLACEHOLDER');
   assert.equal(website?.requiresReview, true);
   assert.equal(draft.summary.safeToAutoFill, false);

@@ -12,14 +12,14 @@ function buildDraft(): AccountOpeningCompletionDraft {
     status: 'BLOCKED',
     overallConfidence: 'BLOCKED',
     isStored: true,
-    profileId: 'ambe-master-profile',
-    profileVersion: '2026-05-15',
+    profileId: 'ambe-account-opening-profile',
+    profileVersion: '2026-06-09',
     generatedAt: '2026-05-15T10:00:00.000Z',
     fields: [
       {
         key: 'legalCompanyName',
         supplierLabel: 'Legal company name',
-        proposedValue: 'AMBE LTD',
+        proposedValue: 'Example configured company',
         valueSource: 'AMBE_MASTER_PROFILE',
         confidence: 'HIGH',
         riskLevel: 'LOW',
@@ -116,7 +116,7 @@ test('field mapping review classifies safe, review-required, and blocked candida
   );
 
   assert.equal(companyName?.status, 'MAPPED_SAFE');
-  assert.equal(companyName?.proposedValue, 'AMBE LTD');
+  assert.equal(companyName?.proposedValue, 'Example configured company');
   assert.equal(responsiblePerson?.status, 'MAPPED_REVIEW_REQUIRED');
   assert.equal(responsiblePerson?.riskLevel, 'HIGH');
   assert.equal(directDebit?.status, 'BLOCKED');

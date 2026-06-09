@@ -56,7 +56,7 @@ function buildDetail(
     detectedNames: ['Sandeep Patel'],
     detectedRoles: ['Director', 'Direct Debit', 'bank authority'],
     escalationNotes: [
-      'The form mentions Director/Sandeep Patel. Reviewer should confirm the supplier does not specifically require a director-only signature.',
+      'The form mentions a director. Reviewer should confirm the supplier does not specifically require a director-only signature.',
     ],
     riskFlags: [
       'Direct Debit mandate',
@@ -101,6 +101,52 @@ function buildDetail(
     storageLastAttemptAt: null,
     storageFolderUrl: null,
     sourceAttachmentNames: ['mandate-account-12345678-sort-12-34-56.pdf'],
+    lifecycle: {
+      legacyStatus: 'APPROVED_FOR_COMPLETION',
+      currentStage: 'APPROVED_FOR_COMPLETION',
+      currentLabel: 'Approved for completion',
+      nextAction: 'Generate a fill preview or binary preview.',
+      steps: [],
+      compatibilityNotes: [
+        'Persisted AccountOpeningStatus values are preserved.',
+      ],
+      safety: {
+        backwardsCompatibleStatusMapping: true,
+        noAutoSign: true,
+        noAutoSubmit: true,
+        noOutboundSend: true,
+      },
+    },
+    documentClassifications: [
+      {
+        sourceEvidenceId: 'evidence-1',
+        fileName: 'mandate-account-12345678-sort-12-34-56.pdf',
+        classification: 'DIRECT_DEBIT_MANDATE',
+        confidence: 'HIGH',
+        score: 45,
+        matchedEvidence: ['Direct Debit mandate wording'],
+        missingEvidence: [],
+        warnings: [
+          'This document type contains review-required or blocked fields and cannot be automatically completed.',
+        ],
+        safeForAutomaticCompletion: false,
+      },
+    ],
+    companyProfile: {
+      profileId: 'ambe-account-opening-profile',
+      profileVersion: '2026-06-09',
+      safeConfiguredFieldCount: 0,
+      missingProfileFields: ['Legal company name'],
+      reviewRequiredFields: ['Legal company name'],
+      blockedFields: ['Bank details'],
+      warnings: ['Some profile fields are missing and remain To be confirmed.'],
+      safety: {
+        valuesInvented: false,
+        bankDetailsIncluded: false,
+        directorDetailsIncluded: false,
+        regulatoryIdentifiersRequireReview: true,
+      },
+    },
     draftStatus: 'BLOCKED',
     draftVersion: '2026-05-15',
     draftGeneratedAt: '2026-05-15T00:00:00.000Z',
@@ -133,8 +179,8 @@ function buildDetail(
       status: 'BLOCKED',
       overallConfidence: 'BLOCKED',
       isStored: true,
-      profileId: 'ambe-master-profile',
-      profileVersion: '2026-05-15',
+      profileId: 'ambe-account-opening-profile',
+      profileVersion: '2026-06-09',
       generatedAt: '2026-05-15T00:00:00.000Z',
       fields: [
         {

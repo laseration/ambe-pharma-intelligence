@@ -12,8 +12,8 @@ const completionDraftFixture = {
   status: 'BLOCKED',
   overallConfidence: 'BLOCKED',
   isStored: true,
-  profileId: 'ambe-master-profile',
-  profileVersion: '2026-05',
+  profileId: 'ambe-account-opening-profile',
+  profileVersion: '2026-06-09',
   generatedAt: '2026-05-22T10:00:00.000Z',
   fields: [
     {
@@ -180,6 +180,38 @@ const accountOpeningCaseFixture = {
   latestFillPreview: null,
   latestBinaryFillPreview: null,
   latestCompletedFormFiling: null,
+  lifecycle: {
+    legacyStatus: 'NEEDS_INFO',
+    currentStage: 'NEEDS_REVIEW',
+    currentLabel: 'Needs review',
+    nextAction: 'Review blocked fields.',
+    steps: [],
+    compatibilityNotes: [
+      'Persisted AccountOpeningStatus values are preserved.',
+    ],
+    safety: {
+      backwardsCompatibleStatusMapping: true,
+      noAutoSign: true,
+      noAutoSubmit: true,
+      noOutboundSend: true,
+    },
+  },
+  documentClassifications: [],
+  companyProfile: {
+    profileId: 'ambe-account-opening-profile',
+    profileVersion: '2026-06-09',
+    safeConfiguredFieldCount: 0,
+    missingProfileFields: ['Legal company name'],
+    reviewRequiredFields: ['Legal company name'],
+    blockedFields: ['Bank details'],
+    warnings: ['Some profile fields are missing and remain To be confirmed.'],
+    safety: {
+      valuesInvented: false,
+      bankDetailsIncluded: false,
+      directorDetailsIncluded: false,
+      regulatoryIdentifiersRequireReview: true,
+    },
+  },
   createdAt: '2026-05-22T09:00:00.000Z',
   updatedAt: '2026-05-22T10:00:00.000Z',
 } satisfies AccountOpeningCaseDetail;

@@ -68,6 +68,78 @@ export type AccountOpeningCompletionDraft = {
   safetyNotes: string[];
 };
 
+export type AccountOpeningLifecycleStage =
+  | 'RECEIVED'
+  | 'CLASSIFYING'
+  | 'NEEDS_REVIEW'
+  | 'READY_FOR_REVIEW'
+  | 'APPROVED_FOR_COMPLETION'
+  | 'COMPLETION_PREVIEW_GENERATED'
+  | 'COMPLETED_UNSIGNED_FILED'
+  | 'SENT_MANUALLY'
+  | 'REJECTED'
+  | 'BLOCKED'
+  | 'ARCHIVED';
+
+export type AccountOpeningLifecycleStep = {
+  stage: AccountOpeningLifecycleStage;
+  label: string;
+  status: 'COMPLETE' | 'CURRENT' | 'PENDING' | 'BLOCKED';
+};
+
+export type AccountOpeningLifecycleSummary = {
+  legacyStatus: string;
+  currentStage: AccountOpeningLifecycleStage;
+  currentLabel: string;
+  nextAction: string;
+  steps: AccountOpeningLifecycleStep[];
+  compatibilityNotes: string[];
+  safety: {
+    backwardsCompatibleStatusMapping: true;
+    noAutoSign: true;
+    noAutoSubmit: true;
+    noOutboundSend: true;
+  };
+};
+
+export type AccountOpeningDocumentClassification = {
+  sourceEvidenceId: string | null;
+  fileName: string | null;
+  classification:
+    | 'ACCOUNT_OPENING_FORM'
+    | 'GDP_QUESTIONNAIRE'
+    | 'TERMS_AND_CONDITIONS'
+    | 'CREDIT_APPLICATION'
+    | 'DIRECT_DEBIT_MANDATE'
+    | 'BANK_MANDATE'
+    | 'DIRECTOR_GUARANTEE'
+    | 'TRADE_REFERENCES'
+    | 'REGULATORY_DECLARATION'
+    | 'UNKNOWN_OTHER';
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  score: number;
+  matchedEvidence: string[];
+  missingEvidence: string[];
+  warnings: string[];
+  safeForAutomaticCompletion: false;
+};
+
+export type AccountOpeningCompanyProfileSummary = {
+  profileId: string;
+  profileVersion: string;
+  safeConfiguredFieldCount: number;
+  missingProfileFields: string[];
+  reviewRequiredFields: string[];
+  blockedFields: string[];
+  warnings: string[];
+  safety: {
+    valuesInvented: false;
+    bankDetailsIncluded: false;
+    directorDetailsIncluded: false;
+    regulatoryIdentifiersRequireReview: true;
+  };
+};
+
 export type AccountOpeningFieldMappingStatus =
   | 'UNMAPPED'
   | 'MAPPED_SAFE'
@@ -379,6 +451,9 @@ export type AccountOpeningCaseDetail = {
   storageLastAttemptAt: string | null;
   storageFolderUrl: string | null;
   sourceAttachmentNames: string[];
+  lifecycle: AccountOpeningLifecycleSummary;
+  documentClassifications: AccountOpeningDocumentClassification[];
+  companyProfile: AccountOpeningCompanyProfileSummary;
   draftStatus: string | null;
   draftVersion: string | null;
   draftGeneratedAt: string | null;

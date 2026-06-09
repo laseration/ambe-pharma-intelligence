@@ -11,6 +11,7 @@
     "lint": "eslint src --ext .ts",
     "test": "node ../../scripts/run-ts-tests.mjs src",
     "test:trade": "node ../../scripts/run-ts-tests.mjs src/tradeEnquiries",
+    "test:account-opening": "node ../../scripts/run-ts-tests.mjs src/accountOpening && pnpm exec tsx --test src/email/inbound/__tests__/account-opening.test.ts",
     "eval:extraction": "tsx src/scripts/evaluateExtraction.ts",
     "demo:seed-pilot": "tsx src/scripts/seedPilotDemo.ts",
     "telegram:replay": "tsx scripts/replay-telegram-fixture.ts",
