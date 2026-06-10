@@ -38,7 +38,9 @@ test('operator approves a staged offer and records buy execution', async ({
     }),
   ).toBeVisible();
   await expect(
-    page.getByText('E2E Atorvastatin 20mg Tablets 28'),
+    page
+      .locator('.offer-row-title')
+      .filter({ hasText: 'E2E Atorvastatin 20mg Tablets 28' }),
   ).toBeVisible();
   await expect(
     page.getByText('Approval required before execution'),
