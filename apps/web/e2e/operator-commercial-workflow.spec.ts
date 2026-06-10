@@ -134,7 +134,8 @@ test('operator approves a staged offer and records buy execution', async ({
     executionAuditPayload.items.some(
       (item) =>
         item.entityType === 'BUY_EXECUTION' &&
-        item.newStatus === 'ORDER_PLACED',
+        item.actionType === 'ORDER_PLACED' &&
+        item.newStatus?.includes('ORDER_PLACED'),
     ),
   ).toBeTruthy();
 });
