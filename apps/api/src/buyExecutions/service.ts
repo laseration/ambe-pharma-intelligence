@@ -262,6 +262,53 @@ function round(value: number | null, precision = 4): number | null {
   return Math.round(value * factor) / factor;
 }
 
+function toJsonSafeAuditValue(
+  value: unknown,
+  seen = new WeakSet<object>(),
+): unknown {
+  if (value === undefined) {
+    return null;
+  }
+
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    return value;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => toJsonSafeAuditValue(item, seen));
+  }
+
+  if (typeof value !== 'object') {
+    return String(value);
+  }
+
+  const numericValue = toNumber(value);
+  if (numericValue !== null) {
+    return numericValue;
+  }
+
+  if (seen.has(value)) {
+    return '[Circular]';
+  }
+  seen.add(value);
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      toJsonSafeAuditValue(item, seen),
+    ]),
+  );
+}
+
 function normalizeCurrencyCode(
   value: string | null | undefined,
 ): string | null {
@@ -779,7 +826,7 @@ async function logExecutionEvent(
             ? (metadata as { changedFields: string[] }).changedFields
             : undefined,
       },
-      metadata,
+      toJsonSafeAuditValue(metadata),
     ),
   });
 }
