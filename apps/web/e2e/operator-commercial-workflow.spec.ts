@@ -110,7 +110,9 @@ test('operator approves a staged offer and records buy execution', async ({
       .getByText('Already executed', { exact: true })
       .first(),
   ).toBeVisible();
-  await expect(page.getByText('Execution', { exact: true }).first()).toBeVisible();
+  await expect(
+    page.getByText('Execution', { exact: true }).first(),
+  ).toBeVisible();
   await expect(
     page.getByText('Marked Ordered', { exact: true }).first(),
   ).toBeVisible();
