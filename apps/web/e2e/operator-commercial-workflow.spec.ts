@@ -11,11 +11,21 @@ const apiHeaders = {
   'x-internal-api-key': 'local-runtime-e2e-internal-api-key',
   'x-internal-caller-name': 'operator-commercial-e2e',
 };
+const adminApiHeaders = {
+  'x-internal-api-key': 'local-runtime-e2e-admin-key',
+  'x-internal-caller-name': 'operator-commercial-e2e-reset',
+};
 
 test('operator approves a staged offer and records buy execution', async ({
   page,
   request,
 }) => {
+  const resetResponse = await request.post(
+    `${apiBaseUrl}/debug/e2e/operator-commercial-workflow/reset`,
+    { headers: adminApiHeaders },
+  );
+  expect(resetResponse.ok()).toBeTruthy();
+
   await page.goto('/dashboard/review');
   await expect(page).toHaveURL(/\/login\?next=%2Fdashboard%2Freview$/);
   await page.getByLabel('Username').fill('pilot.operator');
@@ -57,7 +67,7 @@ test('operator approves a staged offer and records buy execution', async ({
   await expect(
     page.getByText('Approved. A buy decision was created.', { exact: false }),
   ).toBeVisible();
-  await expect(page.getByText('Buy decision')).toBeVisible();
+  await expect(page.getByText('Buy decision', { exact: true })).toBeVisible();
   await expect(page.getByText('Approved', { exact: true })).toBeVisible();
 
   const auditAfterApproval = await request.get(
