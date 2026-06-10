@@ -69,6 +69,7 @@ const CALLER_NAME = 'web-imports';
 async function requestJson<T>(path: string): Promise<T> {
   return requestInternalJson<T>(path, {
     callerName: CALLER_NAME,
+    requiredCapability: 'imports:view',
   });
 }
 

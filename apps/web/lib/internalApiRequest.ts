@@ -1,7 +1,13 @@
+import { requireCapability, type WebCapability } from './authorisation';
+import type { WebAuthSession } from './internalWebAuth';
+import { getCurrentWebSession } from './serverWebAuth';
+
 type InternalApiEnv = Record<string, string | undefined>;
 
 type RequestInternalOptions = {
   callerName: string;
+  requiredCapability: WebCapability;
+  session?: WebAuthSession | null;
   init?: RequestInit;
   source?: InternalApiEnv;
   fetchImpl?: typeof fetch;
@@ -40,6 +46,13 @@ type ApiErrorPayload = {
 
 const DEFAULT_INTERNAL_API_BASE_URL = 'http://127.0.0.1:4000/api';
 const REDACTED = '[redacted]';
+const VIEWER_API_CAPABILITIES = new Set<WebCapability>([
+  'dashboard:view',
+  'opportunities:view',
+  'products:view',
+  'deals:view',
+  'trade-enquiries:view',
+]);
 
 export class InternalApiError extends Error {
   constructor(
@@ -95,20 +108,24 @@ function headersToRecord(
 
 export function buildInternalApiHeaders(input: {
   callerName: string;
+  requiredCapability: WebCapability;
+  actor?: WebAuthSession | null;
   includeJsonContentType?: boolean;
   source?: InternalApiEnv;
   extraHeaders?: HeadersInit;
 }): Record<string, string> {
   const source = input.source ?? process.env;
   const headers: Record<string, string> = {};
-  const apiKey =
-    source.INTERNAL_API_KEY?.trim() ||
-    source.INTERNAL_ADMIN_API_KEY?.trim() ||
-    '';
+  const apiKey = selectInternalApiKey(input.requiredCapability, source);
 
   if (apiKey) {
     headers['x-internal-api-key'] = apiKey;
     headers['x-internal-caller-name'] = input.callerName;
+  }
+
+  if (input.actor) {
+    headers['x-internal-web-user'] = safeHeaderValue(input.actor.username);
+    headers['x-internal-web-role'] = input.actor.role;
   }
 
   if (input.includeJsonContentType) {
@@ -121,10 +138,52 @@ export function buildInternalApiHeaders(input: {
   };
 }
 
+function selectInternalApiKey(
+  requiredCapability: WebCapability,
+  source: InternalApiEnv,
+): string {
+  const viewerKey = source.INTERNAL_VIEWER_API_KEY?.trim() ?? '';
+  const operatorKey = source.INTERNAL_API_KEY?.trim() ?? '';
+  const adminKey = source.INTERNAL_ADMIN_API_KEY?.trim() ?? '';
+
+  if (requiredCapability === 'system:admin') {
+    return adminKey || operatorKey || viewerKey;
+  }
+
+  if (requiredCapability.endsWith(':manage')) {
+    return operatorKey || adminKey || viewerKey;
+  }
+
+  if (VIEWER_API_CAPABILITIES.has(requiredCapability)) {
+    return viewerKey || operatorKey || adminKey;
+  }
+
+  return operatorKey || adminKey || viewerKey;
+}
+
+function safeHeaderValue(value: string): string {
+  return value
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
+    .slice(0, 128);
+}
+
+async function resolveAuthorisedSession(
+  options: RequestInternalOptions,
+): Promise<WebAuthSession> {
+  const session =
+    options.session === undefined
+      ? await getCurrentWebSession()
+      : options.session;
+
+  return requireCapability(session, options.requiredCapability);
+}
+
 function knownSecrets(source: InternalApiEnv): string[] {
   return [
     source.INTERNAL_API_KEY,
     source.INTERNAL_ADMIN_API_KEY,
+    source.INTERNAL_VIEWER_API_KEY,
     source.ACCOUNT_OPENING_EXPORT_DOWNLOAD_TOKEN,
     source.DASHBOARD_OPERATOR_TOKEN,
     source.WEB_AUTH_PASSWORD,
@@ -228,11 +287,14 @@ export async function requestInternalJson<T>(
 ): Promise<T> {
   const source = options.source ?? process.env;
   const init = options.init;
+  const actor = await resolveAuthorisedSession(options);
   const response = await (options.fetchImpl ?? fetch)(buildUrl(path, source), {
     ...init,
     cache: 'no-store',
     headers: buildInternalApiHeaders({
       callerName: options.callerName,
+      requiredCapability: options.requiredCapability,
+      actor,
       includeJsonContentType: init?.body !== undefined,
       source,
       extraHeaders: init?.headers,
@@ -264,11 +326,14 @@ export async function requestInternalTextFile(
 ): Promise<InternalTextFile> {
   const source = options.source ?? process.env;
   const init = options.init;
+  const actor = await resolveAuthorisedSession(options);
   const response = await (options.fetchImpl ?? fetch)(buildUrl(path, source), {
     ...init,
     cache: 'no-store',
     headers: buildInternalApiHeaders({
       callerName: options.callerName,
+      requiredCapability: options.requiredCapability,
+      actor,
       source,
       extraHeaders: init?.headers,
     }),
@@ -298,11 +363,14 @@ export async function requestInternalBinaryFile(
 ): Promise<InternalBinaryFile> {
   const source = options.source ?? process.env;
   const init = options.init;
+  const actor = await resolveAuthorisedSession(options);
   const response = await (options.fetchImpl ?? fetch)(buildUrl(path, source), {
     ...init,
     cache: 'no-store',
     headers: buildInternalApiHeaders({
       callerName: options.callerName,
+      requiredCapability: options.requiredCapability,
+      actor,
       source,
       extraHeaders: init?.headers,
     }),

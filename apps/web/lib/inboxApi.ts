@@ -35,6 +35,7 @@ const CALLER_NAME = 'web-bot-inbox';
 async function requestJson<T>(path: string): Promise<T> {
   return requestInternalJson<T>(path, {
     callerName: CALLER_NAME,
+    requiredCapability: 'inbox:view',
   });
 }
 

@@ -106,9 +106,11 @@ async function buildDatabaseCheck(
 }
 
 function buildApiAuthCheck(): SystemReadinessCheck {
+  const viewerApiKeyConfigured = Boolean(env.internalViewerApiKey);
   const apiKeyConfigured = Boolean(env.internalApiKey);
   const adminApiKeyConfigured = Boolean(env.internalAdminApiKey);
-  const configured = apiKeyConfigured || adminApiKeyConfigured;
+  const configured =
+    viewerApiKeyConfigured || apiKeyConfigured || adminApiKeyConfigured;
 
   return {
     key: 'api-internal-auth',
@@ -118,11 +120,16 @@ function buildApiAuthCheck(): SystemReadinessCheck {
       ? 'Internal API-key authentication is configured for protected API routes.'
       : 'Internal API keys are not configured. Local safe-mode bypass may apply only in development-like setups.',
     nextAction: configured
-      ? 'Use operator/admin keys only from trusted server-side callers.'
+      ? 'Use viewer/operator/admin keys only from trusted server-side callers.'
       : 'Set INTERNAL_API_KEY and optionally INTERNAL_ADMIN_API_KEY before a pilot.',
-    envVars: ['INTERNAL_API_KEY', 'INTERNAL_ADMIN_API_KEY'],
+    envVars: [
+      'INTERNAL_VIEWER_API_KEY',
+      'INTERNAL_API_KEY',
+      'INTERNAL_ADMIN_API_KEY',
+    ],
     documentationPath: 'README.md#environment',
     details: {
+      viewerApiKeyConfigured,
       apiKeyConfigured,
       adminApiKeyConfigured,
       authEnforcedForCurrentConfig: isInternalAuthEnforced(),

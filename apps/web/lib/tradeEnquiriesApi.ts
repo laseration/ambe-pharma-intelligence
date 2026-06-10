@@ -1,5 +1,6 @@
 import 'server-only';
 
+import type { WebCapability } from './authorisation';
 import { requestInternalJson } from './internalApiRequest';
 
 export type BuyerTradeEnquiryStatus =
@@ -52,10 +53,17 @@ type ListBuyerTradeEnquiriesOptions = {
 
 const CALLER_NAME = 'web-dashboard';
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+async function requestJson<T>(
+  path: string,
+  options: {
+    init?: RequestInit;
+    requiredCapability: WebCapability;
+  },
+): Promise<T> {
   return requestInternalJson<T>(path, {
     callerName: CALLER_NAME,
-    init,
+    requiredCapability: options.requiredCapability,
+    init: options.init,
   });
 }
 
@@ -91,6 +99,7 @@ export async function listBuyerTradeEnquiries(
   const query = searchParams.toString();
   const payload = await requestJson<{ items: BuyerTradeEnquiryListItem[] }>(
     `/trade/buyer-enquiries${query ? `?${query}` : ''}`,
+    { requiredCapability: 'trade-enquiries:view' },
   );
 
   return payload.items;
@@ -101,6 +110,7 @@ export async function getBuyerTradeEnquiry(
 ): Promise<BuyerTradeEnquiryListItem> {
   const payload = await requestJson<{ item: BuyerTradeEnquiryListItem }>(
     `/trade/buyer-enquiries/${encodeURIComponent(enquiryId)}`,
+    { requiredCapability: 'trade-enquiries:view' },
   );
 
   return payload.item;
@@ -118,8 +128,11 @@ export async function updateBuyerTradeEnquiryStatus(
   const payload = await requestJson<{ item: BuyerTradeEnquiryListItem }>(
     `/trade/buyer-enquiries/${encodeURIComponent(enquiryId)}/status`,
     {
-      method: 'PATCH',
-      body: JSON.stringify(body),
+      requiredCapability: 'trade-enquiries:manage',
+      init: {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      },
     },
   );
 
