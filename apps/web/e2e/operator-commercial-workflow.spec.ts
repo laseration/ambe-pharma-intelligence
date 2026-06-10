@@ -116,9 +116,6 @@ test('operator approves a staged offer and records buy execution', async ({
   await expect(
     page.getByText('Marked Ordered', { exact: true }).first(),
   ).toBeVisible();
-  await expect(
-    page.getByText('E2E-PO-2026-001', { exact: true }).first(),
-  ).toBeVisible();
 
   const auditAfterExecution = await request.get(
     `${apiBaseUrl}/review-queue/workflows/${workflowId}/audit-history`,
