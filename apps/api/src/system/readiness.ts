@@ -205,6 +205,7 @@ function buildEmailPollingCheck(): SystemReadinessCheck {
         ? 'Send a controlled supplier email through the configured intake mailbox.'
         : 'Configure Graph mail, the sender mailbox, EMAIL_INBOUND_ALLOWED_SENDERS, then enable polling when ready.',
     envVars: [
+      'START_WORKERS_WITH_API',
       'EMAIL_INBOUND_POLLING_ENABLED',
       'EMAIL_INBOUND_POLLING_INTERVAL_MS',
       'EMAIL_INBOUND_ALLOWED_SENDERS',
@@ -219,6 +220,8 @@ function buildEmailPollingCheck(): SystemReadinessCheck {
       allowedSenderCount: env.emailInboundAllowedSenders.length,
       supplierMappingCount: env.emailInboundSupplierMappings.length,
       pollingIntervalMs: env.emailInboundPollingIntervalMs,
+      workerProcessExpected: !env.startWorkersWithApi,
+      apiStartsWorkers: env.startWorkersWithApi,
       runtimeRunning: workerStatus.running,
       runtimeInFlight: workerStatus.inFlight,
       lastRunFinishedAt: workerStatus.lastRunFinishedAt,
@@ -402,6 +405,7 @@ function buildTelegramCheck(): SystemReadinessCheck {
         ? 'Use dry-run mode until pilot operators have verified message handling.'
         : 'Set bot/chat values and allowlists before enabling polling for pilot intake.',
     envVars: [
+      'START_WORKERS_WITH_API',
       'TELEGRAM_BOT_TOKEN',
       'TELEGRAM_INTERNAL_CHAT_ID',
       'TELEGRAM_DRY_RUN',
@@ -416,6 +420,8 @@ function buildTelegramCheck(): SystemReadinessCheck {
       dryRun: env.telegramDryRun,
       pollingEnabled: env.telegramPollingEnabled,
       pollingActive,
+      workerProcessExpected: !env.startWorkersWithApi,
+      apiStartsWorkers: env.startWorkersWithApi,
       allowedUserCount: env.telegramAllowedUserIds.length,
       allowedChatCount: env.telegramAllowedChatIds.length,
       runtimeRunning: workerStatus.running,

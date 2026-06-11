@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   buildMicrosoftDriveWorkflowFolder,
+  readStartWorkersWithApi,
   resolveMicrosoftMailGraphCredentials,
   resolveMicrosoftStorageGraphCredentials,
 } from './env';
@@ -23,6 +24,14 @@ test('explicit account-opening folder overrides Microsoft Drive root derivation'
     ),
     'Custom Root/Custom Account Opening',
   );
+});
+
+test('START_WORKERS_WITH_API is explicit opt-in', () => {
+  assert.equal(readStartWorkersWithApi(undefined), false);
+  assert.equal(readStartWorkersWithApi(''), false);
+  assert.equal(readStartWorkersWithApi('false'), false);
+  assert.equal(readStartWorkersWithApi('true'), true);
+  assert.equal(readStartWorkersWithApi('1'), true);
 });
 
 test('mail credentials prefer mail-specific vars over legacy Graph mail vars', () => {

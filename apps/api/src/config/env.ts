@@ -64,6 +64,10 @@ function readBoolean(value: string | undefined, fallback: boolean): boolean {
   return ['1', 'true', 'yes'].includes(trimmed);
 }
 
+export function readStartWorkersWithApi(value: string | undefined): boolean {
+  return readBoolean(value, false);
+}
+
 function readNodeEnv(value: string | undefined): NodeEnv {
   if (value === 'test' || value === 'production') {
     return value;
@@ -235,6 +239,9 @@ export const env = {
   nodeEnv: readNodeEnv(process.env.NODE_ENV),
   port: readPort(process.env.PORT, 4000),
   logLevel: readString(process.env.LOG_LEVEL, 'info'),
+  startWorkersWithApi: readStartWorkersWithApi(
+    process.env.START_WORKERS_WITH_API,
+  ),
   databaseUrl: process.env.DATABASE_URL?.trim() || '',
   databaseHost: readDatabaseHost(process.env.DATABASE_URL),
   internalViewerApiKey: process.env.INTERNAL_VIEWER_API_KEY?.trim() || '',
