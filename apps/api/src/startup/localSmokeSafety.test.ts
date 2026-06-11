@@ -169,10 +169,7 @@ test('local runtime smoke integration guard rejects enabled live-capable modes',
 
   assert.equal(result.safe, false);
   assert.match(result.unsafeReasons.join('\n'), /OpenAI parser/i);
-  assert.match(
-    result.unsafeReasons.join('\n'),
-    /START_WORKERS_WITH_API/i,
-  );
+  assert.match(result.unsafeReasons.join('\n'), /START_WORKERS_WITH_API/i);
   assert.match(result.unsafeReasons.join('\n'), /Telegram dry-run/i);
   assert.match(result.unsafeReasons.join('\n'), /EMAIL_ALERTS_ENABLED/i);
   assert.match(

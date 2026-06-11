@@ -20,8 +20,11 @@ function createTestWorker(name: string, events: string[]): PollingWorkerHandle {
 }
 
 function createTestLogger() {
-  const entries: Array<{ level: 'info' | 'warn'; message: string; meta?: any }> =
-    [];
+  const entries: Array<{
+    level: 'info' | 'warn';
+    message: string;
+    meta?: any;
+  }> = [];
 
   return {
     entries,

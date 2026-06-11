@@ -35,14 +35,14 @@ cp apps/web/.env.example apps/web/.env
 
 Required API values for a pilot:
 
-| Variable                 | Required    | Purpose                                            |
-| ------------------------ | ----------- | -------------------------------------------------- |
-| `NODE_ENV`               | yes         | Use `production` in the pilot environment.         |
-| `PORT`                   | yes         | API HTTP port, default `4000`.                     |
-| `DATABASE_URL`           | yes         | PostgreSQL connection string used by Prisma.       |
-| `INTERNAL_API_KEY`       | yes         | Internal API key for protected operator routes.    |
-| `INTERNAL_ADMIN_API_KEY` | recommended | Admin key for admin/debug-only internal calls.     |
-| `ENABLE_DEBUG_ROUTES`    | recommended | Use `false` in production-like pilot environments. |
+| Variable                 | Required    | Purpose                                                                                    |
+| ------------------------ | ----------- | ------------------------------------------------------------------------------------------ |
+| `NODE_ENV`               | yes         | Use `production` in the pilot environment.                                                 |
+| `PORT`                   | yes         | API HTTP port, default `4000`.                                                             |
+| `DATABASE_URL`           | yes         | PostgreSQL connection string used by Prisma.                                               |
+| `INTERNAL_API_KEY`       | yes         | Internal API key for protected operator routes.                                            |
+| `INTERNAL_ADMIN_API_KEY` | recommended | Admin key for admin/debug-only internal calls.                                             |
+| `ENABLE_DEBUG_ROUTES`    | recommended | Use `false` in production-like pilot environments.                                         |
 | `START_WORKERS_WITH_API` | recommended | Use `false` in production. `true` is only for local/transitional combined API+worker mode. |
 
 Required web values for a pilot:

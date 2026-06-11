@@ -150,15 +150,13 @@ export function startApiPollingWorkersIfEnabled(
   return runtime.startConfiguredWorkers();
 }
 
-export async function stopPollingRuntimeAndDisconnect(
-  options: {
-    disconnect: () => Promise<void>;
-    logger: RuntimeLogger;
-    processRole: 'api' | 'worker';
-    runtime: PollingWorkerRuntime;
-    signal: string;
-  },
-): Promise<void> {
+export async function stopPollingRuntimeAndDisconnect(options: {
+  disconnect: () => Promise<void>;
+  logger: RuntimeLogger;
+  processRole: 'api' | 'worker';
+  runtime: PollingWorkerRuntime;
+  signal: string;
+}): Promise<void> {
   options.logger.info('Polling worker runtime stopping', {
     processRole: options.processRole,
     signal: options.signal,
