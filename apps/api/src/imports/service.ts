@@ -1448,7 +1448,7 @@ function mapUnexpectedError(
 export async function importSupplierPriceList(
   request: SupplierPriceListImportRequest,
 ): Promise<ImportResponse> {
-  const parsed = parseUploadedFile(request.file);
+  const parsed = await parseUploadedFile(request.file);
   const currencyCode = request.currencyCode?.trim() || 'USD';
   const { validRows, errors } = validateSupplierPriceRows(
     parsed.rows,
@@ -1593,7 +1593,7 @@ export async function importSupplierPriceList(
 export async function importInventory(
   request: InventoryImportRequest,
 ): Promise<ImportResponse> {
-  const parsed = parseUploadedFile(request.file);
+  const parsed = await parseUploadedFile(request.file);
   const { validRows, errors } = validateInventoryRows(parsed.rows);
   const summary = buildSummary(
     parsed.rows.length,
@@ -1674,7 +1674,7 @@ export async function importInventory(
 export async function importSales(
   request: SalesImportRequest,
 ): Promise<ImportResponse> {
-  const parsed = parseUploadedFile(request.file);
+  const parsed = await parseUploadedFile(request.file);
   const { validRows, errors } = validateSalesRows(parsed.rows);
   const summary = buildSummary(
     parsed.rows.length,

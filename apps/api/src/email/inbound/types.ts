@@ -1,5 +1,9 @@
 import type { ParsedEmailBodyResult } from '../parsing';
-import type { ImportResponse, UploadFile } from '../../imports/types';
+import type {
+  ImportResponse,
+  ParsedFileResult,
+  UploadFile,
+} from '../../imports/types';
 import type {
   AccountOpeningCase,
   AccountOpeningCasePersistenceInput,
@@ -217,10 +221,7 @@ export type EmailInboundDependencies = {
   }) => Promise<ImportResponse>;
   importInventory: (request: { file: UploadFile }) => Promise<ImportResponse>;
   importSales: (request: { file: UploadFile }) => Promise<ImportResponse>;
-  parseUploadedFile: (file: UploadFile) => {
-    rows: Record<string, string>[];
-    warnings: string[];
-  };
+  parseUploadedFile: (file: UploadFile) => Promise<ParsedFileResult>;
   parseTextMessage: (rawText: string) => Promise<ParsedEmailBodyResult>;
   extractAttachmentText: (attachment: NormalizedEmailAttachment) => Promise<{
     method: 'PDF_TEXT' | 'IMAGE_OCR';

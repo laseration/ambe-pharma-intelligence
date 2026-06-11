@@ -10,6 +10,7 @@
     "qa:trade": "pnpm --filter @ambe/api test:trade && pnpm --filter @ambe/web test:trade",
     "qa:account-opening": "pnpm --filter @ambe/api test:account-opening && pnpm --filter @ambe/web test:account-opening",
     "verify:safe": "pnpm lint && pnpm format && pnpm --filter @ambe/api db:generate && pnpm build && pnpm test",
+    "audit:prod": "pnpm audit --prod",
     "format": "prettier --check .",
     "format:write": "prettier --write ."
   },
@@ -21,5 +22,12 @@
     "eslint-config-prettier": "^10.0.1",
     "prettier": "^3.5.3",
     "typescript": "^5.8.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss": "8.5.10",
+      "qs": "6.15.2",
+      "uuid": "11.1.1"
+    }
   }
 }

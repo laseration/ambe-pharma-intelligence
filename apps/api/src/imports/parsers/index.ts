@@ -9,7 +9,9 @@ function getExtension(fileName: string): string {
   return path.extname(fileName).toLowerCase();
 }
 
-export function parseUploadedFile(file: UploadFile): ParsedFileResult {
+export async function parseUploadedFile(
+  file: UploadFile,
+): Promise<ParsedFileResult> {
   const extension = getExtension(file.originalname);
 
   if (extension === '.csv' || file.mimetype === 'text/csv') {

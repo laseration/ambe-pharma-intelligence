@@ -176,9 +176,10 @@ test('attachment email reaches import path through Graph polling', async () => {
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
+    parseUploadedFile: async () => ({
       rows: [],
       warnings: [],
+      detectedColumns: [],
     }),
   });
 
