@@ -19,6 +19,8 @@ function session(role: WebAuthSession['role']): WebAuthSession {
 
 test('role capability map keeps viewers read-only and operators away from system admin', () => {
   assert.equal(roleHasCapability('viewer', 'dashboard:view'), true);
+  assert.equal(roleHasCapability('viewer', 'inventory:view'), true);
+  assert.equal(roleHasCapability('viewer', 'customers:view'), true);
   assert.equal(roleHasCapability('viewer', 'imports:view'), false);
   assert.equal(roleHasCapability('viewer', 'opportunities:manage'), false);
   assert.equal(roleHasCapability('viewer', 'review:manage'), false);
@@ -40,6 +42,8 @@ const webRoleMatrix: Array<{
     role: 'viewer',
     allowed: [
       'dashboard:view',
+      'inventory:view',
+      'customers:view',
       'opportunities:view',
       'products:view',
       'deals:view',
@@ -62,6 +66,8 @@ const webRoleMatrix: Array<{
     role: 'operator',
     allowed: [
       'dashboard:view',
+      'inventory:view',
+      'customers:view',
       'imports:view',
       'inbox:view',
       'opportunities:view',
@@ -82,6 +88,8 @@ const webRoleMatrix: Array<{
     role: 'admin',
     allowed: [
       'dashboard:view',
+      'inventory:view',
+      'customers:view',
       'imports:view',
       'inbox:view',
       'opportunities:view',

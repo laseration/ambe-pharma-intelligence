@@ -2,6 +2,8 @@ import type { WebAuthRole, WebAuthSession } from './internalWebAuth';
 
 export type WebCapability =
   | 'dashboard:view'
+  | 'inventory:view'
+  | 'customers:view'
   | 'imports:view'
   | 'inbox:view'
   | 'opportunities:view'
@@ -20,6 +22,8 @@ export type WebCapability =
 const ROLE_CAPABILITIES: Record<WebAuthRole, ReadonlySet<WebCapability>> = {
   viewer: new Set([
     'dashboard:view',
+    'inventory:view',
+    'customers:view',
     'opportunities:view',
     'products:view',
     'deals:view',
@@ -27,6 +31,8 @@ const ROLE_CAPABILITIES: Record<WebAuthRole, ReadonlySet<WebCapability>> = {
   ]),
   operator: new Set([
     'dashboard:view',
+    'inventory:view',
+    'customers:view',
     'imports:view',
     'inbox:view',
     'opportunities:view',
@@ -43,6 +49,8 @@ const ROLE_CAPABILITIES: Record<WebAuthRole, ReadonlySet<WebCapability>> = {
   ]),
   admin: new Set([
     'dashboard:view',
+    'inventory:view',
+    'customers:view',
     'imports:view',
     'inbox:view',
     'opportunities:view',

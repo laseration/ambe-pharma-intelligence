@@ -16,6 +16,8 @@ export default async function DashboardLayout({
 }: DashboardLayoutProps) {
   const session = await requireCurrentWebCapability('dashboard:view');
   const canViewInbox = roleHasCapability(session.role, 'inbox:view');
+  const canViewInventory = roleHasCapability(session.role, 'inventory:view');
+  const canViewCustomers = roleHasCapability(session.role, 'customers:view');
   const canViewImports = roleHasCapability(session.role, 'imports:view');
   const canReview = roleHasCapability(session.role, 'review:view');
   const canViewSetup = roleHasCapability(session.role, 'system:admin');
@@ -64,6 +66,12 @@ export default async function DashboardLayout({
           <Link href="/dashboard/trade-enquiries">Trade Enquiries</Link>
           {canViewImports ? (
             <Link href="/dashboard/imports">Imports</Link>
+          ) : null}
+          {canViewInventory ? (
+            <Link href="/dashboard/inventory">Inventory</Link>
+          ) : null}
+          {canViewCustomers ? (
+            <Link href="/dashboard/customers">Customers</Link>
           ) : null}
           <Link href="/dashboard/opportunities">Opportunities</Link>
           <Link href="/dashboard/deals">Deals</Link>

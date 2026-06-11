@@ -110,6 +110,22 @@ test('internal API request helper selects least-privilege API key for declared c
   );
   assert.equal(
     buildInternalApiHeaders({
+      callerName: 'web-inventory',
+      requiredCapability: 'inventory:view',
+      source: credentialSource,
+    })['x-internal-api-key'],
+    'viewer-secret-redacted',
+  );
+  assert.equal(
+    buildInternalApiHeaders({
+      callerName: 'web-customers',
+      requiredCapability: 'customers:view',
+      source: credentialSource,
+    })['x-internal-api-key'],
+    'viewer-secret-redacted',
+  );
+  assert.equal(
+    buildInternalApiHeaders({
       callerName: 'web-review-console',
       requiredCapability: 'review:view',
       source: credentialSource,
