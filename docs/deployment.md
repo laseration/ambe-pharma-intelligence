@@ -8,6 +8,8 @@ Intelligence. It is factual to this repo and does not include real secrets.
 The repo is a pnpm monorepo:
 
 - `apps/api`: Express API, Prisma, PostgreSQL
+- `apps/api` worker: standalone polling process for Telegram and Microsoft
+  Graph inbox intake
 - `apps/web`: Next.js public website with internal dashboard routes behind
   `/login` and `/dashboard`
 - `packages/shared`: shared TypeScript utilities
@@ -19,7 +21,8 @@ Required runtime tools:
 - PostgreSQL reachable through `DATABASE_URL`
 
 The API defaults to port `4000`. The web app defaults to port `3000` when run
-with Next.js locally.
+with Next.js locally. The worker process does not expose HTTP; it connects to
+PostgreSQL, writes safe polling status snapshots, and owns polling timers.
 
 ## Required Pilot Configuration
 
@@ -32,14 +35,15 @@ cp apps/web/.env.example apps/web/.env
 
 Required API values for a pilot:
 
-| Variable                 | Required    | Purpose                                            |
-| ------------------------ | ----------- | -------------------------------------------------- |
-| `NODE_ENV`               | yes         | Use `production` in the pilot environment.         |
-| `PORT`                   | yes         | API HTTP port, default `4000`.                     |
-| `DATABASE_URL`           | yes         | PostgreSQL connection string used by Prisma.       |
-| `INTERNAL_API_KEY`       | yes         | Internal API key for protected operator routes.    |
-| `INTERNAL_ADMIN_API_KEY` | recommended | Admin key for admin/debug-only internal calls.     |
-| `ENABLE_DEBUG_ROUTES`    | recommended | Use `false` in production-like pilot environments. |
+| Variable                 | Required    | Purpose                                                                                    |
+| ------------------------ | ----------- | ------------------------------------------------------------------------------------------ |
+| `NODE_ENV`               | yes         | Use `production` in the pilot environment.                                                 |
+| `PORT`                   | yes         | API HTTP port, default `4000`.                                                             |
+| `DATABASE_URL`           | yes         | PostgreSQL connection string used by Prisma.                                               |
+| `INTERNAL_API_KEY`       | yes         | Internal API key for protected operator routes.                                            |
+| `INTERNAL_ADMIN_API_KEY` | recommended | Admin key for admin/debug-only internal calls.                                             |
+| `ENABLE_DEBUG_ROUTES`    | recommended | Use `false` in production-like pilot environments.                                         |
+| `START_WORKERS_WITH_API` | recommended | Use `false` in production. `true` is only for local/transitional combined API+worker mode. |
 
 Required web values for a pilot:
 
@@ -113,8 +117,15 @@ Start built services:
 
 ```bash
 pnpm --filter @ambe/api start
+pnpm --filter @ambe/api start:worker
 pnpm --filter @ambe/web start
 ```
+
+Run exactly one worker process for each deployment environment. Running polling
+workers in multiple API replicas or multiple worker replicas can duplicate
+Telegram and inbox polling. The API process does not start polling workers by
+default; set `START_WORKERS_WITH_API=true` only when intentionally running a
+single combined local/transitional process.
 
 The public website is served from the web app at `/`. The internal dashboard
 entry points remain `/login` and `/dashboard`. In production, unauthenticated
@@ -124,10 +135,14 @@ Local development can use:
 
 ```bash
 pnpm dev
+pnpm --filter @ambe/api worker:dev
 ```
 
 Do not enable live integrations in local development unless the operator knows
 which mailbox, Telegram bot, and database are being used.
+
+For the old single-process local shape, start the API with
+`START_WORKERS_WITH_API=true`. Do not use that mode for production replicas.
 
 ## GitHub Actions VPS Deployment
 
@@ -189,6 +204,7 @@ Least-privilege guidance:
 Inbox polling is optional and disabled by default:
 
 ```bash
+START_WORKERS_WITH_API=false
 EMAIL_INBOUND_POLLING_ENABLED=false
 EMAIL_INBOUND_POLLING_INTERVAL_MS=30000
 ```
@@ -220,7 +236,8 @@ It does not mark messages read, ingest messages, persist content, download
 attachment contents, call OpenAI, call Telegram, send email, or upload files.
 
 Do not set `EMAIL_INBOUND_POLLING_ENABLED=true` until an operator has reviewed
-the dry-run output and confirmed the mailbox and sender allowlists.
+the dry-run output, confirmed the mailbox and sender allowlists, and confirmed
+that the dedicated worker process is the only process responsible for polling.
 
 Related safety controls:
 
@@ -274,6 +291,7 @@ Core env vars:
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_INTERNAL_CHAT_ID`
 - `TELEGRAM_DRY_RUN=true`
+- `START_WORKERS_WITH_API=false`
 - `TELEGRAM_POLLING_ENABLED=false`
 - `TELEGRAM_POLLING_INTERVAL_MS=5000`
 - `TELEGRAM_ALLOWED_USER_IDS`
@@ -283,7 +301,8 @@ Pilot guidance:
 
 - Keep `TELEGRAM_DRY_RUN=true` until internal operators confirm message content.
 - Use allowlists before accepting inbound files.
-- Keep polling disabled unless the API process is intended to poll Telegram.
+- Keep polling disabled unless the dedicated worker process is intended to poll
+  Telegram.
 - Telegram publishing remains internal-only and manual.
 
 ## OpenAI Optional Parser
@@ -357,4 +376,7 @@ API checks:
 - `GET /api/system/readiness`
 - `GET /api/system/workers`
 
-The API system endpoints require internal API authentication.
+The API readiness endpoint reports API readiness and whether polling workers are
+expected in the separate worker process. The worker status endpoint reports the
+latest safe polling counters persisted by the API or worker process. The API
+system endpoints require internal API authentication.

@@ -1,4 +1,3 @@
-import { createApp } from './app';
 import { env } from './config/env';
 import { db } from './lib/db';
 import { logger } from './lib/logger';
@@ -6,18 +5,15 @@ import { configurePollingWorkerStatusStore } from './polling/status';
 import { createAppSettingPollingWorkerStatusStore } from './polling/statusStore';
 import {
   createPollingWorkerRuntime,
-  startApiPollingWorkersIfEnabled,
   stopPollingRuntimeAndDisconnect,
 } from './runtime/pollingWorkers';
 import { verifyDatabaseReadiness } from './startup/databaseHealth';
 
-const app = createApp();
-
 async function start() {
   if (!env.databaseUrl) {
-    logger.error('API server failed to start', {
+    logger.error('Polling worker process failed to start', {
       databaseUrlDetected: false,
-      hint: 'Set DATABASE_URL in apps/api/.env. If it is missing there, the API also checks the repo root .env.',
+      hint: 'Set DATABASE_URL in apps/api/.env. If it is missing there, the worker also checks the repo root .env.',
     });
     process.exit(1);
   }
@@ -27,33 +23,33 @@ async function start() {
   configurePollingWorkerStatusStore(
     createAppSettingPollingWorkerStatusStore(db),
   );
+
   const pollingRuntime = createPollingWorkerRuntime();
 
-  const server = app.listen(env.port, () => {
-    logger.info('API server started', {
-      databaseHost: env.databaseHost,
-      port: env.port,
-      nodeEnv: env.nodeEnv,
-      logLevel: env.logLevel,
-    });
-
-    pollingRuntime.logConfiguration('api');
-    startApiPollingWorkersIfEnabled(pollingRuntime);
+  logger.info('Polling worker process started', {
+    databaseHost: env.databaseHost,
+    nodeEnv: env.nodeEnv,
+    logLevel: env.logLevel,
   });
+  pollingRuntime.logConfiguration('worker');
+
+  const startedWorkers = pollingRuntime.startConfiguredWorkers();
+  if (startedWorkers.length === 0) {
+    logger.warn('Polling worker process has no active workers to start', {
+      telegramPollingEnabled: env.telegramPollingEnabled,
+      emailInboundPollingEnabled: env.emailInboundPollingEnabled,
+    });
+  }
 
   async function shutdown(signal: string) {
-    logger.info('API server stopping', { signal });
-
-    server.close(async () => {
-      await stopPollingRuntimeAndDisconnect({
-        disconnect: () => db.$disconnect(),
-        logger,
-        processRole: 'api',
-        runtime: pollingRuntime,
-        signal,
-      });
-      process.exit(0);
+    await stopPollingRuntimeAndDisconnect({
+      disconnect: () => db.$disconnect(),
+      logger,
+      processRole: 'worker',
+      runtime: pollingRuntime,
+      signal,
     });
+    process.exit(0);
   }
 
   process.on('SIGINT', () => {
@@ -66,11 +62,11 @@ async function start() {
 }
 
 start().catch(async (error: unknown) => {
-  logger.error('API server failed to start', {
+  logger.error('Polling worker process failed to start', {
     error: error instanceof Error ? error.message : 'Unknown error',
     databaseHost: env.databaseHost,
     databaseUrlDetected: Boolean(env.databaseUrl),
-    hint: 'Verify DATABASE_URL points to a reachable Neon PostgreSQL database with sslmode=require. apps/api/.env is checked first, then the repo root .env.',
+    hint: 'Verify DATABASE_URL points to a reachable PostgreSQL database and migrations are current.',
   });
   await db.$disconnect();
   process.exit(1);
