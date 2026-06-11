@@ -3,8 +3,9 @@ import type { ReactNode } from 'react';
 
 import { logoutAction } from '../auth/actions';
 import { InboxNavBadge } from '../components/InboxNavBadge';
+import { roleHasCapability } from '../../lib/authorisation';
 import { listInboundEmails } from '../../lib/inboxApi';
-import { getCurrentWebSession } from '../../lib/serverWebAuth';
+import { requireCurrentWebCapability } from '../../lib/serverWebAuth';
 
 type DashboardLayoutProps = {
   children: ReactNode;
@@ -13,8 +14,12 @@ type DashboardLayoutProps = {
 export default async function DashboardLayout({
   children,
 }: DashboardLayoutProps) {
-  const session = await getCurrentWebSession();
-  const recentInboxEmails = session
+  const session = await requireCurrentWebCapability('dashboard:view');
+  const canViewInbox = roleHasCapability(session.role, 'inbox:view');
+  const canViewImports = roleHasCapability(session.role, 'imports:view');
+  const canReview = roleHasCapability(session.role, 'review:view');
+  const canViewSetup = roleHasCapability(session.role, 'system:admin');
+  const recentInboxEmails = canViewInbox
     ? await listInboundEmails({ take: 25 }).catch(() => [])
     : [];
   const recentEmailTimestamps = recentInboxEmails
@@ -48,33 +53,33 @@ export default async function DashboardLayout({
         </div>
         <nav className="nav">
           <Link href="/login">Login</Link>
-          {session ? (
-            <>
-              <Link href="/dashboard">Overview</Link>
-              <InboxNavBadge
-                href="/dashboard/inbox"
-                label="Bot Inbox"
-                recentEmailTimestamps={recentEmailTimestamps}
-              />
-              <Link href="/dashboard/trade-enquiries">Trade Enquiries</Link>
-              <Link href="/dashboard/imports">Imports</Link>
-              <Link href="/dashboard/opportunities">Opportunities</Link>
-              <Link href="/dashboard/deals">Deals</Link>
-              <Link href="/dashboard/review">Review</Link>
-              <Link href="/dashboard/products">Product Records</Link>
-              <Link href="/dashboard/setup">Setup</Link>
-              <div className="nav-session">
-                <span>
-                  {session.username} &middot; {session.role}
-                </span>
-                <form action={logoutAction}>
-                  <button className="nav-button" type="submit">
-                    Logout
-                  </button>
-                </form>
-              </div>
-            </>
+          <Link href="/dashboard">Overview</Link>
+          {canViewInbox ? (
+            <InboxNavBadge
+              href="/dashboard/inbox"
+              label="Bot Inbox"
+              recentEmailTimestamps={recentEmailTimestamps}
+            />
           ) : null}
+          <Link href="/dashboard/trade-enquiries">Trade Enquiries</Link>
+          {canViewImports ? (
+            <Link href="/dashboard/imports">Imports</Link>
+          ) : null}
+          <Link href="/dashboard/opportunities">Opportunities</Link>
+          <Link href="/dashboard/deals">Deals</Link>
+          {canReview ? <Link href="/dashboard/review">Review</Link> : null}
+          <Link href="/dashboard/products">Product Records</Link>
+          {canViewSetup ? <Link href="/dashboard/setup">Setup</Link> : null}
+          <div className="nav-session">
+            <span>
+              {session.username} &middot; {session.role}
+            </span>
+            <form action={logoutAction}>
+              <button className="nav-button" type="submit">
+                Logout
+              </button>
+            </form>
+          </div>
         </nav>
       </aside>
       <main className="content">{children}</main>

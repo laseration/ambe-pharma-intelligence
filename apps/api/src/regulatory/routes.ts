@@ -32,6 +32,8 @@ import {
 
 export const regulatoryRouter = Router();
 
+regulatoryRouter.use(requireInternalOperatorAccess);
+
 const regulatoryAlertStatusSchema = z.enum([
   'NEW',
   'REVIEWING',

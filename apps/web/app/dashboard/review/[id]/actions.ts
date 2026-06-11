@@ -9,6 +9,7 @@ import {
   type ReviewWorkflowActionOutcome,
   updateReviewWorkflowItem,
 } from '../../../../lib/reviewApi';
+import { requireCurrentWebCapability } from '../../../../lib/serverWebAuth';
 
 function value(formData: FormData, key: string): string {
   const rawValue = formData.get(key);
@@ -28,6 +29,26 @@ function optionalNumber(formData: FormData, key: string): number | undefined {
 
   const parsed = Number(rawValue);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function optionalBoolean(formData: FormData, key: string): boolean | undefined {
+  return formData.get(key) === 'on' ? true : undefined;
+}
+
+function buildMarkOrderedBody(formData: FormData): Record<string, unknown> {
+  return {
+    externalOrderReference: optionalValue(formData, 'externalOrderReference'),
+    orderPlacedAt: optionalValue(formData, 'orderPlacedAt'),
+    orderedQuantity: optionalNumber(formData, 'orderedQuantity'),
+    orderedUnitPrice: optionalValue(formData, 'orderedUnitPrice'),
+    orderedCurrencyCode: optionalValue(formData, 'orderedCurrencyCode'),
+    orderedMinimumOrderQuantity: optionalNumber(
+      formData,
+      'orderedMinimumOrderQuantity',
+    ),
+    confirmedAvailability: optionalBoolean(formData, 'confirmedAvailability'),
+    expectedDeliveryDate: optionalValue(formData, 'expectedDeliveryDate'),
+  };
 }
 
 function buildSupplierDetails(
@@ -167,6 +188,10 @@ function buildNonApprovalMessage(action: string): string {
     return 'Note added.';
   }
 
+  if (action === 'MARK_ORDERED') {
+    return 'Marked ordered. Buy execution was created or updated.';
+  }
+
   return 'Saved.';
 }
 
@@ -205,6 +230,8 @@ function buildReviewSuccessRedirectTarget(
 }
 
 export async function submitReviewOfferCorrection(formData: FormData) {
+  await requireCurrentWebCapability('review:manage');
+
   const inboundEmailId = value(formData, 'inboundEmailId');
   const workflowItemId = value(formData, 'workflowItemId');
   const correctionNextAction = value(formData, 'correctionNextAction');
@@ -283,6 +310,8 @@ export async function submitReviewOfferCorrection(formData: FormData) {
 }
 
 export async function submitInboundEmailReviewAction(formData: FormData) {
+  await requireCurrentWebCapability('review:manage');
+
   const inboundEmailId = value(formData, 'inboundEmailId');
   const workflowItemId = value(formData, 'workflowItemId');
   const action = value(formData, 'action');
@@ -339,6 +368,7 @@ export async function submitInboundEmailReviewAction(formData: FormData) {
       const result = await updateReviewWorkflowItem(item.id, {
         action,
         note,
+        ...(action === 'MARK_ORDERED' ? buildMarkOrderedBody(formData) : {}),
         ...actorPayload,
       });
       if (result.actionOutcome) {

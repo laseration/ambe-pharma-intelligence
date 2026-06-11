@@ -1,5 +1,10 @@
 import { expect, type Page, test } from '@playwright/test';
 
+import {
+  createWebSessionCookieValue,
+  WEB_AUTH_COOKIE_NAME,
+} from '../lib/internalWebAuth';
+
 const hiddenCanaries = [
   'LOCAL_RUNTIME_CORRECTED_RAW_TEXT_SHOULD_NOT_RENDER',
   'LOCAL_RUNTIME_CORRECTION_NOTE_SHOULD_NOT_RENDER',
@@ -17,6 +22,37 @@ const hiddenCanaries = [
   'TELEGRAM_PAYLOAD_SHOULD_NOT_RENDER',
 ];
 
+const webAuthSource = {
+  WEB_AUTH_PASSWORD: 'local-runtime-e2e-password',
+  WEB_AUTH_SESSION_SECRET:
+    'local-runtime-e2e-session-secret-that-is-long-enough',
+  WEB_AUTH_SESSION_TTL_SECONDS: '3600',
+  WEB_AUTH_USERNAME: 'pilot.operator',
+};
+
+async function setAdminSession(page: Page) {
+  const session = await createWebSessionCookieValue({
+    username: 'pilot.admin',
+    role: 'admin',
+    source: webAuthSource,
+  });
+
+  expect(session).not.toBeNull();
+
+  await page.context().addCookies([
+    {
+      name: WEB_AUTH_COOKIE_NAME,
+      value: session?.cookieValue ?? '',
+      domain: '127.0.0.1',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+      secure: false,
+      expires: session?.session.expiresAt,
+    },
+  ]);
+}
+
 async function expectSensitiveCanariesHidden(page: Page) {
   for (const canary of hiddenCanaries) {
     await expect(page.locator('body')).not.toContainText(canary);
@@ -32,9 +68,8 @@ test('pilot local-runtime smoke uses real API with disposable fake data', async 
     page.getByRole('heading', { name: 'Access Ambe Intelligence' }),
   ).toBeVisible();
 
-  await page.getByLabel('Username').fill('pilot.operator');
-  await page.getByLabel('Password').fill('local-runtime-e2e-password');
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await setAdminSession(page);
+  await page.goto('/dashboard/setup');
 
   await expect(
     page.getByRole('heading', { name: 'Pilot Setup Checklist' }),

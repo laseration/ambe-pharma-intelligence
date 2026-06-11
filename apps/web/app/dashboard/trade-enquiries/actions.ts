@@ -6,6 +6,7 @@ import {
   updateBuyerTradeEnquiryStatus,
   type BuyerTradeEnquiryStatus,
 } from '../../../lib/tradeEnquiriesApi';
+import { requireCurrentWebCapability } from '../../../lib/serverWebAuth';
 
 function value(formData: FormData, key: string): string {
   const rawValue = formData.get(key);
@@ -40,6 +41,8 @@ function detailRedirect(
 }
 
 export async function submitBuyerTradeEnquiryStatusAction(formData: FormData) {
+  await requireCurrentWebCapability('trade-enquiries:manage');
+
   const enquiryId = value(formData, 'enquiryId');
   const status = normalizeStatus(value(formData, 'status'));
   const reviewNotes = value(formData, 'reviewNotes');

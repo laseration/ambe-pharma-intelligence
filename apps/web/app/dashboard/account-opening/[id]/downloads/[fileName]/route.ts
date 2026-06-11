@@ -8,6 +8,8 @@ import {
   classifyAccountOpeningDownloadFileName,
   safeAccountOpeningDownloadFileName,
 } from '../../../../../../lib/accountOpeningDownloadFiles';
+import { WebAuthorisationError } from '../../../../../../lib/authorisation';
+import { requireCurrentWebCapability } from '../../../../../../lib/serverWebAuth';
 
 export const runtime = 'nodejs';
 
@@ -23,6 +25,16 @@ export async function GET(
       { error: 'Unsupported account-opening review download file.' },
       { status: 404 },
     );
+  }
+
+  try {
+    await requireCurrentWebCapability('account-opening:download');
+  } catch (error) {
+    if (error instanceof WebAuthorisationError) {
+      return Response.json({ error: error.message }, { status: error.status });
+    }
+
+    throw error;
   }
 
   const auth = requireAccountOpeningDownloadAccess(request);

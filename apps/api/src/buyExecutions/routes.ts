@@ -17,6 +17,8 @@ import { buyExecutionService } from './service';
 
 export const buyExecutionsRouter = Router();
 
+buyExecutionsRouter.use(requireInternalOperatorAccess);
+
 const fulfillmentStatusSchema = z.enum([
   'NOT_STARTED',
   'ORDER_PLACED',

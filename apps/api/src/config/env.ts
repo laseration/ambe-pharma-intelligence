@@ -237,6 +237,7 @@ export const env = {
   logLevel: readString(process.env.LOG_LEVEL, 'info'),
   databaseUrl: process.env.DATABASE_URL?.trim() || '',
   databaseHost: readDatabaseHost(process.env.DATABASE_URL),
+  internalViewerApiKey: process.env.INTERNAL_VIEWER_API_KEY?.trim() || '',
   internalApiKey: process.env.INTERNAL_API_KEY?.trim() || '',
   internalAdminApiKey: process.env.INTERNAL_ADMIN_API_KEY?.trim() || '',
   enableDebugRoutes: readBoolean(

@@ -510,6 +510,11 @@ async function startServer(
 }
 
 test('account-opening routes read a case without exposing raw form text fields', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
   const baseUrl = await startServer(t, {
     getCaseDetail: async () => buildCaseDetail(),
     generateDraft: async () => buildCaseDetail(),
@@ -517,7 +522,11 @@ test('account-opening routes read a case without exposing raw form text fields',
     updateStatus: async () => buildCaseDetail(),
   });
 
-  const response = await fetch(`${baseUrl}/account-opening/case-1`);
+  const response = await fetch(`${baseUrl}/account-opening/case-1`, {
+    headers: {
+      'x-internal-api-key': 'test-secret',
+    },
+  });
   const payload = (await response.json()) as { item: AccountOpeningCaseDetail };
 
   assert.equal(response.status, 200);
@@ -726,7 +735,11 @@ test('account-opening draft routes return safe draft and protect generation', as
     updateStatus: async () => buildCaseDetail(),
   });
 
-  const readResponse = await fetch(`${baseUrl}/account-opening/case-1/draft`);
+  const readResponse = await fetch(`${baseUrl}/account-opening/case-1/draft`, {
+    headers: {
+      'x-internal-api-key': 'test-secret',
+    },
+  });
   const generateResponse = await fetch(
     `${baseUrl}/account-opening/case-1/generate-draft`,
     {

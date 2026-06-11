@@ -6,6 +6,7 @@ import { NextRequest } from 'next/server';
 import { middleware } from '../middleware';
 import {
   createWebSessionCookieValue,
+  type WebAuthRole,
   WEB_AUTH_COOKIE_NAME,
 } from './internalWebAuth';
 
@@ -87,5 +88,34 @@ test('dashboard middleware allows valid internal web sessions', async () => {
 
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('location'), null);
+  });
+});
+
+test('dashboard middleware allows every role with dashboard view capability', async () => {
+  await withAuthEnv(async () => {
+    for (const role of [
+      'viewer',
+      'operator',
+      'admin',
+    ] satisfies WebAuthRole[]) {
+      const session = await createWebSessionCookieValue({
+        username: `${role}.user`,
+        role,
+        source: process.env,
+      });
+
+      assert.ok(session);
+
+      const response = await middleware(
+        new NextRequest('http://localhost:3000/dashboard/opportunities', {
+          headers: {
+            cookie: `${WEB_AUTH_COOKIE_NAME}=${session.cookieValue}`,
+          },
+        }),
+      );
+
+      assert.equal(response.status, 200, `${role} should reach dashboard`);
+      assert.equal(response.headers.get('location'), null);
+    }
   });
 });

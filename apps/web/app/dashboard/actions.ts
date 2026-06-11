@@ -8,6 +8,7 @@ import {
   updateOpportunityStatus,
   type OpportunityTriageStatus,
 } from '../../lib/opportunitiesApi';
+import { requireCurrentWebCapability } from '../../lib/serverWebAuth';
 
 function value(formData: FormData, key: string): string {
   const rawValue = formData.get(key);
@@ -50,6 +51,8 @@ function normalizeDashboardStatus(
 }
 
 export async function submitOpportunityTriageAction(formData: FormData) {
+  await requireCurrentWebCapability('opportunities:manage');
+
   const opportunityId = value(formData, 'opportunityId');
   const status = normalizeDashboardStatus(value(formData, 'status'));
   const redirectTarget = normalizeRedirectTarget(
@@ -86,6 +89,8 @@ export async function submitOpportunityTriageAction(formData: FormData) {
 }
 
 export async function submitOpportunityRefreshAction() {
+  await requireCurrentWebCapability('opportunities:manage');
+
   try {
     const result = await regenerateOpportunities();
     revalidatePath('/dashboard');

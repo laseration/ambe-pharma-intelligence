@@ -258,6 +258,34 @@ test('approved buy execution repeat placement is idempotent when unchanged', asy
   );
 });
 
+test('buy execution event metadata serializes decimal-like unit prices', async () => {
+  const harness = createHarness();
+
+  await upsertExecutionForBuyDecision(
+    harness.repository as never,
+    harness.buyDecisions[0] as BuyDecisionExecutionSnapshot,
+    {
+      actorType: 'USER',
+      actorIdentifier: 'buyer-1',
+      externalOrderReference: 'PO-001',
+      orderPlacedAt: new Date('2026-04-21T09:00:00.000Z'),
+      orderedQuantity: 100,
+      orderedUnitPrice: {
+        constructor: function DecimalLike() {},
+        toString: () => '10.00',
+      },
+      orderedCurrencyCode: 'GBP',
+      fulfillmentStatus: 'ORDER_PLACED',
+    },
+  );
+
+  const eventMetadata = harness.executionEvents[0]?.metadata as {
+    orderedUnitPrice?: unknown;
+  };
+
+  assert.equal(eventMetadata.orderedUnitPrice, 10);
+});
+
 test('price drift is flagged when invoiced unit price exceeds the configured threshold', async () => {
   const harness = createHarness();
   const execution = await createOrderedExecution(harness);
