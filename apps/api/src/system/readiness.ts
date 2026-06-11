@@ -493,18 +493,22 @@ function buildOpenAiCheck(): SystemReadinessCheck {
 function buildImportsCheck(): SystemReadinessCheck {
   return {
     key: 'imports',
-    title: 'Import Readiness',
+    title: 'Import And Read-Only Data API Readiness',
     status: 'ready',
     meaning:
-      'Supplier price list, inventory, and sales import endpoints are available.',
+      'Supplier price list, inventory, and sales import endpoints are available, and inventory/customer read APIs are implemented.',
     nextAction:
-      'Run a controlled CSV/XLSX fixture import after the database is reachable.',
+      'Run a controlled CSV/XLSX fixture import after the database is reachable, then check GET /api/inventory and GET /api/customers.',
     envVars: [],
     documentationPath: 'README.md#import-api',
     details: {
       supplierPriceListImportAvailable: true,
       inventoryImportAvailable: true,
       salesImportAvailable: true,
+      inventoryReadApiAvailable: true,
+      customerReadApiAvailable: true,
+      stockRiskApiAvailable: true,
+      customerContactOpportunityApiAvailable: true,
       csvSupported: true,
       xlsxSupported: true,
       maxUploadSizeBytes: 10 * 1024 * 1024,

@@ -70,6 +70,21 @@ GET /api/system/readiness
 
 The endpoint returns safe pilot-readiness checks for database connectivity, API internal auth, email polling, Microsoft Graph mail credentials, Microsoft storage settings, Telegram polling, OpenAI fallback configuration, and import availability. It reports booleans, counts, status labels, documentation hints, and environment variable names only. It must not return secret values, full connection strings, tokens, or Graph credentials.
 
+The readiness report also marks the read-only inventory and customer data APIs
+as available once the API is running. These endpoints are internal-only,
+viewer-readable, and do not send messages or publish customer-facing content:
+
+```text
+GET /api/inventory
+GET /api/inventory/stock-risk
+GET /api/customers
+GET /api/customers/:id
+GET /api/customers/contact-opportunities
+```
+
+Customer responses redact raw email addresses and return safe contact previews
+only.
+
 The API also exposes safe runtime polling status for authenticated internal callers:
 
 ```text
@@ -453,10 +468,21 @@ The triage layer can mark inbound email as:
 - `POST /api/imports/supplier-price-list`
 - `POST /api/imports/inventory`
 - `POST /api/imports/sales`
+- `GET /api/inventory`
+- `GET /api/inventory/stock-risk`
+- `GET /api/customers`
+- `GET /api/customers/:id`
+- `GET /api/customers/contact-opportunities`
 
 All upload endpoints expect `multipart/form-data` with a `file` field.
 CSV and XLSX uploads are capped at 10 MB by the API upload middleware.
 Template guidance is documented in [docs/import-templates.md](docs/import-templates.md).
+
+The inventory and customer endpoints are read-only operator/dashboard
+foundation APIs. They expose stock summaries, deterministic stock-risk reasons,
+customer summaries, recent sales/opportunity/RFQ context, and read-only contact
+candidate rows. They do not create outreach records, send external messages, or
+publish customer-facing offers.
 
 Supplier price list imports also accept:
 
