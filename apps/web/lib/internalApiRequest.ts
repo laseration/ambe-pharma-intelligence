@@ -48,6 +48,8 @@ const DEFAULT_INTERNAL_API_BASE_URL = 'http://127.0.0.1:4000/api';
 const REDACTED = '[redacted]';
 const VIEWER_API_CAPABILITIES = new Set<WebCapability>([
   'dashboard:view',
+  'inventory:view',
+  'customers:view',
   'opportunities:view',
   'products:view',
   'deals:view',

@@ -8,7 +8,8 @@ The web layer and API layer use separate enforcement points:
 
 Current least-privilege assumptions covered by tests:
 
-- `viewer` can reach the dashboard shell and intended read-only status surfaces.
+- `viewer` can reach the dashboard shell and intended read-only status surfaces,
+  including inventory and customer dashboard views.
 - `viewer` cannot read source-data or operator-sensitive API surfaces such as imports, review queue, buy decisions, buy executions, account opening, or regulatory alerts.
 - `operator` can reach operational workflows but cannot call admin-only system dry-run routes.
 - `admin` can reach both operational workflows and admin-only routes.

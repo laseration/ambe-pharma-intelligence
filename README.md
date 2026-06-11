@@ -48,7 +48,7 @@ WEB_AUTH_SESSION_TTL_SECONDS=28800
 ```
 
 - `WEB_AUTH_USERNAME` and `WEB_AUTH_PASSWORD`: internal dashboard credentials for the pilot operator.
-- `WEB_AUTH_ROLE`: one of `viewer`, `operator`, or `admin`. The current web flow records the role in the session and leaves room for finer-grained page/action authorization.
+- `WEB_AUTH_ROLE`: one of `viewer`, `operator`, or `admin`. The web layer uses explicit server-side capabilities so read-only dashboard pages and operator actions are not gated by session presence alone.
 - `WEB_AUTH_SESSION_SECRET`: signing secret for the HTTP-only session cookie. Use a unique high-entropy value; at least 32 characters are required.
 - `WEB_AUTH_SESSION_TTL_SECONDS`: session lifetime in seconds. Defaults to 8 hours when omitted.
 
@@ -60,6 +60,9 @@ Authenticated dashboard users can open:
 
 ```text
 /dashboard/setup
+/dashboard/inventory
+/dashboard/customers
+/dashboard/customers/:id
 ```
 
 The setup page calls the read-only API endpoint:

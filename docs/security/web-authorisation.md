@@ -5,8 +5,9 @@ any signed-in session as sufficient for every dashboard operation.
 
 ## Capability assumptions
 
-- `viewer` is read-only for low-risk dashboard views: overview, imports, inbox,
-  opportunities, product duplicate review, deals, and trade enquiry lists.
+- `viewer` is read-only for low-risk dashboard views: overview, inventory,
+  customers, opportunities, product duplicate review, deals, and trade enquiry
+  lists.
 - `operator` is required for review workflow decisions, opportunity triage,
   trade enquiry status changes, and all account-opening review, preview, filing,
   and download operations.
