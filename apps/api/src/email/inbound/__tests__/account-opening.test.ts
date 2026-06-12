@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 
 import type { AccountOpeningCasePersistenceInput } from '../../../accountOpening/service';
@@ -61,14 +62,19 @@ test('inbound email service queues account-opening forms for review before impor
   });
 
   const result = await service.ingestMessage({
+    sourceSystem: 'GRAPH_MAIL',
+    externalMessageId: 'graph-message-1',
+    messageId: '<message-1>',
     from: 'forms@supplier.co.uk',
     subject: 'Account opening form',
     bodyText: 'Please complete the attached onboarding questionnaire.',
+    receivedAt: new Date('2026-05-12T09:00:00.000Z'),
     attachments: [
       {
         fileName: 'new-account-form.pdf',
         mimeType: 'application/pdf',
         content: Buffer.from('fake').toString('base64'),
+        graphAttachmentId: 'graph-attachment-1',
       },
     ],
   });
@@ -95,9 +101,33 @@ test('inbound email service queues account-opening forms for review before impor
   const persistedInput = Array.from(
     persistedCases.values(),
   )[0] as AccountOpeningCasePersistenceInput;
-  const expectedCorrelationId = `FINGERPRINT:${persistedInput.accountCase.sourceFingerprint.slice(0, 16)}`;
+  const expectedCorrelationId = 'GRAPH_MAIL:graph-message-1';
+  const attachmentEvidence = persistedInput.accountCase.sourceEvidence.find(
+    (evidence) => evidence.sourceType === 'ATTACHMENT',
+  );
 
   assert.equal(persistedInput.correlationId, expectedCorrelationId);
+  assert.equal(persistedInput.messageId, '<message-1>');
+  assert.equal(
+    persistedInput.accountCase.receivedDate,
+    '2026-05-12T09:00:00.000Z',
+  );
+  assert.equal(attachmentEvidence?.fileName, 'new-account-form.pdf');
+  assert.equal(attachmentEvidence?.mimeType, 'application/pdf');
+  assert.equal(attachmentEvidence?.sizeBytes, 4);
+  assert.equal(
+    attachmentEvidence?.metadata?.graphAttachmentId,
+    'graph-attachment-1',
+  );
+  assert.equal(
+    attachmentEvidence?.metadata?.attachmentChecksumSha256,
+    createHash('sha256').update(Buffer.from('fake')).digest('hex'),
+  );
+  assert.equal(attachmentEvidence?.metadata?.rawBytesStoredInCase, false);
+  assert.equal(
+    attachmentEvidence?.metadata?.provenancePointerType,
+    'EMAIL_ATTACHMENT_AT_INGEST',
+  );
   assert.ok(
     infoLogs.some(
       (log) =>

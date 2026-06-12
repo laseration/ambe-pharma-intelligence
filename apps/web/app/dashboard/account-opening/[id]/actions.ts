@@ -9,6 +9,7 @@ import {
   generateAccountOpeningBinaryFillPreview,
   generateAccountOpeningFillPreview,
   generateAccountOpeningDraft,
+  reprocessAccountOpeningStoredSource,
   saveAccountOpeningFieldMappings,
   saveAccountOpeningMissingInfo,
   updateAccountOpeningStatus,
@@ -287,6 +288,48 @@ export async function submitGenerateAccountOpeningDraftAction(
       caseId,
       {
         message: 'Completion draft generated for review.',
+      },
+      returnTo,
+    ),
+  );
+}
+
+export async function submitReprocessAccountOpeningStoredSourceAction(
+  formData: FormData,
+) {
+  await requireCurrentWebCapability('account-opening:manage');
+
+  const caseId = value(formData, 'caseId');
+  const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
+
+  if (!caseId) {
+    redirect('/dashboard/review?error=Missing+account-opening+case');
+  }
+
+  try {
+    await reprocessAccountOpeningStoredSource(caseId);
+  } catch (error) {
+    redirect(
+      buildRedirectTarget(
+        caseId,
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to reprocess account-opening stored source.',
+        },
+        returnTo,
+      ),
+    );
+  }
+
+  revalidatePath('/dashboard/review');
+  revalidatePath(`/dashboard/account-opening/${caseId}`);
+  redirect(
+    buildRedirectTarget(
+      caseId,
+      {
+        message: 'Stored source reprocessed for review.',
       },
       returnTo,
     ),

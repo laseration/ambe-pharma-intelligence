@@ -361,6 +361,68 @@ export type AccountOpeningCompletedFormFilingDetail = {
   updatedAt: string;
 };
 
+export type AccountOpeningSourceAttachmentReplayPointer = {
+  type:
+    | 'STORED_SOURCE_EVIDENCE'
+    | 'ORIGINAL_FORM_REFERENCE'
+    | 'MICROSOFT_DRIVE_ITEM'
+    | 'MISSING_REFERENCE';
+  label: string;
+  storageProvider: string | null;
+  storageDriveItemId: string | null;
+  storageFileUrl: string | null;
+  canReplayFromStoredSource: boolean;
+  rawBytesStored: boolean;
+};
+
+export type AccountOpeningSourceAttachment = {
+  sourceEvidenceId: string | null;
+  originalFormId: string | null;
+  fileName: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  checksumSha256: string | null;
+  extractedTextHash: string | null;
+  extractionMethod: string | null;
+  rawFileAvailable: boolean;
+  classification: AccountOpeningDocumentClassification['classification'] | null;
+  classificationConfidence:
+    | AccountOpeningDocumentClassification['confidence']
+    | null;
+  replayPointer: AccountOpeningSourceAttachmentReplayPointer;
+  warnings: string[];
+};
+
+export type AccountOpeningSourceProvenance = {
+  sourceFingerprint: string;
+  messageId: string | null;
+  subject: string | null;
+  senderEmail: string | null;
+  senderDomain: string | null;
+  receivedAt: string | null;
+  attachmentCount: number;
+  attachments: AccountOpeningSourceAttachment[];
+  safety: {
+    rawEmailBodyIncluded: false;
+    rawExtractedTextIncluded: false;
+    attachmentBytesIncluded: false;
+    replayUsesStoredSafeEvidence: true;
+  };
+};
+
+export type AccountOpeningProcessingRun = {
+  id: string;
+  triggerType: 'INITIAL_INGEST' | 'MANUAL_REPROCESS' | 'RETRY' | string;
+  status: 'STARTED' | 'COMPLETED' | 'FAILED' | string;
+  startedAt: string;
+  finishedAt: string | null;
+  warningSummary: string | null;
+  errorSummary: string | null;
+  diagnostics: Record<string, unknown>;
+  actorType: string;
+  actorIdentifier: string | null;
+};
+
 export type AccountOpeningReadinessStatus = 'GREEN' | 'AMBER' | 'RED';
 
 export type AccountOpeningReadinessCheckKey =
@@ -505,6 +567,8 @@ export type AccountOpeningCaseDetail = {
   storageLastAttemptAt: string | null;
   storageFolderUrl: string | null;
   sourceAttachmentNames: string[];
+  sourceProvenance: AccountOpeningSourceProvenance;
+  processingRuns: AccountOpeningProcessingRun[];
   lifecycle: AccountOpeningLifecycleSummary;
   documentClassifications: AccountOpeningDocumentClassification[];
   companyProfile: AccountOpeningCompanyProfileSummary;

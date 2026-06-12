@@ -26,6 +26,7 @@ import {
   getAccountOpeningFieldMappingReview,
   getAccountOpeningCaseDetail,
   getAccountOpeningReadinessReport,
+  reprocessAccountOpeningCaseFromStoredSource,
   saveAccountOpeningMissingInfo,
   saveAccountOpeningFieldMappings,
   updateAccountOpeningCaseStatus,
@@ -41,6 +42,7 @@ import type { AccountOpeningFieldMappingSaveInput } from './fieldMapping';
 type AccountOpeningRouteDependencies = {
   getCaseDetail: typeof getAccountOpeningCaseDetail;
   generateDraft: typeof generateAccountOpeningDraft;
+  reprocessFromStoredSource: typeof reprocessAccountOpeningCaseFromStoredSource;
   getReadiness: typeof getAccountOpeningReadinessReport;
   getFieldMappings: typeof getAccountOpeningFieldMappingReview;
   saveFieldMappings: typeof saveAccountOpeningFieldMappings;
@@ -83,6 +85,7 @@ const statusBodySchema = z
   .merge(actorBodySchema);
 
 const generateDraftBodySchema = actorBodySchema.partial().default({});
+const reprocessStoredSourceBodySchema = actorBodySchema.partial().default({});
 const completedFormFilingApprovalBodySchema = z
   .object({
     binaryFillPreviewId: optionalTrimmedStringSchema,
@@ -142,6 +145,7 @@ const binaryFillPreviewFileNames = new Set<string>(
 const defaultDependencies: AccountOpeningRouteDependencies = {
   getCaseDetail: getAccountOpeningCaseDetail,
   generateDraft: generateAccountOpeningDraft,
+  reprocessFromStoredSource: reprocessAccountOpeningCaseFromStoredSource,
   getReadiness: getAccountOpeningReadinessReport,
   getFieldMappings: getAccountOpeningFieldMappingReview,
   saveFieldMappings: saveAccountOpeningFieldMappings,
@@ -271,6 +275,30 @@ export function createAccountOpeningRouter(
         item,
         draft: item.completionDraft,
       });
+    }),
+  );
+
+  router.post(
+    '/:id/reprocess-stored-source',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { params, body } = parseRequest<
+        z.infer<typeof idParamSchema>,
+        unknown,
+        z.infer<typeof reprocessStoredSourceBodySchema>
+      >(request, {
+        params: idParamSchema,
+        body: reprocessStoredSourceBodySchema,
+      });
+      const actor = resolveInternalActor(request, body);
+
+      const item = await dependencies.reprocessFromStoredSource({
+        id: params.id,
+        triggerType: 'MANUAL_REPROCESS',
+        ...actor,
+      });
+
+      response.json({ item });
     }),
   );
 

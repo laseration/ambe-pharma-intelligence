@@ -21,6 +21,7 @@ import {
   generateAccountOpeningDraft,
   getAccountOpeningReadinessReport,
   fileAccountOpeningCompletedFormToSharePoint,
+  reprocessAccountOpeningCaseFromStoredSource,
   saveAccountOpeningFieldMappings,
   sanitizeAccountOpeningMissingInfoResponses,
   saveAccountOpeningMissingInfo,
@@ -32,6 +33,7 @@ import {
   type PersistedAccountOpeningCompletedFormFiling,
   type PersistedAccountOpeningFillPreview,
   type PersistedAccountOpeningOriginalForm,
+  type PersistedAccountOpeningProcessingRun,
   type PersistedAccountOpeningReviewCase,
   type PersistedAccountOpeningSourceEvidence,
 } from '../service';
@@ -469,6 +471,7 @@ function buildPersistedAccountOpeningCase(
     fillPreviews: [],
     binaryFillPreviews: [],
     completedFormFilings: [],
+    processingRuns: [],
     createdAt: new Date('2026-05-12T09:00:00.000Z'),
     updatedAt: new Date('2026-05-12T09:00:00.000Z'),
     ...overrides,
@@ -533,6 +536,33 @@ function buildPersistedSourceEvidence(
   };
 }
 
+function buildPersistedProcessingRun(
+  overrides: Partial<PersistedAccountOpeningProcessingRun> = {},
+): PersistedAccountOpeningProcessingRun {
+  return {
+    id: 'processing-run-1',
+    accountOpeningCaseId: 'account-case-1',
+    triggerType: 'INITIAL_INGEST',
+    status: 'COMPLETED',
+    startedAt: new Date('2026-05-12T09:00:00.000Z'),
+    finishedAt: new Date('2026-05-12T09:00:01.000Z'),
+    warningSummary: null,
+    errorSummary: null,
+    diagnostics: {
+      sourceEvidenceCount: 1,
+      attachmentEvidenceCount: 1,
+      replaySource: 'STORED_SOURCE_EVIDENCE',
+      rawEmailBodyRequired: false,
+      attachmentBytesRequired: false,
+    },
+    actorType: 'SYSTEM',
+    actorIdentifier: 'email-account-opening-ingestion',
+    createdAt: new Date('2026-05-12T09:00:01.000Z'),
+    updatedAt: new Date('2026-05-12T09:00:01.000Z'),
+    ...overrides,
+  };
+}
+
 test('case detail exposes lifecycle document classifications and profile gaps', () => {
   const detail = buildAccountOpeningCaseDetail(
     buildPersistedAccountOpeningCase({
@@ -547,6 +577,7 @@ test('case detail exposes lifecycle document classifications and profile gaps', 
           fileName: 'credit-application-direct-debit.pdf',
         }),
       ],
+      processingRuns: [buildPersistedProcessingRun()],
     }),
   );
 
@@ -573,6 +604,101 @@ test('case detail exposes lifecycle document classifications and profile gaps', 
   assert.ok(
     detail.policySigningNotes.some((note) => note.includes('Sandeep Patel')),
   );
+  assert.equal(detail.sourceProvenance.messageId, 'message-1');
+  assert.equal(detail.sourceProvenance.subject, 'Account opening form');
+  assert.equal(detail.sourceProvenance.attachmentCount, 1);
+  assert.equal(
+    detail.sourceProvenance.attachments[0]?.fileName,
+    'supplier-account-opening-form.pdf',
+  );
+  assert.equal(
+    detail.sourceProvenance.attachments[0]?.classification,
+    'DIRECT_DEBIT_MANDATE',
+  );
+  assert.equal(
+    detail.sourceProvenance.attachments[0]?.checksumSha256,
+    'form-hash-1',
+  );
+  assert.equal(
+    detail.sourceProvenance.attachments[0]?.replayPointer
+      .canReplayFromStoredSource,
+    true,
+  );
+  assert.equal(detail.sourceProvenance.safety.rawEmailBodyIncluded, false);
+  assert.equal(detail.sourceProvenance.safety.rawExtractedTextIncluded, false);
+  assert.equal(detail.sourceProvenance.safety.attachmentBytesIncluded, false);
+  assert.equal(detail.processingRuns.length, 1);
+  assert.equal(detail.processingRuns[0]?.triggerType, 'INITIAL_INGEST');
+  assert.equal(detail.processingRuns[0]?.status, 'COMPLETED');
+});
+
+test('stored-source replay regenerates draft and replaces original form references safely', async () => {
+  const {
+    repository,
+    events,
+    getCurrent,
+    getOriginalForms,
+    getProcessingRuns,
+  } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({
+      status: 'PENDING_REVIEW',
+      draftGeneratedAt: null,
+      sourceEvidence: [
+        buildPersistedSourceEvidence({
+          safeSnippet:
+            'Credit account application with Direct Debit mandate, bank authority and guarantee section.',
+        }),
+      ],
+      originalForms: [],
+    }),
+  );
+
+  const first = await reprocessAccountOpeningCaseFromStoredSource({
+    id: 'account-case-1',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'stored-source-test',
+    repository,
+    now: new Date('2026-05-12T13:00:00.000Z'),
+  });
+  const second = await reprocessAccountOpeningCaseFromStoredSource({
+    id: 'account-case-1',
+    actorType: 'OPERATOR',
+    actorIdentifier: 'stored-source-test',
+    repository,
+    now: new Date('2026-05-12T13:05:00.000Z'),
+  });
+  const directDebitField = second.completionDraft.fields.find(
+    (field) => field.key === 'directDebitOrBankAuthority',
+  );
+  const latestRun = getProcessingRuns()[0];
+  const latestRunDiagnostics =
+    latestRun?.diagnostics && typeof latestRun.diagnostics === 'object'
+      ? (latestRun.diagnostics as Record<string, unknown>)
+      : {};
+
+  assert.equal(first.status, 'PENDING_REVIEW');
+  assert.equal(second.status, 'PENDING_REVIEW');
+  assert.equal(getCurrent().status, 'PENDING_REVIEW');
+  assert.equal(getOriginalForms().length, 1);
+  assert.equal(getOriginalForms()[0]?.sourceEvidenceId, 'evidence-1');
+  assert.equal(getProcessingRuns().length, 2);
+  assert.equal(latestRun?.triggerType, 'MANUAL_REPROCESS');
+  assert.equal(latestRun?.status, 'COMPLETED');
+  assert.equal(latestRunDiagnostics.outboundActionsTriggered, false);
+  assert.equal(
+    events.some(
+      (event) => event.actionType === 'REPROCESSED_FROM_STORED_SOURCE',
+    ),
+    true,
+  );
+  assert.equal(second.completionDraft.summary.safeToAutoFill, false);
+  assert.ok(second.completionDraft.summary.blockedFields > 0);
+  assert.equal(directDebitField?.policyDecision, 'MUST_STAY_BLANK');
+  assert.equal(directDebitField?.proposedValue, null);
+  assert.equal(directDebitField?.requiresReview, true);
+  assert.equal(second.lifecycle.safety.noAutoSign, true);
+  assert.equal(second.lifecycle.safety.noAutoSubmit, true);
+  assert.equal(second.lifecycle.safety.noOutboundSend, true);
 });
 
 function buildPersistedFieldMapping(
@@ -710,6 +836,7 @@ function createAccountOpeningRepository(
   let fillPreviews = initial.fillPreviews ?? [];
   let binaryFillPreviews = initial.binaryFillPreviews ?? [];
   let completedFormFilings = initial.completedFormFilings ?? [];
+  let processingRuns = initial.processingRuns ?? [];
   const events: AccountOpeningCaseEventInput[] = [];
   const repository: AccountOpeningCaseRepository = {
     findUnique: async () => ({
@@ -731,6 +858,11 @@ function createAccountOpeningRepository(
         .sort(
           (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
         ),
+      processingRuns: processingRuns
+        .slice()
+        .sort(
+          (left, right) => right.startedAt.getTime() - left.startedAt.getTime(),
+        ),
     }),
     update: async (args: unknown) => {
       const data =
@@ -744,6 +876,7 @@ function createAccountOpeningRepository(
         fillPreviews,
         binaryFillPreviews,
         completedFormFilings,
+        processingRuns,
         updatedAt: new Date('2026-05-12T10:00:00.000Z'),
       };
       return current;
@@ -868,6 +1001,45 @@ function createAccountOpeningRepository(
       };
       return updated;
     },
+    createProcessingRun: async ({ data }) => {
+      const created: PersistedAccountOpeningProcessingRun = {
+        ...data,
+        id: `processing-run-${processingRuns.length + 1}`,
+        createdAt: new Date('2026-05-12T13:00:00.000Z'),
+        updatedAt: new Date('2026-05-12T13:00:00.000Z'),
+      };
+      processingRuns = [created, ...processingRuns];
+      current = {
+        ...current,
+        processingRuns,
+      };
+      return created;
+    },
+    updateProcessingRun: async ({ where, data }) => {
+      let updated: PersistedAccountOpeningProcessingRun | null = null;
+      processingRuns = processingRuns.map((run) => {
+        if (run.id !== where.id) {
+          return run;
+        }
+
+        updated = {
+          ...run,
+          ...data,
+          updatedAt: new Date('2026-05-12T13:30:00.000Z'),
+        };
+        return updated;
+      });
+
+      if (!updated) {
+        throw new Error('Account-opening processing run not found.');
+      }
+
+      current = {
+        ...current,
+        processingRuns,
+      };
+      return updated;
+    },
     findEvents: async ({ where }) =>
       events
         .filter((event) => {
@@ -909,6 +1081,7 @@ function createAccountOpeningRepository(
     getFillPreviews: () => fillPreviews,
     getBinaryFillPreviews: () => binaryFillPreviews,
     getCompletedFormFilings: () => completedFormFilings,
+    getProcessingRuns: () => processingRuns,
   };
 }
 

@@ -15,12 +15,15 @@ import type {
   AccountOpeningMissingInfoResponses,
   AccountOpeningOriginalFormDetail,
   AccountOpeningOriginalFormLifecycle,
+  AccountOpeningProcessingRun,
   AccountOpeningReadinessCheck,
   AccountOpeningReadinessCheckKey,
   AccountOpeningReadinessReport,
   AccountOpeningReadinessStatus,
   AccountOpeningSigningNotes,
+  AccountOpeningSourceAttachment,
   AccountOpeningSourceEvidenceDetail,
+  AccountOpeningSourceProvenance,
   AccountOpeningStatusAction,
 } from '@ambe/shared';
 export type {
@@ -35,12 +38,14 @@ export type {
   AccountOpeningMissingInfoResponses,
   AccountOpeningOriginalFormDetail,
   AccountOpeningOriginalFormLifecycle,
+  AccountOpeningProcessingRun,
   AccountOpeningReadinessCheck,
   AccountOpeningReadinessCheckKey,
   AccountOpeningReadinessReport,
   AccountOpeningReadinessStatus,
   AccountOpeningSigningNotes,
   AccountOpeningSourceEvidenceDetail,
+  AccountOpeningSourceProvenance,
   AccountOpeningStatusAction,
 } from '@ambe/shared';
 import { db } from '../lib/db';
@@ -196,6 +201,7 @@ export type PersistedAccountOpeningReviewCase = {
   fillPreviews?: PersistedAccountOpeningFillPreview[];
   binaryFillPreviews?: PersistedAccountOpeningBinaryFillPreview[];
   completedFormFilings?: PersistedAccountOpeningCompletedFormFiling[];
+  processingRuns?: PersistedAccountOpeningProcessingRun[];
   createdAt: Date;
   updatedAt: Date;
 };
@@ -305,6 +311,22 @@ export type PersistedAccountOpeningCompletedFormFiling = {
   skippedReason: string | null;
   safetySummary: unknown;
   metadata: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type PersistedAccountOpeningProcessingRun = {
+  id: string;
+  accountOpeningCaseId: string;
+  triggerType: string;
+  status: string;
+  startedAt: Date;
+  finishedAt: Date | null;
+  warningSummary: string | null;
+  errorSummary: string | null;
+  diagnostics: unknown;
+  actorType: string;
+  actorIdentifier: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -878,6 +900,150 @@ function buildCompletedFormFilingDetailFromPersisted(
     metadata: jsonRecordFromUnknown(filing.metadata),
     createdAt: filing.createdAt.toISOString(),
     updatedAt: filing.updatedAt.toISOString(),
+  };
+}
+
+function buildProcessingRunDetailFromPersisted(
+  run: PersistedAccountOpeningProcessingRun,
+): AccountOpeningProcessingRun {
+  return {
+    id: run.id,
+    triggerType: sanitizeDashboardText(run.triggerType) ?? 'UNKNOWN',
+    status: sanitizeDashboardText(run.status) ?? 'UNKNOWN',
+    startedAt: run.startedAt.toISOString(),
+    finishedAt: run.finishedAt?.toISOString() ?? null,
+    warningSummary: sanitizeDashboardText(run.warningSummary) ?? null,
+    errorSummary: sanitizeDashboardText(run.errorSummary) ?? null,
+    diagnostics: jsonRecordFromUnknown(run.diagnostics),
+    actorType: sanitizeDashboardText(run.actorType) ?? 'SYSTEM',
+    actorIdentifier: sanitizeDashboardText(run.actorIdentifier) ?? null,
+  };
+}
+
+function sourceAttachmentReplayPointer(input: {
+  evidence: AccountOpeningSourceEvidenceDetail;
+  originalForm: AccountOpeningOriginalFormDetail | null;
+}): AccountOpeningSourceAttachment['replayPointer'] {
+  if (input.evidence.storageDriveItemId) {
+    return {
+      type: 'MICROSOFT_DRIVE_ITEM',
+      label: 'Microsoft Drive attachment reference',
+      storageProvider: input.evidence.storageProvider,
+      storageDriveItemId: input.evidence.storageDriveItemId,
+      storageFileUrl: input.evidence.storageFileUrl,
+      canReplayFromStoredSource: true,
+      rawBytesStored: input.evidence.rawFileAvailable,
+    };
+  }
+
+  if (input.originalForm) {
+    return {
+      type: 'ORIGINAL_FORM_REFERENCE',
+      label: 'Stored original form reference',
+      storageProvider: input.originalForm.storageProvider,
+      storageDriveItemId: input.originalForm.storageDriveItemId,
+      storageFileUrl: input.originalForm.storageFileUrl,
+      canReplayFromStoredSource: true,
+      rawBytesStored: input.originalForm.localBlobAvailable,
+    };
+  }
+
+  if (input.evidence.id) {
+    return {
+      type: 'STORED_SOURCE_EVIDENCE',
+      label: 'Stored source evidence metadata and safe snippet',
+      storageProvider: input.evidence.storageProvider,
+      storageDriveItemId: input.evidence.storageDriveItemId,
+      storageFileUrl: input.evidence.storageFileUrl,
+      canReplayFromStoredSource: true,
+      rawBytesStored: input.evidence.rawFileAvailable,
+    };
+  }
+
+  return {
+    type: 'MISSING_REFERENCE',
+    label: 'No replay reference captured',
+    storageProvider: null,
+    storageDriveItemId: null,
+    storageFileUrl: null,
+    canReplayFromStoredSource: false,
+    rawBytesStored: false,
+  };
+}
+
+function buildSourceProvenance(input: {
+  accountCase: PersistedAccountOpeningReviewCase;
+  sourceEvidence: AccountOpeningSourceEvidenceDetail[];
+  originalForms: AccountOpeningOriginalFormDetail[];
+  documentClassifications: AccountOpeningDocumentClassification[];
+}): AccountOpeningSourceProvenance {
+  const originalFormByEvidenceId = new Map<
+    string,
+    AccountOpeningOriginalFormDetail
+  >();
+  for (const form of input.originalForms) {
+    if (form.sourceEvidenceId) {
+      originalFormByEvidenceId.set(form.sourceEvidenceId, form);
+    }
+  }
+
+  const classificationByEvidenceId = new Map<
+    string,
+    AccountOpeningDocumentClassification
+  >();
+  for (const classification of input.documentClassifications) {
+    if (classification.sourceEvidenceId) {
+      classificationByEvidenceId.set(
+        classification.sourceEvidenceId,
+        classification,
+      );
+    }
+  }
+  const attachments = input.sourceEvidence
+    .filter((evidence) => evidence.sourceType === 'ATTACHMENT')
+    .map<AccountOpeningSourceAttachment>((evidence) => {
+      const originalForm = evidence.id
+        ? (originalFormByEvidenceId.get(evidence.id) ?? null)
+        : null;
+      const classification = evidence.id
+        ? (classificationByEvidenceId.get(evidence.id) ?? null)
+        : null;
+
+      return {
+        sourceEvidenceId: evidence.id,
+        originalFormId: originalForm?.id ?? null,
+        fileName: evidence.fileName,
+        mimeType: evidence.mimeType,
+        sizeBytes: evidence.sizeBytes,
+        checksumSha256: originalForm?.fileHash ?? evidence.extractedTextHash,
+        extractedTextHash: evidence.extractedTextHash,
+        extractionMethod: evidence.extractionMethod,
+        rawFileAvailable: evidence.rawFileAvailable,
+        classification: classification?.classification ?? null,
+        classificationConfidence: classification?.confidence ?? null,
+        replayPointer: sourceAttachmentReplayPointer({
+          evidence,
+          originalForm,
+        }),
+        warnings: classification?.warnings ?? [],
+      };
+    });
+
+  return {
+    sourceFingerprint: input.accountCase.sourceFingerprint,
+    messageId: input.accountCase.messageId,
+    subject: input.accountCase.subject,
+    senderEmail: input.accountCase.senderEmail,
+    senderDomain: input.accountCase.senderDomain,
+    receivedAt: input.accountCase.receivedAt?.toISOString() ?? null,
+    attachmentCount: attachments.length,
+    attachments,
+    safety: {
+      rawEmailBodyIncluded: false,
+      rawExtractedTextIncluded: false,
+      attachmentBytesIncluded: false,
+      replayUsesStoredSafeEvidence: true,
+    },
   };
 }
 
@@ -1739,6 +1905,21 @@ export type AccountOpeningCaseRepository = {
       >
     >;
   }) => Promise<PersistedAccountOpeningCompletedFormFiling>;
+  createProcessingRun?: (args: {
+    data: Omit<
+      PersistedAccountOpeningProcessingRun,
+      'id' | 'createdAt' | 'updatedAt'
+    >;
+  }) => Promise<PersistedAccountOpeningProcessingRun>;
+  updateProcessingRun?: (args: {
+    where: { id: string };
+    data: Partial<
+      Omit<
+        PersistedAccountOpeningProcessingRun,
+        'id' | 'accountOpeningCaseId' | 'createdAt' | 'updatedAt'
+      >
+    >;
+  }) => Promise<PersistedAccountOpeningProcessingRun>;
   findEvents?: (args: {
     where: { accountOpeningCaseId: string; actionType?: string };
     orderBy?: { createdAt: 'asc' | 'desc' };
@@ -1831,6 +2012,23 @@ function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
         >;
       }) => Promise<PersistedAccountOpeningCompletedFormFiling>;
     };
+    accountOpeningProcessingRun: {
+      create: (args: {
+        data: Omit<
+          PersistedAccountOpeningProcessingRun,
+          'id' | 'createdAt' | 'updatedAt'
+        >;
+      }) => Promise<PersistedAccountOpeningProcessingRun>;
+      update: (args: {
+        where: { id: string };
+        data: Partial<
+          Omit<
+            PersistedAccountOpeningProcessingRun,
+            'id' | 'accountOpeningCaseId' | 'createdAt' | 'updatedAt'
+          >
+        >;
+      }) => Promise<PersistedAccountOpeningProcessingRun>;
+    };
     accountOpeningCaseEvent: {
       findMany: (args: {
         where: { accountOpeningCaseId: string; actionType?: string };
@@ -1888,6 +2086,10 @@ function getAccountOpeningCaseRepository(): AccountOpeningCaseRepository {
       client.accountOpeningCompletedFormFiling.create(args),
     updateCompletedFormFiling: (args) =>
       client.accountOpeningCompletedFormFiling.update(args),
+    createProcessingRun: (args) =>
+      client.accountOpeningProcessingRun.create(args),
+    updateProcessingRun: (args) =>
+      client.accountOpeningProcessingRun.update(args),
     findEvents: (args) => client.accountOpeningCaseEvent.findMany(args),
     createEvent: (args) => client.accountOpeningCaseEvent.create(args),
   };
@@ -1915,6 +2117,9 @@ export function buildAccountOpeningCaseDetail(
         accountCase.completedFormFilings[0],
       )
     : null;
+  const processingRuns = (accountCase.processingRuns ?? []).map(
+    buildProcessingRunDetailFromPersisted,
+  );
   const riskFlags = stringArrayFromJson(accountCase.riskFlags);
   const detectedRoles = stringArrayFromJson(accountCase.detectedRoles);
   const detectedNames = stringArrayFromJson(accountCase.detectedNames);
@@ -1961,6 +2166,12 @@ export function buildAccountOpeningCaseDetail(
         text: evidence.safeSnippet,
       })),
   ) as AccountOpeningDocumentClassification[];
+  const sourceProvenance = buildSourceProvenance({
+    accountCase,
+    sourceEvidence,
+    originalForms,
+    documentClassifications,
+  });
 
   return {
     id: accountCase.id,
@@ -2000,6 +2211,8 @@ export function buildAccountOpeningCaseDetail(
     sourceAttachmentNames: safeStringArrayFromJson(
       accountCase.sourceAttachmentNames,
     ),
+    sourceProvenance,
+    processingRuns,
     lifecycle: buildAccountOpeningLifecycleSummary({
       legacyStatus: accountCase.status,
       completionDraft,
@@ -2027,32 +2240,7 @@ export async function getAccountOpeningCaseDetail(
   id: string,
   repository = getAccountOpeningCaseRepository(),
 ): Promise<AccountOpeningCaseDetail | null> {
-  const accountCase = await repository.findUnique({
-    where: { id },
-    include: {
-      sourceEvidence: {
-        orderBy: { createdAt: 'asc' },
-      },
-      fieldMappings: {
-        orderBy: { sortOrder: 'asc' },
-      },
-      originalForms: {
-        orderBy: { createdAt: 'asc' },
-      },
-      fillPreviews: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      },
-      binaryFillPreviews: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      },
-      completedFormFilings: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      },
-    },
-  });
+  const accountCase = await findCaseWithEvidence(id, repository);
 
   return accountCase ? buildAccountOpeningCaseDetail(accountCase) : null;
 }
@@ -2807,6 +2995,10 @@ async function findCaseWithEvidence(
       completedFormFilings: {
         orderBy: { createdAt: 'desc' },
         take: 1,
+      },
+      processingRuns: {
+        orderBy: { startedAt: 'desc' },
+        take: 20,
       },
     },
   });
@@ -4370,6 +4562,184 @@ export async function generateAccountOpeningDraft(input: {
   return buildAccountOpeningCaseDetail(updatedWithEvidence);
 }
 
+export async function reprocessAccountOpeningCaseFromStoredSource(input: {
+  id: string;
+  triggerType?: 'MANUAL_REPROCESS' | 'RETRY' | null;
+  actorType?: string | null;
+  actorIdentifier?: string | null;
+  repository?: AccountOpeningCaseRepository;
+  now?: Date;
+}): Promise<AccountOpeningCaseDetail> {
+  const repository = input.repository ?? getAccountOpeningCaseRepository();
+  const existing = await findCaseWithEvidence(input.id, repository);
+
+  if (!existing) {
+    throw new Error('Account-opening case not found.');
+  }
+
+  if (!repository.replaceOriginalForms) {
+    throw new Error('Account-opening original form repository is unavailable.');
+  }
+
+  if (!repository.createProcessingRun || !repository.updateProcessingRun) {
+    throw new Error(
+      'Account-opening processing run repository is unavailable.',
+    );
+  }
+
+  const actorType = input.actorType?.trim() || 'OPERATOR';
+  const actorIdentifier = sanitizeDashboardText(input.actorIdentifier) ?? null;
+  const startedAt = input.now ?? new Date();
+  const sourceEvidence = existing.sourceEvidence ?? [];
+  const attachmentEvidenceCount = sourceEvidence.filter(
+    (evidence) => evidence.sourceType === 'ATTACHMENT',
+  ).length;
+  const warnings = [
+    sourceEvidence.length === 0
+      ? 'No stored source evidence is available for replay.'
+      : null,
+    attachmentEvidenceCount === 0
+      ? 'No stored attachment evidence is available for replay.'
+      : null,
+  ].filter((warning): warning is string => Boolean(warning));
+  const run = await repository.createProcessingRun({
+    data: {
+      accountOpeningCaseId: input.id,
+      triggerType: input.triggerType ?? 'MANUAL_REPROCESS',
+      status: 'STARTED',
+      startedAt,
+      finishedAt: null,
+      warningSummary: warnings.join(' ') || null,
+      errorSummary: null,
+      diagnostics: jsonObject({
+        sourceFingerprint: existing.sourceFingerprint,
+        sourceEvidenceCount: sourceEvidence.length,
+        attachmentEvidenceCount,
+        replaySource: 'STORED_SOURCE_EVIDENCE',
+        rawEmailBodyRequired: false,
+        rawExtractedTextRequired: false,
+        attachmentBytesRequired: false,
+        outboundActionsTriggered: false,
+        approvalStatusChanged: false,
+      }),
+      actorType,
+      actorIdentifier,
+    },
+  });
+
+  try {
+    const originalFormRows = originalFormRowsFromEvidence({
+      accountOpeningCaseId: input.id,
+      sourceEvidence,
+    });
+    await repository.replaceOriginalForms({
+      accountOpeningCaseId: input.id,
+      forms: originalFormRows,
+    });
+
+    const caseWithForms =
+      (await findCaseWithEvidence(input.id, repository)) ?? existing;
+    const draft = buildCompletionDraftForCase({
+      accountCase: caseWithForms,
+      sourceEvidence: (caseWithForms.sourceEvidence ?? []).map(
+        buildSourceEvidenceDetailFromPersisted,
+      ),
+      now: input.now,
+      stored: true,
+    });
+    const updated = await repository.update({
+      where: { id: input.id },
+      data: {
+        draftStatus: draft.status,
+        draftVersion: draft.profileVersion,
+        draftGeneratedAt: new Date(draft.generatedAt),
+        draftJson: jsonObject(draft as unknown as Record<string, unknown>),
+        draftSummary: jsonObject(
+          draft.summary as unknown as Record<string, unknown>,
+        ),
+      },
+    });
+
+    await writeDraftAuditEvents({
+      accountCaseId: input.id,
+      previousStatus: existing.status,
+      draft,
+      generatedActionType: existing.draftGeneratedAt
+        ? 'DRAFT_REGENERATED'
+        : 'DRAFT_GENERATED',
+      actorType,
+      actorIdentifier,
+      repository,
+    });
+
+    await repository.createEvent({
+      data: {
+        accountOpeningCaseId: input.id,
+        actionType: 'REPROCESSED_FROM_STORED_SOURCE',
+        previousStatus: existing.status,
+        newStatus: existing.status,
+        actorType,
+        actorIdentifier,
+        metadata: jsonObject({
+          processingRunId: run.id,
+          sourceEvidenceCount: sourceEvidence.length,
+          attachmentEvidenceCount,
+          originalFormReferenceCount: originalFormRows.length,
+          completionDraftStatus: draft.status,
+          rawEmailBodyRequired: false,
+          rawExtractedTextIncluded: false,
+          attachmentBytesRequired: false,
+          outboundActionsTriggered: false,
+          approvalStatusChanged: false,
+          supplierSubmissionTriggered: false,
+        }),
+      },
+    });
+
+    const finishedAt = new Date();
+    await repository.updateProcessingRun({
+      where: { id: run.id },
+      data: {
+        status: 'COMPLETED',
+        finishedAt,
+        warningSummary: warnings.join(' ') || null,
+        errorSummary: null,
+        diagnostics: jsonObject({
+          sourceFingerprint: existing.sourceFingerprint,
+          sourceEvidenceCount: sourceEvidence.length,
+          attachmentEvidenceCount,
+          originalFormReferenceCount: originalFormRows.length,
+          completionDraftStatus: draft.status,
+          replaySource: 'STORED_SOURCE_EVIDENCE',
+          rawEmailBodyRequired: false,
+          rawExtractedTextRequired: false,
+          attachmentBytesRequired: false,
+          outboundActionsTriggered: false,
+          approvalStatusChanged: false,
+          supplierSubmissionTriggered: false,
+        }),
+      },
+    });
+
+    const updatedWithEvidence =
+      (await findCaseWithEvidence(input.id, repository)) ?? updated;
+    return buildAccountOpeningCaseDetail(updatedWithEvidence);
+  } catch (error) {
+    await repository.updateProcessingRun({
+      where: { id: run.id },
+      data: {
+        status: 'FAILED',
+        finishedAt: new Date(),
+        errorSummary:
+          error instanceof Error
+            ? sanitizeDashboardText(error.message)
+            : 'Stored source replay failed.',
+      },
+    });
+    throw error;
+  }
+}
+
 function exportAuditMetadata(
   pack: AccountOpeningReviewExportPack,
   fileName?: string | null,
@@ -4490,6 +4860,14 @@ export async function upsertAccountOpeningCase(
         data: AccountOpeningCaseEventInput;
       }) => Promise<unknown>;
     };
+    accountOpeningProcessingRun: {
+      create: (args: {
+        data: Omit<
+          PersistedAccountOpeningProcessingRun,
+          'id' | 'createdAt' | 'updatedAt'
+        >;
+      }) => Promise<PersistedAccountOpeningProcessingRun>;
+    };
     accountOpeningSourceEvidence: {
       deleteMany: (args: unknown) => Promise<unknown>;
       createMany: (args: unknown) => Promise<unknown>;
@@ -4527,6 +4905,10 @@ export async function upsertAccountOpeningCase(
       completedFormFilings: {
         orderBy: { createdAt: 'desc' },
         take: 1,
+      },
+      processingRuns: {
+        orderBy: { startedAt: 'desc' },
+        take: 20,
       },
     },
   });
@@ -4589,6 +4971,10 @@ export async function upsertAccountOpeningCase(
       completedFormFilings: {
         orderBy: { createdAt: 'desc' },
         take: 1,
+      },
+      processingRuns: {
+        orderBy: { startedAt: 'desc' },
+        take: 20,
       },
     },
   });
@@ -4660,6 +5046,10 @@ export async function upsertAccountOpeningCase(
             orderBy: { createdAt: 'desc' },
             take: 1,
           },
+          processingRuns: {
+            orderBy: { startedAt: 'desc' },
+            take: 20,
+          },
         },
       })) ?? accountCaseWithEvidence;
   }
@@ -4708,6 +5098,40 @@ export async function upsertAccountOpeningCase(
     });
   }
 
+  const ingestFinishedAt = new Date();
+  await client.accountOpeningProcessingRun.create({
+    data: {
+      accountOpeningCaseId: accountCase.id,
+      triggerType: 'INITIAL_INGEST',
+      status: 'COMPLETED',
+      startedAt: input.accountCase.receivedDate
+        ? new Date(input.accountCase.receivedDate)
+        : ingestFinishedAt,
+      finishedAt: ingestFinishedAt,
+      warningSummary:
+        evidenceRows.length === 0
+          ? 'No source evidence records were captured for replay.'
+          : null,
+      errorSummary: null,
+      diagnostics: jsonObject({
+        ...(correlationId ? { correlationId } : {}),
+        sourceEvidenceCount: evidenceRows.length,
+        attachmentEvidenceCount: evidenceRows.filter(
+          (evidence) => evidence.sourceType === 'ATTACHMENT',
+        ).length,
+        originalFormReferenceCount: originalFormRows.length,
+        replaySource: 'STORED_SOURCE_EVIDENCE',
+        rawEmailBodyRequired: false,
+        rawExtractedTextStored: false,
+        attachmentBytesStoredInCase: false,
+        outboundActionsTriggered: false,
+        approvalStatusChanged: false,
+      }),
+      actorType: 'SYSTEM',
+      actorIdentifier: 'email-account-opening-ingestion',
+    },
+  });
+
   return client.accountOpeningCase.findUnique({
     where: { id: accountCase.id },
     include: {
@@ -4731,6 +5155,10 @@ export async function upsertAccountOpeningCase(
       completedFormFilings: {
         orderBy: { createdAt: 'desc' },
         take: 1,
+      },
+      processingRuns: {
+        orderBy: { startedAt: 'desc' },
+        take: 20,
       },
     },
   });

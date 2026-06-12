@@ -34,10 +34,12 @@ export type {
   AccountOpeningOriginalForm,
   AccountOpeningOriginalFormLifecycle,
   AccountOpeningPolicyRiskFlag,
+  AccountOpeningProcessingRun,
   AccountOpeningReadinessCheck,
   AccountOpeningReadinessReport,
   AccountOpeningReadinessStatus,
   AccountOpeningSigningNotes,
+  AccountOpeningSourceProvenance,
   AccountOpeningSourceEvidence,
   AccountOpeningStatusAction,
 } from '@ambe/shared';
@@ -140,6 +142,24 @@ export async function generateAccountOpeningDraft(
     item: AccountOpeningCaseDetail;
     draft: AccountOpeningCompletionDraft;
   }>(`/account-opening/${encodeURIComponent(id)}/generate-draft`, {
+    requiredCapability: 'account-opening:manage',
+    init: {
+      method: 'POST',
+      body: JSON.stringify({
+        actorType: 'OPERATOR',
+        actorIdentifier: 'web-account-opening-review',
+      }),
+    },
+  });
+  return payload.item;
+}
+
+export async function reprocessAccountOpeningStoredSource(
+  id: string,
+): Promise<AccountOpeningCaseDetail> {
+  const payload = await requestJson<{
+    item: AccountOpeningCaseDetail;
+  }>(`/account-opening/${encodeURIComponent(id)}/reprocess-stored-source`, {
     requiredCapability: 'account-opening:manage',
     init: {
       method: 'POST',

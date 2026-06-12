@@ -15,6 +15,7 @@ import {
   submitGenerateAccountOpeningBinaryFillPreviewAction,
   submitGenerateAccountOpeningFillPreviewAction,
   submitGenerateAccountOpeningDraftAction,
+  submitReprocessAccountOpeningStoredSourceAction,
   submitAccountOpeningMissingInfoAction,
   submitAccountOpeningStatusAction,
 } from './actions';
@@ -901,15 +902,24 @@ export default async function AccountOpeningDetailPage({
         <section className="panel dashboard-panel">
           <div className="dashboard-section-header">
             <div>
-              <h3 className="section-title">Source</h3>
+              <h3 className="section-title">Stored source</h3>
               <p className="copy">
                 {item.extractedTextSummary ??
                   'Structured account-opening review case.'}
               </p>
             </div>
-            <span className="pill pill-high">
-              {humanizeStatus(item.status)}
-            </span>
+            <div className="actions">
+              <span className="pill pill-high">
+                {humanizeStatus(item.status)}
+              </span>
+              <form action={submitReprocessAccountOpeningStoredSourceAction}>
+                {hiddenInput('caseId', item.id)}
+                {hiddenInput('returnTo', returnTo)}
+                <button className="button" type="submit">
+                  Reprocess from stored source
+                </button>
+              </form>
+            </div>
           </div>
           <dl className="duplicate-product-details">
             <div>
@@ -934,11 +944,7 @@ export default async function AccountOpeningDetailPage({
             </div>
             <div>
               <dt>Attachments</dt>
-              <dd>
-                {item.sourceAttachmentNames.length
-                  ? item.sourceAttachmentNames.join(', ')
-                  : 'No attachment names stored'}
-              </dd>
+              <dd>{item.sourceProvenance.attachmentCount}</dd>
             </div>
             <div>
               <dt>Company</dt>
@@ -949,6 +955,95 @@ export default async function AccountOpeningDetailPage({
               <dd>{renderValue(item.detectedFormType)}</dd>
             </div>
           </dl>
+          {item.sourceProvenance.attachments.length ? (
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Attachment</th>
+                    <th>Type</th>
+                    <th>Size</th>
+                    <th>Checksum</th>
+                    <th>Classification</th>
+                    <th>Replay pointer</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {item.sourceProvenance.attachments.map(
+                    (attachment, index) => (
+                      <tr
+                        key={
+                          attachment.sourceEvidenceId ??
+                          attachment.fileName ??
+                          `attachment-${index}`
+                        }
+                      >
+                        <td>{renderValue(attachment.fileName)}</td>
+                        <td>{renderValue(attachment.mimeType)}</td>
+                        <td>{renderNullable(attachment.sizeBytes)}</td>
+                        <td>
+                          {attachment.checksumSha256
+                            ? attachment.checksumSha256.slice(0, 12)
+                            : 'Not available'}
+                        </td>
+                        <td>
+                          {attachment.classification
+                            ? humanizeStatus(attachment.classification)
+                            : 'Not classified'}
+                        </td>
+                        <td>
+                          {attachment.replayPointer.canReplayFromStoredSource
+                            ? attachment.replayPointer.label
+                            : 'Missing reference'}
+                        </td>
+                      </tr>
+                    ),
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="copy">No attachment inventory has been stored yet.</p>
+          )}
+          <p className="alert alert-warning">
+            Stored-source replay uses safe evidence metadata and snippets only;
+            it does not include raw email bodies, raw extracted text, attachment
+            bytes, supplier submission, signing, sending, or approval changes.
+          </p>
+        </section>
+
+        <section className="panel dashboard-panel">
+          <h3 className="section-title">Processing run history</h3>
+          {item.processingRuns.length ? (
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Trigger</th>
+                    <th>Status</th>
+                    <th>Started</th>
+                    <th>Finished</th>
+                    <th>Warnings</th>
+                    <th>Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {item.processingRuns.map((run) => (
+                    <tr key={run.id}>
+                      <td>{humanizeStatus(run.triggerType)}</td>
+                      <td>{humanizeStatus(run.status)}</td>
+                      <td>{formatDateTime(run.startedAt)}</td>
+                      <td>{formatDateTime(run.finishedAt)}</td>
+                      <td>{renderValue(run.warningSummary, 'None')}</td>
+                      <td>{renderValue(run.errorSummary, 'None')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="copy">No processing runs have been recorded yet.</p>
+          )}
         </section>
 
         <AccountOpeningSafetyReviewSections item={item} />

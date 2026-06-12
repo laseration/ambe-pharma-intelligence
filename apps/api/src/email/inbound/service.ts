@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { Prisma } from '@prisma/client';
 
 import {
@@ -102,6 +104,14 @@ function extractSenderDomain(senderEmail: string): string | null {
   }
 
   return senderEmail.split('@').pop()?.trim().toLowerCase() || null;
+}
+
+function attachmentChecksumSha256(
+  attachment: NormalizedEmailAttachment,
+): string | null {
+  return attachment.buffer
+    ? createHash('sha256').update(attachment.buffer).digest('hex')
+    : null;
 }
 
 async function buildClassifierTables(input: {
@@ -291,6 +301,10 @@ function buildAccountOpeningReviewItem(input: {
                 input.message.messageId ??
                 input.message.externalMessageId ??
                 null,
+              externalMessageId: input.message.externalMessageId ?? null,
+              sourceSystem: input.message.sourceSystem ?? null,
+              receivedAt: input.message.receivedAt?.toISOString() ?? null,
+              provenancePointerType: 'EMAIL_MESSAGE',
             },
           },
         ]
@@ -315,7 +329,15 @@ function buildAccountOpeningReviewItem(input: {
           ...(accountOpeningCorrelationId
             ? { correlationId: accountOpeningCorrelationId }
             : {}),
+          messageId:
+            input.message.messageId ?? input.message.externalMessageId ?? null,
+          externalMessageId: input.message.externalMessageId ?? null,
+          sourceSystem: input.message.sourceSystem ?? null,
+          graphAttachmentId: attachment.graphAttachmentId,
+          attachmentChecksumSha256: attachmentChecksumSha256(attachment),
           rawBytesAvailableAtIngestion: Boolean(attachment.buffer),
+          rawBytesStoredInCase: false,
+          provenancePointerType: 'EMAIL_ATTACHMENT_AT_INGEST',
           extractionWarnings: extracted?.warnings ?? [],
         },
       };
