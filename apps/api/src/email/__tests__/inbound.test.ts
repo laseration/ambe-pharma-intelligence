@@ -1,15 +1,41 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 import { buildProductCandidates } from '../../imports/normalization';
 import { createEmailInboundService } from '../inbound/service';
+import type { ParsedFileResult, ParsedTableRow } from '../../imports/types';
+
+async function buildWorkbookBuffer(
+  sheets: Array<{ name: string; rows: unknown[][] }>,
+): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+
+  for (const sheet of sheets) {
+    const worksheet = workbook.addWorksheet(sheet.name);
+
+    for (const row of sheet.rows) {
+      worksheet.addRow(row);
+    }
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return Buffer.from(buffer);
+}
 
 function createLogger() {
   return {
     info: () => undefined,
     warn: () => undefined,
     error: () => undefined,
+  };
+}
+
+function parsedFile(rows: ParsedTableRow[] = []): ParsedFileResult {
+  return {
+    rows,
+    warnings: [],
+    detectedColumns: [],
   };
 }
 
@@ -43,10 +69,7 @@ test('supplier CSV attachment auto-imports through the import pipeline', async (
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [],
-      warnings: [],
-    }),
+    parseUploadedFile: async () => parsedFile(),
   });
 
   const csv = [
@@ -111,10 +134,7 @@ test('trusted domain sender is allowed for direct supplier emails', async () => 
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [],
-      warnings: [],
-    }),
+    parseUploadedFile: async () => parsedFile(),
   });
 
   const result = await service.ingestMessage({
@@ -137,13 +157,15 @@ test('trusted domain sender is allowed for direct supplier emails', async () => 
 });
 
 test('inventory XLSX attachment auto-imports through the import pipeline', async () => {
-  const workbook = XLSX.utils.book_new();
-  const sheet = XLSX.utils.aoa_to_sheet([
-    ['productName', 'warehouseCode', 'snapshotDate', 'quantityOnHand'],
-    ['Paracetamol 500mg Tablets', 'MAIN', '2026-04-18', '120'],
+  const buffer = await buildWorkbookBuffer([
+    {
+      name: 'Inventory',
+      rows: [
+        ['productName', 'warehouseCode', 'snapshotDate', 'quantityOnHand'],
+        ['Paracetamol 500mg Tablets', 'MAIN', '2026-04-18', '120'],
+      ],
+    },
   ]);
-  XLSX.utils.book_append_sheet(workbook, sheet, 'Inventory');
-  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 
   let called = false;
   const service = createEmailInboundService({
@@ -168,10 +190,7 @@ test('inventory XLSX attachment auto-imports through the import pipeline', async
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [],
-      warnings: [],
-    }),
+    parseUploadedFile: async () => parsedFile(),
   });
 
   const result = await service.ingestMessage({
@@ -389,10 +408,7 @@ test('inline image is ignored when a spreadsheet attachment is present', async (
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [],
-      warnings: [],
-    }),
+    parseUploadedFile: async () => parsedFile(),
     extractAttachmentText: async () => ({
       method: 'IMAGE_OCR',
       text: 'Decorative inline image text should be ignored',
@@ -443,10 +459,7 @@ test('unclear CSV attachment is marked needs-review', async () => {
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [],
-      warnings: [],
-    }),
+    parseUploadedFile: async () => parsedFile(),
   });
 
   const result = await service.ingestMessage({
@@ -479,10 +492,7 @@ test('disallowed sender is ignored safely', async () => {
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [],
-      warnings: [],
-    }),
+    parseUploadedFile: async () => parsedFile(),
   });
 
   const result = await service.ingestMessage({
@@ -518,10 +528,7 @@ test('generic sender like sales@company.com does not create sales-import confide
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [],
-      warnings: [],
-    }),
+    parseUploadedFile: async () => parsedFile(),
   });
 
   const result = await service.ingestMessage({
@@ -555,10 +562,7 @@ test('vague spreadsheet filename becomes needs-review', async () => {
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [],
-      warnings: [],
-    }),
+    parseUploadedFile: async () => parsedFile(),
   });
 
   const result = await service.ingestMessage({
@@ -607,10 +611,7 @@ test('trusted supplier sender mapping populates supplierName for supplier price 
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [],
-      warnings: [],
-    }),
+    parseUploadedFile: async () => parsedFile(),
   });
 
   const result = await service.ingestMessage({
@@ -666,10 +667,7 @@ test('forwarded owner email can use manual supplier override and it takes priori
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [],
-      warnings: [],
-    }),
+    parseUploadedFile: async () => parsedFile(),
   });
 
   const result = await service.ingestMessage({
@@ -720,10 +718,7 @@ test('subject supplier override populates supplierName', async () => {
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [],
-      warnings: [],
-    }),
+    parseUploadedFile: async () => parsedFile(),
   });
 
   const result = await service.ingestMessage({
@@ -773,10 +768,7 @@ test('body supplier override populates supplierName', async () => {
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [],
-      warnings: [],
-    }),
+    parseUploadedFile: async () => parsedFile(),
   });
 
   const result = await service.ingestMessage({
@@ -815,10 +807,7 @@ test('malformed supplier override is ignored safely', async () => {
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [],
-      warnings: [],
-    }),
+    parseUploadedFile: async () => parsedFile(),
   });
 
   const result = await service.ingestMessage({
@@ -852,10 +841,7 @@ test('forwarded email from approved sender without reliable supplier info become
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [],
-      warnings: [],
-    }),
+    parseUploadedFile: async () => parsedFile(),
   });
 
   const result = await service.ingestMessage({
@@ -889,10 +875,7 @@ test('mixed ambiguous signals do not auto-import', async () => {
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [],
-      warnings: [],
-    }),
+    parseUploadedFile: async () => parsedFile(),
   });
 
   const result = await service.ingestMessage({
@@ -925,16 +908,14 @@ test('supplier contact forms are routed to review rather than import', async () 
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [
+    parseUploadedFile: async () =>
+      parsedFile([
         {
           Supplier: 'Acme Labs',
           'Contact Email': 'buyer@example.com',
           Telephone: '02000000000',
         },
-      ],
-      warnings: [],
-    }),
+      ]),
   });
 
   const result = await service.ingestMessage({
@@ -969,16 +950,14 @@ test('mixed account-opening and supplier price-list signals stay in manual revie
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [
+    parseUploadedFile: async () =>
+      parsedFile([
         {
           Product: 'Aspirin',
           'Unit Price': '1.50',
           'Available Qty': '20',
         },
-      ],
-      warnings: [],
-    }),
+      ]),
   });
 
   const result = await service.ingestMessage({
@@ -1026,10 +1005,7 @@ test('missing inferredImportType does not crash import flow', async () => {
     importSales: async () => {
       throw new Error('sales import should not run');
     },
-    parseUploadedFile: () => ({
-      rows: [],
-      warnings: [],
-    }),
+    parseUploadedFile: async () => parsedFile(),
   });
 
   const result = await service.ingestMessage({

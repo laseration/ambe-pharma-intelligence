@@ -4,7 +4,12 @@ import type {
   AccountOpeningCompletionDraft,
   AccountOpeningDraftField,
 } from './draft';
-import { evaluateAccountOpeningAutofillPolicy } from './policy';
+import {
+  evaluateAccountOpeningAutofillPolicy,
+  type AccountOpeningFieldClass,
+  type AccountOpeningPolicyDecisionKind,
+  type AccountOpeningPolicyRiskCategory,
+} from './policy';
 
 export type AccountOpeningFieldMappingStatus =
   | 'UNMAPPED'
@@ -50,6 +55,12 @@ export type AccountOpeningFieldMappingCandidate = {
   requiresReview: boolean;
   blockedReason: string | null;
   reviewReason: string | null;
+  fieldClass: AccountOpeningFieldClass;
+  policyDecision: AccountOpeningPolicyDecisionKind;
+  riskCategory: AccountOpeningPolicyRiskCategory;
+  policyReason: string;
+  signatoryRoutingNote: string | null;
+  signingNote: string | null;
   operatorNote: string | null;
 };
 
@@ -151,9 +162,9 @@ const SOURCE_TYPE_VALUES = new Set<AccountOpeningFieldMappingSourceType>([
 ]);
 
 const BLOCKED_FIELD_KEY_PATTERN =
-  /^(directDebitOrBankAuthority|bankDetails|signature|guaranteeIndemnityDirectorOnly)$/i;
+  /^(directDebitOrBankAuthority|bankDetails|signature|signatureDate|guaranteeIndemnityDirectorOnly)$/i;
 const BLOCKED_LABEL_PATTERN =
-  /\b(direct\s*debit|dd\s*mandate|bank\s*(?:authority|mandate|account|details)|sort\s*code|account\s*(?:no\.?|number)|guarantee|indemnity|director[-\s]*(?:only|signature)|signature)\b/i;
+  /\b(direct\s*debit|dd\s*mandate|bank\s*(?:authority|mandate|account|details)|sort\s*code|account\s*(?:no\.?|number)|guarantee|indemnity|liabilit(?:y|ies)|director[-\s]*(?:only|signature)|signature|date\s+(?:of\s+)?signature|signature\s+date|date\s+signed|signed\s+date)\b/i;
 const REVIEW_REQUIRED_FIELD_KEY_PATTERN =
   /^(gphcPremisesNumber|responsiblePerson|wholesaleDealerAuthorisation|cqcRegistration)$/i;
 const REVIEW_REQUIRED_LABEL_PATTERN =
@@ -294,6 +305,13 @@ const SUPPLIER_FIELD_RULES: SupplierFieldRule[] = [
     draftFieldKey: 'signature',
   },
   {
+    label: 'Date of Signature',
+    sectionLabel: 'Signing',
+    pattern:
+      /\bdate\s+(?:of\s+)?signature\b|\bsignature\s+date\b|\bdate\s+signed\b|\bsigned\s+date\b/i,
+    draftFieldKey: 'signatureDate',
+  },
+  {
     label: 'Personal Guarantee',
     sectionLabel: 'Legal',
     pattern: /\bpersonal\s+guarantee\b|\bdirector(?:s?'?)?\s+guarantee\b/i,
@@ -303,6 +321,12 @@ const SUPPLIER_FIELD_RULES: SupplierFieldRule[] = [
     label: 'Indemnity',
     sectionLabel: 'Legal',
     pattern: /\bindemnity\b|\bindemnif(?:y|ication)\b/i,
+    draftFieldKey: 'guaranteeIndemnityDirectorOnly',
+  },
+  {
+    label: 'Unusual Liability Clause',
+    sectionLabel: 'Legal',
+    pattern: /\bunusual\s+liability\b|\bliabilit(?:y|ies)\b/i,
     draftFieldKey: 'guaranteeIndemnityDirectorOnly',
   },
   {
@@ -431,7 +455,7 @@ function proposedValueForField(
   draftField: AccountOpeningDraftField | null,
   status: AccountOpeningFieldMappingStatus,
 ) {
-  if (!draftField || status === 'IGNORED') {
+  if (!draftField || status !== 'MAPPED_SAFE') {
     return null;
   }
 
@@ -450,8 +474,26 @@ function classifyMapping(input: {
   requiresReview: boolean;
   blockedReason: string | null;
   reviewReason: string | null;
+  fieldClass: AccountOpeningFieldClass;
+  policyDecision: AccountOpeningPolicyDecisionKind;
+  riskCategory: AccountOpeningPolicyRiskCategory;
+  policyReason: string;
+  signatoryRoutingNote: string | null;
+  signingNote: string | null;
 } {
   const label = input.supplierFieldLabel;
+  const policy = evaluateAccountOpeningAutofillPolicy({
+    fieldKey: input.mappedDraftFieldKey,
+    fieldLabel: label,
+  });
+  const policyMetadata = {
+    fieldClass: policy.fieldClass,
+    policyDecision: policy.policyDecision,
+    riskCategory: policy.riskCategory,
+    policyReason: policy.reason,
+    signatoryRoutingNote: policy.defaultSignatoryRoutingNote,
+    signingNote: policy.signingNote,
+  };
   const blocked = hasBlockedRisk(label, input.mappedDraftFieldKey);
   const reviewRequired = hasReviewRisk(label, input.mappedDraftFieldKey);
 
@@ -467,10 +509,15 @@ function classifyMapping(input: {
       reviewReason: reviewRequired
         ? 'Supplier field was intentionally ignored after review.'
         : null,
+      ...policyMetadata,
     };
   }
 
-  if (input.requestedStatus === 'BLOCKED' || blocked) {
+  if (
+    input.requestedStatus === 'BLOCKED' ||
+    blocked ||
+    policy.policyDecision === 'MUST_STAY_BLANK'
+  ) {
     return {
       status: 'BLOCKED',
       confidence: 'BLOCKED',
@@ -479,7 +526,9 @@ function classifyMapping(input: {
       blockedReason:
         'This supplier field is blocked from mapping because it concerns signing, Direct Debit, bank authority, bank details, guarantee, indemnity, or director-only risk.',
       reviewReason:
+        policy.signingNote ??
         'Do not fill this supplier field in any PDF/Word form. It needs a separate secure human process.',
+      ...policyMetadata,
     };
   }
 
@@ -495,6 +544,7 @@ function classifyMapping(input: {
       blockedReason: null,
       reviewReason:
         'No AMBE completion draft field has been confirmed for this supplier field.',
+      ...policyMetadata,
     };
   }
 
@@ -517,7 +567,9 @@ function classifyMapping(input: {
       blockedReason: null,
       reviewReason:
         input.draftField?.reviewReason ??
+        policy.signingNote ??
         'This mapping must be checked by an operator before any future form completion work.',
+      ...policyMetadata,
     };
   }
 
@@ -533,6 +585,7 @@ function classifyMapping(input: {
       blockedReason: null,
       reviewReason:
         'Operator has not accepted this mapping for future form completion work.',
+      ...policyMetadata,
     };
   }
 
@@ -543,6 +596,7 @@ function classifyMapping(input: {
     requiresReview: false,
     blockedReason: null,
     reviewReason: null,
+    ...policyMetadata,
   };
 }
 

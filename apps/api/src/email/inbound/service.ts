@@ -104,11 +104,11 @@ function extractSenderDomain(senderEmail: string): string | null {
   return senderEmail.split('@').pop()?.trim().toLowerCase() || null;
 }
 
-function buildClassifierTables(input: {
+async function buildClassifierTables(input: {
   attachments: NormalizedEmailAttachment[];
   dependencies: Pick<EmailInboundDependencies, 'parseUploadedFile' | 'logger'>;
   correlationId: string | null;
-}): DocumentClassifierTable[] {
+}): Promise<DocumentClassifierTable[]> {
   const tables: DocumentClassifierTable[] = [];
 
   for (const attachment of input.attachments) {
@@ -122,7 +122,7 @@ function buildClassifierTables(input: {
     }
 
     try {
-      const parsed = input.dependencies.parseUploadedFile(uploadFile);
+      const parsed = await input.dependencies.parseUploadedFile(uploadFile);
       const headers = Array.from(
         new Set(parsed.rows.flatMap((row) => Object.keys(row))),
       );
@@ -541,7 +541,7 @@ export function createEmailInboundService(
         });
       }
 
-      const classifierTables = buildClassifierTables({
+      const classifierTables = await buildClassifierTables({
         attachments: normalizedAttachments,
         dependencies,
         correlationId,
@@ -847,7 +847,7 @@ export function createEmailInboundService(
           ? await dependencies.parseTextMessage(attachmentTextExtraction.text)
           : null;
         const parsedAttachment = triageUploadFile
-          ? dependencies.parseUploadedFile(triageUploadFile)
+          ? await dependencies.parseUploadedFile(triageUploadFile)
           : null;
         const extractedParsedRowCount =
           attachmentTextParsing?.parsedRows.length ?? 0;
@@ -1005,7 +1005,8 @@ export function createEmailInboundService(
 
           if (inferredImportType === 'supplier-price-list') {
             const parsed =
-              parsedAttachment ?? dependencies.parseUploadedFile(uploadFile);
+              parsedAttachment ??
+              (await dependencies.parseUploadedFile(uploadFile));
             const attachmentRowSupplierName = parsed.rows.find(
               (row) =>
                 Boolean(row.supplierName?.trim()) ||

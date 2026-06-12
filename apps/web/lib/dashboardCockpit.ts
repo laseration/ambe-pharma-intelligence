@@ -101,6 +101,8 @@ export function buildNextActions(input: {
   opportunities: OpportunityListItem[];
   duplicateGroups: ProductDuplicateGroup[] | null;
   readiness: AutomationReadinessOverview | null;
+  stockRiskCount?: number | null;
+  customerFollowUpCount?: number | null;
 }): DashboardAction[] {
   const pendingEmailCount = countPendingReviewEmails(input.reviewItems);
   const bestBuyingSignals = getBestBuyingSignals(input.opportunities);
@@ -159,6 +161,54 @@ export function buildNextActions(input: {
       href: '/dashboard/products',
       cta: 'Open products',
       priority: duplicateCount && duplicateCount > 0 ? 'medium' : 'normal',
+    },
+    {
+      key: 'stock-risk',
+      title: 'Stock at risk',
+      value:
+        input.stockRiskCount === null || input.stockRiskCount === undefined
+          ? 'n/a'
+          : String(input.stockRiskCount),
+      meaning:
+        input.stockRiskCount === null || input.stockRiskCount === undefined
+          ? 'Stock-risk data could not be loaded for this dashboard view.'
+          : input.stockRiskCount > 0
+            ? 'Inventory data has deterministic risk rows to review before stock decisions.'
+            : 'No current stock-risk rows were returned from the inventory API.',
+      nextAction:
+        input.stockRiskCount && input.stockRiskCount > 0
+          ? 'Open inventory and check low stock, stale snapshots, or recent sales velocity.'
+          : 'Keep inventory and sales imports current so stock risk stays useful.',
+      href: '/dashboard/inventory',
+      cta: 'Open inventory',
+      priority:
+        input.stockRiskCount && input.stockRiskCount > 0 ? 'medium' : 'normal',
+    },
+    {
+      key: 'customer-follow-up',
+      title: 'Customer follow-ups',
+      value:
+        input.customerFollowUpCount === null ||
+        input.customerFollowUpCount === undefined
+          ? 'n/a'
+          : String(input.customerFollowUpCount),
+      meaning:
+        input.customerFollowUpCount === null ||
+        input.customerFollowUpCount === undefined
+          ? 'Customer follow-up data could not be loaded for this dashboard view.'
+          : input.customerFollowUpCount > 0
+            ? 'Customer records have read-only follow-up candidates from sales, opportunity, or RFQ context.'
+            : 'No customer follow-up candidates were returned.',
+      nextAction:
+        input.customerFollowUpCount && input.customerFollowUpCount > 0
+          ? 'Open customers and review the evidence before any manual follow-up.'
+          : 'Import sales history and monitor RFQs to populate customer suggestions.',
+      href: '/dashboard/customers',
+      cta: 'Open customers',
+      priority:
+        input.customerFollowUpCount && input.customerFollowUpCount > 0
+          ? 'medium'
+          : 'normal',
     },
     {
       key: 'automation-trust',

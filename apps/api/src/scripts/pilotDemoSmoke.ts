@@ -12,6 +12,9 @@ export type PilotDemoSmokeVerification = {
   buyDecisionId: string;
   buyExecutionId: string;
   tradeOpportunityId: string;
+  scenarioWorkflowIds: string[];
+  scenarioTradeOpportunityIds: string[];
+  scenarioOpportunityIds: string[];
   routes: {
     pendingReview: string;
     completedReview: string;
@@ -39,6 +42,9 @@ export async function verifyPilotDemoSmokeRecords(input: {
   buyDecisionId: string;
   buyExecutionId: string;
   tradeOpportunityId: string;
+  scenarioWorkflowIds?: string[];
+  scenarioTradeOpportunityIds?: string[];
+  scenarioOpportunityIds?: string[];
 }): Promise<PilotDemoSmokeVerification> {
   await Promise.all([
     requireRecord(
@@ -75,6 +81,9 @@ export async function verifyPilotDemoSmokeRecords(input: {
 
   return {
     ...input,
+    scenarioWorkflowIds: input.scenarioWorkflowIds ?? [],
+    scenarioTradeOpportunityIds: input.scenarioTradeOpportunityIds ?? [],
+    scenarioOpportunityIds: input.scenarioOpportunityIds ?? [],
     routes: {
       pendingReview: `/dashboard/review/${input.pendingWorkflowId}`,
       completedReview: `/dashboard/review/${input.completedWorkflowId}`,
@@ -99,6 +108,9 @@ export function buildPilotDemoSmokeSummary(input: {
     `Buy decision: ${input.verification.buyDecisionId}`,
     `Buy execution: ${input.verification.buyExecutionId}`,
     `Trade opportunity: ${input.verification.tradeOpportunityId}`,
+    `Scenario workflows: ${input.verification.scenarioWorkflowIds.join(', ')}`,
+    `Scenario trade opportunities: ${input.verification.scenarioTradeOpportunityIds.join(', ')}`,
+    `Scenario opportunities: ${input.verification.scenarioOpportunityIds.join(', ')}`,
     `Open pending review: ${input.verification.routes.pendingReview}`,
     `Open completed review: ${input.verification.routes.completedReview}`,
     `Open deals: ${input.verification.routes.deals}`,

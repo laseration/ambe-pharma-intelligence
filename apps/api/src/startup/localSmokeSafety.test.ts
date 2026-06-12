@@ -8,6 +8,7 @@ import {
 
 const safeIntegrationConfig = {
   openAiApiKey: '',
+  startWorkersWithApi: false,
   openAiParserEnabled: false,
   openAiEmailReviewEnabled: false,
   telegramBotToken: '',
@@ -155,6 +156,7 @@ test('local runtime smoke integration guard accepts disabled integrations with p
 test('local runtime smoke integration guard rejects enabled live-capable modes', () => {
   const result = evaluateExternalIntegrationsForLocalSmoke({
     ...safeIntegrationConfig,
+    startWorkersWithApi: true,
     openAiApiKey: 'configured-openai-key-redacted',
     openAiParserEnabled: true,
     telegramBotToken: 'configured-telegram-token-redacted',
@@ -167,6 +169,7 @@ test('local runtime smoke integration guard rejects enabled live-capable modes',
 
   assert.equal(result.safe, false);
   assert.match(result.unsafeReasons.join('\n'), /OpenAI parser/i);
+  assert.match(result.unsafeReasons.join('\n'), /START_WORKERS_WITH_API/i);
   assert.match(result.unsafeReasons.join('\n'), /Telegram dry-run/i);
   assert.match(result.unsafeReasons.join('\n'), /EMAIL_ALERTS_ENABLED/i);
   assert.match(
