@@ -84,9 +84,31 @@ test('pilot operator walkthrough smoke uses sanitized browser paths', async ({
   ).toBeVisible();
   await expect(page.getByText('Action readiness')).toBeVisible();
   await expect(
-    page.getByText('Corrected after approval; review again'),
-  ).toHaveCount(3);
+    page.getByText('Corrected after approval; review again').first(),
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: /^Approve$/ })).toBeDisabled();
+
+  await expect(page.getByText('Buy-decision evidence')).toBeVisible();
+  await expect(page.getByText('Evidence present')).toBeVisible();
+  await expect(
+    page.getByText(/Margin estimate: GBP 3\.20 \| 28%/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Demand\/sales velocity: 42 units in 30 days/),
+  ).toBeVisible();
+  await expect(page.getByText('Evidence missing')).toBeVisible();
+  await expect(
+    page.getByText(/Customer outreach approval not reviewed/),
+  ).toBeVisible();
+  await expect(page.getByText('Blocked because...')).toBeVisible();
+  await expect(
+    page.getByText(
+      /Approval\/execution blocker: Corrected after approval; review again/,
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText('Review corrected supplier terms before any execution.'),
+  ).toBeVisible();
 
   await page.getByText('Source evidence summary').click();
   await expect(

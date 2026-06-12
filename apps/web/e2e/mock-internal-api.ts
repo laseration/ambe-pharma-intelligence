@@ -165,6 +165,21 @@ const workflowDetail = {
     approvalStatus: 'APPROVED',
     orderStatus: 'PENDING',
   },
+  buyDecisionEvidence: {
+    estimatedMarginAmount: 3.2,
+    estimatedMarginCurrencyCode: 'GBP',
+    estimatedMarginPct: 0.28,
+    recentUnitsSold: 42,
+    recentDemandWindowDays: 30,
+    stockOnHand: 6,
+    stockPositionLabel: 'Low stock in fake demo data',
+    stockRisk: 'Low stock supports review before ordering',
+    expiryRisk: 'No near-expiry risk in fake demo data',
+    priceConfidence: 79,
+    missingEvidence: ['Customer outreach approval not reviewed'],
+    nextRecommendedAction:
+      'Review corrected supplier terms before any execution.',
+  },
 };
 
 const readinessReport = {
