@@ -15,6 +15,7 @@
     "test:trade": "node ../../scripts/run-ts-tests.mjs src/tradeEnquiries",
     "test:account-opening": "node ../../scripts/run-ts-tests.mjs src/accountOpening && pnpm exec tsx --test src/email/inbound/__tests__/account-opening.test.ts",
     "eval:extraction": "tsx src/scripts/evaluateExtraction.ts",
+    "eval:correction-candidates": "tsx src/scripts/exportCorrectionEvalCandidates.ts",
     "demo:seed-pilot": "tsx src/scripts/seedPilotDemo.ts",
     "telegram:replay": "tsx scripts/replay-telegram-fixture.ts",
     "email:device-code": "tsx scripts/microsoft-device-code.ts",

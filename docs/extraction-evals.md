@@ -95,3 +95,10 @@ Initial recommended thresholds:
 - attachment text cases: no live OCR/PDF service required in default eval
 
 Expand the fixture set with more sanitized real-world patterns before treating the eval as a full commercial-quality scorecard.
+
+## Correction Candidates
+
+Applied operator corrections can be exported as safe candidate material only
+when they come from fake/demo records. See
+[`correction-eval-candidates.md`](./correction-eval-candidates.md) for the
+candidate export command, safety boundaries, and human sanitization checklist.
