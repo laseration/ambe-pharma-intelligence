@@ -53,7 +53,8 @@ The VPS should have:
 - `pnpm` available through Corepack.
 - The repository checked out at `VPS_APP_DIR`.
 - Server-side production env files or service environment configuration.
-- A process manager configured for the API and web app.
+- A process manager configured for `ambe-web`, `ambe-api`, and exactly one
+  `ambe-worker` process.
 
 Create a restricted deployment user where possible:
 
@@ -106,7 +107,10 @@ PM2 example:
 
 ```bash
 pm2 reload ambe-api --update-env
+pm2 reload ambe-worker --update-env
 pm2 reload ambe-web --update-env
+pm2 status ambe-api ambe-worker ambe-web
+pm2 logs ambe-api ambe-worker ambe-web --lines 100
 pm2 save
 ```
 
@@ -114,11 +118,18 @@ systemctl example:
 
 ```bash
 sudo systemctl restart ambe-api.service
+sudo systemctl restart ambe-worker.service
 sudo systemctl restart ambe-web.service
+sudo systemctl status ambe-api.service ambe-worker.service ambe-web.service
+journalctl -u ambe-api.service -u ambe-worker.service -u ambe-web.service -n 200 --no-pager
 ```
 
 If using `sudo`, grant the deploy user passwordless access only to the exact
 service commands required.
+
+Configure the API service with `START_WORKERS_WITH_API=false` in production.
+Use `START_WORKERS_WITH_API=true` only for a deliberately combined
+local/transitional process where there is no separate `ambe-worker`.
 
 Docker Compose example:
 
@@ -148,9 +159,36 @@ pnpm --filter @ambe/web build
 external integrations so verification does not use production credentials or
 call live services. The production services should receive their real runtime
 environment from systemd, PM2, Docker, or server-side env files when restarted.
+Production must run web, API, and one worker process. The deploy workflow does
+not directly manage process definitions; `scripts/vps-restart.sh` is responsible
+for restarting all three services on the server.
 
 The workflow does not run `git clean`; untracked server-local files such as
 `.env` files and `scripts/vps-restart.sh` are preserved.
+
+## Post-Restart Smoke Checks
+
+After the restart hook completes, run safe local checks from the VPS:
+
+```bash
+curl -fsS http://127.0.0.1:4000/health
+curl -fsS -H "x-internal-api-key: $INTERNAL_API_KEY" http://127.0.0.1:4000/api/system/readiness
+curl -fsS -H "x-internal-api-key: $INTERNAL_API_KEY" http://127.0.0.1:4000/api/system/workers
+```
+
+`/health` proves the API process is responding. `/api/system/readiness` reports
+API/database readiness and the expected split-worker mode. `/api/system/workers`
+reports the latest safe polling status snapshots written by the worker runtime.
+Do not hard-code `INTERNAL_API_KEY` in the restart hook; provide it through the
+server's existing secret management or run smoke checks from a shell where it is
+already available.
+
+When using PM2, the equivalent process-manager checks are:
+
+```bash
+pm2 status ambe-api ambe-worker ambe-web
+pm2 logs ambe-api ambe-worker ambe-web --lines 100
+```
 
 ## Testing With Workflow Dispatch
 
@@ -159,11 +197,14 @@ Before relying on push-to-main deployment:
 1. Configure the required GitHub secrets.
 2. Confirm the VPS can pull `origin/main`.
 3. Confirm `scripts/vps-restart.sh` exists and is executable on the VPS.
-4. Open GitHub Actions.
-5. Select `Deploy VPS`.
-6. Run the workflow manually with `workflow_dispatch`.
-7. Confirm the workflow reaches the restart step and the public site still
+4. Confirm the restart hook restarts `ambe-web`, `ambe-api`, and exactly one
+   `ambe-worker`.
+5. Open GitHub Actions.
+6. Select `Deploy VPS`.
+7. Run the workflow manually with `workflow_dispatch`.
+8. Confirm the workflow reaches the restart step and the public site still
    responds after restart.
+9. Run the API readiness and worker status smoke checks above.
 
 If the workflow fails at the restart step, fix `scripts/vps-restart.sh` on the
 VPS rather than adding server-specific commands to the repository.
@@ -177,3 +218,7 @@ VPS rather than adding server-specific commands to the repository.
 - Do not run `prisma migrate dev` against production or pilot data.
 - Do not configure live email, Telegram, Microsoft Graph, storage, or OpenAI
   integrations until the operator has explicitly signed off.
+- Do not run more than one `ambe-worker` process per environment. Multiple
+  worker processes can duplicate Microsoft Graph and Telegram polling.
+- Keep `START_WORKERS_WITH_API=false` in production API services when the
+  dedicated worker is running.

@@ -149,7 +149,7 @@ jobs:
 
           if [ ! -x ./scripts/vps-restart.sh ]; then
             echo "Missing executable restart hook: $app_dir/scripts/vps-restart.sh" >&2
-            echo "Copy scripts/vps-restart.example.sh on the VPS, edit it for PM2/systemctl/Docker, and chmod +x it." >&2
+            echo "Copy scripts/vps-restart.example.sh on the VPS, edit it to restart ambe-web, ambe-api, and exactly one ambe-worker with PM2/systemctl/Docker, and chmod +x it." >&2
             exit 1
           fi
 
