@@ -8,7 +8,7 @@ import {
   type SystemReadinessReport,
   type SystemReadinessStatus,
 } from '../../../lib/systemApi';
-import { getCurrentWebSession } from '../../../lib/serverWebAuth';
+import { requireCurrentWebCapability } from '../../../lib/serverWebAuth';
 import {
   redactDashboardText,
   summarizeWorkerFreshness,
@@ -257,7 +257,7 @@ function ReadinessCard({ check }: { check: SystemReadinessCheck }) {
 }
 
 export default async function SetupPage() {
-  const session = await getCurrentWebSession();
+  const session = await requireCurrentWebCapability('system:admin');
 
   try {
     const [report, workers] = await Promise.all([

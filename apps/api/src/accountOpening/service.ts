@@ -5,9 +5,13 @@ import { Prisma } from '@prisma/client';
 import type {
   AccountOpeningBinaryFillPreviewDetail,
   AccountOpeningCaseDetail,
+  AccountOpeningCompanyProfileSummary,
   AccountOpeningCompletedFormFilingDetail,
   AccountOpeningDocumentLifecycleSummary,
+  AccountOpeningDocumentClassification,
   AccountOpeningFillPreviewDetail,
+  AccountOpeningLifecycleStage,
+  AccountOpeningLifecycleSummary,
   AccountOpeningMissingInfoResponses,
   AccountOpeningOriginalFormDetail,
   AccountOpeningOriginalFormLifecycle,
@@ -22,9 +26,12 @@ import type {
 export type {
   AccountOpeningBinaryFillPreviewDetail,
   AccountOpeningCaseDetail,
+  AccountOpeningCompanyProfileSummary,
   AccountOpeningCompletedFormFilingDetail,
   AccountOpeningDocumentLifecycleSummary,
+  AccountOpeningDocumentClassification,
   AccountOpeningFillPreviewDetail,
+  AccountOpeningLifecycleSummary,
   AccountOpeningMissingInfoResponses,
   AccountOpeningOriginalFormDetail,
   AccountOpeningOriginalFormLifecycle,
@@ -57,6 +64,7 @@ import {
   type AccountOpeningCompletionDraft,
   type AccountOpeningDraftSourceEvidenceInput,
 } from './draft';
+import { getAccountOpeningMasterProfile } from './masterProfile';
 import {
   buildAccountOpeningFieldMappingCandidateForSave,
   buildAccountOpeningFieldMappingReview,
@@ -88,6 +96,10 @@ import {
   type AccountOpeningBinaryFillPreviewResult,
   type AccountOpeningBinaryFillPreviewSizeLimits,
 } from './binaryFillPreview';
+import {
+  classifyAccountOpeningDocument,
+  classifyAccountOpeningDocuments,
+} from './documentClassification';
 
 export type AccountOpeningStructuredFields = {
   companyName: string;
@@ -496,11 +508,11 @@ const SIGNING_SIGNALS: Array<{ label: string; pattern: RegExp }> = [
 
 const SIGNING_NAMES: Array<{ label: string; pattern: RegExp }> = [
   { label: 'Aman Dhillon', pattern: /\baman\s+dhillon\b/i },
-  { label: 'Sandeep Patel', pattern: /\bsandeep\s+patel\b/i },
-  { label: 'Dilshad Moulana', pattern: /\bdilshad\s+moulana\b/i },
 ];
 
 const REQUIRED_FIELD_LABELS: Array<keyof AccountOpeningStructuredFields> = [
+  'companyName',
+  'tradingName',
   'companyNumber',
   'vatNumber',
   'registeredAddress',
@@ -689,6 +701,12 @@ function originalFormRowsFromEvidence(input: {
         sanitizeDashboardText(evidence.fileName) ?? 'account-opening-form';
       const mimeType = sanitizeDashboardText(evidence.mimeType) ?? null;
       const formType = formTypeFromFile({ fileName, mimeType });
+      const documentClassification = classifyAccountOpeningDocument({
+        sourceEvidenceId: evidence.id,
+        fileName,
+        mimeType,
+        text: evidence.safeSnippet,
+      });
       const fileHash =
         evidence.extractedTextHash ??
         hashText(
@@ -724,6 +742,7 @@ function originalFormRowsFromEvidence(input: {
         detectionSummary: jsonObject({
           capturedFrom: 'SOURCE_EVIDENCE',
           metadataOnly: true,
+          documentClassification,
           rawFileBytesStored: false,
           rawExtractedTextStored: false,
           extractedTextHash: evidence.extractedTextHash,
@@ -922,6 +941,178 @@ function buildCompletionDraftForCase(input: {
   };
 }
 
+const ACCOUNT_OPENING_LIFECYCLE_ORDER: Array<{
+  stage: AccountOpeningLifecycleStage;
+  label: string;
+}> = [
+  { stage: 'RECEIVED', label: 'Received' },
+  { stage: 'CLASSIFYING', label: 'Classifying' },
+  { stage: 'NEEDS_REVIEW', label: 'Needs review' },
+  { stage: 'READY_FOR_REVIEW', label: 'Ready for review' },
+  { stage: 'APPROVED_FOR_COMPLETION', label: 'Approved for completion' },
+  {
+    stage: 'COMPLETION_PREVIEW_GENERATED',
+    label: 'Completion preview generated',
+  },
+  { stage: 'COMPLETED_UNSIGNED_FILED', label: 'Completed unsigned filed' },
+  { stage: 'SENT_MANUALLY', label: 'Sent manually' },
+  { stage: 'REJECTED', label: 'Rejected' },
+  { stage: 'BLOCKED', label: 'Blocked' },
+  { stage: 'ARCHIVED', label: 'Archived' },
+];
+
+function lifecycleStageIndex(stage: AccountOpeningLifecycleStage): number {
+  const index = ACCOUNT_OPENING_LIFECYCLE_ORDER.findIndex(
+    (item) => item.stage === stage,
+  );
+  return index >= 0 ? index : 0;
+}
+
+function nextLifecycleAction(input: {
+  stage: AccountOpeningLifecycleStage;
+  latestCompletedFormFiling: AccountOpeningCompletedFormFilingDetail | null;
+}): string {
+  switch (input.stage) {
+    case 'NEEDS_REVIEW':
+      return 'Review missing information, document classifications, blocked fields, and field mappings.';
+    case 'READY_FOR_REVIEW':
+      return 'Save reviewed field mappings or mark the case approved for completion.';
+    case 'APPROVED_FOR_COMPLETION':
+      return 'Generate a fill preview or binary preview when an original fillable form is available.';
+    case 'COMPLETION_PREVIEW_GENERATED':
+      return input.latestCompletedFormFiling?.approvedAt
+        ? 'File the approved completed unsigned form internally if SharePoint/Microsoft Drive is configured.'
+        : 'Review the binary preview and approve it for internal completed unsigned filing.';
+    case 'COMPLETED_UNSIGNED_FILED':
+      return 'Human reviewer can sign and send outside automation if operationally approved.';
+    case 'BLOCKED':
+      return 'Resolve blocked fields manually; do not auto-complete, sign, submit, or send.';
+    case 'REJECTED':
+      return 'No automated completion, filing, signing, sending, or submission is allowed.';
+    case 'ARCHIVED':
+      return 'No further automated account-opening action is expected.';
+    default:
+      return 'Continue safe account-opening review.';
+  }
+}
+
+function buildAccountOpeningLifecycleSummary(input: {
+  legacyStatus: string;
+  completionDraft: AccountOpeningCompletionDraft;
+  latestBinaryFillPreview: AccountOpeningBinaryFillPreviewDetail | null;
+  latestCompletedFormFiling: AccountOpeningCompletedFormFilingDetail | null;
+}): AccountOpeningLifecycleSummary {
+  let currentStage: AccountOpeningLifecycleStage;
+
+  if (input.legacyStatus === 'REJECTED') {
+    currentStage = 'REJECTED';
+  } else if (input.legacyStatus === 'CLOSED') {
+    currentStage = 'ARCHIVED';
+  } else if (input.completionDraft.status === 'BLOCKED') {
+    currentStage = 'BLOCKED';
+  } else if (input.latestCompletedFormFiling?.status === 'FILED') {
+    currentStage = 'COMPLETED_UNSIGNED_FILED';
+  } else if (input.latestBinaryFillPreview?.status === 'GENERATED_FOR_REVIEW') {
+    currentStage = 'COMPLETION_PREVIEW_GENERATED';
+  } else if (input.legacyStatus === 'APPROVED_FOR_COMPLETION') {
+    currentStage = 'APPROVED_FOR_COMPLETION';
+  } else if (input.completionDraft.isStored) {
+    currentStage = 'READY_FOR_REVIEW';
+  } else {
+    currentStage = 'NEEDS_REVIEW';
+  }
+
+  const currentIndex = lifecycleStageIndex(currentStage);
+
+  return {
+    legacyStatus: input.legacyStatus,
+    currentStage,
+    currentLabel:
+      ACCOUNT_OPENING_LIFECYCLE_ORDER.find(
+        (item) => item.stage === currentStage,
+      )?.label ?? currentStage,
+    nextAction: nextLifecycleAction({
+      stage: currentStage,
+      latestCompletedFormFiling: input.latestCompletedFormFiling,
+    }),
+    steps: ACCOUNT_OPENING_LIFECYCLE_ORDER.map((step, index) => ({
+      ...step,
+      status:
+        step.stage === currentStage
+          ? 'CURRENT'
+          : currentStage === 'BLOCKED' &&
+              index > lifecycleStageIndex('NEEDS_REVIEW')
+            ? 'BLOCKED'
+            : currentStage === 'REJECTED' &&
+                index > lifecycleStageIndex('NEEDS_REVIEW')
+              ? 'BLOCKED'
+              : index < currentIndex
+                ? 'COMPLETE'
+                : 'PENDING',
+    })),
+    compatibilityNotes: [
+      'Persisted AccountOpeningStatus values are preserved for backwards compatibility.',
+      'Target v1 lifecycle stages are derived from status, draft, preview, and filing evidence.',
+      'SENT_MANUALLY remains manual-only and is not set by automation.',
+    ],
+    safety: {
+      backwardsCompatibleStatusMapping: true,
+      noAutoSign: true,
+      noAutoSubmit: true,
+      noOutboundSend: true,
+    },
+  };
+}
+
+function buildAccountOpeningCompanyProfileSummary(
+  completionDraft: AccountOpeningCompletionDraft,
+): AccountOpeningCompanyProfileSummary {
+  const configuredFields = completionDraft.fields.filter(
+    (field) =>
+      field.valueSource === 'AMBE_MASTER_PROFILE' &&
+      field.confidence !== 'BLOCKED',
+  );
+  const missingProfileFields = completionDraft.fields
+    .filter(
+      (field) =>
+        field.valueSource === 'SYSTEM_PLACEHOLDER' &&
+        field.confidence !== 'BLOCKED',
+    )
+    .map((field) => field.supplierLabel);
+  const reviewRequiredFields = completionDraft.fields
+    .filter((field) => field.requiresReview && field.confidence !== 'BLOCKED')
+    .map((field) => field.supplierLabel);
+  const blockedFields = completionDraft.fields
+    .filter((field) => field.confidence === 'BLOCKED')
+    .map((field) => field.supplierLabel);
+
+  return {
+    profileId: completionDraft.profileId,
+    profileVersion: completionDraft.profileVersion,
+    safeConfiguredFieldCount: configuredFields.length,
+    missingProfileFields: compactUnique(missingProfileFields),
+    reviewRequiredFields: compactUnique(reviewRequiredFields),
+    blockedFields: compactUnique(blockedFields),
+    warnings: [
+      ...(missingProfileFields.length
+        ? ['Some profile fields are missing and remain To be confirmed.']
+        : []),
+      ...(reviewRequiredFields.length
+        ? ['Some profile fields require human review before completion.']
+        : []),
+      ...(blockedFields.length
+        ? ['Blocked fields remain blank and are not safe to auto-complete.']
+        : []),
+    ],
+    safety: {
+      valuesInvented: false,
+      bankDetailsIncluded: false,
+      directorDetailsIncluded: false,
+      regulatoryIdentifiersRequireReview: true,
+    },
+  };
+}
+
 function draftAuditMetadata(
   draft: AccountOpeningCompletionDraft,
 ): Prisma.InputJsonValue {
@@ -931,6 +1122,59 @@ function draftAuditMetadata(
     status: draft.status,
     overallConfidence: draft.overallConfidence,
     summary: draft.summary,
+    policyRiskFlagCount: draft.riskFlags.length,
+    policyRiskFlags: draft.riskFlags,
+    signingNotes: draft.signingNotes,
+    policyApplied: true,
+    reviewerOverrideReady: false,
+    reviewerOverrideSupport:
+      'No account-opening reviewer override workflow is present in this phase.',
+    blockedFieldsLeftBlank: true,
+    signatureAndDateFieldsLeftBlank: true,
+    bankDirectDebitGuaranteeIndemnityFieldsLeftBlank: true,
+    unknownFieldsNeverGuessed: true,
+  });
+}
+
+function draftPolicyFieldMetadata(
+  draft: AccountOpeningCompletionDraft,
+): Prisma.InputJsonValue {
+  return jsonObject({
+    profileId: draft.profileId,
+    profileVersion: draft.profileVersion,
+    policyRiskFlags: draft.riskFlags,
+    blockedFields: draft.fields
+      .filter(
+        (field) =>
+          field.confidence === 'BLOCKED' ||
+          field.riskLevel === 'BLOCKED' ||
+          field.policyDecision === 'MUST_STAY_BLANK',
+      )
+      .map((field) => ({
+        key: field.key,
+        supplierLabel: field.supplierLabel,
+        fieldClass: field.fieldClass,
+        riskCategory: field.riskCategory,
+        reason: field.reviewReason ?? field.policyReason,
+        proposedValueBlank: field.proposedValue === null,
+      })),
+    blankByPolicyFields: draft.fields
+      .filter(
+        (field) =>
+          field.proposedValue === null &&
+          field.policyDecision !== 'AUTOFILL_ALLOWED',
+      )
+      .map((field) => ({
+        key: field.key,
+        supplierLabel: field.supplierLabel,
+        fieldClass: field.fieldClass,
+        policyDecision: field.policyDecision,
+        riskCategory: field.riskCategory,
+      })),
+    reviewerOverrideReady: false,
+    signedFormsIncluded: false,
+    signatureImagesIncluded: false,
+    legalSubmissionReady: false,
   });
 }
 
@@ -1227,19 +1471,15 @@ export function buildAccountOpeningSigningSummary(
   const detectedSignatureRoles = matchLabels(text, SIGNING_SIGNALS);
   const escalationNotes: string[] = [];
 
-  if (/\bdirector\b/i.test(text) || /\bsandeep\s+patel\b/i.test(text)) {
+  if (/\bdirector\b/i.test(text)) {
     escalationNotes.push(
-      'The form mentions Director/Sandeep Patel. Reviewer should confirm the supplier does not specifically require a director-only signature.',
+      'The form mentions a director. Reviewer should confirm whether the supplier specifically requires a director-only signature and route to Sandeep Patel only for a Director signature, guarantee, bank mandate, or formal director authority.',
     );
   }
 
-  if (
-    /\bresponsible\s+person\b|\bRP\b|\bGDP\b|\bWDA\b|\bdilshad\s+moulana\b/i.test(
-      text,
-    )
-  ) {
+  if (/\bresponsible\s+person\b|\bRP\b|\bGDP\b|\bWDA\b/i.test(text)) {
     escalationNotes.push(
-      'The form contains regulatory/RP wording. Reviewer should confirm whether this is only company information or whether an RP declaration is being requested.',
+      'The form contains regulatory/RP wording. Route RP/GDP/WDA/regulatory declarations to Dilshad Moulana for review.',
     );
   }
 
@@ -1249,7 +1489,7 @@ export function buildAccountOpeningSigningSummary(
     )
   ) {
     escalationNotes.push(
-      'High-risk section detected. Aman can sign account-opening forms by default, but this section should be reviewed before approval.',
+      'High-risk section detected. Aman Dhillon remains the default signatory for ordinary account-opening fields, but high-risk legal, banking, Direct Debit, guarantee, indemnity, and credit sections require human review before approval.',
     );
   }
 
@@ -1274,7 +1514,7 @@ export function buildAccountOpeningSigningNotes(input: {
   missingOrUnclear: string[];
 }): AccountOpeningSigningNotes {
   const reviewerChecks = compactUnique([
-    'Confirm the form is an account-opening or onboarding document for AMBE LTD t/a AMBE MEDICAL GROUP.',
+    'Confirm the form is an account-opening or onboarding document for the configured company profile.',
     input.signingSummary.detectedSignatureRoles.includes('Director') ||
     input.signingSummary.detectedSignatureRoles.includes(
       'Director-only signature',
@@ -1293,6 +1533,8 @@ export function buildAccountOpeningSigningNotes(input: {
       ? 'Resolve missing or unclear fields before approving completion or signing.'
       : null,
     'Leave all signature fields blank unless a human reviewer approves signing.',
+    'Use Sandeep Patel only where a Director signature, guarantee, bank mandate, or formal director authority is required.',
+    'Use Dilshad Moulana for RP/GDP/WDA/regulatory declarations.',
   ]);
   const detectedNamesText =
     input.signingSummary.detectedNames.length > 0
@@ -1322,6 +1564,8 @@ export function buildAccountOpeningSigningNotes(input: {
     summary: [
       'Recommended signer: Aman Dhillon.',
       'Aman Dhillon can sign this account-opening form by default.',
+      'Use Sandeep Patel only where a Director signature, guarantee, bank mandate, or formal director authority is required.',
+      'Use Dilshad Moulana for RP/GDP/WDA/regulatory declarations.',
       detectedNamesText,
       detectedRolesText,
       riskText,
@@ -1707,6 +1951,16 @@ export function buildAccountOpeningCaseDetail(
     })),
     persistedMappings: accountCase.fieldMappings ?? [],
   });
+  const documentClassifications = classifyAccountOpeningDocuments(
+    sourceEvidence
+      .filter((evidence) => evidence.sourceType === 'ATTACHMENT')
+      .map((evidence) => ({
+        sourceEvidenceId: evidence.id,
+        fileName: evidence.fileName,
+        mimeType: evidence.mimeType,
+        text: evidence.safeSnippet,
+      })),
+  ) as AccountOpeningDocumentClassification[];
 
   return {
     id: accountCase.id,
@@ -1730,6 +1984,8 @@ export function buildAccountOpeningCaseDetail(
     detectedRoles,
     escalationNotes: stringArrayFromJson(accountCase.escalationNotes),
     riskFlags,
+    policyRiskFlags: completionDraft.riskFlags,
+    policySigningNotes: completionDraft.signingNotes,
     missingFields,
     reviewerChecks: stringArrayFromJson(accountCase.reviewerChecks),
     signingNotes: buildSigningNotesFromPersistedCase(accountCase),
@@ -1744,6 +2000,14 @@ export function buildAccountOpeningCaseDetail(
     sourceAttachmentNames: safeStringArrayFromJson(
       accountCase.sourceAttachmentNames,
     ),
+    lifecycle: buildAccountOpeningLifecycleSummary({
+      legacyStatus: accountCase.status,
+      completionDraft,
+      latestBinaryFillPreview,
+      latestCompletedFormFiling,
+    }),
+    documentClassifications,
+    companyProfile: buildAccountOpeningCompanyProfileSummary(completionDraft),
     draftStatus: accountCase.draftStatus,
     draftVersion: accountCase.draftVersion,
     draftGeneratedAt: accountCase.draftGeneratedAt?.toISOString() ?? null,
@@ -3989,6 +4253,7 @@ export async function writeDraftAuditEvents(input: {
   const actorType = input.actorType?.trim() || 'OPERATOR';
   const actorIdentifier = sanitizeDashboardText(input.actorIdentifier) ?? null;
   const metadata = draftAuditMetadata(input.draft);
+  const policyFieldMetadata = draftPolicyFieldMetadata(input.draft);
 
   await input.repository.createEvent({
     data: {
@@ -4012,6 +4277,42 @@ export async function writeDraftAuditEvents(input: {
       actorType: 'SYSTEM',
       actorIdentifier: 'account-opening-draft-generator',
       metadata,
+    },
+  });
+
+  await input.repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.accountCaseId,
+      actionType: 'POLICY_APPLIED',
+      previousStatus: input.previousStatus,
+      newStatus: input.previousStatus,
+      actorType: 'SYSTEM',
+      actorIdentifier: 'account-opening-policy-engine',
+      metadata: policyFieldMetadata,
+    },
+  });
+
+  await input.repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.accountCaseId,
+      actionType: 'FIELD_BLOCKED',
+      previousStatus: input.previousStatus,
+      newStatus: input.previousStatus,
+      actorType: 'SYSTEM',
+      actorIdentifier: 'account-opening-policy-engine',
+      metadata: policyFieldMetadata,
+    },
+  });
+
+  await input.repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.accountCaseId,
+      actionType: 'FIELD_LEFT_BLANK_BY_POLICY',
+      previousStatus: input.previousStatus,
+      newStatus: input.previousStatus,
+      actorType: 'SYSTEM',
+      actorIdentifier: 'account-opening-policy-engine',
+      metadata: policyFieldMetadata,
     },
   });
 }
@@ -4534,17 +4835,19 @@ export function buildAccountOpeningCase(
     : /\bcredit\s+account\b|\bcredit\s+terms?\b/i.test(combinedText)
       ? 'Credit account requested'
       : TO_BE_CONFIRMED;
+  const profile = getAccountOpeningMasterProfile();
+  const profileValues = profile.values;
   const structuredFields: AccountOpeningStructuredFields = {
-    companyName: 'AMBE LTD',
-    tradingName: 'AMBE MEDICAL GROUP',
-    companyNumber: TO_BE_CONFIRMED,
-    vatNumber: TO_BE_CONFIRMED,
-    registeredAddress: TO_BE_CONFIRMED,
-    tradingAddress: TO_BE_CONFIRMED,
-    contactName: TO_BE_CONFIRMED,
-    contactEmail: TO_BE_CONFIRMED,
-    contactPhone: TO_BE_CONFIRMED,
-    accountsContact: TO_BE_CONFIRMED,
+    companyName: profileValues.legalCompanyName,
+    tradingName: profileValues.tradingName,
+    companyNumber: profileValues.companyNumber,
+    vatNumber: profileValues.vatNumber,
+    registeredAddress: profileValues.registeredAddress,
+    tradingAddress: profileValues.tradingAddress,
+    contactName: profileValues.mainContactName,
+    contactEmail: profileValues.mainContactEmail,
+    contactPhone: profileValues.mainContactPhone,
+    accountsContact: profileValues.accountsContact,
     paymentMethodRequested,
     directDebitRequested,
     guaranteeDetected,

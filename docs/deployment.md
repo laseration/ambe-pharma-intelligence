@@ -8,7 +8,10 @@ Intelligence. It is factual to this repo and does not include real secrets.
 The repo is a pnpm monorepo:
 
 - `apps/api`: Express API, Prisma, PostgreSQL
-- `apps/web`: Next.js internal dashboard
+- `apps/api` worker: standalone polling process for Telegram and Microsoft
+  Graph inbox intake
+- `apps/web`: Next.js public website with internal dashboard routes behind
+  `/login` and `/dashboard`
 - `packages/shared`: shared TypeScript utilities
 
 Required runtime tools:
@@ -18,7 +21,8 @@ Required runtime tools:
 - PostgreSQL reachable through `DATABASE_URL`
 
 The API defaults to port `4000`. The web app defaults to port `3000` when run
-with Next.js locally.
+with Next.js locally. The worker process does not expose HTTP; it connects to
+PostgreSQL, writes safe polling status snapshots, and owns polling timers.
 
 ## Required Pilot Configuration
 
@@ -31,30 +35,38 @@ cp apps/web/.env.example apps/web/.env
 
 Required API values for a pilot:
 
-| Variable                 | Required    | Purpose                                            |
-| ------------------------ | ----------- | -------------------------------------------------- |
-| `NODE_ENV`               | yes         | Use `production` in the pilot environment.         |
-| `PORT`                   | yes         | API HTTP port, default `4000`.                     |
-| `DATABASE_URL`           | yes         | PostgreSQL connection string used by Prisma.       |
-| `INTERNAL_API_KEY`       | yes         | Internal API key for protected operator routes.    |
-| `INTERNAL_ADMIN_API_KEY` | recommended | Admin key for admin/debug-only internal calls.     |
-| `ENABLE_DEBUG_ROUTES`    | recommended | Use `false` in production-like pilot environments. |
+| Variable                 | Required    | Purpose                                                                                    |
+| ------------------------ | ----------- | ------------------------------------------------------------------------------------------ |
+| `NODE_ENV`               | yes         | Use `production` in the pilot environment.                                                 |
+| `PORT`                   | yes         | API HTTP port, default `4000`.                                                             |
+| `DATABASE_URL`           | yes         | PostgreSQL connection string used by Prisma.                                               |
+| `INTERNAL_API_KEY`       | yes         | Internal API key for protected operator routes.                                            |
+| `INTERNAL_ADMIN_API_KEY` | recommended | Admin key for admin/debug-only internal calls.                                             |
+| `ENABLE_DEBUG_ROUTES`    | recommended | Use `false` in production-like pilot environments.                                         |
+| `START_WORKERS_WITH_API` | recommended | Use `false` in production. `true` is only for local/transitional combined API+worker mode. |
 
 Required web values for a pilot:
 
-| Variable                                | Required    | Purpose                                          |
-| --------------------------------------- | ----------- | ------------------------------------------------ |
-| `WEB_AUTH_USERNAME`                     | yes         | Internal dashboard username.                     |
-| `WEB_AUTH_PASSWORD`                     | yes         | Internal dashboard password.                     |
-| `WEB_AUTH_ROLE`                         | yes         | `viewer`, `operator`, or `admin`.                |
-| `WEB_AUTH_SESSION_SECRET`               | yes         | At least 32 random characters.                   |
-| `WEB_AUTH_SESSION_TTL_SECONDS`          | optional    | Session duration, default is 8 hours.            |
-| `INTERNAL_API_BASE_URL`                 | recommended | Server-side web URL for the API `/api` base.     |
-| `ACCOUNT_OPENING_EXPORT_DOWNLOAD_TOKEN` | optional    | Download token for account-opening export files. |
+| Variable                                | Required | Purpose                                                                                                    |
+| --------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SITE_URL`                  | yes      | Canonical public site URL, for example `https://ambemedical.com`.                                          |
+| `WEB_AUTH_USERNAME`                     | yes      | Internal dashboard username.                                                                               |
+| `WEB_AUTH_PASSWORD`                     | yes      | Internal dashboard password.                                                                               |
+| `WEB_AUTH_ROLE`                         | yes      | `viewer`, `operator`, or `admin`.                                                                          |
+| `WEB_AUTH_SESSION_SECRET`               | yes      | At least 32 random characters.                                                                             |
+| `WEB_AUTH_SESSION_TTL_SECONDS`          | optional | Session duration, default is 8 hours.                                                                      |
+| `INTERNAL_API_BASE_URL`                 | yes      | Server-side web URL for the API `/api` base.                                                               |
+| `PUBLIC_TRADE_API_BASE_URL`             | optional | Server-side web URL for the public API `/public` base. Defaults from `INTERNAL_API_BASE_URL` when omitted. |
+| `INTERNAL_API_KEY`                      | yes      | Server-side API key for dashboard API requests.                                                            |
+| `ACCOUNT_OPENING_EXPORT_DOWNLOAD_TOKEN` | optional | Download token for account-opening export files.                                                           |
 
 Do not use `NEXT_PUBLIC_*` for secrets. The dashboard auth secret, dashboard
 password, internal API keys, Graph credentials, Telegram token, OpenAI key, and
 database URL must stay server-side.
+
+Do not use local development or end-to-end smoke credentials in production.
+`NEXT_PUBLIC_INTERNAL_API_BASE_URL` is only for local browser smoke setups; the
+production dashboard uses the server-side `INTERNAL_API_BASE_URL`.
 
 ## Database And Prisma
 
@@ -105,17 +117,51 @@ Start built services:
 
 ```bash
 pnpm --filter @ambe/api start
+pnpm --filter @ambe/api start:worker
 pnpm --filter @ambe/web start
 ```
+
+Run exactly one worker process for each deployment environment. Running polling
+workers in multiple API replicas or multiple worker replicas can duplicate
+Telegram and inbox polling. The API process does not start polling workers by
+default; set `START_WORKERS_WITH_API=true` only when intentionally running a
+single combined local/transitional process.
+
+The public website is served from the web app at `/`. The internal dashboard
+entry points remain `/login` and `/dashboard`. In production, unauthenticated
+requests to `/dashboard` and child routes must redirect to `/login?next=...`.
 
 Local development can use:
 
 ```bash
 pnpm dev
+pnpm --filter @ambe/api worker:dev
 ```
 
 Do not enable live integrations in local development unless the operator knows
 which mailbox, Telegram bot, and database are being used.
+
+For the old single-process local shape, start the API with
+`START_WORKERS_WITH_API=true`. Do not use that mode for production replicas.
+
+## GitHub Actions VPS Deployment
+
+The repository includes a conservative VPS deployment workflow at
+`.github/workflows/deploy-vps.yml`. It runs on pushes to `main` and can also be
+started manually with `workflow_dispatch`.
+
+The workflow requires GitHub Actions secrets for the VPS connection:
+
+- `VPS_HOST`
+- `VPS_USER`
+- `VPS_PORT`
+- `VPS_SSH_KEY`
+- `VPS_APP_DIR`
+
+It does not hardcode a process manager. The VPS must provide an executable
+server-local restart hook at `scripts/vps-restart.sh`. Use
+[`vps-deployment.md`](vps-deployment.md) for the full setup, SSH key, restart
+hook, PM2/systemctl/Docker examples, and manual test procedure.
 
 ## Microsoft Graph Mail
 
@@ -158,6 +204,7 @@ Least-privilege guidance:
 Inbox polling is optional and disabled by default:
 
 ```bash
+START_WORKERS_WITH_API=false
 EMAIL_INBOUND_POLLING_ENABLED=false
 EMAIL_INBOUND_POLLING_INTERVAL_MS=30000
 ```
@@ -189,7 +236,8 @@ It does not mark messages read, ingest messages, persist content, download
 attachment contents, call OpenAI, call Telegram, send email, or upload files.
 
 Do not set `EMAIL_INBOUND_POLLING_ENABLED=true` until an operator has reviewed
-the dry-run output and confirmed the mailbox and sender allowlists.
+the dry-run output, confirmed the mailbox and sender allowlists, and confirmed
+that the dedicated worker process is the only process responsible for polling.
 
 Related safety controls:
 
@@ -243,6 +291,7 @@ Core env vars:
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_INTERNAL_CHAT_ID`
 - `TELEGRAM_DRY_RUN=true`
+- `START_WORKERS_WITH_API=false`
 - `TELEGRAM_POLLING_ENABLED=false`
 - `TELEGRAM_POLLING_INTERVAL_MS=5000`
 - `TELEGRAM_ALLOWED_USER_IDS`
@@ -252,7 +301,8 @@ Pilot guidance:
 
 - Keep `TELEGRAM_DRY_RUN=true` until internal operators confirm message content.
 - Use allowlists before accepting inbound files.
-- Keep polling disabled unless the API process is intended to poll Telegram.
+- Keep polling disabled unless the dedicated worker process is intended to poll
+  Telegram.
 - Telegram publishing remains internal-only and manual.
 
 ## OpenAI Optional Parser
@@ -304,8 +354,21 @@ pnpm build
 
 Dashboard checks:
 
+- `/dashboard` redirects unauthenticated users to `/login?next=%2Fdashboard`
+- `/login` loads the internal sign-in form
 - `/dashboard/setup`
 - `/dashboard/setup/diagnostics`
+
+Public website checks:
+
+- `/`
+- `/about`
+- `/services`
+- `/comparator-sourcing`
+- `/onboarding`
+- `/contact`
+- `/sitemap.xml` includes only public routes
+- `/robots.txt` disallows `/login` and `/dashboard`
 
 API checks:
 
@@ -313,4 +376,7 @@ API checks:
 - `GET /api/system/readiness`
 - `GET /api/system/workers`
 
-The API system endpoints require internal API authentication.
+The API readiness endpoint reports API readiness and whether polling workers are
+expected in the separate worker process. The worker status endpoint reports the
+latest safe polling counters persisted by the API or worker process. The API
+system endpoints require internal API authentication.

@@ -20,6 +20,19 @@ Run it with:
 pnpm --filter @ambe/web test:e2e
 ```
 
+The Trade Access RFQ browser QA is included in `test:e2e` and can be run with
+the focused repo-level command:
+
+```bash
+pnpm qa:trade
+```
+
+It submits a fake `.example.test` buyer RFQ through `/trade-access`, logs in
+with fixture dashboard credentials, confirms the RFQ appears under
+`/dashboard/trade-enquiries`, exercises filters, opens the detail view, and
+updates the internal status. The mock API stores only in-memory deterministic
+fixture data.
+
 Install the Chromium browser used by Playwright if the local machine or CI image
 does not already have it:
 

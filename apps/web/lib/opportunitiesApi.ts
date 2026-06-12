@@ -1,5 +1,6 @@
 import 'server-only';
 
+import type { WebCapability } from './authorisation';
 import { requestInternalJson } from './internalApiRequest';
 
 export type OpportunityListItem = {
@@ -67,10 +68,17 @@ type RegenerateOpportunitiesResult = {
 
 const CALLER_NAME = 'web-dashboard';
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+async function requestJson<T>(
+  path: string,
+  options: {
+    init?: RequestInit;
+    requiredCapability: WebCapability;
+  },
+): Promise<T> {
   return requestInternalJson<T>(path, {
     callerName: CALLER_NAME,
-    init,
+    requiredCapability: options.requiredCapability,
+    init: options.init,
   });
 }
 
@@ -98,6 +106,7 @@ export async function listOpportunities(
   const query = searchParams.toString();
   const payload = await requestJson<{ items: OpportunityListItem[] }>(
     `/opportunities${query ? `?${query}` : ''}`,
+    { requiredCapability: 'opportunities:view' },
   );
   return payload.items;
 }
@@ -118,8 +127,11 @@ export async function updateOpportunityStatus(
   await requestJson<{ item: OpportunityListItem }>(
     `/opportunities/${encodeURIComponent(opportunityId)}/status`,
     {
-      method: 'PATCH',
-      body: JSON.stringify(body),
+      requiredCapability: 'opportunities:manage',
+      init: {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      },
     },
   );
 }
@@ -128,7 +140,10 @@ export async function regenerateOpportunities(): Promise<RegenerateOpportunities
   return requestJson<RegenerateOpportunitiesResult>(
     '/opportunities/regenerate',
     {
-      method: 'POST',
+      requiredCapability: 'opportunities:manage',
+      init: {
+        method: 'POST',
+      },
     },
   );
 }

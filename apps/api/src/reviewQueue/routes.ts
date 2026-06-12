@@ -23,6 +23,8 @@ import { offerWorkflowService } from './workflowService';
 
 export const reviewQueueRouter = Router();
 
+reviewQueueRouter.use(requireInternalOperatorAccess);
+
 const workflowStatusSchema = z.enum([
   'NEW',
   'IN_REVIEW',

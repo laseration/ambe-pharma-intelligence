@@ -35,7 +35,8 @@ const disabledIntegrationEnv = {
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: /pilot-local-runtime-smoke\.spec\.ts/,
+  testMatch:
+    /(pilot-local-runtime-smoke|operator-commercial-workflow)\.spec\.ts/,
   timeout: 60_000,
   expect: {
     timeout: 10_000,
@@ -63,6 +64,7 @@ export default defineConfig({
         ENABLE_DEBUG_ROUTES: 'true',
         INTERNAL_ADMIN_API_KEY: 'local-runtime-e2e-admin-key',
         INTERNAL_API_KEY: 'local-runtime-e2e-internal-api-key',
+        INTERNAL_VIEWER_API_KEY: 'local-runtime-e2e-viewer-api-key',
         LOG_LEVEL: 'warn',
         NODE_ENV: 'test',
         PORT: String(apiPort),
@@ -77,6 +79,7 @@ export default defineConfig({
         ...disabledIntegrationEnv,
         INTERNAL_API_BASE_URL: apiBaseUrl,
         INTERNAL_API_KEY: 'local-runtime-e2e-internal-api-key',
+        INTERNAL_VIEWER_API_KEY: 'local-runtime-e2e-viewer-api-key',
         NEXT_PUBLIC_INTERNAL_API_BASE_URL: apiBaseUrl,
         NODE_ENV: 'test',
         WEB_AUTH_PASSWORD: 'local-runtime-e2e-password',

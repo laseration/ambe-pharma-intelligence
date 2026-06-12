@@ -12,6 +12,7 @@ import {
   summarizeWorkerFreshness,
   type WorkerFreshnessSummary,
 } from '../../../../lib/operatorTrust';
+import { requireCurrentWebCapability } from '../../../../lib/serverWebAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -308,6 +309,8 @@ function WorkerDiagnostics({ workers }: { workers: PollingWorkerStatus[] }) {
 }
 
 export default async function DiagnosticsPage() {
+  await requireCurrentWebCapability('system:admin');
+
   const [readinessResult, workersResult] = await Promise.allSettled([
     getSystemReadinessReport(),
     getPollingWorkerStatuses(),

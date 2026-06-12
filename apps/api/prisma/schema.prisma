@@ -302,6 +302,32 @@ enum TradeMessagePurpose {
   INTERNAL_SUMMARY
 }
 
+enum BuyerTradeEnquiryStatus {
+  NEW
+  REVIEWING
+  MATCHED
+  QUOTED
+  CLOSED
+  REJECTED
+  DUPLICATE
+  SPAM
+  ARCHIVED
+}
+
+enum BuyerTradeEnquiryPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum SupplierDraftOpportunityStatus {
+  DRAFT
+  REVIEWING
+  APPROVED_INTERNAL
+  REJECTED
+}
+
 enum AutomationGlobalMode {
   OBSERVE_ONLY
   INTERNAL_SIGNALS_ONLY
@@ -1243,6 +1269,62 @@ model TradeMessageDraft {
 
   @@index([tradeOpportunityId, direction, status, updatedAt])
   @@index([tradeOpportunityId, messagePurpose, updatedAt])
+}
+
+model BuyerTradeEnquiry {
+  id                 String                  @id @default(cuid())
+  status             BuyerTradeEnquiryStatus @default(NEW)
+  priority           BuyerTradeEnquiryPriority @default(NORMAL)
+  companyName        String
+  contactName        String
+  contactEmail       String
+  contactPhone       String?
+  businessType       String?
+  country            String?
+  productName        String
+  strength           String?
+  packSize           String?
+  quantityRequired   String?
+  targetMarket       String?
+  requiredBy         DateTime?
+  documentationNotes String?
+  additionalNotes    String?
+  source             String                  @default("PUBLIC_TRADE_ACCESS")
+  reviewNotes        String?
+  statusUpdatedAt    DateTime?
+  statusUpdatedBy    String?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  @@index([status, priority, createdAt])
+  @@index([contactEmail, createdAt])
+  @@index([companyName, createdAt])
+}
+
+model SupplierDraftOpportunity {
+  id                  String                         @id @default(cuid())
+  status              SupplierDraftOpportunityStatus @default(DRAFT)
+  productName         String
+  strength            String?
+  packSize            String?
+  quantity            String?
+  expiry              DateTime?
+  storage             String?
+  country             String?
+  supplierPrice       Decimal?                       @db.Decimal(12, 2)
+  currencyCode        String?
+  confidence          Float                          @default(0)
+  expiryWarning       String?
+  reviewWarning       String?
+  warnings            Json?
+  rawRow              Json?
+  sourceType          String                         @default("SUPPLIER_LIST_IMPORT")
+  sourceImportBatchId String?
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+
+  @@index([status, createdAt])
+  @@index([sourceImportBatchId])
 }
 
 model AutomationReadinessPolicy {

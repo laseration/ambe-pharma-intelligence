@@ -6,23 +6,44 @@ import {
   buildAccountOpeningFieldMappingReview,
 } from '../fieldMapping';
 import type { AccountOpeningCompletionDraft } from '../draft';
+import { evaluateAccountOpeningAutofillPolicy } from '../policy';
+
+function policyFields(input: { key: string; supplierLabel: string }) {
+  const policy = evaluateAccountOpeningAutofillPolicy({
+    fieldKey: input.key,
+    fieldLabel: input.supplierLabel,
+  });
+
+  return {
+    fieldClass: policy.fieldClass,
+    policyDecision: policy.policyDecision,
+    riskCategory: policy.riskCategory,
+    policyReason: policy.reason,
+    signatoryRoutingNote: policy.defaultSignatoryRoutingNote,
+    signingNote: policy.signingNote,
+  };
+}
 
 function buildDraft(): AccountOpeningCompletionDraft {
   return {
     status: 'BLOCKED',
     overallConfidence: 'BLOCKED',
     isStored: true,
-    profileId: 'ambe-master-profile',
-    profileVersion: '2026-05-15',
+    profileId: 'ambe-account-opening-profile',
+    profileVersion: '2026-06-09',
     generatedAt: '2026-05-15T10:00:00.000Z',
     fields: [
       {
         key: 'legalCompanyName',
         supplierLabel: 'Legal company name',
-        proposedValue: 'AMBE LTD',
+        proposedValue: 'Example configured company',
         valueSource: 'AMBE_MASTER_PROFILE',
         confidence: 'HIGH',
         riskLevel: 'LOW',
+        ...policyFields({
+          key: 'legalCompanyName',
+          supplierLabel: 'Legal company name',
+        }),
         requiresReview: false,
         reviewReason: null,
         evidence: [],
@@ -34,6 +55,10 @@ function buildDraft(): AccountOpeningCompletionDraft {
         valueSource: 'SYSTEM_PLACEHOLDER',
         confidence: 'LOW',
         riskLevel: 'HIGH',
+        ...policyFields({
+          key: 'responsiblePerson',
+          supplierLabel: 'Responsible Person',
+        }),
         requiresReview: true,
         reviewReason: 'Regulatory field requires reviewer confirmation.',
         evidence: [],
@@ -45,6 +70,10 @@ function buildDraft(): AccountOpeningCompletionDraft {
         valueSource: 'SYSTEM_PLACEHOLDER',
         confidence: 'BLOCKED',
         riskLevel: 'BLOCKED',
+        ...policyFields({
+          key: 'directDebitOrBankAuthority',
+          supplierLabel: 'Direct Debit or bank authority',
+        }),
         requiresReview: true,
         reviewReason: 'Direct Debit cannot be auto-filled.',
         evidence: [],
@@ -56,6 +85,10 @@ function buildDraft(): AccountOpeningCompletionDraft {
         valueSource: 'SYSTEM_PLACEHOLDER',
         confidence: 'BLOCKED',
         riskLevel: 'BLOCKED',
+        ...policyFields({
+          key: 'bankDetails',
+          supplierLabel: 'Bank details',
+        }),
         requiresReview: true,
         reviewReason: 'Bank details are blocked.',
         evidence: [],
@@ -67,6 +100,10 @@ function buildDraft(): AccountOpeningCompletionDraft {
         valueSource: 'NOT_PROVIDED',
         confidence: 'BLOCKED',
         riskLevel: 'BLOCKED',
+        ...policyFields({
+          key: 'signature',
+          supplierLabel: 'Signature',
+        }),
         requiresReview: true,
         reviewReason: 'Signing is outside this workflow slice.',
         evidence: [],
@@ -80,6 +117,8 @@ function buildDraft(): AccountOpeningCompletionDraft {
       safeToAutoFill: false,
     },
     safetyNotes: ['Review draft only.'],
+    riskFlags: [],
+    signingNotes: [],
   };
 }
 
@@ -93,7 +132,7 @@ test('field mapping review classifies safe, review-required, and blocked candida
         sourceLabel: 'supplier form',
         fileName: 'account-opening.pdf',
         safeSnippet:
-          'Company Name, Responsible Person, Direct Debit Mandate, Bank Account Number, Sort Code and Director Signature are requested.',
+          'Company Name, Responsible Person, Direct Debit Mandate, Bank Account Number, Sort Code, Director Signature and Date of Signature are requested.',
       },
     ],
     now: new Date('2026-05-16T10:00:00.000Z'),
@@ -114,14 +153,24 @@ test('field mapping review classifies safe, review-required, and blocked candida
   const signature = review.mappings.find(
     (mapping) => mapping.supplierFieldLabel === 'Director Signature',
   );
+  const signatureDate = review.mappings.find(
+    (mapping) => mapping.supplierFieldLabel === 'Date of Signature',
+  );
 
   assert.equal(companyName?.status, 'MAPPED_SAFE');
-  assert.equal(companyName?.proposedValue, 'AMBE LTD');
-  assert.equal(responsiblePerson?.status, 'MAPPED_REVIEW_REQUIRED');
-  assert.equal(responsiblePerson?.riskLevel, 'HIGH');
+  assert.equal(companyName?.proposedValue, 'Example configured company');
+  assert.equal(responsiblePerson?.status, 'BLOCKED');
+  assert.equal(responsiblePerson?.proposedValue, null);
+  assert.equal(responsiblePerson?.riskLevel, 'BLOCKED');
   assert.equal(directDebit?.status, 'BLOCKED');
+  assert.equal(directDebit?.proposedValue, null);
   assert.equal(bankAccount?.status, 'BLOCKED');
+  assert.equal(bankAccount?.proposedValue, null);
   assert.equal(signature?.status, 'BLOCKED');
+  assert.equal(signature?.proposedValue, null);
+  assert.equal(signatureDate?.status, 'BLOCKED');
+  assert.equal(signatureDate?.proposedValue, null);
+  assert.equal(signatureDate?.fieldClass, 'SIGNATURE');
   assert.equal(review.summary.safeToFillSupplierForms, false);
 });
 
@@ -144,6 +193,7 @@ test('operator mapping cannot downgrade bank details to safe and redacts notes',
   assert.equal(candidate.confidence, 'BLOCKED');
   assert.equal(candidate.riskLevel, 'BLOCKED');
   assert.equal(candidate.requiresReview, true);
+  assert.equal(candidate.proposedValue, null);
   assert.doesNotMatch(serialized, /12345678/);
   assert.doesNotMatch(serialized, /12-34-56/);
   assert.match(serialized, /\[redacted bank account number\]/);

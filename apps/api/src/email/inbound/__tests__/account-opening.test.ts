@@ -24,7 +24,11 @@ test('inbound email service queues account-opening forms for review before impor
       importCalled = true;
       throw new Error('import should not be called');
     },
-    parseUploadedFile: () => ({ rows: [], warnings: [] }),
+    parseUploadedFile: async () => ({
+      rows: [],
+      warnings: [],
+      detectedColumns: [],
+    }),
     parseTextMessage: async () => ({
       totalLines: 0,
       candidateLines: 0,
@@ -122,7 +126,11 @@ test('duplicate account-opening inbound message upserts one durable case and cre
     importSales: async () => {
       throw new Error('sales import should not run for account-opening forms');
     },
-    parseUploadedFile: () => ({ rows: [], warnings: [] }),
+    parseUploadedFile: async () => ({
+      rows: [],
+      warnings: [],
+      detectedColumns: [],
+    }),
     parseTextMessage: async () => ({
       totalLines: 0,
       candidateLines: 0,

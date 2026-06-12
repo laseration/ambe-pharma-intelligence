@@ -15,11 +15,31 @@ import {
   buildAccountOpeningReviewExportPack,
   getAccountOpeningReviewExportFile,
 } from '../reviewExport';
+import { evaluateAccountOpeningAutofillPolicy } from '../policy';
 import type {
   AccountOpeningCaseDetail,
   AccountOpeningMissingInfoResponses,
   AccountOpeningReadinessReport,
 } from '../service';
+
+function accountOpeningPolicyFields(input: {
+  key: string;
+  supplierLabel: string;
+}) {
+  const policy = evaluateAccountOpeningAutofillPolicy({
+    fieldKey: input.key,
+    fieldLabel: input.supplierLabel,
+  });
+
+  return {
+    fieldClass: policy.fieldClass,
+    policyDecision: policy.policyDecision,
+    riskCategory: policy.riskCategory,
+    policyReason: policy.reason,
+    signatoryRoutingNote: policy.defaultSignatoryRoutingNote,
+    signingNote: policy.signingNote,
+  };
+}
 
 function overrideEnv(context: TestContext, overrides: Partial<typeof env>) {
   const snapshot = Object.fromEntries(
@@ -56,6 +76,8 @@ function buildCaseDetail(
     detectedRoles: [],
     escalationNotes: [],
     riskFlags: ['Direct Debit mandate'],
+    policyRiskFlags: [],
+    policySigningNotes: [],
     missingFields: ['companyNumber'],
     reviewerChecks: [
       'Leave all signature fields blank unless approved by a human reviewer.',
@@ -95,8 +117,8 @@ function buildCaseDetail(
       status: 'PREVIEW',
       overallConfidence: 'BLOCKED',
       isStored: false,
-      profileId: 'ambe-master-profile',
-      profileVersion: '2026-05-15',
+      profileId: 'ambe-account-opening-profile',
+      profileVersion: '2026-06-09',
       generatedAt: '2026-05-15T00:00:00.000Z',
       fields: [],
       summary: {
@@ -107,6 +129,8 @@ function buildCaseDetail(
         safeToAutoFill: false,
       },
       safetyNotes: [],
+      riskFlags: [],
+      signingNotes: [],
     },
     fieldMappings: {
       status: 'PREVIEW',
@@ -123,6 +147,38 @@ function buildCaseDetail(
         safeToFillSupplierForms: false,
       },
       safetyNotes: [],
+    },
+    lifecycle: {
+      legacyStatus: 'PENDING_REVIEW',
+      currentStage: 'NEEDS_REVIEW',
+      currentLabel: 'Needs review',
+      nextAction: 'Review missing information and blocked fields.',
+      steps: [],
+      compatibilityNotes: [
+        'Persisted AccountOpeningStatus values are preserved.',
+      ],
+      safety: {
+        backwardsCompatibleStatusMapping: true,
+        noAutoSign: true,
+        noAutoSubmit: true,
+        noOutboundSend: true,
+      },
+    },
+    documentClassifications: [],
+    companyProfile: {
+      profileId: 'ambe-account-opening-profile',
+      profileVersion: '2026-06-09',
+      safeConfiguredFieldCount: 0,
+      missingProfileFields: ['Legal company name'],
+      reviewRequiredFields: ['Legal company name'],
+      blockedFields: ['Bank details'],
+      warnings: ['Some profile fields are missing and remain To be confirmed.'],
+      safety: {
+        valuesInvented: false,
+        bankDetailsIncluded: false,
+        directorDetailsIncluded: false,
+        regulatoryIdentifiersRequireReview: true,
+      },
     },
     latestFillPreview: null,
     latestBinaryFillPreview: null,
@@ -478,6 +534,11 @@ async function startServer(
 }
 
 test('account-opening routes read a case without exposing raw form text fields', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
   const baseUrl = await startServer(t, {
     getCaseDetail: async () => buildCaseDetail(),
     generateDraft: async () => buildCaseDetail(),
@@ -485,7 +546,11 @@ test('account-opening routes read a case without exposing raw form text fields',
     updateStatus: async () => buildCaseDetail(),
   });
 
-  const response = await fetch(`${baseUrl}/account-opening/case-1`);
+  const response = await fetch(`${baseUrl}/account-opening/case-1`, {
+    headers: {
+      'x-internal-api-key': 'test-secret',
+    },
+  });
   const payload = (await response.json()) as { item: AccountOpeningCaseDetail };
 
   assert.equal(response.status, 200);
@@ -694,7 +759,11 @@ test('account-opening draft routes return safe draft and protect generation', as
     updateStatus: async () => buildCaseDetail(),
   });
 
-  const readResponse = await fetch(`${baseUrl}/account-opening/case-1/draft`);
+  const readResponse = await fetch(`${baseUrl}/account-opening/case-1/draft`, {
+    headers: {
+      'x-internal-api-key': 'test-secret',
+    },
+  });
   const generateResponse = await fetch(
     `${baseUrl}/account-opening/case-1/generate-draft`,
     {
@@ -758,6 +827,10 @@ test('account-opening field mapping routes require operator access and save mapp
           requiresReview: false,
           blockedReason: null,
           reviewReason: null,
+          ...accountOpeningPolicyFields({
+            key: 'legalCompanyName',
+            supplierLabel: 'Company Name',
+          }),
           operatorNote: null,
         },
       ],
@@ -879,6 +952,10 @@ test('account-opening fill preview routes require operator access and allowliste
           requiresReview: false,
           blockedReason: null,
           reviewReason: null,
+          ...accountOpeningPolicyFields({
+            key: 'legalCompanyName',
+            supplierLabel: 'Company Name',
+          }),
           operatorNote: null,
         },
       ],
@@ -1359,10 +1436,14 @@ test('account-opening review export routes return safe pack and downloadable fil
         {
           key: 'directDebit',
           supplierLabel: 'Direct Debit',
-          proposedValue: 'To be confirmed in secure review',
-          valueSource: 'SYSTEM_PLACEHOLDER',
+          proposedValue: null,
+          valueSource: 'NOT_PROVIDED',
           confidence: 'BLOCKED',
           riskLevel: 'BLOCKED',
+          ...accountOpeningPolicyFields({
+            key: 'directDebit',
+            supplierLabel: 'Direct Debit',
+          }),
           requiresReview: true,
           reviewReason: 'Direct Debit cannot be auto-filled.',
           evidence: [
