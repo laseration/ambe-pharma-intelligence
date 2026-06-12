@@ -11,6 +11,44 @@ export type AccountOpeningSigningNotes = {
   summary: string;
 };
 
+export type AccountOpeningFieldClass =
+  | 'SAFE_AUTOFILL'
+  | 'REVIEW_REQUIRED'
+  | 'MUST_STAY_BLANK'
+  | 'SIGNATURE'
+  | 'BANKING'
+  | 'DIRECT_DEBIT'
+  | 'CREDIT_RISK'
+  | 'LEGAL_RISK'
+  | 'REGULATORY_DECLARATION'
+  | 'UNKNOWN';
+
+export type AccountOpeningPolicyDecisionKind =
+  | 'AUTOFILL_ALLOWED'
+  | 'REVIEW_REQUIRED'
+  | 'MUST_STAY_BLANK';
+
+export type AccountOpeningPolicyRiskCategory =
+  | 'LOW_RISK_COMPANY_PROFILE'
+  | 'SIGNING'
+  | 'BANKING'
+  | 'DIRECT_DEBIT'
+  | 'CREDIT_RISK'
+  | 'LEGAL_RISK'
+  | 'REGULATORY'
+  | 'UNKNOWN';
+
+export type AccountOpeningPolicyRiskFlag = {
+  fieldKey: string;
+  supplierLabel: string;
+  fieldClass: AccountOpeningFieldClass;
+  policyDecision: AccountOpeningPolicyDecisionKind;
+  riskCategory: AccountOpeningPolicyRiskCategory;
+  reason: string;
+  signatoryRoutingNote: string | null;
+  signingNote: string | null;
+};
+
 export type AccountOpeningMissingInfoResponses = {
   website?: string | null;
   numberOfEmployees?: string | null;
@@ -36,6 +74,12 @@ export type AccountOpeningDraftField = {
     | 'NOT_PROVIDED';
   confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'BLOCKED';
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'BLOCKED';
+  fieldClass: AccountOpeningFieldClass;
+  policyDecision: AccountOpeningPolicyDecisionKind;
+  riskCategory: AccountOpeningPolicyRiskCategory;
+  policyReason: string;
+  signatoryRoutingNote: string | null;
+  signingNote: string | null;
   requiresReview: boolean;
   reviewReason: string | null;
   evidence: Array<{
@@ -66,6 +110,8 @@ export type AccountOpeningCompletionDraft = {
     safeToAutoFill: boolean;
   };
   safetyNotes: string[];
+  riskFlags: AccountOpeningPolicyRiskFlag[];
+  signingNotes: string[];
 };
 
 export type AccountOpeningLifecycleStage =
@@ -170,6 +216,12 @@ export type AccountOpeningFieldMapping = {
   requiresReview: boolean;
   blockedReason: string | null;
   reviewReason: string | null;
+  fieldClass: AccountOpeningFieldClass;
+  policyDecision: AccountOpeningPolicyDecisionKind;
+  riskCategory: AccountOpeningPolicyRiskCategory;
+  policyReason: string;
+  signatoryRoutingNote: string | null;
+  signingNote: string | null;
   operatorNote: string | null;
 };
 
@@ -440,6 +492,8 @@ export type AccountOpeningCaseDetail = {
   detectedRoles: string[];
   escalationNotes: string[];
   riskFlags: string[];
+  policyRiskFlags: AccountOpeningPolicyRiskFlag[];
+  policySigningNotes: string[];
   missingFields: string[];
   reviewerChecks: string[];
   signingNotes: AccountOpeningSigningNotes;

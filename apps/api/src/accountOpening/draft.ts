@@ -2,6 +2,12 @@ import {
   getAccountOpeningMasterProfile,
   type AccountOpeningMasterProfile,
 } from './masterProfile';
+import {
+  evaluateAccountOpeningAutofillPolicy,
+  type AccountOpeningFieldClass,
+  type AccountOpeningPolicyDecisionKind,
+  type AccountOpeningPolicyRiskCategory,
+} from './policy';
 
 export type AccountOpeningDraftValueSource =
   | 'AMBE_MASTER_PROFILE'
@@ -39,9 +45,26 @@ export type AccountOpeningDraftField = {
   valueSource: AccountOpeningDraftValueSource;
   confidence: AccountOpeningDraftConfidence;
   riskLevel: AccountOpeningDraftRiskLevel;
+  fieldClass: AccountOpeningFieldClass;
+  policyDecision: AccountOpeningPolicyDecisionKind;
+  riskCategory: AccountOpeningPolicyRiskCategory;
+  policyReason: string;
+  signatoryRoutingNote: string | null;
+  signingNote: string | null;
   requiresReview: boolean;
   reviewReason: string | null;
   evidence: AccountOpeningDraftEvidence[];
+};
+
+export type AccountOpeningPolicyRiskFlag = {
+  fieldKey: string;
+  supplierLabel: string;
+  fieldClass: AccountOpeningFieldClass;
+  policyDecision: AccountOpeningPolicyDecisionKind;
+  riskCategory: AccountOpeningPolicyRiskCategory;
+  reason: string;
+  signatoryRoutingNote: string | null;
+  signingNote: string | null;
 };
 
 export type AccountOpeningCompletionDraft = {
@@ -60,6 +83,8 @@ export type AccountOpeningCompletionDraft = {
     safeToAutoFill: boolean;
   };
   safetyNotes: string[];
+  riskFlags: AccountOpeningPolicyRiskFlag[];
+  signingNotes: string[];
 };
 
 export type AccountOpeningDraftSourceEvidenceInput = {
@@ -183,22 +208,50 @@ function baseField(input: {
   riskLevel?: AccountOpeningDraftRiskLevel;
   confidence?: AccountOpeningDraftConfidence;
   requiresReview?: boolean;
+  policy?: ReturnType<typeof evaluateAccountOpeningAutofillPolicy>;
 }): AccountOpeningDraftField {
+  const policy =
+    input.policy ??
+    evaluateAccountOpeningAutofillPolicy({
+      fieldKey: input.key,
+      fieldLabel: input.supplierLabel,
+    });
   const placeholder = isPlaceholder(input.proposedValue);
-  const confidence = input.confidence ?? (placeholder ? 'LOW' : 'HIGH');
-  const riskLevel = input.riskLevel ?? (placeholder ? 'MEDIUM' : 'LOW');
-  const requiresReview = input.requiresReview ?? placeholder;
+  const confidence =
+    input.confidence ??
+    (policy.policyDecision === 'MUST_STAY_BLANK'
+      ? 'BLOCKED'
+      : policy.policyDecision === 'REVIEW_REQUIRED' || placeholder
+      ? 'LOW'
+      : 'HIGH');
+  const riskLevel =
+    input.riskLevel ??
+    (policy.policyDecision === 'MUST_STAY_BLANK'
+      ? 'BLOCKED'
+      : policy.policyDecision === 'REVIEW_REQUIRED' || placeholder
+      ? 'MEDIUM'
+      : 'LOW');
+  const requiresReview =
+    input.requiresReview ??
+    (policy.policyDecision !== 'AUTOFILL_ALLOWED' || placeholder);
 
   return {
     key: input.key,
     supplierLabel: input.supplierLabel,
-    proposedValue: input.proposedValue,
-    valueSource: input.valueSource,
+    proposedValue: policy.leaveBlank ? null : input.proposedValue,
+    valueSource: policy.leaveBlank ? 'NOT_PROVIDED' : input.valueSource,
     confidence,
     riskLevel,
+    fieldClass: policy.fieldClass,
+    policyDecision: policy.policyDecision,
+    riskCategory: policy.riskCategory,
+    policyReason: policy.reason,
+    signatoryRoutingNote: policy.defaultSignatoryRoutingNote,
+    signingNote: policy.signingNote,
     requiresReview,
     reviewReason:
       input.reviewReason ??
+      (policy.policyDecision !== 'AUTOFILL_ALLOWED' ? policy.reason : null) ??
       (placeholder
         ? 'Profile value is a placeholder and must be confirmed before completion.'
         : null),
@@ -262,13 +315,39 @@ function blockedField(input: {
   reviewReason: string;
   evidence: AccountOpeningDraftEvidence[];
 }): AccountOpeningDraftField {
+  const policy = evaluateAccountOpeningAutofillPolicy({
+    fieldKey: input.key,
+    fieldLabel: input.supplierLabel,
+  });
+
   return baseField({
     ...input,
-    valueSource: input.proposedValue ? 'SYSTEM_PLACEHOLDER' : 'NOT_PROVIDED',
+    proposedValue: null,
+    valueSource: 'NOT_PROVIDED',
     confidence: 'BLOCKED',
     riskLevel: 'BLOCKED',
     requiresReview: true,
+    policy,
   });
+}
+
+function riskFlagFromField(
+  field: AccountOpeningDraftField,
+): AccountOpeningPolicyRiskFlag | null {
+  if (field.policyDecision === 'AUTOFILL_ALLOWED') {
+    return null;
+  }
+
+  return {
+    fieldKey: field.key,
+    supplierLabel: field.supplierLabel,
+    fieldClass: field.fieldClass,
+    policyDecision: field.policyDecision,
+    riskCategory: field.riskCategory,
+    reason: field.reviewReason ?? field.policyReason,
+    signatoryRoutingNote: field.signatoryRoutingNote,
+    signingNote: field.signingNote,
+  };
 }
 
 export function buildAccountOpeningCompletionDraft(
@@ -524,6 +603,16 @@ export function buildAccountOpeningCompletionDraft(
         : 'READY_FOR_REVIEW';
   const overallConfidence =
     blockedFields > 0 ? 'BLOCKED' : reviewRequiredFields > 0 ? 'LOW' : 'HIGH';
+  const riskFlags = fields
+    .map(riskFlagFromField)
+    .filter((flag): flag is AccountOpeningPolicyRiskFlag => Boolean(flag));
+  const signingNotes = Array.from(
+    new Set(
+      fields
+        .flatMap((field) => [field.signatoryRoutingNote, field.signingNote])
+        .filter((note): note is string => Boolean(note)),
+    ),
+  );
 
   return {
     status,
@@ -545,5 +634,7 @@ export function buildAccountOpeningCompletionDraft(
       'Do not sign, send, submit, or complete blocked sections from this draft.',
       'Bank account numbers and sort codes are redacted and must stay in secure review.',
     ],
+    riskFlags,
+    signingNotes,
   };
 }
