@@ -44,7 +44,7 @@ export default defineConfig({
         OPENAI_API_KEY: '',
         TELEGRAM_POLLING_ENABLED: 'false',
         WEB_AUTH_PASSWORD: 'local-e2e-password',
-        WEB_AUTH_ROLE: 'admin',
+        WEB_AUTH_ROLE: 'operator',
         WEB_AUTH_SESSION_SECRET: 'local-e2e-session-secret-that-is-long-enough',
         WEB_AUTH_SESSION_TTL_SECONDS: '3600',
         WEB_AUTH_USERNAME: 'pilot.operator',
