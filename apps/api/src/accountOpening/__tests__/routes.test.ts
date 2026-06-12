@@ -108,6 +108,23 @@ function buildCaseDetail(
     storageLastAttemptAt: null,
     storageFolderUrl: null,
     sourceAttachmentNames: ['account-opening-form.pdf'],
+    sourceProvenance: {
+      sourceFingerprint: 'fingerprint-1',
+      messageId: '<message-1>',
+      subject: 'Account opening form',
+      senderEmail: 'forms@supplier.co.uk',
+      senderDomain: 'supplier.co.uk',
+      receivedAt: '2026-05-12T09:00:00.000Z',
+      attachmentCount: 0,
+      attachments: [],
+      safety: {
+        rawEmailBodyIncluded: false,
+        rawExtractedTextIncluded: false,
+        attachmentBytesIncluded: false,
+        replayUsesStoredSafeEvidence: true,
+      },
+    },
+    processingRuns: [],
     draftStatus: null,
     draftVersion: null,
     draftGeneratedAt: null,
@@ -262,6 +279,7 @@ async function startServer(
   const routerDependencies: Parameters<typeof createAccountOpeningRouter>[0] = {
     getCaseDetail: async () => defaultDetail,
     generateDraft: async () => defaultDetail,
+    reprocessFromStoredSource: async () => defaultDetail,
     getReadiness: async () => buildReadinessReport(),
     getFieldMappings: async () => defaultDetail.fieldMappings,
     saveFieldMappings: async () => defaultDetail.fieldMappings,
@@ -792,6 +810,112 @@ test('account-opening draft routes return safe draft and protect generation', as
   assert.equal(generatePayload.draft.isStored, true);
   assert.equal(generatedInputs[0]?.id, 'case-1');
   assert.equal(generatedInputs[0]?.actorIdentifier, 'route-draft-test');
+});
+
+test('account-opening stored-source replay route requires operator access and returns provenance', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
+  const replayInputs: Array<{
+    id: string;
+    actorType?: string | null;
+    actorIdentifier?: string | null;
+  }> = [];
+  const replayDetail = buildCaseDetail({
+    sourceProvenance: {
+      ...buildCaseDetail().sourceProvenance,
+      attachmentCount: 1,
+      attachments: [
+        {
+          sourceEvidenceId: 'evidence-1',
+          originalFormId: 'original-form-1',
+          fileName: 'account-opening-form.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 12000,
+          checksumSha256: 'text-hash-1',
+          extractedTextHash: 'text-hash-1',
+          extractionMethod: 'PDF_TEXT',
+          rawFileAvailable: false,
+          classification: 'DIRECT_DEBIT_MANDATE',
+          classificationConfidence: 'HIGH',
+          replayPointer: {
+            type: 'STORED_SOURCE_EVIDENCE',
+            label: 'Stored source evidence metadata and safe snippet',
+            storageProvider: null,
+            storageDriveItemId: null,
+            storageFileUrl: null,
+            canReplayFromStoredSource: true,
+            rawBytesStored: false,
+          },
+          warnings: [],
+        },
+      ],
+    },
+    processingRuns: [
+      {
+        id: 'processing-run-1',
+        triggerType: 'MANUAL_REPROCESS',
+        status: 'COMPLETED',
+        startedAt: '2026-05-12T13:00:00.000Z',
+        finishedAt: '2026-05-12T13:00:01.000Z',
+        warningSummary: null,
+        errorSummary: null,
+        diagnostics: {
+          replaySource: 'STORED_SOURCE_EVIDENCE',
+          sourceEvidenceCount: 1,
+          attachmentEvidenceCount: 1,
+          outboundActionsTriggered: false,
+          approvalStatusChanged: false,
+        },
+        actorType: 'OPERATOR',
+        actorIdentifier: 'route-replay-test',
+      },
+    ],
+  });
+  const baseUrl = await startServer(t, {
+    reprocessFromStoredSource: async (input) => {
+      replayInputs.push(input);
+      return replayDetail;
+    },
+  });
+
+  const unauthorizedResponse = await fetch(
+    `${baseUrl}/account-opening/case-1/reprocess-stored-source`,
+    { method: 'POST' },
+  );
+  const response = await fetch(
+    `${baseUrl}/account-opening/case-1/reprocess-stored-source`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-api-key': 'test-secret',
+      },
+      body: JSON.stringify({
+        actorType: 'OPERATOR',
+        actorIdentifier: 'route-replay-test',
+      }),
+    },
+  );
+  const payload = (await response.json()) as { item: AccountOpeningCaseDetail };
+
+  assert.equal(unauthorizedResponse.status, 401);
+  assert.equal(response.status, 200);
+  assert.equal(replayInputs[0]?.id, 'case-1');
+  assert.equal(replayInputs[0]?.actorIdentifier, 'route-replay-test');
+  assert.equal(payload.item.sourceProvenance.attachmentCount, 1);
+  assert.equal(
+    payload.item.sourceProvenance.attachments[0]?.replayPointer
+      .canReplayFromStoredSource,
+    true,
+  );
+  assert.equal(payload.item.processingRuns[0]?.triggerType, 'MANUAL_REPROCESS');
+  assert.equal(payload.item.processingRuns[0]?.status, 'COMPLETED');
+  assert.equal(payload.item.lifecycle.safety.noAutoSign, true);
+  assert.equal(payload.item.lifecycle.safety.noAutoSubmit, true);
+  assert.equal(payload.item.lifecycle.safety.noOutboundSend, true);
 });
 
 test('account-opening field mapping routes require operator access and save mappings', async (t) => {

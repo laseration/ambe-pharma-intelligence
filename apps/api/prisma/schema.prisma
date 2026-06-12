@@ -679,12 +679,33 @@ model AccountOpeningCase {
   binaryFillPreviews    AccountOpeningBinaryFillPreview[]
   completedFormFilings  AccountOpeningCompletedFormFiling[]
   originalDocuments     AccountOpeningOriginalDocument[]
+  processingRuns        AccountOpeningProcessingRun[]
   createdAt             DateTime                       @default(now())
   updatedAt             DateTime                       @updatedAt
 
   @@index([status, updatedAt])
   @@index([messageId])
   @@index([senderEmail])
+}
+
+model AccountOpeningProcessingRun {
+  id                   String             @id @default(cuid())
+  accountOpeningCaseId String
+  triggerType          String
+  status               String
+  startedAt            DateTime
+  finishedAt           DateTime?
+  warningSummary       String?
+  errorSummary         String?
+  diagnostics          Json?
+  actorType            String             @default("SYSTEM")
+  actorIdentifier      String?
+  accountOpeningCase   AccountOpeningCase @relation(fields: [accountOpeningCaseId], references: [id], onDelete: Cascade)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([accountOpeningCaseId, startedAt])
+  @@index([triggerType, status, startedAt])
 }
 
 model AccountOpeningCaseEvent {
