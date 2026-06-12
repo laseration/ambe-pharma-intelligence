@@ -15,6 +15,26 @@ import {
   type AccountOpeningDriveArchiveConfig,
 } from '../driveArchive';
 import type { AccountOpeningCaseDetail } from '../service';
+import { evaluateAccountOpeningAutofillPolicy } from '../policy';
+
+function accountOpeningPolicyFields(input: {
+  key: string;
+  supplierLabel: string;
+}) {
+  const policy = evaluateAccountOpeningAutofillPolicy({
+    fieldKey: input.key,
+    fieldLabel: input.supplierLabel,
+  });
+
+  return {
+    fieldClass: policy.fieldClass,
+    policyDecision: policy.policyDecision,
+    riskCategory: policy.riskCategory,
+    policyReason: policy.reason,
+    signatoryRoutingNote: policy.defaultSignatoryRoutingNote,
+    signingNote: policy.signingNote,
+  };
+}
 
 const enabledConfig: AccountOpeningDriveArchiveConfig = {
   provider: 'SHAREPOINT',
@@ -63,6 +83,8 @@ function buildDetail(
       'bank authority signature',
       'Guarantee',
     ],
+    policyRiskFlags: [],
+    policySigningNotes: [],
     missingFields: ['companyNumber', 'vatNumber'],
     reviewerChecks: [
       'Check whether the supplier specifically requires a director-only signature.',
@@ -186,11 +208,14 @@ function buildDetail(
         {
           key: 'bankDetails',
           supplierLabel: 'Bank details',
-          proposedValue:
-            'To be confirmed in secure review. Bank account and sort code details must not be exposed in dashboard drafts.',
-          valueSource: 'SYSTEM_PLACEHOLDER',
+          proposedValue: null,
+          valueSource: 'NOT_PROVIDED',
           confidence: 'BLOCKED',
           riskLevel: 'BLOCKED',
+          ...accountOpeningPolicyFields({
+            key: 'bankDetails',
+            supplierLabel: 'Bank details',
+          }),
           requiresReview: true,
           reviewReason: 'Bank details are blocked.',
           evidence: [
@@ -212,6 +237,8 @@ function buildDetail(
       safetyNotes: [
         'Do not sign, send, submit, or complete blocked sections from this draft.',
       ],
+      riskFlags: [],
+      signingNotes: [],
     },
     fieldMappings: {
       status: 'PREVIEW',

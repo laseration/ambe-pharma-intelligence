@@ -42,6 +42,26 @@ import {
   MAX_ACCOUNT_OPENING_BINARY_FILL_ORIGINAL_BYTES,
   MAX_ACCOUNT_OPENING_BINARY_FILL_PREVIEW_BYTES,
 } from '../binaryFillPreview';
+import { evaluateAccountOpeningAutofillPolicy } from '../policy';
+
+function accountOpeningPolicyFields(input: {
+  key: string;
+  supplierLabel: string;
+}) {
+  const policy = evaluateAccountOpeningAutofillPolicy({
+    fieldKey: input.key,
+    fieldLabel: input.supplierLabel,
+  });
+
+  return {
+    fieldClass: policy.fieldClass,
+    policyDecision: policy.policyDecision,
+    riskCategory: policy.riskCategory,
+    policyReason: policy.reason,
+    signatoryRoutingNote: policy.defaultSignatoryRoutingNote,
+    signingNote: policy.signingNote,
+  };
+}
 
 test('detectAccountOpeningEmail detects account-opening body and attachment names', () => {
   const result = detectAccountOpeningEmail({
@@ -547,6 +567,12 @@ test('case detail exposes lifecycle document classifications and profile gaps', 
   assert.ok(detail.companyProfile.missingProfileFields.length > 0);
   assert.ok(detail.companyProfile.blockedFields.includes('Bank details'));
   assert.equal(detail.companyProfile.safety.valuesInvented, false);
+  assert.ok(
+    detail.policyRiskFlags.some((flag) => flag.fieldClass === 'DIRECT_DEBIT'),
+  );
+  assert.ok(
+    detail.policySigningNotes.some((note) => note.includes('Sandeep Patel')),
+  );
 });
 
 function buildPersistedFieldMapping(
@@ -914,6 +940,8 @@ function buildDraftFixture(
       safeToAutoFill: false,
     },
     safetyNotes: ['Review draft only. This does not sign or submit anything.'],
+    riskFlags: [],
+    signingNotes: [],
     ...overrides,
   };
 }
@@ -1023,7 +1051,9 @@ test('account-opening detail exposes safe field mapping candidates', () => {
     detail.fieldMappings.mappings.some(
       (mapping) =>
         mapping.supplierFieldLabel === 'Responsible Person' &&
-        mapping.status === 'MAPPED_REVIEW_REQUIRED',
+        mapping.status === 'BLOCKED' &&
+        mapping.proposedValue === null &&
+        mapping.fieldClass === 'REGULATORY_DECLARATION',
     ),
   );
 });
@@ -1152,6 +1182,10 @@ function buildStoredFillPreviewDraft(): AccountOpeningCompletionDraft {
         valueSource: 'AMBE_MASTER_PROFILE',
         confidence: 'HIGH',
         riskLevel: 'LOW',
+        ...accountOpeningPolicyFields({
+          key: 'legalCompanyName',
+          supplierLabel: 'Company Name',
+        }),
         requiresReview: false,
         reviewReason: null,
         evidence: [],
@@ -1159,10 +1193,14 @@ function buildStoredFillPreviewDraft(): AccountOpeningCompletionDraft {
       {
         key: 'bankDetails',
         supplierLabel: 'Bank Details',
-        proposedValue: 'Account number 12345678 sort code 12-34-56',
-        valueSource: 'SYSTEM_PLACEHOLDER',
+        proposedValue: null,
+        valueSource: 'NOT_PROVIDED',
         confidence: 'BLOCKED',
         riskLevel: 'BLOCKED',
+        ...accountOpeningPolicyFields({
+          key: 'bankDetails',
+          supplierLabel: 'Bank Details',
+        }),
         requiresReview: true,
         reviewReason: 'Bank details require secure review.',
         evidence: [],
@@ -1174,6 +1212,10 @@ function buildStoredFillPreviewDraft(): AccountOpeningCompletionDraft {
         valueSource: 'SYSTEM_PLACEHOLDER',
         confidence: 'BLOCKED',
         riskLevel: 'BLOCKED',
+        ...accountOpeningPolicyFields({
+          key: 'signature',
+          supplierLabel: 'Signature',
+        }),
         requiresReview: true,
         reviewReason: 'Signature fields remain blank.',
         evidence: [],
@@ -1181,10 +1223,14 @@ function buildStoredFillPreviewDraft(): AccountOpeningCompletionDraft {
       {
         key: 'gphcPremisesNumber',
         supplierLabel: 'GPhC Premises Number',
-        proposedValue: 'To be confirmed',
-        valueSource: 'SYSTEM_PLACEHOLDER',
-        confidence: 'LOW',
+        proposedValue: null,
+        valueSource: 'NOT_PROVIDED',
+        confidence: 'BLOCKED',
         riskLevel: 'HIGH',
+        ...accountOpeningPolicyFields({
+          key: 'gphcPremisesNumber',
+          supplierLabel: 'GPhC Premises Number',
+        }),
         requiresReview: true,
         reviewReason: 'GPhC details require review.',
         evidence: [],
@@ -2608,6 +2654,9 @@ test('generate draft stores safe draft metadata and records blocked audit route 
   assert.equal(detail.completionDraft.status, 'BLOCKED');
   assert.ok(eventTypes.includes('DRAFT_GENERATED'));
   assert.ok(eventTypes.includes('DRAFT_BLOCKED'));
+  assert.ok(eventTypes.includes('POLICY_APPLIED'));
+  assert.ok(eventTypes.includes('FIELD_BLOCKED'));
+  assert.ok(eventTypes.includes('FIELD_LEFT_BLANK_BY_POLICY'));
   assert.equal(eventTypes.includes('DRAFT_READY_FOR_REVIEW'), false);
   assert.equal(eventTypes.includes('DRAFT_REVIEW_REQUIRED'), false);
   assert.doesNotMatch(detailText, /12345678/);
@@ -2640,7 +2689,13 @@ test('blocked draft records generated plus blocked routing only', async () => {
     draft: buildDraftFixture({ status: 'BLOCKED' }),
   });
 
-  assert.deepEqual(eventTypes, ['DRAFT_GENERATED', 'DRAFT_BLOCKED']);
+  assert.deepEqual(eventTypes, [
+    'DRAFT_GENERATED',
+    'DRAFT_BLOCKED',
+    'POLICY_APPLIED',
+    'FIELD_BLOCKED',
+    'FIELD_LEFT_BLANK_BY_POLICY',
+  ]);
 });
 
 test('review-required draft records generated plus review-required routing only', async () => {
@@ -2648,7 +2703,13 @@ test('review-required draft records generated plus review-required routing only'
     draft: buildDraftFixture({ status: 'REVIEW_REQUIRED' }),
   });
 
-  assert.deepEqual(eventTypes, ['DRAFT_GENERATED', 'DRAFT_REVIEW_REQUIRED']);
+  assert.deepEqual(eventTypes, [
+    'DRAFT_GENERATED',
+    'DRAFT_REVIEW_REQUIRED',
+    'POLICY_APPLIED',
+    'FIELD_BLOCKED',
+    'FIELD_LEFT_BLANK_BY_POLICY',
+  ]);
 });
 
 test('ready draft records generated plus ready-for-review routing only', async () => {
@@ -2656,7 +2717,13 @@ test('ready draft records generated plus ready-for-review routing only', async (
     draft: buildDraftFixture({ status: 'READY_FOR_REVIEW' }),
   });
 
-  assert.deepEqual(eventTypes, ['DRAFT_GENERATED', 'DRAFT_READY_FOR_REVIEW']);
+  assert.deepEqual(eventTypes, [
+    'DRAFT_GENERATED',
+    'DRAFT_READY_FOR_REVIEW',
+    'POLICY_APPLIED',
+    'FIELD_BLOCKED',
+    'FIELD_LEFT_BLANK_BY_POLICY',
+  ]);
 });
 
 test('regenerated draft records regenerated plus exactly one routing event', async () => {
@@ -2665,7 +2732,13 @@ test('regenerated draft records regenerated plus exactly one routing event', asy
     generatedActionType: 'DRAFT_REGENERATED',
   });
 
-  assert.deepEqual(eventTypes, ['DRAFT_REGENERATED', 'DRAFT_BLOCKED']);
+  assert.deepEqual(eventTypes, [
+    'DRAFT_REGENERATED',
+    'DRAFT_BLOCKED',
+    'POLICY_APPLIED',
+    'FIELD_BLOCKED',
+    'FIELD_LEFT_BLANK_BY_POLICY',
+  ]);
 });
 
 test('safe review export pack includes review files and records export audit event', async () => {

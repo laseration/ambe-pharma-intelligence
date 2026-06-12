@@ -23,6 +23,14 @@ const completionDraftFixture = {
       valueSource: 'NOT_PROVIDED',
       confidence: 'BLOCKED',
       riskLevel: 'BLOCKED',
+      fieldClass: 'DIRECT_DEBIT',
+      policyDecision: 'MUST_STAY_BLANK',
+      riskCategory: 'DIRECT_DEBIT',
+      policyReason: 'Direct Debit mandate fields must stay blank.',
+      signatoryRoutingNote:
+        'Route to Sandeep Patel only if a Director signature, guarantee, bank mandate, or formal director authority is required.',
+      signingNote:
+        'Direct Debit mandates require separate human review and must not be completed by draft automation.',
       requiresReview: true,
       reviewReason: 'Bank authority fields must remain blank.',
       evidence: [
@@ -42,6 +50,23 @@ const completionDraftFixture = {
     safeToAutoFill: false,
   },
   safetyNotes: ['Sensitive banking and signing fields are blocked.'],
+  riskFlags: [
+    {
+      fieldKey: 'directDebitOrBankAuthority',
+      supplierLabel: 'Direct Debit mandate',
+      fieldClass: 'DIRECT_DEBIT',
+      policyDecision: 'MUST_STAY_BLANK',
+      riskCategory: 'DIRECT_DEBIT',
+      reason: 'Bank authority fields must remain blank.',
+      signatoryRoutingNote:
+        'Route to Sandeep Patel only if a Director signature, guarantee, bank mandate, or formal director authority is required.',
+      signingNote:
+        'Direct Debit mandates require separate human review and must not be completed by draft automation.',
+    },
+  ],
+  signingNotes: [
+    'Route to Sandeep Patel only if a Director signature, guarantee, bank mandate, or formal director authority is required.',
+  ],
 } satisfies AccountOpeningCompletionDraft;
 
 const readinessReportFixture = {
@@ -122,6 +147,8 @@ const accountOpeningCaseFixture = {
   detectedRoles: [],
   escalationNotes: [],
   riskFlags: ['Direct Debit mandate present'],
+  policyRiskFlags: completionDraftFixture.riskFlags,
+  policySigningNotes: completionDraftFixture.signingNotes,
   missingFields: [],
   reviewerChecks: ['Leave bank fields blank.'],
   signingNotes: {
@@ -227,6 +254,8 @@ test('account-opening shared DTO fixtures preserve blocked-field safety contract
   assert.equal(completionDraftFixture.summary.safeToAutoFill, false);
   assert.equal(completionDraftFixture.fields[0]?.confidence, 'BLOCKED');
   assert.equal(completionDraftFixture.fields[0]?.riskLevel, 'BLOCKED');
+  assert.equal(completionDraftFixture.fields[0]?.proposedValue, null);
+  assert.equal(completionDraftFixture.fields[0]?.fieldClass, 'DIRECT_DEBIT');
   assert.equal(
     readinessReportFixture.safety.directDebitBankAuthorityNotCompleted,
     true,
@@ -234,4 +263,5 @@ test('account-opening shared DTO fixtures preserve blocked-field safety contract
   assert.equal(readinessReportFixture.safety.notSigned, true);
   assert.equal(readinessReportFixture.safety.notSubmitted, true);
   assert.equal(accountOpeningCaseFixture.completionDraft.status, 'BLOCKED');
+  assert.equal(accountOpeningCaseFixture.policyRiskFlags.length, 1);
 });

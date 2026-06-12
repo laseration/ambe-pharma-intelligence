@@ -15,11 +15,31 @@ import {
   buildAccountOpeningReviewExportPack,
   getAccountOpeningReviewExportFile,
 } from '../reviewExport';
+import { evaluateAccountOpeningAutofillPolicy } from '../policy';
 import type {
   AccountOpeningCaseDetail,
   AccountOpeningMissingInfoResponses,
   AccountOpeningReadinessReport,
 } from '../service';
+
+function accountOpeningPolicyFields(input: {
+  key: string;
+  supplierLabel: string;
+}) {
+  const policy = evaluateAccountOpeningAutofillPolicy({
+    fieldKey: input.key,
+    fieldLabel: input.supplierLabel,
+  });
+
+  return {
+    fieldClass: policy.fieldClass,
+    policyDecision: policy.policyDecision,
+    riskCategory: policy.riskCategory,
+    policyReason: policy.reason,
+    signatoryRoutingNote: policy.defaultSignatoryRoutingNote,
+    signingNote: policy.signingNote,
+  };
+}
 
 function overrideEnv(context: TestContext, overrides: Partial<typeof env>) {
   const snapshot = Object.fromEntries(
@@ -56,6 +76,8 @@ function buildCaseDetail(
     detectedRoles: [],
     escalationNotes: [],
     riskFlags: ['Direct Debit mandate'],
+    policyRiskFlags: [],
+    policySigningNotes: [],
     missingFields: ['companyNumber'],
     reviewerChecks: [
       'Leave all signature fields blank unless approved by a human reviewer.',
@@ -107,6 +129,8 @@ function buildCaseDetail(
         safeToAutoFill: false,
       },
       safetyNotes: [],
+      riskFlags: [],
+      signingNotes: [],
     },
     fieldMappings: {
       status: 'PREVIEW',
@@ -803,6 +827,10 @@ test('account-opening field mapping routes require operator access and save mapp
           requiresReview: false,
           blockedReason: null,
           reviewReason: null,
+          ...accountOpeningPolicyFields({
+            key: 'legalCompanyName',
+            supplierLabel: 'Company Name',
+          }),
           operatorNote: null,
         },
       ],
@@ -924,6 +952,10 @@ test('account-opening fill preview routes require operator access and allowliste
           requiresReview: false,
           blockedReason: null,
           reviewReason: null,
+          ...accountOpeningPolicyFields({
+            key: 'legalCompanyName',
+            supplierLabel: 'Company Name',
+          }),
           operatorNote: null,
         },
       ],
@@ -1404,10 +1436,14 @@ test('account-opening review export routes return safe pack and downloadable fil
         {
           key: 'directDebit',
           supplierLabel: 'Direct Debit',
-          proposedValue: 'To be confirmed in secure review',
-          valueSource: 'SYSTEM_PLACEHOLDER',
+          proposedValue: null,
+          valueSource: 'NOT_PROVIDED',
           confidence: 'BLOCKED',
           riskLevel: 'BLOCKED',
+          ...accountOpeningPolicyFields({
+            key: 'directDebit',
+            supplierLabel: 'Direct Debit',
+          }),
           requiresReview: true,
           reviewReason: 'Direct Debit cannot be auto-filled.',
           evidence: [

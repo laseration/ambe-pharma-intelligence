@@ -1122,6 +1122,59 @@ function draftAuditMetadata(
     status: draft.status,
     overallConfidence: draft.overallConfidence,
     summary: draft.summary,
+    policyRiskFlagCount: draft.riskFlags.length,
+    policyRiskFlags: draft.riskFlags,
+    signingNotes: draft.signingNotes,
+    policyApplied: true,
+    reviewerOverrideReady: false,
+    reviewerOverrideSupport:
+      'No account-opening reviewer override workflow is present in this phase.',
+    blockedFieldsLeftBlank: true,
+    signatureAndDateFieldsLeftBlank: true,
+    bankDirectDebitGuaranteeIndemnityFieldsLeftBlank: true,
+    unknownFieldsNeverGuessed: true,
+  });
+}
+
+function draftPolicyFieldMetadata(
+  draft: AccountOpeningCompletionDraft,
+): Prisma.InputJsonValue {
+  return jsonObject({
+    profileId: draft.profileId,
+    profileVersion: draft.profileVersion,
+    policyRiskFlags: draft.riskFlags,
+    blockedFields: draft.fields
+      .filter(
+        (field) =>
+          field.confidence === 'BLOCKED' ||
+          field.riskLevel === 'BLOCKED' ||
+          field.policyDecision === 'MUST_STAY_BLANK',
+      )
+      .map((field) => ({
+        key: field.key,
+        supplierLabel: field.supplierLabel,
+        fieldClass: field.fieldClass,
+        riskCategory: field.riskCategory,
+        reason: field.reviewReason ?? field.policyReason,
+        proposedValueBlank: field.proposedValue === null,
+      })),
+    blankByPolicyFields: draft.fields
+      .filter(
+        (field) =>
+          field.proposedValue === null &&
+          field.policyDecision !== 'AUTOFILL_ALLOWED',
+      )
+      .map((field) => ({
+        key: field.key,
+        supplierLabel: field.supplierLabel,
+        fieldClass: field.fieldClass,
+        policyDecision: field.policyDecision,
+        riskCategory: field.riskCategory,
+      })),
+    reviewerOverrideReady: false,
+    signedFormsIncluded: false,
+    signatureImagesIncluded: false,
+    legalSubmissionReady: false,
   });
 }
 
@@ -1420,13 +1473,13 @@ export function buildAccountOpeningSigningSummary(
 
   if (/\bdirector\b/i.test(text)) {
     escalationNotes.push(
-      'The form mentions a director. Reviewer should confirm the supplier does not specifically require a director-only signature.',
+      'The form mentions a director. Reviewer should confirm whether the supplier specifically requires a director-only signature and route to Sandeep Patel only for a Director signature, guarantee, bank mandate, or formal director authority.',
     );
   }
 
   if (/\bresponsible\s+person\b|\bRP\b|\bGDP\b|\bWDA\b/i.test(text)) {
     escalationNotes.push(
-      'The form contains regulatory/RP wording. Reviewer should confirm whether this is only company information or whether an RP declaration is being requested.',
+      'The form contains regulatory/RP wording. Route RP/GDP/WDA/regulatory declarations to Dilshad Moulana for review.',
     );
   }
 
@@ -1436,7 +1489,7 @@ export function buildAccountOpeningSigningSummary(
     )
   ) {
     escalationNotes.push(
-      'High-risk section detected. Aman can sign account-opening forms by default, but this section should be reviewed before approval.',
+      'High-risk section detected. Aman Dhillon remains the default signatory for ordinary account-opening fields, but high-risk legal, banking, Direct Debit, guarantee, indemnity, and credit sections require human review before approval.',
     );
   }
 
@@ -1480,6 +1533,8 @@ export function buildAccountOpeningSigningNotes(input: {
       ? 'Resolve missing or unclear fields before approving completion or signing.'
       : null,
     'Leave all signature fields blank unless a human reviewer approves signing.',
+    'Use Sandeep Patel only where a Director signature, guarantee, bank mandate, or formal director authority is required.',
+    'Use Dilshad Moulana for RP/GDP/WDA/regulatory declarations.',
   ]);
   const detectedNamesText =
     input.signingSummary.detectedNames.length > 0
@@ -1509,6 +1564,8 @@ export function buildAccountOpeningSigningNotes(input: {
     summary: [
       'Recommended signer: Aman Dhillon.',
       'Aman Dhillon can sign this account-opening form by default.',
+      'Use Sandeep Patel only where a Director signature, guarantee, bank mandate, or formal director authority is required.',
+      'Use Dilshad Moulana for RP/GDP/WDA/regulatory declarations.',
       detectedNamesText,
       detectedRolesText,
       riskText,
@@ -1927,6 +1984,8 @@ export function buildAccountOpeningCaseDetail(
     detectedRoles,
     escalationNotes: stringArrayFromJson(accountCase.escalationNotes),
     riskFlags,
+    policyRiskFlags: completionDraft.riskFlags,
+    policySigningNotes: completionDraft.signingNotes,
     missingFields,
     reviewerChecks: stringArrayFromJson(accountCase.reviewerChecks),
     signingNotes: buildSigningNotesFromPersistedCase(accountCase),
@@ -4194,6 +4253,7 @@ export async function writeDraftAuditEvents(input: {
   const actorType = input.actorType?.trim() || 'OPERATOR';
   const actorIdentifier = sanitizeDashboardText(input.actorIdentifier) ?? null;
   const metadata = draftAuditMetadata(input.draft);
+  const policyFieldMetadata = draftPolicyFieldMetadata(input.draft);
 
   await input.repository.createEvent({
     data: {
@@ -4217,6 +4277,42 @@ export async function writeDraftAuditEvents(input: {
       actorType: 'SYSTEM',
       actorIdentifier: 'account-opening-draft-generator',
       metadata,
+    },
+  });
+
+  await input.repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.accountCaseId,
+      actionType: 'POLICY_APPLIED',
+      previousStatus: input.previousStatus,
+      newStatus: input.previousStatus,
+      actorType: 'SYSTEM',
+      actorIdentifier: 'account-opening-policy-engine',
+      metadata: policyFieldMetadata,
+    },
+  });
+
+  await input.repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.accountCaseId,
+      actionType: 'FIELD_BLOCKED',
+      previousStatus: input.previousStatus,
+      newStatus: input.previousStatus,
+      actorType: 'SYSTEM',
+      actorIdentifier: 'account-opening-policy-engine',
+      metadata: policyFieldMetadata,
+    },
+  });
+
+  await input.repository.createEvent({
+    data: {
+      accountOpeningCaseId: input.accountCaseId,
+      actionType: 'FIELD_LEFT_BLANK_BY_POLICY',
+      previousStatus: input.previousStatus,
+      newStatus: input.previousStatus,
+      actorType: 'SYSTEM',
+      actorIdentifier: 'account-opening-policy-engine',
+      metadata: policyFieldMetadata,
     },
   });
 }
