@@ -26,6 +26,26 @@ Prefer small cases that isolate one behavior: clear extraction, irrelevant
 content, ambiguous review-required content, adversarial text, attachment text,
 or schema-invalid mocked AI output.
 
+## Current Fixture Matrix
+
+The sanitized matrix covers clear body offers, forwarded offers, attachment
+text, attachment table headers, spreadsheet-like column names, mixed
+currencies, MOQ price breaks, expiry context, availability wording, duplicate
+rows, price-on-request wording, noisy footers, ambiguous pack/quantity wording,
+weak product matches, adversarial instructions, and non-commercial attachments.
+
+Known remaining blind spots before real supplier email testing:
+
+- Duplicate rows are counted rather than deduplicated.
+- Expiry dates are review context only; the aggregate eval does not score an
+  expiry field.
+- Table parsing still relies on sanitized extracted text rows rather than a
+  full workbook parser.
+- MOQ tiers and availability prose are covered through deterministic mocked AI
+  fixtures, not live AI.
+- Supplier identity, customer eligibility, and approval side effects are outside
+  this extraction-only fixture harness.
+
 ## Safety Rules
 
 - Do not use production data or real mailbox exports.
