@@ -33,6 +33,7 @@ export type {
   AccountOpeningMissingInfoResponses,
   AccountOpeningOriginalForm,
   AccountOpeningOriginalFormLifecycle,
+  AccountOpeningPolicyRiskFlag,
   AccountOpeningReadinessCheck,
   AccountOpeningReadinessReport,
   AccountOpeningReadinessStatus,

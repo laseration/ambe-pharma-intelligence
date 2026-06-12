@@ -18,6 +18,7 @@ import {
   submitAccountOpeningMissingInfoAction,
   submitAccountOpeningStatusAction,
 } from './actions';
+import { AccountOpeningSafetyReviewSections } from './SafetyReviewSections';
 
 export const dynamic = 'force-dynamic';
 
@@ -949,6 +950,8 @@ export default async function AccountOpeningDetailPage({
             </div>
           </dl>
         </section>
+
+        <AccountOpeningSafetyReviewSections item={item} />
 
         <section className="panel dashboard-panel">
           <h3 className="section-title">Signing notes</h3>
