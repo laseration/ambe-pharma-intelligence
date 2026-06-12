@@ -460,6 +460,34 @@ function isOpportunityTypeEnabledForBusinessMode(
   return true;
 }
 
+function evaluateTradingSupplierPriceFreshness(
+  context: ScoringContext,
+  config: OpportunityConfig,
+): { daysSinceLatestSupplierPrice: number | null; isFreshEnough: boolean } {
+  if (config.businessMode !== 'TRADING') {
+    return {
+      daysSinceLatestSupplierPrice: diffDays(
+        context.now,
+        context.latestSupplierPrice?.createdAt ?? null,
+      ),
+      isFreshEnough: true,
+    };
+  }
+
+  const daysSinceLatestSupplierPrice = diffDays(
+    context.now,
+    context.latestSupplierPrice?.createdAt ?? null,
+  );
+
+  return {
+    daysSinceLatestSupplierPrice,
+    isFreshEnough:
+      daysSinceLatestSupplierPrice !== null &&
+      daysSinceLatestSupplierPrice <=
+        config.maxSupplierPriceAgeDaysForTradingSignals,
+  };
+}
+
 function calculateStockCoverageDays(
   metrics: OpportunityMetrics,
 ): number | null {
@@ -515,6 +543,10 @@ function evaluateBuyRule(
     ? true
     : inventoryAgeDays === null ||
       inventoryAgeDays < config.maxInventorySnapshotAgeDays;
+  const tradingSupplierPriceFreshness = evaluateTradingSupplierPriceFreshness(
+    context,
+    config,
+  );
   const strongSellSideMargin =
     metrics.estimatedMarginPct !== null &&
     metrics.estimatedMarginPct >= config.pushMinMarginVsMarketPct;
@@ -524,7 +556,8 @@ function evaluateBuyRule(
     hasMeaningfulPricingEdge &&
     meetsDemand &&
     inventoryNotAlreadyHigh &&
-    inventorySnapshotFreshEnough;
+    inventorySnapshotFreshEnough &&
+    tradingSupplierPriceFreshness.isFreshEnough;
 
   const ruleChecks = [
     check(
@@ -570,6 +603,16 @@ function evaluateBuyRule(
           inventoryAgeDays,
           config.maxInventorySnapshotAgeDays,
         ),
+    ...(isTradingMode
+      ? [
+          check(
+            'Latest supplier price is fresh enough for TRADING signal',
+            tradingSupplierPriceFreshness.isFreshEnough,
+            tradingSupplierPriceFreshness.daysSinceLatestSupplierPrice,
+            config.maxSupplierPriceAgeDaysForTradingSignals,
+          ),
+        ]
+      : []),
     check(
       'Market confidence is strong enough when simulated-market BUY path is used',
       marketConfidenceStrongEnough,
@@ -665,6 +708,8 @@ function evaluateBuyRule(
       recentSalesUnits30d: salesUnits,
       currentStockQty: stockQty,
       daysSinceInventorySnapshot: inventoryAgeDays,
+      daysSinceLatestSupplierPrice:
+        tradingSupplierPriceFreshness.daysSinceLatestSupplierPrice,
     },
     thresholds: {
       buyPriceImprovementPct: config.buyPriceImprovementPct,
@@ -673,6 +718,8 @@ function evaluateBuyRule(
       healthyDemandUnits30d: config.healthyDemandUnits30d,
       highStockThresholdUnits: config.highStockThresholdUnits,
       maxInventorySnapshotAgeDays: config.maxInventorySnapshotAgeDays,
+      maxSupplierPriceAgeDaysForTradingSignals:
+        config.maxSupplierPriceAgeDaysForTradingSignals,
       buyBaseScore: config.buyBaseScore,
     },
     candidate,
@@ -705,12 +752,17 @@ function evaluatePriceAlertRule(
   const meetsMarketDropThreshold =
     priceDeltaVsMarketPct !== null &&
     priceDeltaVsMarketPct <= -config.priceAlertDropVsHistoryPct;
+  const tradingSupplierPriceFreshness = evaluateTradingSupplierPriceFreshness(
+    context,
+    config,
+  );
 
   const eligible =
     hasLatestSupplierPrice &&
     (meetsAlertThreshold ||
       meetsHistoryDropThreshold ||
-      meetsMarketDropThreshold);
+      meetsMarketDropThreshold) &&
+    tradingSupplierPriceFreshness.isFreshEnough;
   const ruleChecks = [
     check(
       'Latest supplier price available',
@@ -725,6 +777,16 @@ function evaluatePriceAlertRule(
       priceDeltaVsMarketPct ?? dropVsRollingAveragePct ?? priceChange,
       'history_or_market_alert',
     ),
+    ...(isTradingMode
+      ? [
+          check(
+            'Latest supplier price is fresh enough for TRADING signal',
+            tradingSupplierPriceFreshness.isFreshEnough,
+            tradingSupplierPriceFreshness.daysSinceLatestSupplierPrice,
+            config.maxSupplierPriceAgeDaysForTradingSignals,
+          ),
+        ]
+      : []),
   ];
   const blockingReasons = ruleChecks
     .filter((ruleCheck) => !ruleCheck.passed)
@@ -822,10 +884,14 @@ function evaluatePriceAlertRule(
       rollingAverageSupplierPrice,
       simulatedMarketPrice: metrics.simulatedMarketPrice,
       priceDeltaVsMarketPct,
+      daysSinceLatestSupplierPrice:
+        tradingSupplierPriceFreshness.daysSinceLatestSupplierPrice,
     },
     thresholds: {
       priceAlertChangePct: config.priceAlertChangePct,
       priceAlertDropVsHistoryPct: config.priceAlertDropVsHistoryPct,
+      maxSupplierPriceAgeDaysForTradingSignals:
+        config.maxSupplierPriceAgeDaysForTradingSignals,
       priceAlertBaseScore: config.priceAlertBaseScore,
     },
     candidate,
@@ -855,8 +921,15 @@ function evaluatePushRule(
   const inventorySnapshotFreshEnough =
     inventoryAgeDays === null ||
     inventoryAgeDays < config.maxInventorySnapshotAgeDays;
+  const tradingSupplierPriceFreshness = evaluateTradingSupplierPriceFreshness(
+    context,
+    config,
+  );
   const eligible = isTradingMode
-    ? hasHealthyDemand && hasMargin && marginNotWeak
+    ? hasHealthyDemand &&
+      hasMargin &&
+      marginNotWeak &&
+      tradingSupplierPriceFreshness.isFreshEnough
     : hasHighStock &&
       hasHealthyDemand &&
       marginNotWeak &&
@@ -884,6 +957,16 @@ function evaluatePushRule(
       marginPct,
       config.lowMarginThresholdPct,
     ),
+    ...(isTradingMode
+      ? [
+          check(
+            'Latest supplier price is fresh enough for TRADING signal',
+            tradingSupplierPriceFreshness.isFreshEnough,
+            tradingSupplierPriceFreshness.daysSinceLatestSupplierPrice,
+            config.maxSupplierPriceAgeDaysForTradingSignals,
+          ),
+        ]
+      : []),
   ];
 
   if (!isTradingMode) {
@@ -1003,6 +1086,8 @@ function evaluatePushRule(
       priceDeltaVsMarketPct,
       simulatedMarketPrice: metrics.simulatedMarketPrice,
       daysSinceInventorySnapshot: inventoryAgeDays,
+      daysSinceLatestSupplierPrice:
+        tradingSupplierPriceFreshness.daysSinceLatestSupplierPrice,
     },
     thresholds: {
       businessMode: config.businessMode,
@@ -1011,6 +1096,8 @@ function evaluatePushRule(
       lowMarginThresholdPct: config.lowMarginThresholdPct,
       pushMinMarginVsMarketPct: config.pushMinMarginVsMarketPct,
       maxInventorySnapshotAgeDays: config.maxInventorySnapshotAgeDays,
+      maxSupplierPriceAgeDaysForTradingSignals:
+        config.maxSupplierPriceAgeDaysForTradingSignals,
       pushBaseScore: config.pushBaseScore,
     },
     candidate,
@@ -1139,7 +1226,15 @@ function evaluateLowMarginRule(
   const belowMarginThreshold =
     hasMargin && marginPct < config.lowMarginThresholdPct;
   const hasSales = salesUnits > 0;
-  const eligible = hasMargin && belowMarginThreshold && hasSales;
+  const tradingSupplierPriceFreshness = evaluateTradingSupplierPriceFreshness(
+    context,
+    config,
+  );
+  const eligible =
+    hasMargin &&
+    belowMarginThreshold &&
+    hasSales &&
+    tradingSupplierPriceFreshness.isFreshEnough;
   const ruleChecks = [
     check('Estimated margin available', hasMargin, marginPct),
     check(
@@ -1149,6 +1244,16 @@ function evaluateLowMarginRule(
       config.lowMarginThresholdPct,
     ),
     check('Recent sales exist', hasSales, salesUnits, 0),
+    ...(isTradingMode
+      ? [
+          check(
+            'Latest supplier price is fresh enough for TRADING signal',
+            tradingSupplierPriceFreshness.isFreshEnough,
+            tradingSupplierPriceFreshness.daysSinceLatestSupplierPrice,
+            config.maxSupplierPriceAgeDaysForTradingSignals,
+          ),
+        ]
+      : []),
   ];
   const blockingReasons = ruleChecks
     .filter((ruleCheck) => !ruleCheck.passed)
@@ -1212,9 +1317,13 @@ function evaluateLowMarginRule(
       averageSalePrice: metrics.averageSalePrice,
       latestSupplierBuyPrice: metrics.latestSupplierBuyPrice,
       recentSalesUnits30d: salesUnits,
+      daysSinceLatestSupplierPrice:
+        tradingSupplierPriceFreshness.daysSinceLatestSupplierPrice,
     },
     thresholds: {
       lowMarginThresholdPct: config.lowMarginThresholdPct,
+      maxSupplierPriceAgeDaysForTradingSignals:
+        config.maxSupplierPriceAgeDaysForTradingSignals,
       lowMarginBaseScore: config.lowMarginBaseScore,
     },
     candidate,
