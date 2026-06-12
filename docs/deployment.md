@@ -121,6 +121,33 @@ pnpm --filter @ambe/api start:worker
 pnpm --filter @ambe/web start
 ```
 
+Production deployments should run three named processes:
+
+| Process       | Package     | Command                                | Purpose                                        |
+| ------------- | ----------- | -------------------------------------- | ---------------------------------------------- |
+| `ambe-web`    | `@ambe/web` | `pnpm --filter @ambe/web start`        | Public site and internal dashboard.            |
+| `ambe-api`    | `@ambe/api` | `pnpm --filter @ambe/api start`        | Express API and Prisma-backed internal routes. |
+| `ambe-worker` | `@ambe/api` | `pnpm --filter @ambe/api start:worker` | Microsoft Graph and Telegram polling.          |
+
+PM2 example:
+
+```bash
+START_WORKERS_WITH_API=false pm2 start "pnpm --filter @ambe/api start" --name ambe-api --time
+pm2 start "pnpm --filter @ambe/api start:worker" --name ambe-worker --time
+pm2 start "pnpm --filter @ambe/web start" --name ambe-web --time
+pm2 save
+```
+
+PM2 operations:
+
+```bash
+pm2 status ambe-api ambe-worker ambe-web
+pm2 reload ambe-api --update-env
+pm2 reload ambe-worker --update-env
+pm2 reload ambe-web --update-env
+pm2 logs ambe-api ambe-worker ambe-web
+```
+
 Run exactly one worker process for each deployment environment. Running polling
 workers in multiple API replicas or multiple worker replicas can duplicate
 Telegram and inbox polling. The API process does not start polling workers by
@@ -380,3 +407,16 @@ The API readiness endpoint reports API readiness and whether polling workers are
 expected in the separate worker process. The worker status endpoint reports the
 latest safe polling counters persisted by the API or worker process. The API
 system endpoints require internal API authentication.
+
+Example authenticated smoke checks from the server, using a secret already
+present in the shell or service environment:
+
+```bash
+curl -fsS http://127.0.0.1:4000/health
+curl -fsS -H "x-internal-api-key: $INTERNAL_API_KEY" http://127.0.0.1:4000/api/system/readiness
+curl -fsS -H "x-internal-api-key: $INTERNAL_API_KEY" http://127.0.0.1:4000/api/system/workers
+```
+
+Do not paste API keys into terminal history on shared hosts. Prefer a shell
+session or service account where `INTERNAL_API_KEY` is already provided by the
+process manager or a protected server-local environment file.
