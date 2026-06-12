@@ -65,7 +65,6 @@ const SAFE_FIELD_KEYS = new Set([
   'businessHours',
   'companyType',
   'businessDescription',
-  'standardPaymentPreference',
 ]);
 
 const DEFAULT_SIGNATORY_ROUTING_NOTE =
@@ -92,7 +91,8 @@ const FORBIDDEN_PATTERNS: Array<{
     riskCategory: 'SIGNING',
     pattern:
       /\b(signature|signed|signatory|director[-\s]*(?:only|signature)|typed\s+signature|date\s+(?:of\s+)?signature|signature\s+date|date\s+signed|signed\s+date)\b/i,
-    reason: 'Signature, signing date, and typed-signature fields must stay blank.',
+    reason:
+      'Signature, signing date, and typed-signature fields must stay blank.',
     defaultSignatoryRoutingNote: DIRECTOR_SIGNATORY_ROUTING_NOTE,
     signingNote: NO_AUTO_SIGN_NOTE,
   },
@@ -134,7 +134,8 @@ const FORBIDDEN_PATTERNS: Array<{
     riskCategory: 'CREDIT_RISK',
     pattern:
       /\b(credit\s+(?:limit|approval|approved|terms?|account)|approved\s+by|payment\s+terms?)\b/i,
-    reason: 'Credit approval, credit-account, and credit-term fields must not be auto-filled.',
+    reason:
+      'Credit approval, credit-account, and credit-term fields must not be auto-filled.',
     signingNote:
       'Credit terms and credit-risk fields require commercial review before completion.',
   },

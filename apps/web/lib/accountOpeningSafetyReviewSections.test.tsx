@@ -54,7 +54,8 @@ test('account-opening safety review sections expose risk flags and signatory rou
         fieldClass: 'REGULATORY_DECLARATION',
         policyDecision: 'MUST_STAY_BLANK',
         riskCategory: 'REGULATORY',
-        reason: 'Regulatory declarations require review and must stay blank by default.',
+        reason:
+          'Regulatory declarations require review and must stay blank by default.',
         signatoryRoutingNote:
           'Route RP/GDP/WDA/regulatory declarations to Dilshad Moulana for review.',
         signingNote:

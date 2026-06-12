@@ -55,13 +55,9 @@ test('completion draft uses master profile and reviewer responses while blocking
   assert.equal(responsiblePerson?.requiresReview, true);
   assert.equal(responsiblePerson?.proposedValue, null);
   assert.equal(responsiblePerson?.fieldClass, 'REGULATORY_DECLARATION');
-  assert.ok(
-    draft.riskFlags.some((flag) => flag.fieldClass === 'DIRECT_DEBIT'),
-  );
+  assert.ok(draft.riskFlags.some((flag) => flag.fieldClass === 'DIRECT_DEBIT'));
   assert.ok(draft.riskFlags.some((flag) => flag.fieldClass === 'SIGNATURE'));
-  assert.ok(
-    draft.signingNotes.some((note) => note.includes('Sandeep Patel')),
-  );
+  assert.ok(draft.signingNotes.some((note) => note.includes('Sandeep Patel')));
   assert.ok(
     draft.signingNotes.some((note) => note.includes('Dilshad Moulana')),
   );
@@ -221,4 +217,31 @@ test('canonical policy keeps signature dates and unknown fields blank or review-
   assert.equal(unknownPolicy.fieldClass, 'UNKNOWN');
   assert.equal(unknownPolicy.policyDecision, 'REVIEW_REQUIRED');
   assert.equal(unknownPolicy.leaveBlank, true);
+});
+
+test('payment preference is review-required and blank by default', () => {
+  const policy = evaluateAccountOpeningAutofillPolicy({
+    fieldKey: 'standardPaymentPreference',
+    fieldLabel: 'Payment preference',
+  });
+  const draft = buildAccountOpeningCompletionDraft({
+    missingInfoResponses: {},
+    riskFlags: [],
+    detectedRoles: [],
+    detectedNames: [],
+    missingFields: [],
+    sourceEvidence: [],
+    now: new Date('2026-05-15T10:00:00.000Z'),
+  });
+  const paymentPreference = draft.fields.find(
+    (field) => field.key === 'standardPaymentPreference',
+  );
+
+  assert.equal(policy.policyDecision, 'REVIEW_REQUIRED');
+  assert.equal(policy.fieldClass, 'UNKNOWN');
+  assert.equal(policy.leaveBlank, true);
+  assert.equal(paymentPreference?.proposedValue, null);
+  assert.equal(paymentPreference?.valueSource, 'NOT_PROVIDED');
+  assert.equal(paymentPreference?.requiresReview, true);
+  assert.equal(paymentPreference?.policyDecision, 'REVIEW_REQUIRED');
 });
