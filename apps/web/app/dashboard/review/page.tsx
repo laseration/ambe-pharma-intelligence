@@ -19,6 +19,7 @@ import {
   reviewQueueFilterDefinitions,
   type ReviewQueueFilterKey,
 } from '../../../lib/reviewQueueFilters';
+import { requireCurrentWebCapability } from '../../../lib/serverWebAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -163,6 +164,8 @@ function groupWorkflowItemsByInboundEmail(
 }
 
 export default async function ReviewQueuePage({ searchParams }: PageProps) {
+  await requireCurrentWebCapability('review:view');
+
   const query = searchParams ? await searchParams : undefined;
   const sortMode = normalizeReviewQueueSortMode(query?.sort);
   const selectedFilter = normalizeReviewQueueFilter(query?.filter);

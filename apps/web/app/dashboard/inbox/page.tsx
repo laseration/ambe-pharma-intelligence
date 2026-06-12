@@ -5,6 +5,7 @@ import {
   type InboundEmailInboxFilter,
   type InboundEmailInboxListItem,
 } from '../../../lib/inboxApi';
+import { requireCurrentWebCapability } from '../../../lib/serverWebAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -148,6 +149,8 @@ function buildConfidenceSummary(
 }
 
 export default async function BotInboxPage({ searchParams }: PageProps) {
+  await requireCurrentWebCapability('inbox:view');
+
   const query = searchParams ? await searchParams : undefined;
   const activeFilter = normalizeInboxFilter(query?.status);
   const returnTo = buildInboxReturnTo(activeFilter);

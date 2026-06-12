@@ -3,11 +3,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
-import {
-  getWebSessionCookieOptions,
-  verifyWebLogin,
-  WEB_AUTH_COOKIE_NAME,
-} from '../../lib/internalWebAuth';
+import { prepareWebLogin, prepareWebLogout } from '../../lib/webAuthFlow';
 
 function formValue(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -15,56 +11,33 @@ function formValue(formData: FormData, key: string): string {
   return typeof value === 'string' ? value : '';
 }
 
-function normalizeDashboardRedirect(value: string): string {
-  if (value.startsWith('/dashboard')) {
-    return value;
-  }
-
-  return '/dashboard';
-}
-
-function loginRedirect(
-  error: 'invalid' | 'not-configured',
-  next: string,
-): never {
-  const searchParams = new URLSearchParams({
-    error,
-    next,
-  });
-
-  redirect(`/login?${searchParams.toString()}`);
-}
-
 export async function loginAction(formData: FormData) {
-  const next = normalizeDashboardRedirect(formValue(formData, 'next'));
-  const result = await verifyWebLogin({
+  const result = await prepareWebLogin({
     username: formValue(formData, 'username'),
     password: formValue(formData, 'password'),
+    next: formValue(formData, 'next'),
   });
 
-  if (!result.authenticated) {
-    loginRedirect(result.reason, next);
+  if (result.cookie) {
+    const cookieStore = await cookies();
+    cookieStore.set(
+      result.cookie.name,
+      result.cookie.value,
+      result.cookie.options,
+    );
   }
 
-  const cookieStore = await cookies();
-  cookieStore.set(
-    WEB_AUTH_COOKIE_NAME,
-    result.cookieValue,
-    getWebSessionCookieOptions({
-      maxAge: result.session.expiresAt - Math.floor(Date.now() / 1000),
-    }),
-  );
-
-  redirect(next);
+  redirect(result.redirectTo);
 }
 
 export async function logoutAction() {
+  const result = prepareWebLogout();
   const cookieStore = await cookies();
   cookieStore.set(
-    WEB_AUTH_COOKIE_NAME,
-    '',
-    getWebSessionCookieOptions({ maxAge: 0 }),
+    result.cookie.name,
+    result.cookie.value,
+    result.cookie.options,
   );
 
-  redirect('/login?signedOut=1');
+  redirect(result.redirectTo);
 }

@@ -113,6 +113,30 @@ test('API route matrix allows all roles to reach intended read-only status route
   }
 });
 
+test('API route matrix returns safe 401 responses when internal API auth is missing', async (t) => {
+  configureInternalAuth(t);
+  const baseUrl = await startServer(t);
+  const protectedRoutes = [
+    '/api/opportunities',
+    '/api/trade/buyer-enquiries',
+    '/api/system/readiness',
+  ];
+
+  for (const path of protectedRoutes) {
+    const response = await fetch(`${baseUrl}${path}`);
+    const payload = (await response.json()) as {
+      error?: { message?: string; code?: string };
+    };
+
+    assert.equal(response.status, 401, `missing auth should fail for ${path}`);
+    assert.equal(payload.error?.code, 'UNAUTHORIZED');
+    assert.equal(
+      payload.error?.message,
+      'Invalid or missing internal API key.',
+    );
+  }
+});
+
 test('API route matrix denies viewer access to sensitive internal read surfaces', async (t) => {
   configureInternalAuth(t);
   const baseUrl = await startServer(t);

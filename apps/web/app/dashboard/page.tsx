@@ -26,6 +26,8 @@ import {
   listReviewWorkflowItems,
   type ReviewWorkflowListItem,
 } from '../../lib/reviewApi';
+import { roleHasCapability } from '../../lib/authorisation';
+import { requireCurrentWebCapability } from '../../lib/serverWebAuth';
 import {
   submitOpportunityRefreshAction,
   submitOpportunityTriageAction,
@@ -197,12 +199,62 @@ function filterOpportunitiesForFocus(
   return opportunities.filter((item) => item.type === selectedType);
 }
 
+function canOpenDashboardHref(
+  href: string,
+  capabilities: {
+    canViewCustomers: boolean;
+    canViewImports: boolean;
+    canViewInventory: boolean;
+    canViewProducts: boolean;
+    canViewReview: boolean;
+    canViewSetup: boolean;
+  },
+) {
+  if (href.startsWith('/dashboard/review')) {
+    return capabilities.canViewReview;
+  }
+
+  if (href.startsWith('/dashboard/imports')) {
+    return capabilities.canViewImports;
+  }
+
+  if (href.startsWith('/dashboard/setup')) {
+    return capabilities.canViewSetup;
+  }
+
+  if (href.startsWith('/dashboard/inventory')) {
+    return capabilities.canViewInventory;
+  }
+
+  if (href.startsWith('/dashboard/customers')) {
+    return capabilities.canViewCustomers;
+  }
+
+  if (href.startsWith('/dashboard/products')) {
+    return capabilities.canViewProducts;
+  }
+
+  return href.startsWith('/dashboard');
+}
+
 export default async function DashboardPage({
   searchParams,
 }: DashboardPageProps) {
+  const session = await requireCurrentWebCapability('dashboard:view');
   const query = searchParams ? await searchParams : undefined;
   const selectedOpenOpportunityType = normalizeOpenOpportunityFilterType(
     query?.openType,
+  );
+  const canViewReview = roleHasCapability(session.role, 'review:view');
+  const canViewInbox = roleHasCapability(session.role, 'inbox:view');
+  const canViewImports = roleHasCapability(session.role, 'imports:view');
+  const canViewInventory = roleHasCapability(session.role, 'inventory:view');
+  const canViewCustomers = roleHasCapability(session.role, 'customers:view');
+  const canViewProducts = roleHasCapability(session.role, 'products:view');
+  const canViewSetup = roleHasCapability(session.role, 'system:admin');
+  const canManageOpportunities = roleHasCapability(
+    session.role,
+    'opportunities:manage',
   );
 
   const [
@@ -219,20 +271,26 @@ export default async function DashboardPage({
     customerFollowUpsResult,
   ] = await Promise.allSettled([
     listOpenOpportunities(),
-    listReviewWorkflowItems({ staleFirst: true }),
+    canViewReview
+      ? listReviewWorkflowItems({ staleFirst: true })
+      : Promise.resolve([]),
     getAutomationReadinessOverview(),
     listOpportunities({ status: 'REVIEWED', sortBy: 'updatedAt', take: 4 }),
     listOpportunities({ status: 'ACTIONED', sortBy: 'updatedAt', take: 4 }),
     listOpportunities({ status: 'DISMISSED', sortBy: 'updatedAt', take: 4 }),
     listLikelyDuplicateProductGroups(),
-    listReviewWorkflowItems({
-      onlyOpen: false,
-      status: 'APPROVED_TO_BUY',
-    }),
-    listReviewWorkflowItems({
-      onlyOpen: false,
-      status: 'REJECTED',
-    }),
+    canViewReview
+      ? listReviewWorkflowItems({
+          onlyOpen: false,
+          status: 'APPROVED_TO_BUY',
+        })
+      : Promise.resolve([]),
+    canViewReview
+      ? listReviewWorkflowItems({
+          onlyOpen: false,
+          status: 'REJECTED',
+        })
+      : Promise.resolve([]),
     listStockRisk({ limit: 8 }),
     listCustomerContactOpportunities({ limit: 8 }),
   ]);
@@ -282,7 +340,16 @@ export default async function DashboardPage({
     customerFollowUpCount: customerFollowUps.failed
       ? null
       : customerFollowUps.value.length,
-  });
+  }).filter((action) =>
+    canOpenDashboardHref(action.href, {
+      canViewCustomers,
+      canViewImports,
+      canViewInventory,
+      canViewProducts,
+      canViewReview,
+      canViewSetup,
+    }),
+  );
   const valueMetrics = buildCommercialValueMetrics({
     openOpportunities: openOpportunities.value,
     reviewItems: reviewItems.value,
@@ -294,7 +361,16 @@ export default async function DashboardPage({
     duplicateGroups: duplicateGroups.value,
     readiness: readiness.value,
     apiFailures,
-  });
+  }).filter((issue) =>
+    canOpenDashboardHref(issue.href, {
+      canViewCustomers,
+      canViewImports,
+      canViewInventory,
+      canViewProducts,
+      canViewReview,
+      canViewSetup,
+    }),
+  );
   const pendingSupplierEmailCount = countPendingReviewEmails(reviewItems.value);
   const selectedOpenOpportunityFilterLabel =
     OPEN_OPPORTUNITY_FILTER_OPTIONS.find(
@@ -347,23 +423,31 @@ export default async function DashboardPage({
         ) : null}
 
         <div className="actions">
-          <Link className="button button-primary" href="/dashboard/review">
-            Open reviews
-          </Link>
-          <Link className="button" href="/dashboard/inbox">
-            Open inbox
-          </Link>
+          {canViewReview ? (
+            <Link className="button button-primary" href="/dashboard/review">
+              Open reviews
+            </Link>
+          ) : null}
+          {canViewInbox ? (
+            <Link className="button" href="/dashboard/inbox">
+              Open inbox
+            </Link>
+          ) : null}
           <Link className="button" href="/dashboard/opportunities">
             View opportunities
           </Link>
-          <Link className="button" href="/dashboard/setup">
-            Setup checklist
-          </Link>
-          <form action={submitOpportunityRefreshAction}>
-            <button className="button" type="submit">
-              Refresh opportunities
-            </button>
-          </form>
+          {canViewSetup ? (
+            <Link className="button" href="/dashboard/setup">
+              Setup checklist
+            </Link>
+          ) : null}
+          {canManageOpportunities ? (
+            <form action={submitOpportunityRefreshAction}>
+              <button className="button" type="submit">
+                Refresh opportunities
+              </button>
+            </form>
+          ) : null}
         </div>
       </section>
 
@@ -433,9 +517,11 @@ export default async function DashboardPage({
               offers that need operator judgment.
             </p>
           </div>
-          <Link className="button" href="/dashboard/review">
-            Open review queue
-          </Link>
+          {canViewReview ? (
+            <Link className="button" href="/dashboard/review">
+              Open review queue
+            </Link>
+          ) : null}
         </div>
 
         {topReviewItems.length === 0 ? (
@@ -446,12 +532,16 @@ export default async function DashboardPage({
               files, or imports produce staged offers that require a decision.
             </p>
             <div className="actions">
-              <Link className="button" href="/dashboard/inbox">
-                Check inbox
-              </Link>
-              <Link className="button" href="/dashboard/imports">
-                View imports
-              </Link>
+              {canViewInbox ? (
+                <Link className="button" href="/dashboard/inbox">
+                  Check inbox
+                </Link>
+              ) : null}
+              {canViewImports ? (
+                <Link className="button" href="/dashboard/imports">
+                  View imports
+                </Link>
+              ) : null}
             </div>
           </div>
         ) : (
@@ -565,14 +655,18 @@ export default async function DashboardPage({
               BUY or PRICE ALERT signal right now.
             </p>
             <div className="actions">
-              <form action={submitOpportunityRefreshAction}>
-                <button className="button button-primary" type="submit">
-                  Refresh opportunities
-                </button>
-              </form>
-              <Link className="button" href="/dashboard/imports">
-                Check imports
-              </Link>
+              {canManageOpportunities ? (
+                <form action={submitOpportunityRefreshAction}>
+                  <button className="button button-primary" type="submit">
+                    Refresh opportunities
+                  </button>
+                </form>
+              ) : null}
+              {canViewImports ? (
+                <Link className="button" href="/dashboard/imports">
+                  Check imports
+                </Link>
+              ) : null}
             </div>
           </div>
         ) : (
@@ -604,41 +698,43 @@ export default async function DashboardPage({
                     <li key={signal}>{signal}</li>
                   ))}
                 </ul>
-                <form
-                  action={submitOpportunityTriageAction}
-                  className="dashboard-opportunity-actions"
-                >
-                  <input name="opportunityId" type="hidden" value={item.id} />
-                  <input
-                    name="redirectTo"
-                    type="hidden"
-                    value="/dashboard#best-buying-signals"
-                  />
-                  <button
-                    className="button"
-                    name="status"
-                    type="submit"
-                    value="REVIEWED"
+                {canManageOpportunities ? (
+                  <form
+                    action={submitOpportunityTriageAction}
+                    className="dashboard-opportunity-actions"
                   >
-                    Mark reviewed
-                  </button>
-                  <button
-                    className="button button-primary"
-                    name="status"
-                    type="submit"
-                    value="ACTIONED"
-                  >
-                    Mark actioned
-                  </button>
-                  <button
-                    className="button"
-                    name="status"
-                    type="submit"
-                    value="DISMISSED"
-                  >
-                    Dismiss
-                  </button>
-                </form>
+                    <input name="opportunityId" type="hidden" value={item.id} />
+                    <input
+                      name="redirectTo"
+                      type="hidden"
+                      value="/dashboard#best-buying-signals"
+                    />
+                    <button
+                      className="button"
+                      name="status"
+                      type="submit"
+                      value="REVIEWED"
+                    >
+                      Mark reviewed
+                    </button>
+                    <button
+                      className="button button-primary"
+                      name="status"
+                      type="submit"
+                      value="ACTIONED"
+                    >
+                      Mark actioned
+                    </button>
+                    <button
+                      className="button"
+                      name="status"
+                      type="submit"
+                      value="DISMISSED"
+                    >
+                      Dismiss
+                    </button>
+                  </form>
+                ) : null}
               </article>
             ))}
           </div>

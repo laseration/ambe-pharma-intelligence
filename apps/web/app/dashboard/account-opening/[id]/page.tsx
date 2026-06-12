@@ -20,6 +20,7 @@ import {
   submitAccountOpeningStatusAction,
 } from './actions';
 import { AccountOpeningSafetyReviewSections } from './SafetyReviewSections';
+import { requireCurrentWebCapability } from '../../../../lib/serverWebAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -831,6 +832,8 @@ export default async function AccountOpeningDetailPage({
   params,
   searchParams,
 }: PageProps) {
+  await requireCurrentWebCapability('account-opening:view');
+
   const { id } = await params;
   const query = searchParams ? await searchParams : undefined;
   const returnTo = sanitizeReturnTo(query?.returnTo);

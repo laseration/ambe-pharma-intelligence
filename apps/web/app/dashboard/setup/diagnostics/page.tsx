@@ -55,9 +55,9 @@ function readinessCounts(report: SystemReadinessReport) {
   return {
     ready: report.checks.filter((check) => check.status === 'ready').length,
     warning: report.checks.filter((check) => check.status === 'warning').length,
-    notConfigured: report.checks.filter(
-      (check) => check.status === 'not_configured',
-    ).length,
+    missing: report.checks.filter((check) => check.status === 'missing').length,
+    disabled: report.checks.filter((check) => check.status === 'disabled')
+      .length,
   };
 }
 
@@ -111,7 +111,9 @@ function formatDetailValue(
   value: boolean | number | string | string[] | null | undefined,
 ): string {
   if (Array.isArray(value)) {
-    return value.length ? value.join(', ') : 'none';
+    return value.length
+      ? value.map((item) => redactDashboardText(item)).join(', ')
+      : 'none';
   }
 
   if (typeof value === 'boolean') {
@@ -122,7 +124,7 @@ function formatDetailValue(
     return 'n/a';
   }
 
-  return String(value);
+  return typeof value === 'string' ? redactDashboardText(value) : String(value);
 }
 
 function GraphPreflightDiagnostics({
@@ -402,10 +404,17 @@ export default async function DiagnosticsPage() {
               </p>
             </article>
             <article className="dashboard-summary-card">
-              <p className="dashboard-summary-value">{counts.notConfigured}</p>
-              <p className="dashboard-summary-label">Not configured</p>
+              <p className="dashboard-summary-value">{counts.missing}</p>
+              <p className="dashboard-summary-label">Missing</p>
               <p className="dashboard-summary-note">
                 Missing optional or required pilot setup.
+              </p>
+            </article>
+            <article className="dashboard-summary-card">
+              <p className="dashboard-summary-value">{counts.disabled}</p>
+              <p className="dashboard-summary-label">Disabled</p>
+              <p className="dashboard-summary-note">
+                Optional integration checks that are intentionally off.
               </p>
             </article>
             <article className="dashboard-summary-card">

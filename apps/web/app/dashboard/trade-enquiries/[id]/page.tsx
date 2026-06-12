@@ -6,7 +6,9 @@ import {
   type BuyerTradeEnquiryListItem,
   type BuyerTradeEnquiryStatus,
 } from '../../../../lib/tradeEnquiriesApi';
+import { roleHasCapability } from '../../../../lib/authorisation';
 import { InternalApiError } from '../../../../lib/internalApiRequest';
+import { requireCurrentWebCapability } from '../../../../lib/serverWebAuth';
 import { submitBuyerTradeEnquiryStatusAction } from '../actions';
 
 export const dynamic = 'force-dynamic';
@@ -104,8 +106,13 @@ export default async function TradeEnquiryDetailPage({
   params,
   searchParams,
 }: PageProps) {
+  const session = await requireCurrentWebCapability('trade-enquiries:view');
   const { id } = await params;
   const query = searchParams ? await searchParams : undefined;
+  const canManageTradeEnquiries = roleHasCapability(
+    session.role,
+    'trade-enquiries:manage',
+  );
 
   let item: BuyerTradeEnquiryListItem;
   try {
@@ -233,7 +240,14 @@ export default async function TradeEnquiryDetailPage({
 
         <section className="review-card">
           <h3 className="review-card-title">Internal review</h3>
-          <StatusReviewForm item={item} />
+          {canManageTradeEnquiries ? (
+            <StatusReviewForm item={item} />
+          ) : (
+            <p className="copy">
+              This signed-in role can view the enquiry but cannot update its
+              internal review status.
+            </p>
+          )}
         </section>
       </section>
     </section>

@@ -2,7 +2,11 @@ import 'server-only';
 
 import { requestInternalJson } from './internalApiRequest';
 
-export type SystemReadinessStatus = 'ready' | 'warning' | 'not_configured';
+export type SystemReadinessStatus =
+  | 'ready'
+  | 'warning'
+  | 'missing'
+  | 'disabled';
 
 export type SystemReadinessCheck = {
   key: string;

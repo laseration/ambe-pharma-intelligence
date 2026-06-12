@@ -2,6 +2,7 @@ import {
   listLikelyDuplicateProductGroups,
   type ProductDuplicateGroup,
 } from '../../../lib/productsApi';
+import { requireCurrentWebCapability } from '../../../lib/serverWebAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,8 @@ function formatConfidence(confidence: ProductDuplicateGroup['confidence']) {
 }
 
 export default async function ProductDuplicateTriagePage() {
+  await requireCurrentWebCapability('products:view');
+
   try {
     const groups = await listLikelyDuplicateProductGroups();
 

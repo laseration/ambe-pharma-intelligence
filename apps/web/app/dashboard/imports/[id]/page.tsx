@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { getImportBatchDetail } from '../../../../lib/importsApi';
+import { requireCurrentWebCapability } from '../../../../lib/serverWebAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -105,6 +106,8 @@ function formatRawRowSnippet(value: unknown): string | null {
 }
 
 export default async function ImportBatchDetailPage({ params }: PageProps) {
+  await requireCurrentWebCapability('imports:view');
+
   const { id } = await params;
 
   try {

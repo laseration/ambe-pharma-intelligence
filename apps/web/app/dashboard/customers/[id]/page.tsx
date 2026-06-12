@@ -1,4 +1,5 @@
 import { getCustomer } from '../../../../lib/customersApi';
+import { requireCurrentWebCapability } from '../../../../lib/serverWebAuth';
 import { CustomerDetailContent } from './CustomerDetailContent';
 
 export const dynamic = 'force-dynamic';
@@ -12,6 +13,8 @@ type CustomerDetailPageProps = {
 export default async function CustomerDetailPage({
   params,
 }: CustomerDetailPageProps) {
+  await requireCurrentWebCapability('customers:view');
+
   const { id } = await params;
 
   try {

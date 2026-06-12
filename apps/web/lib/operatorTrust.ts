@@ -12,6 +12,8 @@ const SECRET_PATTERNS = [
   /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi,
   /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
   /\b(?:token|secret|password|api[_-]?key|client[_-]?secret)=\S+/gi,
+  /\bsk-[A-Za-z0-9_-]+\b/g,
+  /\bbot[A-Za-z0-9:_-]{20,}\b/g,
 ];
 
 export type WorkerFreshnessSummary = {

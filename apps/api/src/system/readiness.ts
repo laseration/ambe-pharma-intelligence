@@ -5,9 +5,18 @@ import { isEmailInboundPollingActive } from '../email/polling';
 import { isInternalAuthEnforced } from '../http/auth';
 import { db } from '../lib/db';
 import { getPollingWorkerStatus } from '../polling/status';
+import { redactSafeOutputString } from '../safety/redaction';
+import {
+  classifyDatabaseUrlForLocalSmoke,
+  evaluateExternalIntegrationsForLocalSmoke,
+} from '../startup/localSmokeSafety';
 import { isTelegramPollingActive } from '../telegram/polling';
 
-export type SystemReadinessStatus = 'ready' | 'warning' | 'not_configured';
+export type SystemReadinessStatus =
+  | 'ready'
+  | 'warning'
+  | 'missing'
+  | 'disabled';
 
 export type SystemReadinessCheck = {
   key: string;
@@ -42,11 +51,38 @@ function aggregateStatus(
     return 'warning';
   }
 
-  if (checks.some((check) => check.status === 'not_configured')) {
-    return 'not_configured';
+  if (checks.some((check) => check.status === 'missing')) {
+    return 'missing';
+  }
+
+  if (checks.every((check) => check.status === 'disabled')) {
+    return 'disabled';
   }
 
   return 'ready';
+}
+
+function safeDetails(
+  details: SystemReadinessCheck['details'],
+): SystemReadinessCheck['details'] {
+  return Object.fromEntries(
+    Object.entries(details).map(([key, value]) => {
+      if (typeof value === 'string') {
+        return [key, redactSafeOutputString(value)];
+      }
+
+      if (Array.isArray(value)) {
+        return [
+          key,
+          value.map((item) =>
+            typeof item === 'string' ? redactSafeOutputString(item) : item,
+          ),
+        ];
+      }
+
+      return [key, value];
+    }),
+  ) as SystemReadinessCheck['details'];
 }
 
 async function buildDatabaseCheck(
@@ -56,16 +92,16 @@ async function buildDatabaseCheck(
     return {
       key: 'database',
       title: 'Database',
-      status: 'not_configured',
+      status: 'missing',
       meaning: 'No PostgreSQL connection is configured for the API.',
       nextAction: 'Set DATABASE_URL and run the Prisma setup commands.',
       envVars: ['DATABASE_URL'],
       documentationPath: 'README.md#database',
-      details: {
+      details: safeDetails({
         configured: false,
         reachable: false,
         hostDetected: false,
-      },
+      }),
     };
   }
 
@@ -80,11 +116,11 @@ async function buildDatabaseCheck(
       nextAction: 'Keep migrations current before pilot use.',
       envVars: ['DATABASE_URL'],
       documentationPath: 'README.md#database',
-      details: {
+      details: safeDetails({
         configured: true,
         reachable: true,
         hostDetected: Boolean(env.databaseHost),
-      },
+      }),
     };
   } catch {
     return {
@@ -96,11 +132,11 @@ async function buildDatabaseCheck(
         'Check the database host, credentials, network, and migrations.',
       envVars: ['DATABASE_URL'],
       documentationPath: 'README.md#database',
-      details: {
+      details: safeDetails({
         configured: true,
         reachable: false,
         hostDetected: Boolean(env.databaseHost),
-      },
+      }),
     };
   }
 }
@@ -115,7 +151,7 @@ function buildApiAuthCheck(): SystemReadinessCheck {
   return {
     key: 'api-internal-auth',
     title: 'API Internal Auth',
-    status: configured ? 'ready' : 'not_configured',
+    status: configured ? 'ready' : 'missing',
     meaning: configured
       ? 'Internal API-key authentication is configured for protected API routes.'
       : 'Internal API keys are not configured. Local safe-mode bypass may apply only in development-like setups.',
@@ -128,12 +164,12 @@ function buildApiAuthCheck(): SystemReadinessCheck {
       'INTERNAL_ADMIN_API_KEY',
     ],
     documentationPath: 'README.md#environment',
-    details: {
+    details: safeDetails({
       viewerApiKeyConfigured,
       apiKeyConfigured,
       adminApiKeyConfigured,
       authEnforcedForCurrentConfig: isInternalAuthEnforced(),
-    },
+    }),
   };
 }
 
@@ -150,7 +186,7 @@ function buildMicrosoftMailCheck(): SystemReadinessCheck {
   return {
     key: 'microsoft-mail',
     title: 'Microsoft Mail Credentials',
-    status: configured ? 'ready' : partial ? 'warning' : 'not_configured',
+    status: configured ? 'ready' : partial ? 'warning' : 'missing',
     meaning: configured
       ? 'Microsoft Graph mail credentials are present for inbox polling or email sending.'
       : partial
@@ -167,14 +203,14 @@ function buildMicrosoftMailCheck(): SystemReadinessCheck {
       'MICROSOFT_GRAPH_SENDER_MAILBOX',
     ],
     documentationPath: 'README.md#email-signal-forwarding',
-    details: {
+    details: safeDetails({
       credentialSource: env.microsoftMailCredentialSource,
       tenantConfigured: Boolean(env.microsoftMailTenantId),
       clientIdConfigured: Boolean(env.microsoftMailClientId),
       clientSecretConfigured: Boolean(env.microsoftMailClientSecret),
       refreshTokenConfigured: Boolean(env.microsoftGraphRefreshToken),
       senderMailboxConfigured: Boolean(env.microsoftGraphSenderMailbox),
-    },
+    }),
   };
 }
 
@@ -183,7 +219,7 @@ function buildEmailPollingCheck(): SystemReadinessCheck {
   const active = isEmailInboundPollingActive();
   const workerStatus = getPollingWorkerStatus('email-inbound');
 
-  let status: SystemReadinessStatus = 'not_configured';
+  let status: SystemReadinessStatus = 'disabled';
   if (active && env.emailInboundAllowedSenders.length > 0) {
     status = 'ready';
   } else if (env.emailInboundPollingEnabled || graphConfigured) {
@@ -213,7 +249,7 @@ function buildEmailPollingCheck(): SystemReadinessCheck {
       'MICROSOFT_GRAPH_SENDER_MAILBOX',
     ],
     documentationPath: 'README.md#direct-inbox-polling',
-    details: {
+    details: safeDetails({
       enabled: env.emailInboundPollingEnabled,
       graphConfigured,
       active,
@@ -235,13 +271,13 @@ function buildEmailPollingCheck(): SystemReadinessCheck {
       totalItemsSkipped: workerStatus.totalItemsSkipped,
       totalItemsFailed: workerStatus.totalItemsFailed,
       duplicateItemsSkipped: workerStatus.duplicateItemsSkipped,
-    },
+    }),
   };
 }
 
 function buildGraphMailPreflightCheck(): SystemReadinessCheck {
   const preflight = getGraphMailPreflightStatus();
-  let status: SystemReadinessStatus = 'not_configured';
+  let status: SystemReadinessStatus = 'missing';
 
   if (preflight.dryRunSafe && preflight.allowedSenderConfigured) {
     status = 'ready';
@@ -275,7 +311,7 @@ function buildGraphMailPreflightCheck(): SystemReadinessCheck {
       'EMAIL_INBOUND_POLLING_ENABLED',
     ],
     documentationPath: 'README.md#graph-inbox-preflight',
-    details: {
+    details: safeDetails({
       mailboxConfigured: preflight.mailboxConfigured,
       mailbox: preflight.mailbox,
       credentialSource: preflight.credentialSource,
@@ -291,7 +327,55 @@ function buildGraphMailPreflightCheck(): SystemReadinessCheck {
       supplierMappingCount: preflight.supplierMappingCount,
       dryRunSafe: preflight.dryRunSafe,
       warnings: preflight.warnings,
-    },
+    }),
+  };
+}
+
+function buildAllowedSendersCheck(): SystemReadinessCheck {
+  const hasAllowedSenders = env.emailInboundAllowedSenders.length > 0;
+  const hasSupplierMappings = env.emailInboundSupplierMappings.length > 0;
+  const inboxIntakeConfigured =
+    env.emailInboundPollingEnabled || isMicrosoftGraphConfigured();
+
+  let status: SystemReadinessStatus = 'disabled';
+  if (hasAllowedSenders && hasSupplierMappings) {
+    status = 'ready';
+  } else if (hasAllowedSenders || hasSupplierMappings) {
+    status = 'warning';
+  } else if (inboxIntakeConfigured) {
+    status = 'missing';
+  }
+
+  return {
+    key: 'allowed-senders-supplier-mappings',
+    title: 'Allowed Senders And Supplier Mappings',
+    status,
+    meaning:
+      status === 'ready'
+        ? 'Inbound email allowlists and supplier mappings are present for controlled intake.'
+        : status === 'warning'
+          ? 'Inbound sender controls are partially configured.'
+          : status === 'missing'
+            ? 'Inbox intake is configured without sender allowlists or supplier mappings.'
+            : 'Sender allowlists and supplier mappings are not active because inbox intake is disabled.',
+    nextAction:
+      status === 'ready'
+        ? 'Keep the allowlist narrow and review mappings before enabling polling.'
+        : 'Set EMAIL_INBOUND_ALLOWED_SENDERS and EMAIL_INBOUND_SUPPLIER_MAPPINGS before relying on inbox polling.',
+    envVars: [
+      'EMAIL_INBOUND_ALLOWED_SENDERS',
+      'EMAIL_INBOUND_SUPPLIER_MAPPINGS',
+      'EMAIL_INBOUND_INTERNAL_DOMAINS',
+      'EMAIL_INBOUND_INTERNAL_COMPANY_NAMES',
+    ],
+    documentationPath: 'README.md#email-inbound-sender-configuration',
+    details: safeDetails({
+      allowedSenderCount: env.emailInboundAllowedSenders.length,
+      supplierMappingCount: env.emailInboundSupplierMappings.length,
+      internalDomainCount: env.emailInboundInternalDomains.length,
+      internalCompanyNameCount: env.emailInboundInternalCompanyNames.length,
+      inboxIntakeConfigured,
+    }),
   };
 }
 
@@ -313,7 +397,7 @@ function buildMicrosoftStorageCheck(): SystemReadinessCheck {
       ? Boolean(env.oneDriveUserId && env.oneDriveAccountOpeningFolder)
       : Boolean(env.sharePointSiteId && env.sharePointDriveId);
 
-  let status: SystemReadinessStatus = 'not_configured';
+  let status: SystemReadinessStatus = 'disabled';
   if (configured && (!accountOpeningStorageEnabled || providerSettingsReady)) {
     status = 'ready';
   } else if (partial || accountOpeningStorageEnabled) {
@@ -344,7 +428,7 @@ function buildMicrosoftStorageCheck(): SystemReadinessCheck {
       'ONEDRIVE_USER_ID',
     ],
     documentationPath: 'README.md#microsoft-drive-storage-app',
-    details: {
+    details: safeDetails({
       credentialSource: env.microsoftStorageCredentialSource,
       tenantConfigured: Boolean(env.microsoftStorageTenantId),
       clientIdConfigured: Boolean(env.microsoftStorageClientId),
@@ -360,7 +444,7 @@ function buildMicrosoftStorageCheck(): SystemReadinessCheck {
       purchaseOrderFolderConfigured: Boolean(env.oneDrivePurchaseOrderFolder),
       regulatoryFolderConfigured: Boolean(env.oneDriveRegulatoryFolder),
       reportsFolderConfigured: Boolean(env.oneDriveReportsFolder),
-    },
+    }),
   };
 }
 
@@ -374,7 +458,7 @@ function buildTelegramCheck(): SystemReadinessCheck {
     env.telegramAllowedChatIds.length > 0;
   const workerStatus = getPollingWorkerStatus('telegram');
 
-  let status: SystemReadinessStatus = 'not_configured';
+  let status: SystemReadinessStatus = 'disabled';
   if (
     env.telegramPollingEnabled &&
     pollingActive &&
@@ -414,7 +498,7 @@ function buildTelegramCheck(): SystemReadinessCheck {
       'TELEGRAM_ALLOWED_CHAT_IDS',
     ],
     documentationPath: 'README.md#telegram-inbound-file-intake',
-    details: {
+    details: safeDetails({
       botTokenConfigured: Boolean(env.telegramBotToken),
       internalChatConfigured: Boolean(env.telegramInternalChatId),
       dryRun: env.telegramDryRun,
@@ -436,7 +520,7 @@ function buildTelegramCheck(): SystemReadinessCheck {
       totalItemsProcessed: workerStatus.totalItemsProcessed,
       totalItemsSkipped: workerStatus.totalItemsSkipped,
       totalItemsFailed: workerStatus.totalItemsFailed,
-    },
+    }),
   };
 }
 
@@ -445,7 +529,7 @@ function buildOpenAiCheck(): SystemReadinessCheck {
   const parserReady = env.openAiParserEnabled && apiKeyConfigured;
   const emailReviewReady = env.openAiEmailReviewEnabled && apiKeyConfigured;
 
-  let status: SystemReadinessStatus = 'not_configured';
+  let status: SystemReadinessStatus = 'disabled';
   if (parserReady || emailReviewReady) {
     status = 'ready';
   } else if (
@@ -478,7 +562,7 @@ function buildOpenAiCheck(): SystemReadinessCheck {
       'OPENAI_EMAIL_REVIEW_DAILY_LIMIT',
     ],
     documentationPath: 'README.md#ai-fallback-constraints',
-    details: {
+    details: safeDetails({
       apiKeyConfigured,
       parserEnabled: env.openAiParserEnabled,
       emailReviewEnabled: env.openAiEmailReviewEnabled,
@@ -486,7 +570,7 @@ function buildOpenAiCheck(): SystemReadinessCheck {
       emailReviewDailyLimit: env.openAiEmailReviewDailyLimit,
       emailReviewPerSupplierDailyLimit:
         env.openAiEmailReviewPerSupplierDailyLimit,
-    },
+    }),
   };
 }
 
@@ -501,7 +585,7 @@ function buildImportsCheck(): SystemReadinessCheck {
       'Run a controlled CSV/XLSX fixture import after the database is reachable, then check GET /api/inventory and GET /api/customers.',
     envVars: [],
     documentationPath: 'README.md#import-api',
-    details: {
+    details: safeDetails({
       supplierPriceListImportAvailable: true,
       inventoryImportAvailable: true,
       salesImportAvailable: true,
@@ -512,7 +596,86 @@ function buildImportsCheck(): SystemReadinessCheck {
       csvSupported: true,
       xlsxSupported: true,
       maxUploadSizeBytes: 10 * 1024 * 1024,
-    },
+    }),
+  };
+}
+
+function buildDemoSeedSafetyCheck(): SystemReadinessCheck {
+  const databaseSafety = classifyDatabaseUrlForLocalSmoke(env.databaseUrl);
+  const productionMode = env.nodeEnv === 'production';
+  const warning =
+    !productionMode || env.enableDebugRoutes || databaseSafety.safe;
+
+  return {
+    key: 'demo-seed-safety',
+    title: 'Demo And Seed Safety',
+    status: warning ? 'warning' : 'ready',
+    meaning: warning
+      ? 'Demo, seed, or debug-oriented configuration needs operator attention before pilot use.'
+      : 'Runtime configuration does not look like a local/demo seed target.',
+    nextAction: warning
+      ? 'Do not run demo or seed commands against pilot data; disable debug routes before production pilot use.'
+      : 'Keep demo and seed commands limited to guarded local or disposable demo databases.',
+    envVars: ['NODE_ENV', 'ENABLE_DEBUG_ROUTES', 'DATABASE_URL'],
+    documentationPath: 'docs/pilot-runbook.md#demo-and-fixture-safety',
+    details: safeDetails({
+      productionMode,
+      debugRoutesEnabled: env.enableDebugRoutes,
+      databaseConfigured: Boolean(env.databaseUrl),
+      databaseHostDetected: Boolean(env.databaseHost),
+      localSmokeSafeDatabase: databaseSafety.safe,
+      localSmokeDatabaseClassification: databaseSafety.classification,
+    }),
+  };
+}
+
+function buildProductionSafetyWarningsCheck(): SystemReadinessCheck {
+  const integrationSafety = evaluateExternalIntegrationsForLocalSmoke(env);
+  const warningReasons = [
+    env.nodeEnv !== 'production'
+      ? 'NODE_ENV is not production.'
+      : null,
+    !isInternalAuthEnforced()
+      ? 'Internal API auth is not enforced for the current configuration.'
+      : null,
+    env.enableDebugRoutes ? 'Debug routes are enabled.' : null,
+    ...integrationSafety.unsafeReasons,
+  ].filter((reason): reason is string => Boolean(reason));
+
+  return {
+    key: 'production-safety-warnings',
+    title: 'Production Safety Warnings',
+    status: warningReasons.length > 0 ? 'warning' : 'ready',
+    meaning:
+      warningReasons.length > 0
+        ? 'One or more production safety settings need review before pilot operation.'
+        : 'No production safety warnings are currently reported by the safe readiness checks.',
+    nextAction:
+      warningReasons.length > 0
+        ? 'Review each warning before enabling polling, storage, Telegram, OpenAI, or pilot imports.'
+        : 'Keep optional integrations disabled until each pilot step is deliberately approved.',
+    envVars: [
+      'NODE_ENV',
+      'ENABLE_DEBUG_ROUTES',
+      'START_WORKERS_WITH_API',
+      'EMAIL_ALERTS_ENABLED',
+      'EMAIL_INBOUND_POLLING_ENABLED',
+      'TELEGRAM_DRY_RUN',
+      'TELEGRAM_POLLING_ENABLED',
+      'OPENAI_PARSER_ENABLED',
+      'OPENAI_EMAIL_REVIEW_ENABLED',
+      'SHAREPOINT_ACCOUNT_OPENING_ENABLED',
+      'ONEDRIVE_ACCOUNT_OPENING_ENABLED',
+    ],
+    documentationPath: 'docs/pilot-runbook.md#pre-flight-checklist',
+    details: safeDetails({
+      warningCount: warningReasons.length,
+      warnings: warningReasons,
+      integrationChecks: integrationSafety.checks.map((check) => check.name),
+      productionMode: env.nodeEnv === 'production',
+      internalAuthEnforced: isInternalAuthEnforced(),
+      debugRoutesEnabled: env.enableDebugRoutes,
+    }),
   };
 }
 
@@ -535,10 +698,13 @@ export function createSystemReadinessService(
         buildMicrosoftMailCheck(),
         buildGraphMailPreflightCheck(),
         buildEmailPollingCheck(),
+        buildAllowedSendersCheck(),
         buildMicrosoftStorageCheck(),
         buildTelegramCheck(),
         buildOpenAiCheck(),
         buildImportsCheck(),
+        buildDemoSeedSafetyCheck(),
+        buildProductionSafetyWarningsCheck(),
       ];
 
       return {

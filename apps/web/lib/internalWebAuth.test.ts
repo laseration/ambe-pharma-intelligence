@@ -98,6 +98,28 @@ test('web auth creates readable signed sessions and rejects tampering or expiry'
   );
 });
 
+test('web auth rejects sessions when the signing secret is missing', async () => {
+  const created = await createWebSessionCookieValue({
+    username: 'pilot.operator',
+    role: 'operator',
+    source,
+    now: 1_000_000,
+  });
+
+  assert.ok(created);
+  assert.equal(
+    await readWebSession(
+      created.cookieValue,
+      {
+        WEB_AUTH_USERNAME: source.WEB_AUTH_USERNAME,
+        WEB_AUTH_PASSWORD: source.WEB_AUTH_PASSWORD,
+      },
+      1_001_000,
+    ),
+    null,
+  );
+});
+
 test('web session cookie options use production secure cookies', () => {
   assert.deepEqual(
     getWebSessionCookieOptions({
