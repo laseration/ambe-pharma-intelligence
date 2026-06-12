@@ -431,6 +431,107 @@ test('TRADING mode BUY is not suppressed when inventory snapshot is stale', () =
   assert.ok(candidates.some((candidate) => candidate.type === 'BUY'));
 });
 
+test('TRADING mode BUY is suppressed when latest supplier price is stale', () => {
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      latestSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.5,
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      },
+      previousSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.8,
+        createdAt: new Date('2026-03-20T00:00:00.000Z'),
+      },
+      recentSales: {
+        units30d: 90,
+        averageSalePrice: 2.5,
+        lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
+      },
+    }),
+    tradingConfig,
+  );
+
+  assert.ok(!candidates.some((candidate) => candidate.type === 'BUY'));
+});
+
+test('TRADING mode PUSH is suppressed when latest supplier price is stale', () => {
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      latestInventory: null,
+      latestSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 2,
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      },
+      previousSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 2.2,
+        createdAt: new Date('2026-03-20T00:00:00.000Z'),
+      },
+      recentSales: {
+        units30d: 90,
+        averageSalePrice: 3.1,
+        lastSaleDate: new Date('2026-04-18T00:00:00.000Z'),
+      },
+    }),
+    tradingConfig,
+  );
+
+  assert.ok(!candidates.some((candidate) => candidate.type === 'PUSH'));
+});
+
+test('TRADING mode PRICE_ALERT is suppressed when latest supplier price is stale', () => {
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      latestSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.5,
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      },
+      previousSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.8,
+        createdAt: new Date('2026-03-20T00:00:00.000Z'),
+      },
+      recentSales: {
+        units30d: 20,
+        averageSalePrice: 2.5,
+        lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
+      },
+    }),
+    tradingConfig,
+  );
+
+  assert.ok(!candidates.some((candidate) => candidate.type === 'PRICE_ALERT'));
+});
+
+test('TRADING mode LOW_MARGIN is suppressed when latest supplier price is stale', () => {
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      latestSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 2.6,
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      },
+      previousSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 2.7,
+        createdAt: new Date('2026-03-20T00:00:00.000Z'),
+      },
+      recentSales: {
+        units30d: 30,
+        averageSalePrice: 3.1,
+        lastSaleDate: new Date('2026-04-18T00:00:00.000Z'),
+      },
+    }),
+    tradingConfig,
+  );
+
+  assert.ok(!candidates.some((candidate) => candidate.type === 'LOW_MARGIN'));
+});
+
 test('STOCKHOLDING mode BUY is still suppressed when stock is already high', () => {
   const candidates = scoreOpportunityCandidates(
     createContext({
@@ -1103,6 +1204,82 @@ test('audit shows TRADING mode BUY is not blocked by stale inventory', () => {
       'Inventory snapshot is fresh enough for BUY',
     ),
   );
+});
+
+test('audit shows TRADING BUY, PRICE_ALERT, and PUSH blocked by stale supplier price', () => {
+  const audit = auditOpportunityScoring(
+    createContext({
+      latestSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.5,
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      },
+      previousSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1.8,
+        createdAt: new Date('2026-03-20T00:00:00.000Z'),
+      },
+      recentSales: {
+        units30d: 90,
+        averageSalePrice: 2.5,
+        lastSaleDate: new Date('2026-04-19T00:00:00.000Z'),
+      },
+    }),
+    tradingConfig,
+  );
+
+  for (const type of ['BUY', 'PRICE_ALERT', 'PUSH'] as const) {
+    const entry = audit.opportunities.find(
+      (opportunity) => opportunity.type === type,
+    );
+
+    assert.ok(entry);
+    assert.equal(entry.eligible, false);
+    assert.ok(
+      entry.blockingReasons.includes(
+        'Latest supplier price is fresh enough for TRADING signal',
+      ),
+    );
+    assert.equal(entry.keyMetrics.daysSinceLatestSupplierPrice, 19);
+    assert.equal(entry.thresholds.maxSupplierPriceAgeDaysForTradingSignals, 14);
+  }
+});
+
+test('audit shows TRADING LOW_MARGIN blocked by stale supplier price', () => {
+  const audit = auditOpportunityScoring(
+    createContext({
+      latestSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 2.6,
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      },
+      previousSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 2.7,
+        createdAt: new Date('2026-03-20T00:00:00.000Z'),
+      },
+      recentSales: {
+        units30d: 30,
+        averageSalePrice: 3.1,
+        lastSaleDate: new Date('2026-04-18T00:00:00.000Z'),
+      },
+    }),
+    tradingConfig,
+  );
+
+  const entry = audit.opportunities.find(
+    (opportunity) => opportunity.type === 'LOW_MARGIN',
+  );
+
+  assert.ok(entry);
+  assert.equal(entry.eligible, false);
+  assert.ok(
+    entry.blockingReasons.includes(
+      'Latest supplier price is fresh enough for TRADING signal',
+    ),
+  );
+  assert.equal(entry.keyMetrics.daysSinceLatestSupplierPrice, 19);
+  assert.equal(entry.thresholds.maxSupplierPriceAgeDaysForTradingSignals, 14);
 });
 
 test('audit shows STOCKHOLDING mode BUY blocked when stock is already high', () => {
