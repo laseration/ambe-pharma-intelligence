@@ -2,6 +2,9 @@
 
 This runbook is for operating a controlled pilot of Ambe Pharma Intelligence.
 It assumes the deployment has been configured using [deployment.md](deployment.md).
+Use that deployment guide for the VPS process layout, production smoke checks,
+safe migration process, database backup/restore outline, rollback procedure, and
+incident checklist.
 
 ## Pilot Scope
 

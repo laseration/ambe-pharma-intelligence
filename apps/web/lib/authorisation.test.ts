@@ -162,3 +162,42 @@ test('requireCapability returns the session only when the role is allowed', () =
     },
   );
 });
+
+test('dashboard action visibility follows the role capability map', () => {
+  const restrictedActionCapabilities: Parameters<typeof roleHasCapability>[1][] =
+    [
+      'opportunities:manage',
+      'review:view',
+      'review:manage',
+      'imports:view',
+      'inbox:view',
+      'trade-enquiries:manage',
+      'system:admin',
+    ];
+
+  for (const capability of restrictedActionCapabilities) {
+    assert.equal(
+      roleHasCapability('viewer', capability),
+      false,
+      `viewer UI must not expose ${capability}`,
+    );
+  }
+
+  for (const capability of [
+    'opportunities:manage',
+    'review:view',
+    'review:manage',
+    'imports:view',
+    'inbox:view',
+    'trade-enquiries:manage',
+  ] satisfies Parameters<typeof roleHasCapability>[1][]) {
+    assert.equal(
+      roleHasCapability('operator', capability),
+      true,
+      `operator UI can expose ${capability}`,
+    );
+  }
+
+  assert.equal(roleHasCapability('operator', 'system:admin'), false);
+  assert.equal(roleHasCapability('admin', 'system:admin'), true);
+});

@@ -128,6 +128,33 @@ The account-opening bot does not:
 - complete guarantees, indemnities, director-only, RP/GDP/WDA, credit, or unknown legal declarations
 - create purchase, order, buy, cart, checkout, or public marketplace actions
 
+## Manual `.eml` Pilot Import
+
+For a controlled real-email pilot, an admin with shell access can import one
+saved `.eml` file at a time:
+
+```bash
+pnpm --filter @ambe/api account-opening:import-eml -- --file ./pilot-emails/sanitized-message.eml
+pnpm --filter @ambe/api account-opening:import-eml -- --file "D:\Pilot Emails\sanitized-message.eml"
+```
+
+This parses the local MIME source and sends exactly one message through the
+existing inbound account-opening review path. It stores source provenance,
+attachment filenames, MIME types, byte sizes, checksums, and safe replay
+metadata. It does not start workers, poll Microsoft Graph, call OpenAI, send
+email, sign, submit, archive, or file to SharePoint/OneDrive.
+
+Use this only with an explicitly saved pilot email on the intended staging
+database. Keep `EMAIL_INBOUND_POLLING_ENABLED`, `START_WORKERS_WITH_API`,
+SharePoint/OneDrive, OpenAI, Telegram, and outbound email settings disabled
+unless a later pilot step explicitly enables them.
+
+Relative paths are resolved from the current process directory first and then
+from the repo root, which matters because `pnpm --filter @ambe/api` may run the
+script with `apps/api` as the current working directory. If the file is missing,
+the script prints the provided path, resolved path, current working directory,
+and a valid example command.
+
 ## Focused QA
 
 Run:

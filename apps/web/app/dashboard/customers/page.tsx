@@ -2,6 +2,7 @@ import {
   listCustomerContactOpportunities,
   listCustomers,
 } from '../../../lib/customersApi';
+import { requireCurrentWebCapability } from '../../../lib/serverWebAuth';
 import { CustomersDashboardContent } from './CustomersDashboardContent';
 
 export const dynamic = 'force-dynamic';
@@ -26,6 +27,8 @@ function parseBoolean(value: string | undefined): boolean {
 export default async function CustomersPage({
   searchParams,
 }: CustomersPageProps) {
+  await requireCurrentWebCapability('customers:view');
+
   const query = searchParams ? await searchParams : undefined;
   const filters = {
     q: query?.q?.trim() ?? '',

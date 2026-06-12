@@ -113,9 +113,26 @@ test('system readiness report contains safe setup signals without secret values'
 
   assert.equal(report.generatedAt, '2026-05-31T12:00:00.000Z');
   assert.equal(report.status, 'warning');
-  assert.equal(
-    report.checks.some((check) => check.key === 'database'),
-    true,
+  assert.deepEqual(
+    [
+      'database',
+      'api-internal-auth',
+      'microsoft-mail',
+      'graph-mail-preflight',
+      'email-polling',
+      'allowed-senders-supplier-mappings',
+      'microsoft-storage',
+      'telegram',
+      'openai-parser',
+      'imports',
+      'demo-seed-safety',
+      'production-safety-warnings',
+    ].filter((key) => !report.checks.some((check) => check.key === key)),
+    [],
+  );
+  assert.deepEqual(
+    Array.from(new Set(report.checks.map((check) => check.status))).sort(),
+    ['ready', 'warning'],
   );
   assert.doesNotMatch(serialized, /secret-user/);
   assert.doesNotMatch(serialized, /secret-pass/);
@@ -130,6 +147,56 @@ test('system readiness report contains safe setup signals without secret values'
   assert.doesNotMatch(serialized, /sharepoint-site-secret/);
   assert.doesNotMatch(serialized, /sharepoint-drive-secret/);
   assert.doesNotMatch(serialized, /mailbox@example\.test/);
+});
+
+test('system readiness distinguishes missing, disabled, warning, and ready setup states', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'production',
+    databaseUrl: '',
+    databaseHost: null,
+    internalViewerApiKey: '',
+    internalApiKey: '',
+    internalAdminApiKey: '',
+    emailInboundPollingEnabled: false,
+    emailInboundAllowedSenders: [],
+    emailInboundSupplierMappings: [],
+    microsoftMailTenantId: '',
+    microsoftMailClientId: '',
+    microsoftMailClientSecret: '',
+    microsoftGraphRefreshToken: '',
+    microsoftGraphSenderMailbox: '',
+    microsoftStorageTenantId: '',
+    microsoftStorageClientId: '',
+    microsoftStorageClientSecret: '',
+    sharePointAccountOpeningEnabled: false,
+    oneDriveAccountOpeningEnabled: false,
+    telegramBotToken: '',
+    telegramInternalChatId: '',
+    telegramPollingEnabled: false,
+    openAiApiKey: '',
+    openAiParserEnabled: false,
+    openAiEmailReviewEnabled: false,
+    enableDebugRoutes: false,
+    startWorkersWithApi: false,
+  });
+
+  const service = createSystemReadinessService({
+    now: () => new Date('2026-06-02T12:00:00.000Z'),
+    pingDatabase: async () => undefined,
+  });
+  const report = await service.getReadinessReport();
+  const byKey = new Map(report.checks.map((check) => [check.key, check]));
+
+  assert.equal(byKey.get('database')?.status, 'missing');
+  assert.equal(byKey.get('api-internal-auth')?.status, 'missing');
+  assert.equal(byKey.get('email-polling')?.status, 'disabled');
+  assert.equal(byKey.get('telegram')?.status, 'disabled');
+  assert.equal(byKey.get('openai-parser')?.status, 'disabled');
+  assert.equal(byKey.get('imports')?.status, 'ready');
+  const statuses = new Set(report.checks.map((check) => check.status));
+  assert.equal(statuses.has('missing'), true);
+  assert.equal(statuses.has('disabled'), true);
+  assert.equal(statuses.has('ready'), true);
 });
 
 test('system readiness reports configured but unreachable database as warning', async (t) => {

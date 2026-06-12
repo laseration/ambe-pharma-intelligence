@@ -71,7 +71,7 @@ The setup page calls the read-only API endpoint:
 GET /api/system/readiness
 ```
 
-The endpoint returns safe pilot-readiness checks for database connectivity, API internal auth, email polling, Microsoft Graph mail credentials, Microsoft storage settings, Telegram polling, OpenAI fallback configuration, and import availability. It reports booleans, counts, status labels, documentation hints, and environment variable names only. It must not return secret values, full connection strings, tokens, or Graph credentials.
+The endpoint returns safe pilot-readiness checks for database connectivity, API internal auth, email polling, Microsoft Graph mail credentials, allowed sender and supplier mapping setup, Microsoft storage settings, Telegram polling, OpenAI fallback configuration, import availability, demo/seed safety, and production safety warnings. The setup page groups those signals with web auth/session status and uses only `ready`, `missing`, `disabled`, and `warning` labels. It reports booleans, counts, status labels, documentation hints, and environment variable names only. It must not return secret values, full connection strings, tokens, or Graph credentials.
 
 The readiness report also marks the read-only inventory and customer data APIs
 as available once the API is running. These endpoints are internal-only,
@@ -151,7 +151,8 @@ Latest local safe verification report: [docs/test-runs/full-safe-bot-verificatio
 
 ### Deployment and pilot operations
 
-Deployment setup is documented in [docs/deployment.md](docs/deployment.md).
+Production/VPS deployment setup and operations are documented in
+[docs/deployment.md](docs/deployment.md).
 Pilot operating procedures, safe defaults, migrations, backups, inbox polling,
 optional integrations, and seed/demo cautions are documented in
 [docs/pilot-runbook.md](docs/pilot-runbook.md).

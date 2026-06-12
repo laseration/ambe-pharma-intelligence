@@ -20,6 +20,7 @@ import {
   submitReviewOfferCorrection,
 } from './actions';
 import { SubmitButton } from './submit-button';
+import { requireCurrentWebCapability } from '../../../../lib/serverWebAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -932,6 +933,8 @@ export default async function ReviewInboundEmailPage({
   params,
   searchParams,
 }: PageProps) {
+  await requireCurrentWebCapability('review:view');
+
   const { id: inboundEmailId } = await params;
   const query = searchParams ? await searchParams : undefined;
   const showCompleted = query?.showCompleted === '1';

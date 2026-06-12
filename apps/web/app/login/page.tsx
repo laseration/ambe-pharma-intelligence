@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 
 import { loginAction } from '../auth/actions';
 import { getCurrentWebSession } from '../../lib/serverWebAuth';
+import { normalizeDashboardRedirect } from '../../lib/webAuthFlow';
 
 export const metadata: Metadata = {
   title: 'Internal Sign-In | Ambe Intelligence',
@@ -19,14 +20,6 @@ type LoginPageProps = {
     signedOut?: string;
   }>;
 };
-
-function normalizeDashboardRedirect(value: string | undefined): string {
-  if (value?.startsWith('/dashboard')) {
-    return value;
-  }
-
-  return '/dashboard';
-}
 
 function errorMessage(value: string | undefined): string | null {
   if (value === 'not-configured') {

@@ -4,6 +4,7 @@ import {
   listTradeOpportunities,
   type TradeOpportunityListItem,
 } from '../../../lib/dealsApi';
+import { requireCurrentWebCapability } from '../../../lib/serverWebAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -200,6 +201,8 @@ function resolveSupplierLabel(item: TradeOpportunityListItem) {
 }
 
 export default async function DealsPage() {
+  await requireCurrentWebCapability('deals:view');
+
   try {
     const deals = await listTradeOpportunities();
 

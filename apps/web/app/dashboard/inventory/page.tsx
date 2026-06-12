@@ -1,4 +1,5 @@
 import { listInventory, listStockRisk } from '../../../lib/inventoryApi';
+import { requireCurrentWebCapability } from '../../../lib/serverWebAuth';
 import { InventoryDashboardContent } from './InventoryDashboardContent';
 
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,8 @@ function parseBoolean(value: string | undefined): boolean {
 export default async function InventoryPage({
   searchParams,
 }: InventoryPageProps) {
+  await requireCurrentWebCapability('inventory:view');
+
   const query = searchParams ? await searchParams : undefined;
   const filters = {
     q: query?.q?.trim() ?? '',

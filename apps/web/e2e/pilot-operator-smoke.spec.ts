@@ -37,7 +37,9 @@ test('pilot operator walkthrough smoke uses sanitized browser paths', async ({
   await expect(
     page.getByRole('heading', { name: 'Pilot Setup Checklist' }),
   ).toBeVisible();
-  await expect(page.getByText('Internal API', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('Internal API Auth', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText('Polling Status')).toBeVisible();
   await expect(
     page.getByText('[redacted] [redacted] [redacted]'),

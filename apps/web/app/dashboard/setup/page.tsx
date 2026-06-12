@@ -4,8 +4,6 @@ import {
   getPollingWorkerStatuses,
   getSystemReadinessReport,
   type PollingWorkerStatus,
-  type SystemReadinessCheck,
-  type SystemReadinessReport,
   type SystemReadinessStatus,
 } from '../../../lib/systemApi';
 import { requireCurrentWebCapability } from '../../../lib/serverWebAuth';
@@ -14,30 +12,16 @@ import {
   summarizeWorkerFreshness,
   type WorkerFreshnessSummary,
 } from '../../../lib/operatorTrust';
+import {
+  buildSetupChecklistSections,
+  countSetupSectionsByStatus,
+  formatSetupDetailValue,
+  statusLabel,
+  statusPillClass,
+  type SetupChecklistSection,
+} from '../../../lib/setupChecklist';
 
 export const dynamic = 'force-dynamic';
-
-function statusLabel(status: SystemReadinessStatus): string {
-  switch (status) {
-    case 'ready':
-      return 'Ready';
-    case 'warning':
-      return 'Warning';
-    case 'not_configured':
-      return 'Not configured';
-  }
-}
-
-function statusPillClass(status: SystemReadinessStatus): string {
-  switch (status) {
-    case 'ready':
-      return 'pill-high';
-    case 'warning':
-      return 'pill-medium';
-    case 'not_configured':
-      return 'pill-low';
-  }
-}
 
 function freshnessPillClass(tone: WorkerFreshnessSummary['tone']): string {
   switch (tone) {
@@ -67,11 +51,13 @@ function formatOptionalDateTime(value: string | null): string {
   return value ? formatDateTime(value) : 'n/a';
 }
 
-function formatDetailValue(
+function formatWorkerDetailValue(
   value: boolean | number | string | string[] | null,
 ): string {
   if (Array.isArray(value)) {
-    return value.length ? value.join(', ') : 'none';
+    return value.length
+      ? value.map((item) => redactDashboardText(item)).join(', ')
+      : 'none';
   }
 
   if (typeof value === 'boolean') {
@@ -82,7 +68,7 @@ function formatDetailValue(
     return 'n/a';
   }
 
-  return String(value);
+  return typeof value === 'string' ? redactDashboardText(value) : String(value);
 }
 
 function workerTitle(name: PollingWorkerStatus['name']): string {
@@ -96,7 +82,7 @@ function workerTitle(name: PollingWorkerStatus['name']): string {
 
 function workerStatus(status: PollingWorkerStatus): SystemReadinessStatus {
   if (!status.enabled) {
-    return 'not_configured';
+    return 'disabled';
   }
 
   if (!status.configured || !status.running || status.consecutiveFailures > 0) {
@@ -149,11 +135,11 @@ function WorkerStatusCard({ status }: { status: PollingWorkerStatus }) {
       <dl className="setup-detail-list">
         <div>
           <dt>running</dt>
-          <dd>{formatDetailValue(status.running)}</dd>
+          <dd>{formatWorkerDetailValue(status.running)}</dd>
         </div>
         <div>
           <dt>in flight</dt>
-          <dd>{formatDetailValue(status.inFlight)}</dd>
+          <dd>{formatWorkerDetailValue(status.inFlight)}</dd>
         </div>
         <div>
           <dt>last run</dt>
@@ -196,49 +182,39 @@ function WorkerStatusCard({ status }: { status: PollingWorkerStatus }) {
   );
 }
 
-function countByStatus(report: SystemReadinessReport) {
-  return {
-    ready: report.checks.filter((check) => check.status === 'ready').length,
-    warning: report.checks.filter((check) => check.status === 'warning').length,
-    notConfigured: report.checks.filter(
-      (check) => check.status === 'not_configured',
-    ).length,
-  };
-}
-
-function ReadinessCard({ check }: { check: SystemReadinessCheck }) {
-  const details = Object.entries(check.details);
+function ReadinessSectionCard({ section }: { section: SetupChecklistSection }) {
+  const details = Object.entries(section.details);
 
   return (
     <article className="dashboard-opportunity-card setup-card">
       <div className="dashboard-opportunity-top">
         <div>
-          <p className="dashboard-opportunity-title">{check.title}</p>
-          <p className="dashboard-opportunity-meta">{check.key}</p>
+          <p className="dashboard-opportunity-title">{section.title}</p>
+          <p className="dashboard-opportunity-meta">{section.key}</p>
         </div>
-        <span className={`pill ${statusPillClass(check.status)}`}>
-          {statusLabel(check.status)}
+        <span className={`pill ${statusPillClass(section.status)}`}>
+          {statusLabel(section.status)}
         </span>
       </div>
 
-      <p className="dashboard-opportunity-copy">{check.meaning}</p>
+      <p className="dashboard-opportunity-copy">{section.meaning}</p>
 
       <div className="setup-next-action">
         <p className="dashboard-summary-label">Next action</p>
-        <p className="dashboard-summary-note">{check.nextAction}</p>
+        <p className="dashboard-summary-note">{section.nextAction}</p>
       </div>
 
-      {check.envVars.length > 0 ? (
+      {section.envVars.length > 0 ? (
         <div className="setup-env-list">
-          {check.envVars.map((envVar) => (
+          {section.envVars.map((envVar) => (
             <code key={envVar}>{envVar}</code>
           ))}
         </div>
       ) : null}
 
-      {check.documentationPath ? (
+      {section.documentationPath ? (
         <p className="dashboard-triage-meta">
-          Docs: <code>{check.documentationPath}</code>
+          Docs: <code>{section.documentationPath}</code>
         </p>
       ) : null}
 
@@ -247,7 +223,7 @@ function ReadinessCard({ check }: { check: SystemReadinessCheck }) {
           {details.map(([key, value]) => (
             <div key={key}>
               <dt>{key.replace(/([A-Z])/g, ' $1')}</dt>
-              <dd>{formatDetailValue(value)}</dd>
+              <dd>{formatSetupDetailValue(value)}</dd>
             </div>
           ))}
         </dl>
@@ -264,7 +240,8 @@ export default async function SetupPage() {
       getSystemReadinessReport(),
       getPollingWorkerStatuses().catch(() => []),
     ]);
-    const counts = countByStatus(report);
+    const sections = buildSetupChecklistSections({ report, session });
+    const counts = countSetupSectionsByStatus(sections);
 
     return (
       <section className="dashboard-layout">
@@ -274,8 +251,9 @@ export default async function SetupPage() {
               <p className="eyebrow">Setup</p>
               <h2 className="title">Pilot Setup Checklist</h2>
               <p className="copy">
-                Read-only checks for the services and credentials needed before
-                running a commercial pilot. Secret values are never shown.
+                Grouped read-only checks for the services, safety flags, and
+                credentials needed before running a controlled pilot. Secret
+                values are never shown.
               </p>
             </div>
             <Link className="button" href="/dashboard">
@@ -312,10 +290,17 @@ export default async function SetupPage() {
               </p>
             </article>
             <article className="dashboard-summary-card">
-              <p className="dashboard-summary-value">{counts.notConfigured}</p>
-              <p className="dashboard-summary-label">Not configured</p>
+              <p className="dashboard-summary-value">{counts.missing}</p>
+              <p className="dashboard-summary-label">Missing</p>
               <p className="dashboard-summary-note">
-                Missing optional or required setup for pilot use.
+                Required setup signals that are absent or incomplete.
+              </p>
+            </article>
+            <article className="dashboard-summary-card">
+              <p className="dashboard-summary-value">{counts.disabled}</p>
+              <p className="dashboard-summary-label">Disabled</p>
+              <p className="dashboard-summary-note">
+                Optional integrations that are currently off.
               </p>
             </article>
             <article className="dashboard-summary-card">
@@ -331,8 +316,8 @@ export default async function SetupPage() {
         </section>
 
         <section className="setup-check-grid">
-          {report.checks.map((check) => (
-            <ReadinessCard check={check} key={check.key} />
+          {sections.map((section) => (
+            <ReadinessSectionCard section={section} key={section.key} />
           ))}
         </section>
 

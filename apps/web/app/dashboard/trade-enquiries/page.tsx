@@ -6,6 +6,7 @@ import {
   type BuyerTradeEnquiryPriority,
   type BuyerTradeEnquiryStatus,
 } from '../../../lib/tradeEnquiriesApi';
+import { requireCurrentWebCapability } from '../../../lib/serverWebAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -273,6 +274,8 @@ function EnquiryTable({ items }: { items: BuyerTradeEnquiryListItem[] }) {
 }
 
 export default async function TradeEnquiriesPage({ searchParams }: PageProps) {
+  await requireCurrentWebCapability('trade-enquiries:view');
+
   const query = searchParams ? await searchParams : undefined;
   const selectedStatus = normalizeStatus(query?.status);
   const selectedPriority = normalizePriority(query?.priority);

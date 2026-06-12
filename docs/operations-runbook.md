@@ -4,6 +4,9 @@ This runbook covers pilot operation for ingestion workers. It is intentionally
 limited to safe checks and recovery steps that do not send messages, mutate
 canonical records, or expose raw supplier email content.
 
+For VPS process layout, deployment smoke checks, rollback, and broader incident
+response, use [deployment.md](deployment.md).
+
 ## Worker Status
 
 Authenticated internal callers can inspect polling status with:

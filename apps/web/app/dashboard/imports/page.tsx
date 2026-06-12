@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { listRecentImportBatches } from '../../../lib/importsApi';
+import { requireCurrentWebCapability } from '../../../lib/serverWebAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +53,8 @@ function statusPillClass(status: string): string {
 }
 
 export default async function ImportsPage() {
+  await requireCurrentWebCapability('imports:view');
+
   try {
     const batches = await listRecentImportBatches();
 

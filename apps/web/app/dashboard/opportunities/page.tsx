@@ -5,6 +5,8 @@ import {
   type OpportunityListItem,
   type OpportunityListType,
 } from '../../../lib/opportunitiesApi';
+import { roleHasCapability } from '../../../lib/authorisation';
+import { requireCurrentWebCapability } from '../../../lib/serverWebAuth';
 import { submitOpportunityTriageAction } from '../actions';
 
 export const dynamic = 'force-dynamic';
@@ -164,9 +166,14 @@ function canShowTriageActions(status: OpportunityStatusFilter): boolean {
 }
 
 export default async function OpportunitiesPage({ searchParams }: PageProps) {
+  const session = await requireCurrentWebCapability('opportunities:view');
   const query = searchParams ? await searchParams : undefined;
   const selectedStatus = normalizeStatusFilter(query?.status);
   const selectedType = normalizeTypeFilter(query?.type);
+  const canManageOpportunities = roleHasCapability(
+    session.role,
+    'opportunities:manage',
+  );
 
   try {
     const opportunities = await listOpportunities({
@@ -304,7 +311,8 @@ export default async function OpportunitiesPage({ searchParams }: PageProps) {
                     ))}
                   </ul>
 
-                  {canShowTriageActions(selectedStatus) ? (
+                  {canManageOpportunities &&
+                  canShowTriageActions(selectedStatus) ? (
                     <form
                       action={submitOpportunityTriageAction}
                       className="dashboard-opportunity-actions"

@@ -21,6 +21,7 @@
     "email:device-code": "tsx scripts/microsoft-device-code.ts",
     "email:graph-preflight": "tsx src/scripts/graphMailPreflight.ts",
     "email:reprocess": "tsx src/scripts/reprocessEmail.ts",
+    "account-opening:import-eml": "tsx src/scripts/importAccountOpeningEml.ts",
     "account-opening:test-case": "tsx src/scripts/createAccountOpeningTestCase.ts",
     "demo:account-opening": "tsx src/accountOpening/demo/fullAccountOpeningDemo.ts",
     "demo:smoke-pilot": "tsx src/scripts/pilotDemoSmoke.ts",
@@ -39,6 +40,7 @@
     "dotenv": "^16.4.7",
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
+    "mailparser": "^3.9.9",
     "multer": "^2.1.1",
     "nodemailer": "^8.0.5",
     "pdf-lib": "^1.17.1",
@@ -48,6 +50,7 @@
   },
   "devDependencies": {
     "@types/express": "^5.0.1",
+    "@types/mailparser": "^3.4.6",
     "@types/multer": "^2.1.0",
     "@types/node": "^22.13.10",
     "prisma": "^6.6.0",
