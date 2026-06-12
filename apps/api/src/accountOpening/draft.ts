@@ -222,15 +222,15 @@ function baseField(input: {
     (policy.policyDecision === 'MUST_STAY_BLANK'
       ? 'BLOCKED'
       : policy.policyDecision === 'REVIEW_REQUIRED' || placeholder
-        ? 'LOW'
-        : 'HIGH');
+      ? 'LOW'
+      : 'HIGH');
   const riskLevel =
     input.riskLevel ??
     (policy.policyDecision === 'MUST_STAY_BLANK'
       ? 'BLOCKED'
       : policy.policyDecision === 'REVIEW_REQUIRED' || placeholder
-        ? 'MEDIUM'
-        : 'LOW');
+      ? 'MEDIUM'
+      : 'LOW');
   const requiresReview =
     input.requiresReview ??
     (policy.policyDecision !== 'AUTOFILL_ALLOWED' || placeholder);
