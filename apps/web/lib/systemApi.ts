@@ -52,6 +52,7 @@ export async function getSystemReadinessReport(): Promise<SystemReadinessReport>
     '/system/readiness',
     {
       callerName: CALLER_NAME,
+      requiredCapability: 'system:admin',
     },
   );
 
@@ -65,6 +66,7 @@ export async function getPollingWorkerStatuses(): Promise<
     '/system/workers',
     {
       callerName: CALLER_NAME,
+      requiredCapability: 'system:admin',
     },
   );
 

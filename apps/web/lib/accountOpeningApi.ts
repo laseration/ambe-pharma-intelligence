@@ -16,6 +16,7 @@ import {
   requestInternalJson,
   requestInternalTextFile,
 } from './internalApiRequest';
+import type { WebCapability } from './authorisation';
 
 export type {
   AccountOpeningBinaryFillPreviewDetail,
@@ -32,6 +33,7 @@ export type {
   AccountOpeningMissingInfoResponses,
   AccountOpeningOriginalForm,
   AccountOpeningOriginalFormLifecycle,
+  AccountOpeningPolicyRiskFlag,
   AccountOpeningReadinessCheck,
   AccountOpeningReadinessReport,
   AccountOpeningReadinessStatus,
@@ -53,20 +55,32 @@ export type AccountOpeningBinaryPreviewFile = {
 
 const CALLER_NAME = 'web-account-opening-review';
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+async function requestJson<T>(
+  path: string,
+  options: {
+    init?: RequestInit;
+    requiredCapability: WebCapability;
+  },
+): Promise<T> {
   return requestInternalJson<T>(path, {
     callerName: CALLER_NAME,
-    init,
+    requiredCapability: options.requiredCapability,
+    init: options.init,
   });
 }
 
 async function requestTextFile(
   path: string,
-  init?: RequestInit,
+  options?: {
+    init?: RequestInit;
+    requiredCapability?: WebCapability;
+  },
 ): Promise<AccountOpeningReviewExportFile> {
   return requestInternalTextFile(path, {
     callerName: CALLER_NAME,
-    init,
+    requiredCapability:
+      options?.requiredCapability ?? 'account-opening:download',
+    init: options?.init,
     fallbackFileName: 'account-opening-review-export.txt',
     fallbackContentType: 'text/plain; charset=utf-8',
   });
@@ -74,11 +88,16 @@ async function requestTextFile(
 
 async function requestBinaryFile(
   path: string,
-  init?: RequestInit,
+  options?: {
+    init?: RequestInit;
+    requiredCapability?: WebCapability;
+  },
 ): Promise<AccountOpeningBinaryPreviewFile> {
   return requestInternalBinaryFile(path, {
     callerName: CALLER_NAME,
-    init,
+    requiredCapability:
+      options?.requiredCapability ?? 'account-opening:download',
+    init: options?.init,
     fallbackFileName: 'binary-fill-preview.pdf',
     fallbackContentType: 'application/pdf',
   });
@@ -89,6 +108,7 @@ export async function getAccountOpeningCase(
 ): Promise<AccountOpeningCaseDetail> {
   const payload = await requestJson<{ item: AccountOpeningCaseDetail }>(
     `/account-opening/${encodeURIComponent(id)}`,
+    { requiredCapability: 'account-opening:view' },
   );
   return payload.item;
 }
@@ -98,6 +118,7 @@ export async function getAccountOpeningDraft(
 ): Promise<AccountOpeningCompletionDraft> {
   const payload = await requestJson<{ item: AccountOpeningCompletionDraft }>(
     `/account-opening/${encodeURIComponent(id)}/draft`,
+    { requiredCapability: 'account-opening:view' },
   );
   return payload.item;
 }
@@ -107,6 +128,7 @@ export async function getAccountOpeningReadiness(
 ): Promise<AccountOpeningReadinessReport> {
   const payload = await requestJson<{ item: AccountOpeningReadinessReport }>(
     `/account-opening/${encodeURIComponent(id)}/readiness`,
+    { requiredCapability: 'account-opening:view' },
   );
   return payload.item;
 }
@@ -118,11 +140,14 @@ export async function generateAccountOpeningDraft(
     item: AccountOpeningCaseDetail;
     draft: AccountOpeningCompletionDraft;
   }>(`/account-opening/${encodeURIComponent(id)}/generate-draft`, {
-    method: 'POST',
-    body: JSON.stringify({
-      actorType: 'OPERATOR',
-      actorIdentifier: 'web-account-opening-review',
-    }),
+    requiredCapability: 'account-opening:manage',
+    init: {
+      method: 'POST',
+      body: JSON.stringify({
+        actorType: 'OPERATOR',
+        actorIdentifier: 'web-account-opening-review',
+      }),
+    },
   });
   return payload.item;
 }
@@ -142,11 +167,14 @@ export async function generateAccountOpeningFillPreview(
   const payload = await requestJson<{
     item: AccountOpeningCaseDetail;
   }>(`/account-opening/${encodeURIComponent(id)}/fill-preview`, {
-    method: 'POST',
-    body: JSON.stringify({
-      actorType: 'OPERATOR',
-      actorIdentifier: 'web-account-opening-review',
-    }),
+    requiredCapability: 'account-opening:manage',
+    init: {
+      method: 'POST',
+      body: JSON.stringify({
+        actorType: 'OPERATOR',
+        actorIdentifier: 'web-account-opening-review',
+      }),
+    },
   });
   return payload.item;
 }
@@ -166,11 +194,14 @@ export async function generateAccountOpeningBinaryFillPreview(
   const payload = await requestJson<{
     item: AccountOpeningCaseDetail;
   }>(`/account-opening/${encodeURIComponent(id)}/binary-fill-preview`, {
-    method: 'POST',
-    body: JSON.stringify({
-      actorType: 'OPERATOR',
-      actorIdentifier: 'web-account-opening-review',
-    }),
+    requiredCapability: 'account-opening:manage',
+    init: {
+      method: 'POST',
+      body: JSON.stringify({
+        actorType: 'OPERATOR',
+        actorIdentifier: 'web-account-opening-review',
+      }),
+    },
   });
   return payload.item;
 }
@@ -197,12 +228,15 @@ export async function approveAccountOpeningCompletedFormFiling(
   }>(
     `/account-opening/${encodeURIComponent(id)}/completed-form-filing/approve`,
     {
-      method: 'POST',
-      body: JSON.stringify({
-        ...body,
-        actorType: 'OPERATOR',
-        actorIdentifier: 'web-account-opening-review',
-      }),
+      requiredCapability: 'account-opening:manage',
+      init: {
+        method: 'POST',
+        body: JSON.stringify({
+          ...body,
+          actorType: 'OPERATOR',
+          actorIdentifier: 'web-account-opening-review',
+        }),
+      },
     },
   );
   return payload.item;
@@ -219,12 +253,15 @@ export async function fileAccountOpeningCompletedFormToSharePoint(
     item: AccountOpeningCaseDetail;
     filing: AccountOpeningCompletedFormFilingDetail;
   }>(`/account-opening/${encodeURIComponent(id)}/completed-form-filing/file`, {
-    method: 'POST',
-    body: JSON.stringify({
-      ...body,
-      actorType: 'OPERATOR',
-      actorIdentifier: 'web-account-opening-review',
-    }),
+    requiredCapability: 'account-opening:manage',
+    init: {
+      method: 'POST',
+      body: JSON.stringify({
+        ...body,
+        actorType: 'OPERATOR',
+        actorIdentifier: 'web-account-opening-review',
+      }),
+    },
   });
   return payload.item;
 }
@@ -236,12 +273,15 @@ export async function saveAccountOpeningFieldMappings(
   const payload = await requestJson<{ item: AccountOpeningFieldMappingReview }>(
     `/account-opening/${encodeURIComponent(id)}/field-mappings`,
     {
-      method: 'PATCH',
-      body: JSON.stringify({
-        mappings,
-        actorType: 'OPERATOR',
-        actorIdentifier: 'web-account-opening-review',
-      }),
+      requiredCapability: 'account-opening:manage',
+      init: {
+        method: 'PATCH',
+        body: JSON.stringify({
+          mappings,
+          actorType: 'OPERATOR',
+          actorIdentifier: 'web-account-opening-review',
+        }),
+      },
     },
   );
   return payload.item;
@@ -254,12 +294,15 @@ export async function saveAccountOpeningMissingInfo(
   const payload = await requestJson<{ item: AccountOpeningCaseDetail }>(
     `/account-opening/${encodeURIComponent(id)}/missing-info`,
     {
-      method: 'PATCH',
-      body: JSON.stringify({
-        ...missingInfoResponses,
-        actorType: 'OPERATOR',
-        actorIdentifier: 'web-account-opening-review',
-      }),
+      requiredCapability: 'account-opening:manage',
+      init: {
+        method: 'PATCH',
+        body: JSON.stringify({
+          ...missingInfoResponses,
+          actorType: 'OPERATOR',
+          actorIdentifier: 'web-account-opening-review',
+        }),
+      },
     },
   );
   return payload.item;
@@ -275,12 +318,15 @@ export async function updateAccountOpeningStatus(
   const payload = await requestJson<{ item: AccountOpeningCaseDetail }>(
     `/account-opening/${encodeURIComponent(id)}/status`,
     {
-      method: 'PATCH',
-      body: JSON.stringify({
-        ...body,
-        actorType: 'OPERATOR',
-        actorIdentifier: 'web-account-opening-review',
-      }),
+      requiredCapability: 'account-opening:manage',
+      init: {
+        method: 'PATCH',
+        body: JSON.stringify({
+          ...body,
+          actorType: 'OPERATOR',
+          actorIdentifier: 'web-account-opening-review',
+        }),
+      },
     },
   );
   return payload.item;

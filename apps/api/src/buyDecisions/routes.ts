@@ -19,6 +19,8 @@ import { buyDecisionService } from './service';
 
 export const buyDecisionsRouter = Router();
 
+buyDecisionsRouter.use(requireInternalOperatorAccess);
+
 const approvalStatusSchema = z.enum([
   'PENDING_APPROVAL',
   'APPROVED',

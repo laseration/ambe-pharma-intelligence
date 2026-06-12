@@ -94,6 +94,7 @@ const CALLER_NAME = 'web-deals-dashboard';
 async function requestJson<T>(path: string): Promise<T> {
   return requestInternalJson<T>(path, {
     callerName: CALLER_NAME,
+    requiredCapability: 'deals:view',
   });
 }
 

@@ -14,3 +14,4 @@ test-results
 *.log
 .codex-run/
 apps/api/tmp/
+scripts/vps-restart.sh

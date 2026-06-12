@@ -87,8 +87,6 @@ Placeholder or incomplete surfaces include:
 
 - Login UI: [`apps/web/app/page.tsx`](../apps/web/app/page.tsx) explicitly says it is ready for authentication wiring.
 - API auth: [`apps/api/src/http/auth.ts`](../apps/api/src/http/auth.ts) provides internal API-key roles, but not user sessions, browser login, or per-user web authorization.
-- Inventory route: [`apps/api/src/routes/index.ts`](../apps/api/src/routes/index.ts) mounts `/inventory` through `createPlaceholderRouter`.
-- Customers route: [`apps/api/src/routes/index.ts`](../apps/api/src/routes/index.ts) mounts `/customers` through `createPlaceholderRouter`.
 - Web onboarding: no visible guided first-run setup, data checklist, source readiness page, or pilot operator onboarding flow.
 
 ## Current Strengths
@@ -108,7 +106,7 @@ Placeholder or incomplete surfaces include:
 - Onboarding is missing. There is no first-run checklist for database setup, Microsoft Graph mail/storage, allowed senders, Telegram allowlists, import sample validation, OpenAI disabled/enabled policy, or pilot mode.
 - Review queue usability needs pilot hardening. The backend workflow is substantial, but the pilot must prove that operators can quickly understand source evidence, staged values, confidence, supplier qualification, corrections, and next actions without reading raw JSON or backend docs.
 - Trust and provenance need to be more visible in the UI. The data model preserves evidence, but the commercial pilot depends on operators seeing "why this is safe to act on" at the point of decision.
-- Inventory and customer APIs are placeholders even though the schema has `InventorySnapshot`, `Customer`, and `SalesRecord`. This weakens the end-to-end answer to "what stock is at risk?" and "which customers should we contact?"
+- Inventory and customer APIs now expose read-only operator data, but the web dashboard still needs first-class pages/workflows that make those rows operationally useful.
 - Customer-contact workflow is not yet a first-class product path. The repo has sales records, opportunities, and blind broker draft concepts, but no mature customer queue, account ownership, contact cadence, or customer-facing approval flow.
 - Observability is not pilot-ready. There is logger/correlation code and tests, but no documented production monitoring, alerting, dashboards, background worker visibility, integration health page, or audit review runbook.
 - Deployment is not documented as a production path. The repo has `build`, `start`, Prisma, Neon, and env setup notes, but no deployment architecture, migration process, rollback process, secret management approach, scheduled worker plan, or production checklist.
@@ -179,7 +177,7 @@ The pilot should not sell broad automation. It should sell controlled commercial
 - [ ] Production deployment guide covering hosting, migrations, secrets, workers, and rollback.
 - [ ] Observability plan covering logs, correlation IDs, integration health, failed jobs, polling status, and operator-facing error states.
 - [ ] End-to-end tests for the main operator workflows.
-- [ ] Inventory and customer route implementations beyond placeholders.
+- [x] Inventory and customer route implementations beyond placeholders.
 - [ ] Documented backup/restore and data retention approach.
 - [ ] Production seed/configuration process for legal entity, license, users, allowed senders, suppliers, and notification channels.
 
@@ -283,8 +281,8 @@ Goal: fully answer the four business questions using the data already modeled.
 
 Tasks:
 
-- Replace the `/inventory` placeholder with real inventory snapshot listing, stock-risk views, and freshness warnings.
-- Replace the `/customers` placeholder with customer records and sales-history-backed contact candidates.
+- [x] Replace the `/inventory` placeholder with real inventory snapshot listing, stock-risk views, and freshness warnings.
+- [x] Replace the `/customers` placeholder with customer records and sales-history-backed contact candidates.
 - Connect opportunity cards to inventory, recent sales, supplier price, and customer evidence.
 - Keep customer-facing communication as draft/review only.
 

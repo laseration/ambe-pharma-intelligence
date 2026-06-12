@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { buildAccountOpeningCompletionDraft } from '../draft';
+import { evaluateAccountOpeningAutofillPolicy } from '../policy';
 
 test('completion draft uses master profile and reviewer responses while blocking sensitive sections', () => {
   const draft = buildAccountOpeningCompletionDraft({
@@ -36,21 +37,35 @@ test('completion draft uses master profile and reviewer responses while blocking
     (field) => field.key === 'responsiblePerson',
   );
 
-  assert.equal(draft.profileVersion, '2026-05-19');
+  assert.equal(draft.profileVersion, '2026-06-09');
   assert.equal(draft.status, 'BLOCKED');
   assert.equal(draft.overallConfidence, 'BLOCKED');
   assert.equal(draft.summary.safeToAutoFill, false);
   assert.equal(website?.valueSource, 'REVIEWER_RESPONSE');
   assert.equal(website?.confidence, 'HIGH');
+  assert.equal(website?.policyDecision, 'AUTOFILL_ALLOWED');
   assert.equal(directDebit?.confidence, 'BLOCKED');
+  assert.equal(directDebit?.proposedValue, null);
+  assert.equal(directDebit?.fieldClass, 'DIRECT_DEBIT');
+  assert.equal(directDebit?.policyDecision, 'MUST_STAY_BLANK');
   assert.equal(directDebit?.requiresReview, true);
   assert.equal(signature?.riskLevel, 'BLOCKED');
+  assert.equal(signature?.proposedValue, null);
+  assert.equal(signature?.fieldClass, 'SIGNATURE');
   assert.equal(responsiblePerson?.requiresReview, true);
+  assert.equal(responsiblePerson?.proposedValue, null);
+  assert.equal(responsiblePerson?.fieldClass, 'REGULATORY_DECLARATION');
+  assert.ok(draft.riskFlags.some((flag) => flag.fieldClass === 'DIRECT_DEBIT'));
+  assert.ok(draft.riskFlags.some((flag) => flag.fieldClass === 'SIGNATURE'));
+  assert.ok(draft.signingNotes.some((note) => note.includes('Sandeep Patel')));
+  assert.ok(
+    draft.signingNotes.some((note) => note.includes('Dilshad Moulana')),
+  );
   assert.doesNotMatch(draftText, /12345678/);
   assert.doesNotMatch(draftText, /12-34-56/);
 });
 
-test('completion draft uses populated master profile values while keeping unresolved placeholders review-required', () => {
+test('completion draft keeps unconfigured master profile values as review-required placeholders', () => {
   const draft = buildAccountOpeningCompletionDraft({
     missingInfoResponses: {},
     riskFlags: [],
@@ -68,12 +83,12 @@ test('completion draft uses populated master profile values while keeping unreso
   );
   const website = draft.fields.find((field) => field.key === 'website');
 
-  assert.equal(companyNumber?.proposedValue, '[redacted bank account number]');
-  assert.equal(companyNumber?.valueSource, 'AMBE_MASTER_PROFILE');
-  assert.equal(companyNumber?.confidence, 'HIGH');
-  assert.equal(companyNumber?.requiresReview, false);
-  assert.equal(registeredAddress?.valueSource, 'AMBE_MASTER_PROFILE');
-  assert.equal(registeredAddress?.requiresReview, false);
+  assert.equal(companyNumber?.proposedValue, 'To be confirmed');
+  assert.equal(companyNumber?.valueSource, 'SYSTEM_PLACEHOLDER');
+  assert.equal(companyNumber?.confidence, 'LOW');
+  assert.equal(companyNumber?.requiresReview, true);
+  assert.equal(registeredAddress?.valueSource, 'SYSTEM_PLACEHOLDER');
+  assert.equal(registeredAddress?.requiresReview, true);
   assert.equal(website?.valueSource, 'SYSTEM_PLACEHOLDER');
   assert.equal(website?.requiresReview, true);
   assert.equal(draft.summary.safeToAutoFill, false);
@@ -113,8 +128,10 @@ test('guarantee indemnity director-only and RP GDP WDA fields require review or 
   assert.equal(highRisk?.confidence, 'BLOCKED');
   assert.equal(highRisk?.requiresReview, true);
   assert.equal(gphc?.requiresReview, true);
+  assert.equal(gphc?.proposedValue, null);
   assert.equal(gphc?.riskLevel, 'HIGH');
   assert.equal(responsiblePerson?.requiresReview, true);
+  assert.equal(responsiblePerson?.proposedValue, null);
   assert.equal(responsiblePerson?.riskLevel, 'HIGH');
 });
 
@@ -163,6 +180,7 @@ test('reviewer-supplied sensitive account-opening values cannot become auto-fill
     const field = draft.fields.find((candidate) => candidate.key === key);
     assert.equal(field?.confidence, 'BLOCKED');
     assert.equal(field?.riskLevel, 'BLOCKED');
+    assert.equal(field?.proposedValue, null);
     assert.equal(field?.requiresReview, true);
   }
 
@@ -174,10 +192,56 @@ test('reviewer-supplied sensitive account-opening values cannot become auto-fill
   ]) {
     const field = draft.fields.find((candidate) => candidate.key === key);
     assert.equal(field?.requiresReview, true);
+    assert.equal(field?.proposedValue, null);
     assert.notEqual(field?.riskLevel, 'LOW');
   }
 
   assert.equal(draft.summary.safeToAutoFill, false);
   assert.doesNotMatch(draftText, /12345678/);
   assert.doesNotMatch(draftText, /12-34-56/);
+});
+
+test('canonical policy keeps signature dates and unknown fields blank or review-required', () => {
+  const signatureDatePolicy = evaluateAccountOpeningAutofillPolicy({
+    fieldKey: 'signatureDate',
+    fieldLabel: 'Date of signature',
+  });
+  const unknownPolicy = evaluateAccountOpeningAutofillPolicy({
+    fieldKey: 'supplierSpecificQuestion',
+    fieldLabel: 'How many vans do you operate?',
+  });
+
+  assert.equal(signatureDatePolicy.fieldClass, 'SIGNATURE');
+  assert.equal(signatureDatePolicy.policyDecision, 'MUST_STAY_BLANK');
+  assert.equal(signatureDatePolicy.leaveBlank, true);
+  assert.equal(unknownPolicy.fieldClass, 'UNKNOWN');
+  assert.equal(unknownPolicy.policyDecision, 'REVIEW_REQUIRED');
+  assert.equal(unknownPolicy.leaveBlank, true);
+});
+
+test('payment preference is review-required and blank by default', () => {
+  const policy = evaluateAccountOpeningAutofillPolicy({
+    fieldKey: 'standardPaymentPreference',
+    fieldLabel: 'Payment preference',
+  });
+  const draft = buildAccountOpeningCompletionDraft({
+    missingInfoResponses: {},
+    riskFlags: [],
+    detectedRoles: [],
+    detectedNames: [],
+    missingFields: [],
+    sourceEvidence: [],
+    now: new Date('2026-05-15T10:00:00.000Z'),
+  });
+  const paymentPreference = draft.fields.find(
+    (field) => field.key === 'standardPaymentPreference',
+  );
+
+  assert.equal(policy.policyDecision, 'REVIEW_REQUIRED');
+  assert.equal(policy.fieldClass, 'UNKNOWN');
+  assert.equal(policy.leaveBlank, true);
+  assert.equal(paymentPreference?.proposedValue, null);
+  assert.equal(paymentPreference?.valueSource, 'NOT_PROVIDED');
+  assert.equal(paymentPreference?.requiresReview, true);
+  assert.equal(paymentPreference?.policyDecision, 'REVIEW_REQUIRED');
 });

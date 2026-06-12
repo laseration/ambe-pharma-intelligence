@@ -6,12 +6,12 @@ import { errorHandler } from './http/errors';
 import { requestContextMiddleware } from './http/requestContext';
 import { importsDebugRouter } from './imports/debugRoutes';
 import { apiRouter } from './routes';
+import { publicTradeEnquiriesRouter } from './tradeEnquiries/routes';
 
 export function createApp() {
   const app = express();
 
   app.use(requestContextMiddleware);
-  app.use(express.json());
 
   app.get('/health', (_request, response) => {
     response.json({
@@ -33,6 +33,12 @@ export function createApp() {
     app.use('/api/debug', requireInternalAdminAccess, importsDebugRouter);
   }
 
+  app.use(
+    '/public',
+    express.json({ limit: '16kb', strict: true }),
+    publicTradeEnquiriesRouter,
+  );
+  app.use(express.json());
   app.use('/api', apiRouter);
   app.use(errorHandler);
 

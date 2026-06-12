@@ -792,7 +792,7 @@ export async function decomposeEmail(
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     ) {
       try {
-        const parsed = parseUploadedFile({
+        const parsed = await parseUploadedFile({
           buffer: content,
           mimetype: mimeType || 'application/octet-stream',
           originalname: fileName,

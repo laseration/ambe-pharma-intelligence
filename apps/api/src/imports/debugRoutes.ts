@@ -1,5 +1,6 @@
 import { Router } from 'express';
 
+import { seedOperatorCommercialWorkflowE2e } from '../fixtures/e2e/operatorCommercialWorkflow';
 import { normalizeMedicineName } from './normalization';
 
 export const importsDebugRouter = Router();
@@ -23,3 +24,15 @@ importsDebugRouter.get('/normalize', (request, response) => {
     results: inputs.map((input) => normalizeMedicineName(input)),
   });
 });
+
+importsDebugRouter.post(
+  '/e2e/operator-commercial-workflow/reset',
+  async (_request, response, next) => {
+    try {
+      await seedOperatorCommercialWorkflowE2e();
+      response.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  },
+);

@@ -9,6 +9,8 @@ import {
   requestInternalJson,
   requestInternalTextFile,
 } from './internalApiRequest';
+import { WebAuthorisationError } from './authorisation';
+import type { WebAuthSession } from './internalWebAuth';
 
 const source = {
   INTERNAL_API_BASE_URL: 'https://internal-api.example.test/api/',
@@ -19,24 +21,64 @@ const source = {
   DASHBOARD_OPERATOR_TOKEN: '',
 };
 
-test('internal API request helper resolves configured base URL and safe default', () => {
+const operatorSession: WebAuthSession = {
+  username: 'pilot.operator',
+  role: 'operator',
+  expiresAt: 2_000_000_000,
+};
+
+const viewerSession: WebAuthSession = {
+  username: 'read.only',
+  role: 'viewer',
+  expiresAt: 2_000_000_000,
+};
+
+const adminSession: WebAuthSession = {
+  username: 'admin.user',
+  role: 'admin',
+  expiresAt: 2_000_000_000,
+};
+
+test('internal API request helper resolves configured base URL and local defaults', () => {
   assert.equal(
     getInternalApiBaseUrl(source),
     'https://internal-api.example.test/api',
   );
+  assert.equal(
+    getInternalApiBaseUrl({
+      NEXT_PUBLIC_INTERNAL_API_BASE_URL: 'http://127.0.0.1:4001/api/',
+    }),
+    'http://127.0.0.1:4001/api',
+  );
   assert.equal(getInternalApiBaseUrl({}), 'http://127.0.0.1:4000/api');
+});
+
+test('internal API request helper requires server-side API URL in production', () => {
+  assert.throws(
+    () =>
+      getInternalApiBaseUrl({
+        NODE_ENV: 'production',
+        NEXT_PUBLIC_INTERNAL_API_BASE_URL:
+          'https://public-api.example.test/api',
+      }),
+    /INTERNAL_API_BASE_URL is required in production/,
+  );
 });
 
 test('internal API request helper attaches server credentials and caller label only when configured', () => {
   assert.deepEqual(
     buildInternalApiHeaders({
       callerName: 'web-dashboard',
+      requiredCapability: 'dashboard:view',
+      actor: operatorSession,
       includeJsonContentType: true,
       source,
     }),
     {
       'x-internal-api-key': 'operator-secret-redacted',
       'x-internal-caller-name': 'web-dashboard',
+      'x-internal-web-role': 'operator',
+      'x-internal-web-user': 'pilot.operator',
       'content-type': 'application/json',
     },
   );
@@ -44,9 +86,78 @@ test('internal API request helper attaches server credentials and caller label o
   assert.deepEqual(
     buildInternalApiHeaders({
       callerName: 'web-dashboard',
+      requiredCapability: 'dashboard:view',
+      actor: null,
       source: {},
     }),
     {},
+  );
+});
+
+test('internal API request helper selects least-privilege API key for declared capability', () => {
+  const credentialSource = {
+    ...source,
+    INTERNAL_VIEWER_API_KEY: 'viewer-secret-redacted',
+  };
+
+  assert.equal(
+    buildInternalApiHeaders({
+      callerName: 'web-dashboard',
+      requiredCapability: 'dashboard:view',
+      source: credentialSource,
+    })['x-internal-api-key'],
+    'viewer-secret-redacted',
+  );
+  assert.equal(
+    buildInternalApiHeaders({
+      callerName: 'web-inventory',
+      requiredCapability: 'inventory:view',
+      source: credentialSource,
+    })['x-internal-api-key'],
+    'viewer-secret-redacted',
+  );
+  assert.equal(
+    buildInternalApiHeaders({
+      callerName: 'web-customers',
+      requiredCapability: 'customers:view',
+      source: credentialSource,
+    })['x-internal-api-key'],
+    'viewer-secret-redacted',
+  );
+  assert.equal(
+    buildInternalApiHeaders({
+      callerName: 'web-review-console',
+      requiredCapability: 'review:view',
+      source: credentialSource,
+    })['x-internal-api-key'],
+    'operator-secret-redacted',
+  );
+  assert.equal(
+    buildInternalApiHeaders({
+      callerName: 'web-review-console',
+      requiredCapability: 'review:manage',
+      source: credentialSource,
+    })['x-internal-api-key'],
+    'operator-secret-redacted',
+  );
+  assert.equal(
+    buildInternalApiHeaders({
+      callerName: 'web-setup',
+      requiredCapability: 'system:admin',
+      source: credentialSource,
+    })['x-internal-api-key'],
+    'admin-secret-redacted',
+  );
+});
+
+test('internal API request helper preserves existing key fallback without viewer key', () => {
+  assert.equal(
+    buildInternalApiHeaders({
+      callerName: 'web-dashboard',
+      requiredCapability: 'dashboard:view',
+      source,
+    })['x-internal-api-key'],
+    'operator-secret-redacted',
   );
 });
 
@@ -64,6 +175,8 @@ test('internal API request helper builds no-store fetches without real network a
     '/review-queue',
     {
       callerName: 'web-review-console',
+      requiredCapability: 'review:view',
+      session: operatorSession,
       source,
       fetchImpl,
     },
@@ -79,6 +192,8 @@ test('internal API request helper builds no-store fetches without real network a
   assert.deepEqual(calls[0]?.init.headers, {
     'x-internal-api-key': 'operator-secret-redacted',
     'x-internal-caller-name': 'web-review-console',
+    'x-internal-web-role': 'operator',
+    'x-internal-web-user': 'pilot.operator',
   });
 });
 
@@ -91,6 +206,8 @@ test('internal API request helper sends JSON content type for body requests', as
 
   await requestInternalJson('/opportunities/opportunity-1/status', {
     callerName: 'web-dashboard',
+    requiredCapability: 'opportunities:manage',
+    session: operatorSession,
     source,
     fetchImpl,
     init: {
@@ -102,8 +219,143 @@ test('internal API request helper sends JSON content type for body requests', as
   assert.deepEqual(headers, {
     'x-internal-api-key': 'operator-secret-redacted',
     'x-internal-caller-name': 'web-dashboard',
+    'x-internal-web-role': 'operator',
+    'x-internal-web-user': 'pilot.operator',
     'content-type': 'application/json',
   });
+});
+
+test('internal API request helper blocks viewer sessions before operator API actions', async () => {
+  let called = false;
+  const fetchImpl: typeof fetch = async () => {
+    called = true;
+    return Response.json({ ok: true });
+  };
+
+  await assert.rejects(
+    requestInternalJson('/opportunities/opportunity-1/status', {
+      callerName: 'web-dashboard',
+      requiredCapability: 'opportunities:manage',
+      session: viewerSession,
+      source,
+      fetchImpl,
+      init: {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'REVIEWED' }),
+      },
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof WebAuthorisationError);
+      assert.equal(error.status, 403);
+      assert.equal(error.capability, 'opportunities:manage');
+      return true;
+    },
+  );
+  assert.equal(called, false);
+});
+
+test('internal API request helper blocks non-admin sessions before setup API calls', async () => {
+  let called = false;
+  const fetchImpl: typeof fetch = async () => {
+    called = true;
+    return Response.json({ item: {} });
+  };
+
+  await assert.rejects(
+    requestInternalJson('/system/readiness', {
+      callerName: 'web-setup-readiness',
+      requiredCapability: 'system:admin',
+      session: operatorSession,
+      source,
+      fetchImpl,
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof WebAuthorisationError);
+      assert.equal(error.status, 403);
+      assert.equal(error.capability, 'system:admin');
+      return true;
+    },
+  );
+  assert.equal(called, false);
+});
+
+test('internal API request helper enforces viewer operator admin request matrix', async () => {
+  const cases: Array<{
+    name: string;
+    session: WebAuthSession;
+    requiredCapability: Parameters<
+      typeof requestInternalJson
+    >[1]['requiredCapability'];
+    expectedAllowed: boolean;
+  }> = [
+    {
+      name: 'viewer can fetch read-only dashboard data',
+      session: viewerSession,
+      requiredCapability: 'dashboard:view',
+      expectedAllowed: true,
+    },
+    {
+      name: 'viewer cannot submit operator workflow mutations',
+      session: viewerSession,
+      requiredCapability: 'review:manage',
+      expectedAllowed: false,
+    },
+    {
+      name: 'operator can submit operational workflow mutations',
+      session: operatorSession,
+      requiredCapability: 'review:manage',
+      expectedAllowed: true,
+    },
+    {
+      name: 'operator cannot call admin-only setup APIs',
+      session: operatorSession,
+      requiredCapability: 'system:admin',
+      expectedAllowed: false,
+    },
+    {
+      name: 'admin can call admin-only setup APIs',
+      session: adminSession,
+      requiredCapability: 'system:admin',
+      expectedAllowed: true,
+    },
+  ];
+
+  for (const testCase of cases) {
+    let callCount = 0;
+    const fetchImpl: typeof fetch = async () => {
+      callCount += 1;
+      return Response.json({ ok: true });
+    };
+
+    const request = requestInternalJson('/authz-matrix', {
+      callerName: 'web-authz-matrix',
+      requiredCapability: testCase.requiredCapability,
+      session: testCase.session,
+      source,
+      fetchImpl,
+    });
+
+    if (testCase.expectedAllowed) {
+      await request;
+      assert.equal(callCount, 1, testCase.name);
+    } else {
+      await assert.rejects(
+        request,
+        (error: unknown) => {
+          assert.ok(error instanceof WebAuthorisationError, testCase.name);
+          assert.equal(error.status, 403, testCase.name);
+          assert.equal(
+            error.capability,
+            testCase.requiredCapability,
+            testCase.name,
+          );
+          return true;
+        },
+        testCase.name,
+      );
+      assert.equal(callCount, 0, testCase.name);
+    }
+  }
 });
 
 test('internal API request helper redacts known secrets and live-looking URLs from errors', async () => {
@@ -119,6 +371,8 @@ test('internal API request helper redacts known secrets and live-looking URLs fr
   await assert.rejects(
     requestInternalJson('/unsafe-error', {
       callerName: 'web-dashboard',
+      requiredCapability: 'dashboard:view',
+      session: operatorSession,
       source,
       fetchImpl,
     }),
@@ -155,6 +409,8 @@ test('internal API request helper preserves safe diagnostics from standardized A
   await assert.rejects(
     requestInternalJson('/unsafe-error', {
       callerName: 'web-dashboard',
+      requiredCapability: 'dashboard:view',
+      session: operatorSession,
       source,
       fetchImpl,
     }),
@@ -188,6 +444,8 @@ test('internal API file helper preserves safe filename metadata from mocked back
     '/account-opening/case-1/export-pack/review-pack.md',
     {
       callerName: 'web-account-opening-review',
+      requiredCapability: 'account-opening:download',
+      session: operatorSession,
       source,
       fetchImpl,
       fallbackFileName: 'fallback.txt',

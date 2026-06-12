@@ -198,6 +198,7 @@ export function createAccountOpeningRouter(
 
   router.get(
     '/:id',
+    requireInternalOperatorAccess,
     asyncHandler(async (request, response) => {
       const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {
         params: idParamSchema,
@@ -214,6 +215,7 @@ export function createAccountOpeningRouter(
 
   router.get(
     '/:id/draft',
+    requireInternalOperatorAccess,
     asyncHandler(async (request, response) => {
       const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {
         params: idParamSchema,

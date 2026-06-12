@@ -33,6 +33,7 @@ type PageProps = {
     message?: string;
     dealId?: string;
     returnTo?: string;
+    showCompleted?: string;
   }>;
 };
 
@@ -272,6 +273,15 @@ function getAuditSourceSummary(metadata: unknown): string | null {
   ].filter(Boolean);
 
   return parts.length > 0 ? parts.join(' / ') : null;
+}
+
+function canMarkWorkflowOrdered(detail: ReviewWorkflowDetail): boolean {
+  return (
+    (detail.status === 'APPROVED_TO_BUY' ||
+      detail.buyDecision?.approvalStatus === 'APPROVED') &&
+    detail.status !== 'ORDERED' &&
+    detail.buyDecision?.orderStatus !== 'ORDERED'
+  );
 }
 
 function summarizeReason(items: ReviewWorkflowListItem[]) {
@@ -924,10 +934,19 @@ export default async function ReviewInboundEmailPage({
 }: PageProps) {
   const { id: inboundEmailId } = await params;
   const query = searchParams ? await searchParams : undefined;
-  const returnTo = sanitizeReturnTo(query?.returnTo);
+  const showCompleted = query?.showCompleted === '1';
+  const returnTo = sanitizeReturnTo(
+    query?.returnTo ??
+      (showCompleted
+        ? `/dashboard/review/${encodeURIComponent(inboundEmailId)}?showCompleted=1`
+        : undefined),
+  );
 
   try {
-    const items = await listReviewWorkflowItems({ inboundEmailId });
+    const items = await listReviewWorkflowItems({
+      inboundEmailId,
+      onlyOpen: showCompleted ? false : undefined,
+    });
     const visibleItems = items.filter(isLikelyDisplayableOffer);
     const hiddenItemCount = items.length - visibleItems.length;
 
@@ -1495,6 +1514,101 @@ export default async function ReviewInboundEmailPage({
                         </div>
                       </dl>
                     </section>
+                    {canMarkWorkflowOrdered(detail) ? (
+                      <section
+                        className="resolution-evidence action-state-card"
+                        data-testid={`mark-ordered-${detail.id}`}
+                      >
+                        <div className="resolution-evidence-header">
+                          <div>
+                            <h4 className="subsection-title">Buy execution</h4>
+                            <p className="copy resolution-evidence-copy">
+                              Record the internal purchase order state only.
+                              This does not send anything externally.
+                            </p>
+                          </div>
+                          <span className="pill pill-medium">
+                            Internal only
+                          </span>
+                        </div>
+                        <form
+                          action={submitInboundEmailReviewAction}
+                          className="action-form"
+                        >
+                          <input
+                            name="inboundEmailId"
+                            type="hidden"
+                            value={inboundEmailId}
+                          />
+                          <input
+                            name="workflowItemId"
+                            type="hidden"
+                            value={detail.id}
+                          />
+                          <input
+                            name="action"
+                            type="hidden"
+                            value="MARK_ORDERED"
+                          />
+                          {renderReturnToInput(returnTo)}
+                          <label>
+                            Purchase order reference
+                            <input
+                              name="externalOrderReference"
+                              placeholder="Example: PO-2026-001"
+                            />
+                          </label>
+                          <label>
+                            Ordered quantity
+                            <input
+                              min="1"
+                              name="orderedQuantity"
+                              type="number"
+                            />
+                          </label>
+                          <label>
+                            Ordered unit price
+                            <input
+                              inputMode="decimal"
+                              name="orderedUnitPrice"
+                              placeholder="Example: 7.90"
+                            />
+                          </label>
+                          <label>
+                            Currency
+                            <input
+                              maxLength={3}
+                              name="orderedCurrencyCode"
+                              placeholder="GBP"
+                            />
+                          </label>
+                          <label>
+                            Expected delivery date
+                            <input name="expectedDeliveryDate" type="date" />
+                          </label>
+                          <label>
+                            Execution note
+                            <textarea
+                              name="note"
+                              placeholder="Internal order tracking note"
+                              rows={3}
+                            />
+                          </label>
+                          <label className="checkbox-row">
+                            <input
+                              name="confirmedAvailability"
+                              type="checkbox"
+                            />
+                            Availability confirmed internally
+                          </label>
+                          <SubmitButton
+                            className="button button-primary button-large"
+                            idleLabel="Mark ordered"
+                            pendingLabel="Marking ordered..."
+                          />
+                        </form>
+                      </section>
+                    ) : null}
                     {summary.technicalDetails.length > 0 ? (
                       <details className="document-card technical-details-card">
                         <summary>Technical details</summary>

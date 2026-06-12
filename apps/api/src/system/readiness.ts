@@ -106,9 +106,11 @@ async function buildDatabaseCheck(
 }
 
 function buildApiAuthCheck(): SystemReadinessCheck {
+  const viewerApiKeyConfigured = Boolean(env.internalViewerApiKey);
   const apiKeyConfigured = Boolean(env.internalApiKey);
   const adminApiKeyConfigured = Boolean(env.internalAdminApiKey);
-  const configured = apiKeyConfigured || adminApiKeyConfigured;
+  const configured =
+    viewerApiKeyConfigured || apiKeyConfigured || adminApiKeyConfigured;
 
   return {
     key: 'api-internal-auth',
@@ -118,11 +120,16 @@ function buildApiAuthCheck(): SystemReadinessCheck {
       ? 'Internal API-key authentication is configured for protected API routes.'
       : 'Internal API keys are not configured. Local safe-mode bypass may apply only in development-like setups.',
     nextAction: configured
-      ? 'Use operator/admin keys only from trusted server-side callers.'
+      ? 'Use viewer/operator/admin keys only from trusted server-side callers.'
       : 'Set INTERNAL_API_KEY and optionally INTERNAL_ADMIN_API_KEY before a pilot.',
-    envVars: ['INTERNAL_API_KEY', 'INTERNAL_ADMIN_API_KEY'],
+    envVars: [
+      'INTERNAL_VIEWER_API_KEY',
+      'INTERNAL_API_KEY',
+      'INTERNAL_ADMIN_API_KEY',
+    ],
     documentationPath: 'README.md#environment',
     details: {
+      viewerApiKeyConfigured,
       apiKeyConfigured,
       adminApiKeyConfigured,
       authEnforcedForCurrentConfig: isInternalAuthEnforced(),
@@ -198,6 +205,7 @@ function buildEmailPollingCheck(): SystemReadinessCheck {
         ? 'Send a controlled supplier email through the configured intake mailbox.'
         : 'Configure Graph mail, the sender mailbox, EMAIL_INBOUND_ALLOWED_SENDERS, then enable polling when ready.',
     envVars: [
+      'START_WORKERS_WITH_API',
       'EMAIL_INBOUND_POLLING_ENABLED',
       'EMAIL_INBOUND_POLLING_INTERVAL_MS',
       'EMAIL_INBOUND_ALLOWED_SENDERS',
@@ -212,6 +220,8 @@ function buildEmailPollingCheck(): SystemReadinessCheck {
       allowedSenderCount: env.emailInboundAllowedSenders.length,
       supplierMappingCount: env.emailInboundSupplierMappings.length,
       pollingIntervalMs: env.emailInboundPollingIntervalMs,
+      workerProcessExpected: !env.startWorkersWithApi,
+      apiStartsWorkers: env.startWorkersWithApi,
       runtimeRunning: workerStatus.running,
       runtimeInFlight: workerStatus.inFlight,
       lastRunFinishedAt: workerStatus.lastRunFinishedAt,
@@ -395,6 +405,7 @@ function buildTelegramCheck(): SystemReadinessCheck {
         ? 'Use dry-run mode until pilot operators have verified message handling.'
         : 'Set bot/chat values and allowlists before enabling polling for pilot intake.',
     envVars: [
+      'START_WORKERS_WITH_API',
       'TELEGRAM_BOT_TOKEN',
       'TELEGRAM_INTERNAL_CHAT_ID',
       'TELEGRAM_DRY_RUN',
@@ -409,6 +420,8 @@ function buildTelegramCheck(): SystemReadinessCheck {
       dryRun: env.telegramDryRun,
       pollingEnabled: env.telegramPollingEnabled,
       pollingActive,
+      workerProcessExpected: !env.startWorkersWithApi,
+      apiStartsWorkers: env.startWorkersWithApi,
       allowedUserCount: env.telegramAllowedUserIds.length,
       allowedChatCount: env.telegramAllowedChatIds.length,
       runtimeRunning: workerStatus.running,
@@ -480,18 +493,22 @@ function buildOpenAiCheck(): SystemReadinessCheck {
 function buildImportsCheck(): SystemReadinessCheck {
   return {
     key: 'imports',
-    title: 'Import Readiness',
+    title: 'Import And Read-Only Data API Readiness',
     status: 'ready',
     meaning:
-      'Supplier price list, inventory, and sales import endpoints are available.',
+      'Supplier price list, inventory, and sales import endpoints are available, and inventory/customer read APIs are implemented.',
     nextAction:
-      'Run a controlled CSV/XLSX fixture import after the database is reachable.',
+      'Run a controlled CSV/XLSX fixture import after the database is reachable, then check GET /api/inventory and GET /api/customers.',
     envVars: [],
     documentationPath: 'README.md#import-api',
     details: {
       supplierPriceListImportAvailable: true,
       inventoryImportAvailable: true,
       salesImportAvailable: true,
+      inventoryReadApiAvailable: true,
+      customerReadApiAvailable: true,
+      stockRiskApiAvailable: true,
+      customerContactOpportunityApiAvailable: true,
       csvSupported: true,
       xlsxSupported: true,
       maxUploadSizeBytes: 10 * 1024 * 1024,

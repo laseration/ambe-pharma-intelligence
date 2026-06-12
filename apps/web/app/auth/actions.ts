@@ -32,7 +32,7 @@ function loginRedirect(
     next,
   });
 
-  redirect(`/?${searchParams.toString()}`);
+  redirect(`/login?${searchParams.toString()}`);
 }
 
 export async function loginAction(formData: FormData) {
@@ -66,5 +66,5 @@ export async function logoutAction() {
     getWebSessionCookieOptions({ maxAge: 0 }),
   );
 
-  redirect('/?signedOut=1');
+  redirect('/login?signedOut=1');
 }

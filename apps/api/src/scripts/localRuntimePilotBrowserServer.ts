@@ -13,6 +13,7 @@ import { logger } from '../lib/logger';
 import { configurePollingWorkerStatusStore } from '../polling/status';
 import { createAppSettingPollingWorkerStatusStore } from '../polling/statusStore';
 import { sanitizeSafeErrorMessage } from '../safety/redaction';
+import { seedOperatorCommercialWorkflowE2e } from '../fixtures/e2e/operatorCommercialWorkflow';
 import { verifyDatabaseReadiness } from '../startup/databaseHealth';
 import {
   classifyDatabaseUrlForLocalSmoke,
@@ -149,6 +150,7 @@ async function prepareDatabase(): Promise<{
   }
 
   await seedPilotDemo();
+  await seedOperatorCommercialWorkflowE2e();
 
   printSummary(
     buildLocalRuntimePilotBrowserSummary({

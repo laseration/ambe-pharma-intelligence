@@ -136,12 +136,18 @@ test('dashboard cockpit builds next action cards from real inputs', () => {
     opportunities: [opportunity({ type: 'BUY' })],
     duplicateGroups: [],
     readiness,
+    stockRiskCount: 2,
+    customerFollowUpCount: 3,
   });
 
   assert.equal(actions[0]?.key, 'review-now');
   assert.equal(actions[0]?.priority, 'high');
   assert.equal(actions[1]?.key, 'buying-signals');
-  assert.equal(actions[3]?.priority, 'medium');
+  assert.equal(actions[3]?.key, 'stock-risk');
+  assert.equal(actions[3]?.value, '2');
+  assert.equal(actions[4]?.key, 'customer-follow-up');
+  assert.equal(actions[4]?.value, '3');
+  assert.equal(actions[5]?.priority, 'medium');
 });
 
 test('dashboard cockpit produces plain value metrics and readiness summary', () => {
