@@ -18,6 +18,7 @@ import {
   submitAccountOpeningMissingInfoAction,
   submitAccountOpeningStatusAction,
 } from './actions';
+import { AccountOpeningSafetyReviewSections } from './SafetyReviewSections';
 
 export const dynamic = 'force-dynamic';
 
@@ -645,6 +646,186 @@ function FieldMappingForm({
   );
 }
 
+function WorkflowLifecycleSection({
+  item,
+}: {
+  item: AccountOpeningCaseDetail;
+}) {
+  return (
+    <section className="panel dashboard-panel">
+      <div className="dashboard-section-header">
+        <div>
+          <h3 className="section-title">Workflow lifecycle</h3>
+          <p className="copy review-summary-copy">
+            Backwards-compatible v1 lifecycle view derived from the current case
+            status, draft, preview, and internal filing evidence.
+          </p>
+        </div>
+        <span className="pill pill-medium">{item.lifecycle.currentLabel}</span>
+      </div>
+
+      <dl className="duplicate-product-details">
+        <div>
+          <dt>Legacy status</dt>
+          <dd>{humanizeStatus(item.lifecycle.legacyStatus)}</dd>
+        </div>
+        <div>
+          <dt>Current stage</dt>
+          <dd>{humanizeStatus(item.lifecycle.currentStage)}</dd>
+        </div>
+        <div>
+          <dt>Next action</dt>
+          <dd>{item.lifecycle.nextAction}</dd>
+        </div>
+      </dl>
+
+      <div className="table-wrapper">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Stage</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {item.lifecycle.steps.map((step) => (
+              <tr key={step.stage}>
+                <td>{step.label}</td>
+                <td>{humanizeStatus(step.status)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {renderList(
+        item.lifecycle.compatibilityNotes,
+        'No lifecycle compatibility notes recorded.',
+      )}
+      <p className="alert alert-warning">
+        SENT_MANUALLY is manual-only. This workflow does not sign, submit, or
+        send forms automatically.
+      </p>
+    </section>
+  );
+}
+
+function DocumentClassificationSection({
+  item,
+}: {
+  item: AccountOpeningCaseDetail;
+}) {
+  return (
+    <section className="panel dashboard-panel">
+      <h3 className="section-title">Document classifications</h3>
+      <p className="copy review-summary-copy">
+        Deterministic attachment classification from safe filenames, headings,
+        and snippets. Low-confidence and risky documents stay in review.
+      </p>
+      {item.documentClassifications.length ? (
+        <div className="table-wrapper">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Class</th>
+                <th>Confidence</th>
+                <th>Evidence</th>
+                <th>Warnings</th>
+              </tr>
+            </thead>
+            <tbody>
+              {item.documentClassifications.map((classification, index) => (
+                <tr
+                  key={
+                    classification.sourceEvidenceId ??
+                    `${classification.fileName}-${index}`
+                  }
+                >
+                  <td>{renderValue(classification.fileName, 'Attachment')}</td>
+                  <td>{humanizeStatus(classification.classification)}</td>
+                  <td>
+                    {classification.confidence} ({classification.score})
+                  </td>
+                  <td>
+                    {classification.matchedEvidence.length
+                      ? classification.matchedEvidence.join(', ')
+                      : 'No deterministic evidence'}
+                  </td>
+                  <td>
+                    {classification.warnings.length
+                      ? classification.warnings.join(' ')
+                      : 'None'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="copy review-summary-copy">
+          No attachment classifications are available yet.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function CompanyProfileSection({ item }: { item: AccountOpeningCaseDetail }) {
+  return (
+    <section className="panel dashboard-panel">
+      <h3 className="section-title">Company profile source</h3>
+      <p className="copy review-summary-copy">
+        Configured account-opening profile values used by the draft. Missing
+        values remain To be confirmed; bank, director, and blocked fields are
+        not included.
+      </p>
+      <dl className="duplicate-product-details">
+        <div>
+          <dt>Profile</dt>
+          <dd>{item.companyProfile.profileId}</dd>
+        </div>
+        <div>
+          <dt>Version</dt>
+          <dd>{item.companyProfile.profileVersion}</dd>
+        </div>
+        <div>
+          <dt>Configured safe fields</dt>
+          <dd>{item.companyProfile.safeConfiguredFieldCount}</dd>
+        </div>
+        <div>
+          <dt>Missing profile fields</dt>
+          <dd>{item.companyProfile.missingProfileFields.length}</dd>
+        </div>
+        <div>
+          <dt>Review-required fields</dt>
+          <dd>{item.companyProfile.reviewRequiredFields.length}</dd>
+        </div>
+        <div>
+          <dt>Blocked fields</dt>
+          <dd>{item.companyProfile.blockedFields.length}</dd>
+        </div>
+      </dl>
+
+      {item.companyProfile.missingProfileFields.length ? (
+        <div>
+          <h4 className="section-subtitle">Missing profile data</h4>
+          {renderList(
+            item.companyProfile.missingProfileFields,
+            'No missing profile fields.',
+          )}
+        </div>
+      ) : null}
+      {item.companyProfile.warnings.length ? (
+        <div>
+          <h4 className="section-subtitle">Profile warnings</h4>
+          {renderList(item.companyProfile.warnings, 'No profile warnings.')}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export default async function AccountOpeningDetailPage({
   params,
   searchParams,
@@ -713,6 +894,9 @@ export default async function AccountOpeningDetailPage({
         <ReadinessSection readiness={readiness} />
 
         <FormReadinessSection readiness={readiness} />
+        <WorkflowLifecycleSection item={item} />
+        <DocumentClassificationSection item={item} />
+        <CompanyProfileSection item={item} />
 
         <section className="panel dashboard-panel">
           <div className="dashboard-section-header">
@@ -766,6 +950,8 @@ export default async function AccountOpeningDetailPage({
             </div>
           </dl>
         </section>
+
+        <AccountOpeningSafetyReviewSections item={item} />
 
         <section className="panel dashboard-panel">
           <h3 className="section-title">Signing notes</h3>

@@ -33,6 +33,7 @@ export type LocalSmokeIntegrationSafety = {
 type LocalSmokeIntegrationConfig = Pick<
   typeof env,
   | 'openAiApiKey'
+  | 'startWorkersWithApi'
   | 'openAiParserEnabled'
   | 'openAiEmailReviewEnabled'
   | 'telegramBotToken'
@@ -221,6 +222,15 @@ export function evaluateExternalIntegrationsForLocalSmoke(
 
   addIntegrationCheck(
     checks,
+    'API combined worker mode',
+    config.startWorkersWithApi,
+    'disabled',
+    'API process is not configured to start polling workers.',
+    'START_WORKERS_WITH_API is true; local runtime smoke must not start polling workers from the API process.',
+  );
+
+  addIntegrationCheck(
+    checks,
     'OpenAI parsing/review',
     config.openAiParserEnabled || config.openAiEmailReviewEnabled,
     config.openAiApiKey ? 'present-disabled' : 'disabled',
@@ -302,6 +312,7 @@ export function forceDisableExternalIntegrationsForLocalSmoke(
   targetEnv: typeof env = env,
 ): void {
   targetEnv.openAiParserEnabled = false;
+  targetEnv.startWorkersWithApi = false;
   targetEnv.openAiEmailReviewEnabled = false;
   targetEnv.telegramPollingEnabled = false;
   targetEnv.telegramDryRun = true;

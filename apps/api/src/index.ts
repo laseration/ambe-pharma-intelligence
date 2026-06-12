@@ -1,18 +1,15 @@
 import { createApp } from './app';
 import { env } from './config/env';
-import {
-  createEmailInboundPollingWorker,
-  isEmailInboundPollingActive,
-} from './email/polling';
 import { db } from './lib/db';
 import { logger } from './lib/logger';
 import { configurePollingWorkerStatusStore } from './polling/status';
 import { createAppSettingPollingWorkerStatusStore } from './polling/statusStore';
-import { verifyDatabaseReadiness } from './startup/databaseHealth';
 import {
-  createTelegramPollingWorker,
-  isTelegramPollingActive,
-} from './telegram/polling';
+  createPollingWorkerRuntime,
+  startApiPollingWorkersIfEnabled,
+  stopPollingRuntimeAndDisconnect,
+} from './runtime/pollingWorkers';
+import { verifyDatabaseReadiness } from './startup/databaseHealth';
 
 const app = createApp();
 
@@ -30,8 +27,7 @@ async function start() {
   configurePollingWorkerStatusStore(
     createAppSettingPollingWorkerStatusStore(db),
   );
-  const telegramPollingWorker = createTelegramPollingWorker();
-  const emailInboundPollingWorker = createEmailInboundPollingWorker();
+  const pollingRuntime = createPollingWorkerRuntime();
 
   const server = app.listen(env.port, () => {
     logger.info('API server started', {
@@ -41,47 +37,21 @@ async function start() {
       logLevel: env.logLevel,
     });
 
-    logger.info('Telegram polling configuration', {
-      enabled: isTelegramPollingActive(),
-      intervalMs: env.telegramPollingIntervalMs,
-    });
-    logger.info('Email inbox polling configuration', {
-      enabled: isEmailInboundPollingActive(),
-      intervalMs: env.emailInboundPollingIntervalMs,
-      mailbox: env.microsoftGraphSenderMailbox || null,
-    });
-
-    if (env.telegramPollingEnabled && !env.telegramBotToken) {
-      logger.warn(
-        'Telegram polling is enabled but TELEGRAM_BOT_TOKEN is missing',
-      );
-    }
-
-    if (env.emailInboundPollingEnabled && !isEmailInboundPollingActive()) {
-      logger.warn(
-        'Email inbox polling is enabled but Microsoft Graph mail configuration is incomplete',
-        {
-          mailboxConfigured: Boolean(env.microsoftGraphSenderMailbox),
-        },
-      );
-    }
-
-    if (isTelegramPollingActive()) {
-      telegramPollingWorker.start();
-    }
-
-    if (isEmailInboundPollingActive()) {
-      emailInboundPollingWorker.start();
-    }
+    pollingRuntime.logConfiguration('api');
+    startApiPollingWorkersIfEnabled(pollingRuntime);
   });
 
   async function shutdown(signal: string) {
     logger.info('API server stopping', { signal });
-    telegramPollingWorker.stop();
-    emailInboundPollingWorker.stop();
 
     server.close(async () => {
-      await db.$disconnect();
+      await stopPollingRuntimeAndDisconnect({
+        disconnect: () => db.$disconnect(),
+        logger,
+        processRole: 'api',
+        runtime: pollingRuntime,
+        signal,
+      });
       process.exit(0);
     });
   }

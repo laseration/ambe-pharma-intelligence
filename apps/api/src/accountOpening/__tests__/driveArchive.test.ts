@@ -15,6 +15,26 @@ import {
   type AccountOpeningDriveArchiveConfig,
 } from '../driveArchive';
 import type { AccountOpeningCaseDetail } from '../service';
+import { evaluateAccountOpeningAutofillPolicy } from '../policy';
+
+function accountOpeningPolicyFields(input: {
+  key: string;
+  supplierLabel: string;
+}) {
+  const policy = evaluateAccountOpeningAutofillPolicy({
+    fieldKey: input.key,
+    fieldLabel: input.supplierLabel,
+  });
+
+  return {
+    fieldClass: policy.fieldClass,
+    policyDecision: policy.policyDecision,
+    riskCategory: policy.riskCategory,
+    policyReason: policy.reason,
+    signatoryRoutingNote: policy.defaultSignatoryRoutingNote,
+    signingNote: policy.signingNote,
+  };
+}
 
 const enabledConfig: AccountOpeningDriveArchiveConfig = {
   provider: 'SHAREPOINT',
@@ -56,13 +76,15 @@ function buildDetail(
     detectedNames: ['Sandeep Patel'],
     detectedRoles: ['Director', 'Direct Debit', 'bank authority'],
     escalationNotes: [
-      'The form mentions Director/Sandeep Patel. Reviewer should confirm the supplier does not specifically require a director-only signature.',
+      'The form mentions a director. Reviewer should confirm the supplier does not specifically require a director-only signature.',
     ],
     riskFlags: [
       'Direct Debit mandate',
       'bank authority signature',
       'Guarantee',
     ],
+    policyRiskFlags: [],
+    policySigningNotes: [],
     missingFields: ['companyNumber', 'vatNumber'],
     reviewerChecks: [
       'Check whether the supplier specifically requires a director-only signature.',
@@ -101,6 +123,52 @@ function buildDetail(
     storageLastAttemptAt: null,
     storageFolderUrl: null,
     sourceAttachmentNames: ['mandate-account-12345678-sort-12-34-56.pdf'],
+    lifecycle: {
+      legacyStatus: 'APPROVED_FOR_COMPLETION',
+      currentStage: 'APPROVED_FOR_COMPLETION',
+      currentLabel: 'Approved for completion',
+      nextAction: 'Generate a fill preview or binary preview.',
+      steps: [],
+      compatibilityNotes: [
+        'Persisted AccountOpeningStatus values are preserved.',
+      ],
+      safety: {
+        backwardsCompatibleStatusMapping: true,
+        noAutoSign: true,
+        noAutoSubmit: true,
+        noOutboundSend: true,
+      },
+    },
+    documentClassifications: [
+      {
+        sourceEvidenceId: 'evidence-1',
+        fileName: 'mandate-account-12345678-sort-12-34-56.pdf',
+        classification: 'DIRECT_DEBIT_MANDATE',
+        confidence: 'HIGH',
+        score: 45,
+        matchedEvidence: ['Direct Debit mandate wording'],
+        missingEvidence: [],
+        warnings: [
+          'This document type contains review-required or blocked fields and cannot be automatically completed.',
+        ],
+        safeForAutomaticCompletion: false,
+      },
+    ],
+    companyProfile: {
+      profileId: 'ambe-account-opening-profile',
+      profileVersion: '2026-06-09',
+      safeConfiguredFieldCount: 0,
+      missingProfileFields: ['Legal company name'],
+      reviewRequiredFields: ['Legal company name'],
+      blockedFields: ['Bank details'],
+      warnings: ['Some profile fields are missing and remain To be confirmed.'],
+      safety: {
+        valuesInvented: false,
+        bankDetailsIncluded: false,
+        directorDetailsIncluded: false,
+        regulatoryIdentifiersRequireReview: true,
+      },
+    },
     draftStatus: 'BLOCKED',
     draftVersion: '2026-05-15',
     draftGeneratedAt: '2026-05-15T00:00:00.000Z',
@@ -133,18 +201,21 @@ function buildDetail(
       status: 'BLOCKED',
       overallConfidence: 'BLOCKED',
       isStored: true,
-      profileId: 'ambe-master-profile',
-      profileVersion: '2026-05-15',
+      profileId: 'ambe-account-opening-profile',
+      profileVersion: '2026-06-09',
       generatedAt: '2026-05-15T00:00:00.000Z',
       fields: [
         {
           key: 'bankDetails',
           supplierLabel: 'Bank details',
-          proposedValue:
-            'To be confirmed in secure review. Bank account and sort code details must not be exposed in dashboard drafts.',
-          valueSource: 'SYSTEM_PLACEHOLDER',
+          proposedValue: null,
+          valueSource: 'NOT_PROVIDED',
           confidence: 'BLOCKED',
           riskLevel: 'BLOCKED',
+          ...accountOpeningPolicyFields({
+            key: 'bankDetails',
+            supplierLabel: 'Bank details',
+          }),
           requiresReview: true,
           reviewReason: 'Bank details are blocked.',
           evidence: [
@@ -166,6 +237,8 @@ function buildDetail(
       safetyNotes: [
         'Do not sign, send, submit, or complete blocked sections from this draft.',
       ],
+      riskFlags: [],
+      signingNotes: [],
     },
     fieldMappings: {
       status: 'PREVIEW',

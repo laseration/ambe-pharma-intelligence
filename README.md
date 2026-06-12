@@ -48,7 +48,7 @@ WEB_AUTH_SESSION_TTL_SECONDS=28800
 ```
 
 - `WEB_AUTH_USERNAME` and `WEB_AUTH_PASSWORD`: internal dashboard credentials for the pilot operator.
-- `WEB_AUTH_ROLE`: one of `viewer`, `operator`, or `admin`. The current web flow records the role in the session and leaves room for finer-grained page/action authorization.
+- `WEB_AUTH_ROLE`: one of `viewer`, `operator`, or `admin`. The web layer uses explicit server-side capabilities so read-only dashboard pages and operator actions are not gated by session presence alone.
 - `WEB_AUTH_SESSION_SECRET`: signing secret for the HTTP-only session cookie. Use a unique high-entropy value; at least 32 characters are required.
 - `WEB_AUTH_SESSION_TTL_SECONDS`: session lifetime in seconds. Defaults to 8 hours when omitted.
 
@@ -60,6 +60,9 @@ Authenticated dashboard users can open:
 
 ```text
 /dashboard/setup
+/dashboard/inventory
+/dashboard/customers
+/dashboard/customers/:id
 ```
 
 The setup page calls the read-only API endpoint:
@@ -69,6 +72,21 @@ GET /api/system/readiness
 ```
 
 The endpoint returns safe pilot-readiness checks for database connectivity, API internal auth, email polling, Microsoft Graph mail credentials, Microsoft storage settings, Telegram polling, OpenAI fallback configuration, and import availability. It reports booleans, counts, status labels, documentation hints, and environment variable names only. It must not return secret values, full connection strings, tokens, or Graph credentials.
+
+The readiness report also marks the read-only inventory and customer data APIs
+as available once the API is running. These endpoints are internal-only,
+viewer-readable, and do not send messages or publish customer-facing content:
+
+```text
+GET /api/inventory
+GET /api/inventory/stock-risk
+GET /api/customers
+GET /api/customers/:id
+GET /api/customers/contact-opportunities
+```
+
+Customer responses redact raw email addresses and return safe contact previews
+only.
 
 The API also exposes safe runtime polling status for authenticated internal callers:
 
@@ -108,7 +126,13 @@ pnpm dev
 pnpm build
 pnpm lint
 pnpm test
+pnpm qa:trade
 ```
+
+`pnpm qa:trade` runs the focused Trade Access/RFQ QA pass with deterministic
+fake buyer data. It covers public RFQ validation and blocked submissions,
+protected dashboard route checks, sitemap/robots safety, and the Playwright
+public-submit-to-dashboard workflow against local fixture services only.
 
 ### CI quality gates
 
@@ -447,10 +471,21 @@ The triage layer can mark inbound email as:
 - `POST /api/imports/supplier-price-list`
 - `POST /api/imports/inventory`
 - `POST /api/imports/sales`
+- `GET /api/inventory`
+- `GET /api/inventory/stock-risk`
+- `GET /api/customers`
+- `GET /api/customers/:id`
+- `GET /api/customers/contact-opportunities`
 
 All upload endpoints expect `multipart/form-data` with a `file` field.
 CSV and XLSX uploads are capped at 10 MB by the API upload middleware.
 Template guidance is documented in [docs/import-templates.md](docs/import-templates.md).
+
+The inventory and customer endpoints are read-only operator/dashboard
+foundation APIs. They expose stock summaries, deterministic stock-risk reasons,
+customer summaries, recent sales/opportunity/RFQ context, and read-only contact
+candidate rows. They do not create outreach records, send external messages, or
+publish customer-facing offers.
 
 Supplier price list imports also accept:
 

@@ -1,5 +1,6 @@
 import 'server-only';
 
+import type { WebCapability } from './authorisation';
 import { requestInternalJson } from './internalApiRequest';
 
 export type ReviewWorkflowListItem = {
@@ -247,10 +248,17 @@ const MANUAL_REVIEW_WORKFLOW_STATUSES = new Set([
 
 const CALLER_NAME = 'web-review-console';
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+async function requestJson<T>(
+  path: string,
+  options: {
+    init?: RequestInit;
+    requiredCapability: WebCapability;
+  },
+): Promise<T> {
   return requestInternalJson<T>(path, {
     callerName: CALLER_NAME,
-    init,
+    requiredCapability: options.requiredCapability,
+    init: options.init,
   });
 }
 
@@ -275,6 +283,7 @@ export async function listReviewWorkflowItems(
 
   const payload = await requestJson<{ items: ReviewWorkflowListItem[] }>(
     `/review-queue/workflows?${searchParams.toString()}`,
+    { requiredCapability: 'review:view' },
   );
   return options?.status || options?.onlyOpen === false
     ? payload.items
@@ -286,6 +295,7 @@ export async function listReviewWorkflowItems(
 export async function listReviewQueueItems(): Promise<ReviewQueueItem[]> {
   const payload = await requestJson<{ items: ReviewQueueItem[] }>(
     '/review-queue',
+    { requiredCapability: 'review:view' },
   );
   return payload.items;
 }
@@ -295,6 +305,7 @@ export async function getReviewWorkflowItem(
 ): Promise<ReviewWorkflowDetail> {
   const payload = await requestJson<{ item: ReviewWorkflowDetail }>(
     `/review-queue/workflows/${encodeURIComponent(workflowItemId)}`,
+    { requiredCapability: 'review:view' },
   );
   return payload.item;
 }
@@ -304,6 +315,7 @@ export async function listReviewWorkflowEvents(
 ): Promise<ReviewWorkflowEvent[]> {
   const payload = await requestJson<{ items: ReviewWorkflowEvent[] }>(
     `/review-queue/workflows/${encodeURIComponent(workflowItemId)}/events`,
+    { requiredCapability: 'review:view' },
   );
   return payload.items;
 }
@@ -313,6 +325,7 @@ export async function listReviewWorkflowAuditHistory(
 ): Promise<ReviewWorkflowAuditEntry[]> {
   const payload = await requestJson<{ items: ReviewWorkflowAuditEntry[] }>(
     `/review-queue/workflows/${encodeURIComponent(workflowItemId)}/audit-history`,
+    { requiredCapability: 'review:view' },
   );
   return payload.items;
 }
@@ -328,8 +341,11 @@ export async function updateReviewWorkflowItem(
     item: ReviewWorkflowDetail;
     actionOutcome?: ReviewWorkflowActionOutcome | null;
   }>(`/review-queue/workflows/${encodeURIComponent(workflowItemId)}`, {
-    method: 'PATCH',
-    body: JSON.stringify(body),
+    requiredCapability: 'review:manage',
+    init: {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    },
   });
 }
 
@@ -340,8 +356,11 @@ export async function createReviewWorkflowCorrection(
   const payload = await requestJson<{ item: ReviewOfferCorrection }>(
     `/review-queue/workflows/${encodeURIComponent(workflowItemId)}/corrections`,
     {
-      method: 'POST',
-      body: JSON.stringify(body),
+      requiredCapability: 'review:manage',
+      init: {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
     },
   );
   return payload.item;

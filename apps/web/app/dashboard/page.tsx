@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { getAutomationReadinessOverview } from '../../lib/automationApi';
+import { listCustomerContactOpportunities } from '../../lib/customersApi';
 import {
   buildCommercialValueMetrics,
   buildDataQualityIssues,
@@ -13,6 +14,7 @@ import {
   sortReviewItemsForAction,
   summarizeReadiness,
 } from '../../lib/dashboardCockpit';
+import { listStockRisk } from '../../lib/inventoryApi';
 import {
   listOpenOpportunities,
   listOpportunities,
@@ -213,6 +215,8 @@ export default async function DashboardPage({
     duplicateGroupsResult,
     approvedWorkflowResult,
     rejectedWorkflowResult,
+    stockRiskResult,
+    customerFollowUpsResult,
   ] = await Promise.allSettled([
     listOpenOpportunities(),
     listReviewWorkflowItems({ staleFirst: true }),
@@ -229,6 +233,8 @@ export default async function DashboardPage({
       onlyOpen: false,
       status: 'REJECTED',
     }),
+    listStockRisk({ limit: 8 }),
+    listCustomerContactOpportunities({ limit: 8 }),
   ]);
 
   const openOpportunities = settledValue(openOpportunitiesResult, []);
@@ -240,11 +246,15 @@ export default async function DashboardPage({
   const duplicateGroups = settledValue(duplicateGroupsResult, null);
   const approvedWorkflowItems = settledValue(approvedWorkflowResult, []);
   const rejectedWorkflowItems = settledValue(rejectedWorkflowResult, []);
+  const stockRisk = settledValue(stockRiskResult, []);
+  const customerFollowUps = settledValue(customerFollowUpsResult, []);
   const apiFailures = [
     openOpportunities.failed ? 'opportunities' : null,
     reviewItems.failed ? 'review queue' : null,
     readiness.failed ? 'automation readiness' : null,
     duplicateGroups.failed ? 'product duplicates' : null,
+    stockRisk.failed ? 'stock risk' : null,
+    customerFollowUps.failed ? 'customer follow-ups' : null,
   ].filter((value): value is string => Boolean(value));
   const focusedOpportunities = filterOpportunitiesForFocus(
     openOpportunities.value,
@@ -268,6 +278,10 @@ export default async function DashboardPage({
     opportunities: openOpportunities.value,
     duplicateGroups: duplicateGroups.value,
     readiness: readiness.value,
+    stockRiskCount: stockRisk.failed ? null : stockRisk.value.length,
+    customerFollowUpCount: customerFollowUps.failed
+      ? null
+      : customerFollowUps.value.length,
   });
   const valueMetrics = buildCommercialValueMetrics({
     openOpportunities: openOpportunities.value,

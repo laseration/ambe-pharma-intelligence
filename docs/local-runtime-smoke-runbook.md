@@ -32,7 +32,8 @@ managed or live-looking database URLs before migrations run, applies Prisma
 migrations only to the accepted disposable database, seeds only fake
 `AMBE_FAKE_PILOT_DEMO` records, then checks the setup/readiness page,
 diagnostics page, review queue, review detail provenance, correction/audit
-summary, and approval-required state through the browser.
+summary, approval-required state, and a broader fake operator scenario matrix
+through the browser.
 
 ## Local Postgres Prerequisite
 
@@ -141,6 +142,25 @@ seed before starting the API. It still refuses unsafe databases first and keeps
 all live-capable integrations disabled. It does not submit approvals,
 corrections, messages, uploads, mailbox polling, or supplier/customer-facing
 actions.
+
+The fake pilot dataset now includes stable local-runtime scenario IDs for:
+
+- clean supplier offer ready for review;
+- ambiguous supplier;
+- blocked or restricted supplier;
+- stale correction after approval;
+- missing price or currency;
+- high MOQ;
+- low margin;
+- near-expiry or expired stock;
+- dead stock / push opportunity;
+- already ordered or executed item.
+
+The browser smoke asserts review queue coverage, blocked-state messaging,
+correction/audit visibility, deal margin/stock/push signals, and that source
+body canaries, raw correction canaries, connection strings, local smoke
+credentials, Graph payload canaries, and Telegram payload canaries are not
+rendered.
 
 ## Expected Output
 

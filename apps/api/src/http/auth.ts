@@ -5,7 +5,7 @@ import { env } from '../config/env';
 import { ForbiddenError, UnauthorizedError } from './errors';
 
 export type InternalApiRole = 'viewer' | 'operator' | 'admin';
-export type InternalAuthenticatedRole = 'operator' | 'admin';
+export type InternalAuthenticatedRole = InternalApiRole;
 
 export type InternalAuthContext = {
   role: InternalAuthenticatedRole;
@@ -72,6 +72,7 @@ function hasSideEffectIntegrationConfig(): boolean {
 export function isInternalAuthEnforced(): boolean {
   return (
     env.nodeEnv === 'production' ||
+    Boolean(env.internalViewerApiKey) ||
     Boolean(env.internalApiKey) ||
     Boolean(env.internalAdminApiKey) ||
     hasLiveLookingDatabaseConfig() ||
@@ -105,6 +106,13 @@ function deriveRoleFromApiKey(
     constantTimeEqual(env.internalApiKey, providedApiKey)
   ) {
     return 'operator';
+  }
+
+  if (
+    env.internalViewerApiKey &&
+    constantTimeEqual(env.internalViewerApiKey, providedApiKey)
+  ) {
+    return 'viewer';
   }
 
   return null;
@@ -163,7 +171,11 @@ export function requireInternalAccess(
       return;
     }
 
-    if (!env.internalApiKey && !env.internalAdminApiKey) {
+    if (
+      !env.internalViewerApiKey &&
+      !env.internalApiKey &&
+      !env.internalAdminApiKey
+    ) {
       next(new UnauthorizedError('Internal API key is required.'));
       return;
     }

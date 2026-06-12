@@ -18,6 +18,7 @@ import {
   type AccountOpeningMissingInfoResponses,
   type AccountOpeningStatusAction,
 } from '../../../../lib/accountOpeningApi';
+import { requireCurrentWebCapability } from '../../../../lib/serverWebAuth';
 
 const STATUS_ACTIONS = new Set<AccountOpeningStatusAction>([
   'MARKED_NEEDS_INFO',
@@ -164,6 +165,8 @@ function successMessage(action: AccountOpeningStatusAction): string {
 export async function submitAccountOpeningMissingInfoAction(
   formData: FormData,
 ) {
+  await requireCurrentWebCapability('account-opening:manage');
+
   const caseId = value(formData, 'caseId');
   const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
 
@@ -205,6 +208,8 @@ export async function submitAccountOpeningMissingInfoAction(
 }
 
 export async function submitAccountOpeningStatusAction(formData: FormData) {
+  await requireCurrentWebCapability('account-opening:manage');
+
   const caseId = value(formData, 'caseId');
   const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
   const action = value(formData, 'action') as AccountOpeningStatusAction;
@@ -249,6 +254,8 @@ export async function submitAccountOpeningStatusAction(formData: FormData) {
 export async function submitGenerateAccountOpeningDraftAction(
   formData: FormData,
 ) {
+  await requireCurrentWebCapability('account-opening:manage');
+
   const caseId = value(formData, 'caseId');
   const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
 
@@ -289,6 +296,8 @@ export async function submitGenerateAccountOpeningDraftAction(
 export async function submitGenerateAccountOpeningFillPreviewAction(
   formData: FormData,
 ) {
+  await requireCurrentWebCapability('account-opening:manage');
+
   const caseId = value(formData, 'caseId');
   const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
 
@@ -329,6 +338,8 @@ export async function submitGenerateAccountOpeningFillPreviewAction(
 export async function submitGenerateAccountOpeningBinaryFillPreviewAction(
   formData: FormData,
 ) {
+  await requireCurrentWebCapability('account-opening:manage');
+
   const caseId = value(formData, 'caseId');
   const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
 
@@ -369,6 +380,8 @@ export async function submitGenerateAccountOpeningBinaryFillPreviewAction(
 export async function submitApproveAccountOpeningCompletedFormFilingAction(
   formData: FormData,
 ) {
+  await requireCurrentWebCapability('account-opening:manage');
+
   const caseId = value(formData, 'caseId');
   const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
   const binaryFillPreviewId = value(formData, 'binaryFillPreviewId') || null;
@@ -414,6 +427,8 @@ export async function submitApproveAccountOpeningCompletedFormFilingAction(
 export async function submitFileAccountOpeningCompletedFormToSharePointAction(
   formData: FormData,
 ) {
+  await requireCurrentWebCapability('account-opening:manage');
+
   const caseId = value(formData, 'caseId');
   const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
   const binaryFillPreviewId = value(formData, 'binaryFillPreviewId') || null;
@@ -459,6 +474,8 @@ export async function submitFileAccountOpeningCompletedFormToSharePointAction(
 export async function submitAccountOpeningFieldMappingsAction(
   formData: FormData,
 ) {
+  await requireCurrentWebCapability('account-opening:manage');
+
   const caseId = value(formData, 'caseId');
   const returnTo = sanitizeReturnTo(value(formData, 'returnTo'));
 
