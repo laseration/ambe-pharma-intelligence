@@ -11,12 +11,21 @@ import {
   redactDashboardText,
   summarizeCommercialActionState,
 } from '../../../lib/operatorTrust';
+import {
+  countReviewQueueFilters,
+  filterReviewWorkflowItems,
+  normalizeReviewQueueFilter,
+  reviewQueueFilterMap,
+  reviewQueueFilterDefinitions,
+  type ReviewQueueFilterKey,
+} from '../../../lib/reviewQueueFilters';
 
 export const dynamic = 'force-dynamic';
 
 type PageProps = {
   searchParams?: Promise<{
     sort?: string;
+    filter?: string;
     message?: string;
     error?: string;
     dealId?: string;
@@ -48,10 +57,30 @@ function normalizeReviewQueueSortMode(
   return value === 'stale' ? 'stale' : 'priority';
 }
 
-function buildReviewReturnTo(sortMode: ReviewQueueSortMode): string {
-  return sortMode === 'stale'
-    ? '/dashboard/review?sort=stale'
-    : '/dashboard/review';
+function buildReviewQueueHref(
+  filter: ReviewQueueFilterKey,
+  sortMode: ReviewQueueSortMode,
+): string {
+  const searchParams = new URLSearchParams();
+
+  if (sortMode === 'stale') {
+    searchParams.set('sort', 'stale');
+  }
+
+  if (filter !== 'all') {
+    searchParams.set('filter', filter);
+  }
+
+  const query = searchParams.toString();
+
+  return query ? `/dashboard/review?${query}` : '/dashboard/review';
+}
+
+function buildReviewReturnTo(
+  filter: ReviewQueueFilterKey,
+  sortMode: ReviewQueueSortMode,
+): string {
+  return buildReviewQueueHref(filter, sortMode);
 }
 
 function getAccountOpeningCaseId(item: ReviewQueueItem): string {
@@ -136,19 +165,30 @@ function groupWorkflowItemsByInboundEmail(
 export default async function ReviewQueuePage({ searchParams }: PageProps) {
   const query = searchParams ? await searchParams : undefined;
   const sortMode = normalizeReviewQueueSortMode(query?.sort);
-  const returnTo = buildReviewReturnTo(sortMode);
+  const selectedFilter = normalizeReviewQueueFilter(query?.filter);
+  const selectedFilterDefinition =
+    reviewQueueFilterMap.get(selectedFilter) ??
+    reviewQueueFilterMap.get('all')!;
+  const returnTo = buildReviewReturnTo(selectedFilter, sortMode);
 
   try {
     const [items, reviewQueueItems] = await Promise.all([
       listReviewWorkflowItems({
+        includeAllOpenStatuses: true,
         staleFirst: sortMode === 'stale',
       }),
       listReviewQueueItems(),
     ]);
-    const emailGroups = groupWorkflowItemsByInboundEmail(items, sortMode);
+    const filterCounts = countReviewQueueFilters(items);
+    const filteredItems = filterReviewWorkflowItems(items, selectedFilter);
+    const emailGroups = groupWorkflowItemsByInboundEmail(
+      filteredItems,
+      sortMode,
+    );
     const accountOpeningItems = reviewQueueItems.filter(
       (item) => item.sourceType === 'ACCOUNT_OPENING',
     );
+    const showAccountOpeningItems = selectedFilter === 'all';
 
     return (
       <section className="review-layout">
@@ -179,6 +219,29 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
           </Link>
         </div>
 
+        <div className="dashboard-filter-row">
+          <span className="dashboard-filter-label">Filter queue:</span>
+          {reviewQueueFilterDefinitions.map((definition) => (
+            <Link
+              className={`pill ${selectedFilter === definition.key ? 'pill-high' : 'pill-neutral'}`}
+              href={buildReviewQueueHref(definition.key, sortMode)}
+              key={definition.key}
+              title={definition.description}
+            >
+              {definition.label} ({filterCounts[definition.key]})
+            </Link>
+          ))}
+        </div>
+        <section className="panel dashboard-panel">
+          <p className="eyebrow">Current filter</p>
+          <h3 className="section-title">{selectedFilterDefinition.label}</h3>
+          <p className="copy">
+            {selectedFilterDefinition.description} Showing{' '}
+            {filterCounts[selectedFilter]} matching supplier{' '}
+            {filterCounts[selectedFilter] === 1 ? 'row' : 'rows'}.
+          </p>
+        </section>
+
         {query?.error ? (
           <p className="alert alert-error">
             {redactDashboardText(query.error)}
@@ -196,16 +259,18 @@ export default async function ReviewQueuePage({ searchParams }: PageProps) {
           </p>
         ) : null}
 
-        {emailGroups.length === 0 && accountOpeningItems.length === 0 ? (
+        {emailGroups.length === 0 &&
+        (accountOpeningItems.length === 0 || !showAccountOpeningItems) ? (
           <section className="panel">
             <p className="eyebrow">All clear</p>
-            <p className="copy">
-              There are no supplier emails waiting for review.
-            </p>
+            <h3 className="section-title">
+              {selectedFilterDefinition.emptyTitle}
+            </h3>
+            <p className="copy">{selectedFilterDefinition.emptyCopy}</p>
           </section>
         ) : (
           <>
-            {accountOpeningItems.length > 0 ? (
+            {showAccountOpeningItems && accountOpeningItems.length > 0 ? (
               <section className="review-section">
                 <div className="dashboard-section-header">
                   <div>
