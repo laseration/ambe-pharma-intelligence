@@ -1527,9 +1527,8 @@ summary {
   border: 0;
   border-bottom: 1px solid rgba(16, 42, 67, 0.08);
   border-radius: 0;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--surface-strong);
   box-shadow: none;
-  backdrop-filter: blur(14px);
 }
 
 .public-wordmark {
@@ -1549,8 +1548,8 @@ summary {
   width: 36px;
   height: 36px;
   border: 1px solid rgba(11, 71, 120, 0.18);
-  border-radius: 2px;
-  background: linear-gradient(180deg, #0b4778 0%, #08213a 100%);
+  border-radius: var(--r-sm);
+  background: var(--accent);
   box-shadow: none;
   color: #ffffff;
   font-size: 0.72rem;
@@ -1632,9 +1631,8 @@ summary {
   display: grid;
   grid-template-columns: minmax(0, 0.96fr) minmax(360px, 0.84fr);
   align-items: center;
-  gap: 72px;
-  min-height: calc(100vh - 78px);
-  padding: 74px 0 86px;
+  gap: 56px;
+  padding: 56px 0 64px;
 }
 
 .public-hero::before,
@@ -1676,7 +1674,7 @@ summary {
 
 .public-eyebrow {
   margin: 0;
-  color: #0b746d;
+  color: var(--accent);
   font-size: 0.76rem;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -1696,8 +1694,8 @@ summary {
 
 .public-hero h1 {
   max-width: 590px;
-  font-size: clamp(3rem, 4.55vw, 4.45rem);
-  line-height: 1.02;
+  font-size: clamp(2.25rem, 3.4vw, 3.1rem);
+  line-height: 1.08;
 }
 
 .public-hero-copy {
@@ -1865,8 +1863,8 @@ summary {
 .public-page-cta h2,
 .public-copy-block h2 {
   margin-top: 10px;
-  font-size: clamp(2rem, 3.6vw, 3.05rem);
-  line-height: 1.08;
+  font-size: clamp(1.6rem, 2.6vw, 2.25rem);
+  line-height: 1.15;
 }
 
 .public-section p,
@@ -1965,7 +1963,7 @@ summary {
 }
 
 .public-depth-panel li::marker {
-  color: #0b746d;
+  color: var(--accent);
 }
 
 .public-service-list {
@@ -1983,7 +1981,7 @@ summary {
 }
 
 .public-service-number {
-  color: #0b746d;
+  color: var(--accent);
   font-size: 0.8rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -2039,7 +2037,7 @@ summary {
   top: 24px;
   left: 24px;
   content: counter(workflow, decimal-leading-zero);
-  color: #0b746d;
+  color: var(--accent);
   font-size: 0.8rem;
   font-weight: 800;
 }
@@ -2152,14 +2150,14 @@ summary {
 .public-page-hero {
   display: grid;
   gap: 22px;
-  padding: 88px 0 58px;
+  padding: 64px 0 48px;
   border-bottom: 1px solid rgba(16, 42, 67, 0.1);
 }
 
 .public-page-hero h1 {
   max-width: 860px;
-  font-size: clamp(2.7rem, 5.4vw, 5.1rem);
-  line-height: 1.02;
+  font-size: clamp(2.1rem, 3.4vw, 3.1rem);
+  line-height: 1.08;
 }
 
 .public-page-hero p:last-child {
@@ -2197,7 +2195,7 @@ summary {
   height: 3px;
   margin-bottom: 20px;
   content: '';
-  background: #0b746d;
+  background: var(--accent);
 }
 
 .public-page-card:hover {
@@ -2257,7 +2255,7 @@ summary {
   height: 8px;
   content: '';
   border-radius: 50%;
-  background: #0b746d;
+  background: var(--accent);
   box-shadow: none;
 }
 
@@ -2317,7 +2315,7 @@ summary {
 }
 
 .public-rfq-field span small {
-  color: #0b746d;
+  color: var(--accent);
   font-size: 0.68rem;
   font-weight: 820;
   letter-spacing: 0.08em;
@@ -2349,7 +2347,7 @@ summary {
 .public-rfq-field textarea:focus-visible {
   outline: 3px solid rgba(11, 116, 109, 0.28);
   outline-offset: 2px;
-  border-color: #0b746d;
+  border-color: var(--accent);
 }
 
 .public-rfq-help,
@@ -2383,7 +2381,7 @@ summary {
 }
 
 .public-rfq-message-success {
-  border-left-color: #0b746d;
+  border-left-color: var(--accent);
   background: #edf9f5;
 }
 
@@ -2436,7 +2434,7 @@ summary {
   width: 56px;
   height: 3px;
   content: '';
-  background: #0b746d;
+  background: var(--accent);
 }
 
 .public-page-cta p {
@@ -2565,7 +2563,7 @@ summary {
 }
 
 .public-document-kicker {
-  color: #0b746d;
+  color: var(--accent);
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -2688,7 +2686,7 @@ summary {
 .public-premium-service-card > span {
   width: 42px;
   height: 3px;
-  background: #0b746d;
+  background: var(--accent);
 }
 
 .public-premium-service-card::before {
@@ -2786,8 +2784,8 @@ summary {
 .public-account-copy h2 {
   margin: 0;
   color: #08213a;
-  font-size: clamp(2rem, 3.6vw, 3.05rem);
-  line-height: 1.08;
+  font-size: clamp(1.6rem, 2.6vw, 2.25rem);
+  line-height: 1.15;
 }
 
 .public-account-copy p {
@@ -2819,7 +2817,7 @@ summary {
 }
 
 .public-account-step-list span {
-  color: #0b746d;
+  color: var(--accent);
   font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -2921,7 +2919,7 @@ summary {
   width: 8px;
   height: 8px;
   content: '';
-  background: #0f766e;
+  background: var(--accent);
 }
 
 .public-enquiry-actions {
