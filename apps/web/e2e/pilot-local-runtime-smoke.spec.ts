@@ -75,7 +75,7 @@ test('pilot local-runtime smoke uses real API with disposable fake data', async 
     page.getByRole('heading', { name: 'Pilot Setup Checklist' }),
   ).toBeVisible();
   await expect(
-    page.getByText('API Internal Auth', { exact: true }),
+    page.getByText('Internal API Auth', { exact: true }),
   ).toBeVisible();
   await expect(page.getByText('Polling Status')).toBeVisible();
   await expectSensitiveCanariesHidden(page);

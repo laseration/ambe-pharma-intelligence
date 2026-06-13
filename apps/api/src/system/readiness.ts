@@ -632,9 +632,7 @@ function buildDemoSeedSafetyCheck(): SystemReadinessCheck {
 function buildProductionSafetyWarningsCheck(): SystemReadinessCheck {
   const integrationSafety = evaluateExternalIntegrationsForLocalSmoke(env);
   const warningReasons = [
-    env.nodeEnv !== 'production'
-      ? 'NODE_ENV is not production.'
-      : null,
+    env.nodeEnv !== 'production' ? 'NODE_ENV is not production.' : null,
     !isInternalAuthEnforced()
       ? 'Internal API auth is not enforced for the current configuration.'
       : null,

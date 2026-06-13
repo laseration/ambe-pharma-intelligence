@@ -201,9 +201,7 @@ function buildGraphInboxSection(
     status,
     meaning: primary.meaning,
     nextAction: primary.nextAction,
-    envVars: Array.from(
-      new Set(checks.flatMap((check) => check.envVars)),
-    ),
+    envVars: Array.from(new Set(checks.flatMap((check) => check.envVars))),
     documentationPath: primary.documentationPath,
     details: sanitizeSetupDetails({
       graphConfigured: Boolean(polling?.details.graphConfigured),
@@ -219,7 +217,9 @@ function buildGraphInboxSection(
   };
 }
 
-function combineStatuses(statuses: SystemReadinessStatus[]): SystemReadinessStatus {
+function combineStatuses(
+  statuses: SystemReadinessStatus[],
+): SystemReadinessStatus {
   if (statuses.includes('warning')) {
     return 'warning';
   }
@@ -228,7 +228,10 @@ function combineStatuses(statuses: SystemReadinessStatus[]): SystemReadinessStat
     return 'missing';
   }
 
-  if (statuses.length > 0 && statuses.every((status) => status === 'disabled')) {
+  if (
+    statuses.length > 0 &&
+    statuses.every((status) => status === 'disabled')
+  ) {
     return 'disabled';
   }
 
@@ -326,7 +329,8 @@ export function countSetupSectionsByStatus(sections: SetupChecklistSection[]) {
     ready: sections.filter((section) => section.status === 'ready').length,
     warning: sections.filter((section) => section.status === 'warning').length,
     missing: sections.filter((section) => section.status === 'missing').length,
-    disabled: sections.filter((section) => section.status === 'disabled').length,
+    disabled: sections.filter((section) => section.status === 'disabled')
+      .length,
   };
 }
 
@@ -356,7 +360,9 @@ export function statusPillClass(status: SystemReadinessStatus): string {
   }
 }
 
-export function formatSetupDetailValue(value: SetupChecklistDetailValue): string {
+export function formatSetupDetailValue(
+  value: SetupChecklistDetailValue,
+): string {
   if (Array.isArray(value)) {
     return value.length
       ? value.map((item) => redactDashboardText(item)).join(', ')

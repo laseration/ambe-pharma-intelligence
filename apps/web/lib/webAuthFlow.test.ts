@@ -95,7 +95,10 @@ test('web logout flow clears the session cookie and redirects to login', () => {
 test('dashboard redirects are constrained to dashboard paths', () => {
   assert.equal(normalizeDashboardRedirect(undefined), '/dashboard');
   assert.equal(normalizeDashboardRedirect('/contact'), '/dashboard');
-  assert.equal(normalizeDashboardRedirect('https://example.test'), '/dashboard');
+  assert.equal(
+    normalizeDashboardRedirect('https://example.test'),
+    '/dashboard',
+  );
   assert.equal(normalizeDashboardRedirect('/dashboard-evil'), '/dashboard');
   assert.equal(
     normalizeDashboardRedirect('/dashboard?tab=setup'),
