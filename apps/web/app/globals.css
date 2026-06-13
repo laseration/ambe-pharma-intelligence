@@ -1,21 +1,79 @@
 :root {
   color-scheme: light;
-  --background: #f5f5f7;
-  --surface: rgba(255, 255, 255, 0.86);
+
+  /* ============================================================
+     Design tokens (PR1: additive + back-compat).
+     This block introduces the full token vocabulary. Existing
+     names are retained at their current values so nothing changes
+     visually yet. Visible shifts (teal->navy accent, glass->flat
+     surfaces, large->small radii) land in later PRs that consume
+     the new tokens below.
+     ============================================================ */
+
+  /* --- Brand / accent ---------------------------------------- */
+  /* Single brand accent: navy. (Teal is retired as a brand colour;
+     status semantics use the success/danger/warning tokens.) */
+  --navy: #0b4778;
+  --navy-strong: #08335c;
+  --navy-soft: #eef3f8;
+  --accent: var(--navy);
+  --accent-strong: var(--navy-strong);
+  --accent-soft: var(--navy-soft);
+
+  /* --- Surfaces & text --------------------------------------- */
+  --bg: #f5f5f7;
+  --background: var(--bg); /* alias (legacy name) */
+  --surface: #ffffff;
   --surface-strong: #ffffff;
+  --surface-2: #fafbfc;
   --text: #111827;
   --muted: #6b7280;
   --soft-muted: #9ca3af;
   --border: rgba(17, 24, 39, 0.08);
-  --accent: #0f766e;
-  --accent-soft: #ecfdf5;
+  --border-strong: #cdd4dd;
+
+  /* --- Semantic ---------------------------------------------- */
   --danger: #b42318;
   --danger-soft: #fef3f2;
   --success: #047857;
   --success-soft: #ecfdf3;
-  --shadow-soft: 0 18px 60px rgba(15, 23, 42, 0.08);
-  --shadow-lift: 0 20px 48px rgba(15, 23, 42, 0.12);
-  --ring: rgba(15, 118, 110, 0.16);
+  --warning: #b54708;
+  --warning-soft: #fffaeb;
+
+  /* --- Spacing scale (4px base) ------------------------------ */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+
+  /* --- Radius ------------------------------------------------ */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-pill: 999px;
+
+  /* --- Elevation --------------------------------------------- */
+  --shadow-1: 0 1px 2px rgba(15, 27, 45, 0.06);
+  --shadow-2: 0 2px 8px rgba(15, 27, 45, 0.08);
+  /* Legacy names now alias the subtle elevation so every consumer
+     flattens at once. */
+  --shadow-soft: var(--shadow-1);
+  --shadow-lift: var(--shadow-2);
+
+  /* --- Type -------------------------------------------------- */
+  /* IBM Plex loaded via next/font in app/layout.tsx; falls back to
+     the system stack until the face is ready. */
+  --font-sans:
+    var(--font-plex-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+  --font-mono:
+    var(--font-plex-mono), ui-monospace, 'SF Mono', 'Cascadia Mono',
+    'Segoe UI Mono', monospace;
+
+  --ring: rgba(11, 71, 120, 0.2);
 }
 
 * {
@@ -31,22 +89,9 @@ body {
 
 body {
   min-height: 100vh;
-  background:
-    radial-gradient(
-      circle at top left,
-      rgba(15, 118, 110, 0.08),
-      transparent 24%
-    ),
-    radial-gradient(
-      circle at top right,
-      rgba(15, 118, 110, 0.05),
-      transparent 22%
-    ),
-    linear-gradient(180deg, #fbfbfc 0%, var(--background) 100%);
+  background: var(--bg);
   color: var(--text);
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter',
-    'Segoe UI', sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -100,8 +145,7 @@ summary {
   min-height: 100vh;
   padding: 28px 22px;
   border-right: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(18px);
+  background: var(--surface-strong);
 }
 
 .brand {
@@ -118,8 +162,8 @@ summary {
   justify-content: center;
   width: 46px;
   height: 46px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, var(--accent) 0%, #14b8a6 100%);
+  border-radius: var(--r-lg);
+  background: var(--accent);
   color: #ffffff;
   font-size: 0.95rem;
   font-weight: 700;
@@ -160,7 +204,7 @@ summary {
   min-height: 44px;
   padding: 0 14px;
   border: 1px solid transparent;
-  border-radius: 16px;
+  border-radius: var(--r-md);
   color: var(--muted);
   font-weight: 500;
 }
@@ -170,7 +214,7 @@ summary {
   gap: 10px;
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--r-md);
   background: rgba(255, 255, 255, 0.72);
   color: var(--muted);
   font-size: 0.86rem;
@@ -187,7 +231,7 @@ summary {
 }
 
 .nav-button:hover {
-  border-color: rgba(15, 118, 110, 0.22);
+  border-color: rgba(11, 71, 120, 0.22);
   color: var(--accent);
 }
 
@@ -205,7 +249,7 @@ summary {
   height: 24px;
   padding: 0 8px;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.12);
+  background: rgba(11, 71, 120, 0.12);
   color: var(--accent);
   font-size: 0.78rem;
   font-weight: 700;
@@ -214,9 +258,8 @@ summary {
 
 .nav a:hover {
   border-color: var(--border);
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--accent-soft);
   color: var(--text);
-  transform: translateY(-1px);
 }
 
 .content {
@@ -227,10 +270,9 @@ summary {
   max-width: 760px;
   padding: 28px;
   border: 1px solid var(--border);
-  border-radius: 24px;
+  border-radius: var(--r-lg);
   background: var(--surface);
-  backdrop-filter: blur(18px);
-  box-shadow: var(--shadow-soft);
+  box-shadow: var(--shadow-1);
 }
 
 .eyebrow {
@@ -320,29 +362,30 @@ summary {
   align-items: center;
   justify-content: center;
   min-height: 44px;
-  padding: 0 16px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.92);
+  padding: 0 18px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-strong);
   color: var(--text);
-  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.06);
+  font-weight: 600;
+  box-shadow: var(--shadow-1);
   cursor: pointer;
 }
 
 .button:hover {
-  transform: translateY(-1px);
-  border-color: rgba(15, 118, 110, 0.22);
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-2);
 }
 
 .button-primary {
   border-color: var(--accent);
-  background: linear-gradient(135deg, var(--accent) 0%, #129183 100%);
+  background: var(--accent);
   color: #ffffff;
 }
 
 .button-primary:hover {
-  border-color: #0d5f59;
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
 }
 
 .button-large {
@@ -378,8 +421,8 @@ summary {
 
 .setup-next-action {
   padding: 14px;
-  border: 1px solid rgba(15, 118, 110, 0.14);
-  border-radius: 18px;
+  border: 1px solid rgba(11, 71, 120, 0.14);
+  border-radius: var(--r-lg);
   background: rgba(236, 253, 245, 0.62);
 }
 
@@ -432,13 +475,26 @@ summary {
 
 .dashboard-hero-panel {
   overflow: hidden;
+  padding: 20px 24px;
 }
 
 .dashboard-hero {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.9fr);
-  gap: 20px;
-  align-items: end;
+  gap: 16px;
+  align-items: center;
+}
+
+/* Cockpit header is an operational title bar, not a marketing hero. */
+.dashboard-hero .title {
+  margin-bottom: 4px;
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.dashboard-hero .copy {
+  font-size: 0.95rem;
+  line-height: 1.5;
 }
 
 .dashboard-hero-copy {
@@ -451,12 +507,8 @@ summary {
   gap: 10px;
   padding: 18px 20px;
   border: 1px solid var(--border);
-  border-radius: 22px;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.96) 0%,
-    rgba(236, 253, 245, 0.8) 100%
-  );
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
 }
 
 .dashboard-hero-pill-row {
@@ -474,9 +526,12 @@ summary {
   gap: 14px;
 }
 
+/* Next actions render as a dense full-width worklist, not a 3-up
+   marketing card grid. */
 .dashboard-feature-grid {
-  margin-top: 22px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 16px;
+  grid-template-columns: 1fr;
+  gap: 8px;
 }
 
 .dashboard-feature-card,
@@ -492,7 +547,7 @@ summary {
 .action-form {
   border: 1px solid var(--border);
   background: var(--surface-strong);
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.05);
+  box-shadow: var(--shadow-1);
 }
 
 .dashboard-feature-card,
@@ -503,15 +558,21 @@ summary {
 .offer-row-card,
 .operator-summary-card {
   padding: 18px;
-  border-radius: 22px;
+  border-radius: var(--r-lg);
 }
 
 .dashboard-feature-card:hover,
 .dashboard-opportunity-card:hover,
 .duplicate-product-card:hover,
 .review-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lift);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-2);
+}
+
+/* Tighter padding for the worklist rows (overrides the shared card
+   padding above). */
+.dashboard-feature-card {
+  padding: 12px 16px;
 }
 
 .dashboard-empty-state {
@@ -520,7 +581,7 @@ summary {
   margin-top: 20px;
   padding: 18px;
   border: 1px dashed var(--border);
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   background: rgba(248, 250, 252, 0.78);
 }
 
@@ -579,9 +640,9 @@ summary {
 }
 
 .dashboard-feature-copy {
-  margin-top: 8px;
+  margin-top: 2px;
   color: var(--muted);
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 .dashboard-summary-grid {
@@ -598,6 +659,8 @@ summary {
   font-size: 2rem;
   line-height: 1;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
 }
 
 .dashboard-summary-label {
@@ -628,7 +691,7 @@ summary {
   margin-bottom: 18px;
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   background: rgba(248, 250, 252, 0.76);
 }
 
@@ -678,7 +741,7 @@ summary {
 }
 
 .dashboard-metric-link:hover {
-  color: #0b5e58;
+  color: var(--accent-strong);
 }
 
 .dashboard-proof-grid {
@@ -689,13 +752,9 @@ summary {
 .dashboard-proof-callout {
   margin-top: 16px;
   padding: 18px 20px;
-  border: 1px solid rgba(15, 118, 110, 0.14);
-  border-radius: 22px;
-  background: linear-gradient(
-    180deg,
-    #ffffff 0%,
-    rgba(236, 253, 245, 0.7) 100%
-  );
+  border: 1px solid rgba(11, 71, 120, 0.14);
+  border-radius: var(--r-lg);
+  background: var(--accent-soft);
 }
 
 .dashboard-proof-copy {
@@ -802,7 +861,7 @@ summary {
 .alert {
   margin: 16px 0 0;
   padding: 14px 16px;
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   border: 1px solid var(--border);
   line-height: 1.6;
 }
@@ -906,9 +965,9 @@ summary {
   align-items: center;
   min-height: 30px;
   padding: 0 12px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--surface-strong);
   color: var(--text);
   font-size: 0.78rem;
   font-weight: 600;
@@ -917,17 +976,17 @@ summary {
 
 .pill-high {
   background: var(--accent-soft);
-  border-color: rgba(15, 118, 110, 0.16);
+  border-color: rgba(11, 71, 120, 0.16);
   color: var(--accent);
 }
 
 .pill-medium,
 .pill-neutral {
-  background: rgba(248, 250, 252, 0.92);
+  background: var(--surface-2);
 }
 
 .pill-low {
-  background: rgba(254, 243, 242, 0.75);
+  background: var(--danger-soft);
   border-color: rgba(180, 35, 24, 0.14);
   color: var(--danger);
 }
@@ -964,7 +1023,7 @@ summary {
   margin: 0;
   padding: 16px;
   overflow-x: auto;
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   border: 1px solid var(--border);
   background: rgba(248, 250, 252, 0.92);
   white-space: pre-wrap;
@@ -979,7 +1038,7 @@ summary {
 
 .document-card {
   overflow: hidden;
-  border-radius: 22px;
+  border-radius: var(--r-lg);
 }
 
 .document-card summary {
@@ -1018,7 +1077,7 @@ summary {
   display: grid;
   gap: 14px;
   padding: 20px;
-  border-radius: 24px;
+  border-radius: var(--r-lg);
 }
 
 .action-row {
@@ -1040,7 +1099,7 @@ summary {
   width: 100%;
   padding: 12px 14px;
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--r-md);
   background: rgba(249, 250, 251, 0.96);
   color: var(--text);
   resize: vertical;
@@ -1048,7 +1107,7 @@ summary {
 
 .action-form input:focus-visible,
 .action-form textarea:focus-visible {
-  border-color: rgba(15, 118, 110, 0.28);
+  border-color: rgba(11, 71, 120, 0.28);
 }
 
 .supplier-review-fields {
@@ -1057,7 +1116,7 @@ summary {
   margin: 0;
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--r-md);
   background: rgba(248, 250, 252, 0.82);
 }
 
@@ -1105,7 +1164,7 @@ summary {
 
 .operator-summary-card {
   padding: 16px 18px;
-  border-radius: 20px;
+  border-radius: var(--r-lg);
 }
 
 .compact-list {
@@ -1150,7 +1209,7 @@ summary {
 .resolution-evidence {
   padding: 18px;
   border: 1px solid var(--border);
-  border-radius: 22px;
+  border-radius: var(--r-lg);
   background: rgba(248, 250, 252, 0.7);
 }
 
@@ -1191,7 +1250,7 @@ summary {
   gap: 6px;
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--r-md);
   background: rgba(248, 250, 252, 0.82);
 }
 
@@ -1213,23 +1272,19 @@ summary {
 
 .resolution-evidence-group {
   padding: 14px;
-  border-radius: 18px;
+  border-radius: var(--r-lg);
 }
 
 .resolution-candidate-card {
   display: grid;
   gap: 8px;
   padding: 14px;
-  border-radius: 16px;
+  border-radius: var(--r-md);
 }
 
 .resolution-candidate-card-selected {
-  border-color: rgba(15, 118, 110, 0.2);
-  background: linear-gradient(
-    180deg,
-    #ffffff 0%,
-    rgba(236, 253, 245, 0.72) 100%
-  );
+  border-color: rgba(11, 71, 120, 0.2);
+  background: var(--accent-soft);
 }
 
 .resolution-candidate-copy-secondary {
@@ -1260,13 +1315,13 @@ summary {
 .review-guidance-card {
   margin-top: 16px;
   padding: 16px 18px;
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   border: 1px solid var(--border);
 }
 
 .review-guidance-card-info {
   background: rgba(236, 253, 245, 0.72);
-  border-color: rgba(15, 118, 110, 0.14);
+  border-color: rgba(11, 71, 120, 0.14);
 }
 
 .review-guidance-card-warning {
@@ -1379,7 +1434,7 @@ summary {
 
   .panel {
     padding: 22px;
-    border-radius: 22px;
+    border-radius: var(--r-lg);
   }
 
   .title {
@@ -1472,9 +1527,8 @@ summary {
   border: 0;
   border-bottom: 1px solid rgba(16, 42, 67, 0.08);
   border-radius: 0;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--surface-strong);
   box-shadow: none;
-  backdrop-filter: blur(14px);
 }
 
 .public-wordmark {
@@ -1494,8 +1548,8 @@ summary {
   width: 36px;
   height: 36px;
   border: 1px solid rgba(11, 71, 120, 0.18);
-  border-radius: 2px;
-  background: linear-gradient(180deg, #0b4778 0%, #08213a 100%);
+  border-radius: var(--r-sm);
+  background: var(--accent);
   box-shadow: none;
   color: #ffffff;
   font-size: 0.72rem;
@@ -1528,33 +1582,35 @@ summary {
   display: none;
 }
 
+/* Public buttons share the dashboard button definition so the brand
+   reads as one product across surfaces (single navy accent, 4px radius). */
 .public-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 44px;
   padding: 0 18px;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   font-size: 0.92rem;
-  font-weight: 720;
+  font-weight: 600;
+  box-shadow: var(--shadow-1);
 }
 
 .public-button-primary {
-  border: 1px solid #0b4778;
-  background: #0b4778;
-  box-shadow: none;
+  border: 1px solid var(--accent);
+  background: var(--accent);
   color: #ffffff;
 }
 
 .public-button-secondary {
-  border: 1px solid rgba(11, 71, 120, 0.24);
-  background: #ffffff;
-  color: #0b4778;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-strong);
+  color: var(--accent);
 }
 
 .public-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 22px rgba(8, 33, 58, 0.1);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-2);
 }
 
 /* Public website motion: subtle lift only; content remains visible in all render modes. */
@@ -1575,9 +1631,8 @@ summary {
   display: grid;
   grid-template-columns: minmax(0, 0.96fr) minmax(360px, 0.84fr);
   align-items: center;
-  gap: 72px;
-  min-height: calc(100vh - 78px);
-  padding: 74px 0 86px;
+  gap: 56px;
+  padding: 56px 0 64px;
 }
 
 .public-hero::before,
@@ -1608,7 +1663,7 @@ summary {
   left: -10vw;
   width: min(360px, 32vw);
   height: 180px;
-  border-top: 1px solid rgba(15, 118, 110, 0.14);
+  border-top: 1px solid rgba(11, 71, 120, 0.14);
   background: linear-gradient(180deg, rgba(238, 247, 249, 0.78), transparent);
 }
 
@@ -1619,7 +1674,7 @@ summary {
 
 .public-eyebrow {
   margin: 0;
-  color: #0b746d;
+  color: var(--accent);
   font-size: 0.76rem;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -1639,8 +1694,8 @@ summary {
 
 .public-hero h1 {
   max-width: 590px;
-  font-size: clamp(3rem, 4.55vw, 4.45rem);
-  line-height: 1.02;
+  font-size: clamp(2.25rem, 3.4vw, 3.1rem);
+  line-height: 1.08;
 }
 
 .public-hero-copy {
@@ -1808,8 +1863,8 @@ summary {
 .public-page-cta h2,
 .public-copy-block h2 {
   margin-top: 10px;
-  font-size: clamp(2rem, 3.6vw, 3.05rem);
-  line-height: 1.08;
+  font-size: clamp(1.6rem, 2.6vw, 2.25rem);
+  line-height: 1.15;
 }
 
 .public-section p,
@@ -1853,7 +1908,7 @@ summary {
   height: 72%;
   pointer-events: none;
   content: '';
-  border-left: 2px solid rgba(15, 118, 110, 0.28);
+  border-left: 2px solid rgba(11, 71, 120, 0.28);
   background:
     linear-gradient(90deg, rgba(236, 247, 251, 0.74), transparent 72%),
     repeating-linear-gradient(
@@ -1908,7 +1963,7 @@ summary {
 }
 
 .public-depth-panel li::marker {
-  color: #0b746d;
+  color: var(--accent);
 }
 
 .public-service-list {
@@ -1926,7 +1981,7 @@ summary {
 }
 
 .public-service-number {
-  color: #0b746d;
+  color: var(--accent);
   font-size: 0.8rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -1982,7 +2037,7 @@ summary {
   top: 24px;
   left: 24px;
   content: counter(workflow, decimal-leading-zero);
-  color: #0b746d;
+  color: var(--accent);
   font-size: 0.8rem;
   font-weight: 800;
 }
@@ -2095,14 +2150,14 @@ summary {
 .public-page-hero {
   display: grid;
   gap: 22px;
-  padding: 88px 0 58px;
+  padding: 64px 0 48px;
   border-bottom: 1px solid rgba(16, 42, 67, 0.1);
 }
 
 .public-page-hero h1 {
   max-width: 860px;
-  font-size: clamp(2.7rem, 5.4vw, 5.1rem);
-  line-height: 1.02;
+  font-size: clamp(2.1rem, 3.4vw, 3.1rem);
+  line-height: 1.08;
 }
 
 .public-page-hero p:last-child {
@@ -2140,7 +2195,7 @@ summary {
   height: 3px;
   margin-bottom: 20px;
   content: '';
-  background: #0b746d;
+  background: var(--accent);
 }
 
 .public-page-card:hover {
@@ -2200,7 +2255,7 @@ summary {
   height: 8px;
   content: '';
   border-radius: 50%;
-  background: #0b746d;
+  background: var(--accent);
   box-shadow: none;
 }
 
@@ -2260,7 +2315,7 @@ summary {
 }
 
 .public-rfq-field span small {
-  color: #0b746d;
+  color: var(--accent);
   font-size: 0.68rem;
   font-weight: 820;
   letter-spacing: 0.08em;
@@ -2292,7 +2347,7 @@ summary {
 .public-rfq-field textarea:focus-visible {
   outline: 3px solid rgba(11, 116, 109, 0.28);
   outline-offset: 2px;
-  border-color: #0b746d;
+  border-color: var(--accent);
 }
 
 .public-rfq-help,
@@ -2326,7 +2381,7 @@ summary {
 }
 
 .public-rfq-message-success {
-  border-left-color: #0b746d;
+  border-left-color: var(--accent);
   background: #edf9f5;
 }
 
@@ -2379,7 +2434,7 @@ summary {
   width: 56px;
   height: 3px;
   content: '';
-  background: #0b746d;
+  background: var(--accent);
 }
 
 .public-page-cta p {
@@ -2442,7 +2497,7 @@ summary {
       rgba(11, 71, 120, 0.045) 0 1px,
       transparent 1px 58px
     ),
-    linear-gradient(115deg, rgba(15, 118, 110, 0.08), transparent 32%),
+    linear-gradient(115deg, rgba(11, 71, 120, 0.08), transparent 32%),
     linear-gradient(135deg, #ffffff 0%, #f5fafc 56%, #e8f2f6 100%);
   box-shadow: 0 24px 58px rgba(8, 33, 58, 0.12);
 }
@@ -2508,7 +2563,7 @@ summary {
 }
 
 .public-document-kicker {
-  color: #0b746d;
+  color: var(--accent);
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -2631,7 +2686,7 @@ summary {
 .public-premium-service-card > span {
   width: 42px;
   height: 3px;
-  background: #0b746d;
+  background: var(--accent);
 }
 
 .public-premium-service-card::before {
@@ -2729,8 +2784,8 @@ summary {
 .public-account-copy h2 {
   margin: 0;
   color: #08213a;
-  font-size: clamp(2rem, 3.6vw, 3.05rem);
-  line-height: 1.08;
+  font-size: clamp(1.6rem, 2.6vw, 2.25rem);
+  line-height: 1.15;
 }
 
 .public-account-copy p {
@@ -2762,7 +2817,7 @@ summary {
 }
 
 .public-account-step-list span {
-  color: #0b746d;
+  color: var(--accent);
   font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -2864,7 +2919,7 @@ summary {
   width: 8px;
   height: 8px;
   content: '';
-  background: #0f766e;
+  background: var(--accent);
 }
 
 .public-enquiry-actions {
