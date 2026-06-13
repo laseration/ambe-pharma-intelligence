@@ -164,16 +164,17 @@ test('requireCapability returns the session only when the role is allowed', () =
 });
 
 test('dashboard action visibility follows the role capability map', () => {
-  const restrictedActionCapabilities: Parameters<typeof roleHasCapability>[1][] =
-    [
-      'opportunities:manage',
-      'review:view',
-      'review:manage',
-      'imports:view',
-      'inbox:view',
-      'trade-enquiries:manage',
-      'system:admin',
-    ];
+  const restrictedActionCapabilities: Parameters<
+    typeof roleHasCapability
+  >[1][] = [
+    'opportunities:manage',
+    'review:view',
+    'review:manage',
+    'imports:view',
+    'inbox:view',
+    'trade-enquiries:manage',
+    'system:admin',
+  ];
 
   for (const capability of restrictedActionCapabilities) {
     assert.equal(
