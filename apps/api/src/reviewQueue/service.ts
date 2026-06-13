@@ -230,6 +230,7 @@ function mapEmailItem(item: StoredEmailReviewItem): ReviewQueueItem | null {
     reason: item.error || item.reason,
     sender: item.email.from,
     subjectOrCaption: item.email.subject || null,
+    triageBlockedReason: item.aiBlockedReason ?? null,
     parsedLineCount:
       typeof textParsing?.parsedRows === 'object' &&
       Array.isArray(textParsing.parsedRows)

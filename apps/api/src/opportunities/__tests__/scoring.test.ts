@@ -1706,3 +1706,143 @@ test('STOCKHOLDING mode preserves RESTOCK and DEAD_STOCK behavior', () => {
     deadStockCandidates.some((candidate) => candidate.type === 'DEAD_STOCK'),
   );
 });
+
+// --- Edge cases: missing / extreme / degenerate price data ---
+
+test('negative margin flags LOW_MARGIN and never recommends a PUSH', () => {
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      product: { id: 'product-neg-margin', name: 'Loss-leader 10mg Tablets' },
+      latestInventory: {
+        supplierId: 'supplier-1',
+        snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
+        quantityAvailable: 60,
+        quantityOnHand: 70,
+      },
+      // Cost above sale price => negative margin.
+      latestSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 5,
+        createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      },
+      previousSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 5,
+        createdAt: new Date('2026-04-10T00:00:00.000Z'),
+      },
+      recentSales: {
+        units30d: 50,
+        averageSalePrice: 3,
+        lastSaleDate: new Date('2026-04-18T00:00:00.000Z'),
+      },
+    }),
+    stockholdingConfig,
+  );
+
+  assert.ok(candidates.some((candidate) => candidate.type === 'LOW_MARGIN'));
+  assert.ok(!candidates.some((candidate) => candidate.type === 'PUSH'));
+});
+
+test('missing supplier cost blocks BUY, PRICE_ALERT, and LOW_MARGIN', () => {
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      product: { id: 'product-no-cost', name: 'Unpriced 5mg Tablets' },
+      latestSupplierPrice: null,
+      previousSupplierPrice: null,
+      recentSales: {
+        units30d: 50,
+        averageSalePrice: 3,
+        lastSaleDate: new Date('2026-04-18T00:00:00.000Z'),
+      },
+    }),
+    stockholdingConfig,
+  );
+
+  assert.ok(!candidates.some((candidate) => candidate.type === 'BUY'));
+  assert.ok(!candidates.some((candidate) => candidate.type === 'PRICE_ALERT'));
+  assert.ok(!candidates.some((candidate) => candidate.type === 'LOW_MARGIN'));
+});
+
+test('missing sale price cannot produce a margin-based LOW_MARGIN signal', () => {
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      product: { id: 'product-no-sale', name: 'No-sale 20mg Tablets' },
+      latestSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 2,
+        createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      },
+      previousSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 2,
+        createdAt: new Date('2026-04-10T00:00:00.000Z'),
+      },
+      recentSales: {
+        units30d: 50,
+        averageSalePrice: null,
+        lastSaleDate: new Date('2026-04-18T00:00:00.000Z'),
+      },
+    }),
+    stockholdingConfig,
+  );
+
+  assert.ok(!candidates.some((candidate) => candidate.type === 'LOW_MARGIN'));
+});
+
+test('an extreme upward price spike is not treated as a BUY opportunity', () => {
+  const candidates = scoreOpportunityCandidates(
+    createContext({
+      product: { id: 'product-spike', name: 'Spiking 40mg Tablets' },
+      latestInventory: {
+        supplierId: 'supplier-1',
+        snapshotDate: new Date('2026-04-19T00:00:00.000Z'),
+        quantityAvailable: 60,
+        quantityOnHand: 70,
+      },
+      // 1.00 -> 10.00 is a 900% jump (possible supplier error), never a BUY.
+      latestSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 10,
+        createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      },
+      previousSupplierPrice: {
+        supplierId: 'supplier-1',
+        unitPrice: 1,
+        createdAt: new Date('2026-04-10T00:00:00.000Z'),
+      },
+      recentSales: {
+        units30d: 50,
+        averageSalePrice: 12,
+        lastSaleDate: new Date('2026-04-18T00:00:00.000Z'),
+      },
+    }),
+    stockholdingConfig,
+  );
+
+  assert.ok(!candidates.some((candidate) => candidate.type === 'BUY'));
+});
+
+test('scoring and auditing stay safe with no inventory, price, or sales data', () => {
+  const emptyContext = createContext({
+    product: { id: 'product-empty', name: 'Unknown Product' },
+    latestInventory: null,
+    latestSupplierPrice: null,
+    previousSupplierPrice: null,
+    recentSales: {
+      units30d: 0,
+      averageSalePrice: null,
+      lastSaleDate: null,
+    },
+  });
+
+  const candidates = scoreOpportunityCandidates(emptyContext, tradingConfig);
+  assert.ok(Array.isArray(candidates));
+  // Nothing price- or margin-dependent can be produced without any data.
+  assert.ok(!candidates.some((candidate) => candidate.type === 'BUY'));
+  assert.ok(!candidates.some((candidate) => candidate.type === 'PRICE_ALERT'));
+  assert.ok(!candidates.some((candidate) => candidate.type === 'LOW_MARGIN'));
+
+  const audit = auditOpportunityScoring(emptyContext, tradingConfig);
+  assert.ok(Array.isArray(audit.opportunities));
+  assert.equal(audit.productId, 'product-empty');
+});

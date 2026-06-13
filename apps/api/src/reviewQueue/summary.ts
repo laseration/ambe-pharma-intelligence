@@ -14,6 +14,10 @@ type ReviewSummaryInput = {
   hasUnresolvedSupplier?: boolean;
   hasConflictingSupplierCues?: boolean;
   hasManufacturerAmbiguity?: boolean;
+  // The triage gate code that sent a body-text email to review (for example
+  // "email_ai_review_disabled"). Lets the queue explain the specific reason
+  // instead of a generic fallback.
+  triageBlockedReason?: string | null;
   accountOpeningCase?: {
     extractedTextSummary: string;
     riskFlags: string[];
@@ -55,6 +59,66 @@ type ReasonDetail = {
 function normalizeReasonCode(reason: string | null): string | null {
   const trimmed = reason?.trim();
   return trimmed ? trimmed.toLowerCase() : null;
+}
+
+// Specific, operator-facing detail for the triage gate codes that route a
+// plain body-text email to manual review. Without this, those emails fall
+// through to the generic "automatic routing was not safe enough" message.
+function reasonDetailForTriageCode(
+  triageBlockedReason: string | null,
+): ReasonDetail | null {
+  switch (normalizeReasonCode(triageBlockedReason)) {
+    case 'email_ai_review_disabled':
+      return {
+        reviewReason: 'Commercial email needs manual extraction',
+        missingOrUnclear:
+          'A commercial email was detected, but automated extraction is currently turned off, so it was not parsed automatically.',
+        suggestedAction:
+          'Open the email, confirm the supplier, products, and prices manually, then approve or reject.',
+      };
+    case 'unknown_sender_without_attachment_or_supplier_subject':
+      return {
+        reviewReason: 'Unconfirmed sender',
+        missingOrUnclear:
+          'The sender is not a known supplier and there is no attachment or supplier-style subject to confirm the source.',
+        suggestedAction:
+          'Confirm who sent this and whether it is a genuine supplier offer before acting.',
+      };
+    case 'business_score_below_ai_threshold':
+      return {
+        reviewReason: 'Weak commercial signals',
+        missingOrUnclear:
+          'The email shows some commercial signals, but not enough to extract safely on its own.',
+        suggestedAction:
+          'Read the message and confirm the products and prices before acting.',
+      };
+    case 'duplicate_recent_body_detected':
+      return {
+        reviewReason: 'Possible duplicate email',
+        missingOrUnclear:
+          'This looks like a near-duplicate of a recently seen email.',
+        suggestedAction:
+          'Check whether this repeats an earlier offer before acting on it.',
+      };
+    case 'daily_ai_review_limit_exceeded':
+      return {
+        reviewReason: 'Extraction limit reached for today',
+        missingOrUnclear:
+          'The automated extraction limit for today has been reached, so this was held for manual handling.',
+        suggestedAction:
+          'Review and extract the offer manually, or wait for the daily limit to reset.',
+      };
+    case 'per_supplier_ai_review_limit_exceeded':
+      return {
+        reviewReason: 'Extraction limit reached for this supplier',
+        missingOrUnclear:
+          'The automated extraction limit for this supplier today has been reached.',
+        suggestedAction:
+          'Review and extract the offer manually, or wait for the limit to reset.',
+      };
+    default:
+      return null;
+  }
 }
 
 function buildReasonDetail(input: ReviewSummaryInput): ReasonDetail | null {
@@ -186,7 +250,7 @@ function buildReasonDetail(input: ReviewSummaryInput): ReasonDetail | null {
           'Review the extracted fields, supplier resolution, and trust signals before deciding whether to continue manually.',
       };
     default:
-      return null;
+      return reasonDetailForTriageCode(input.triageBlockedReason ?? null);
   }
 }
 
