@@ -204,7 +204,7 @@ summary {
   min-height: 44px;
   padding: 0 14px;
   border: 1px solid transparent;
-  border-radius: 16px;
+  border-radius: var(--r-md);
   color: var(--muted);
   font-weight: 500;
 }
@@ -214,7 +214,7 @@ summary {
   gap: 10px;
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--r-md);
   background: rgba(255, 255, 255, 0.72);
   color: var(--muted);
   font-size: 0.86rem;
@@ -231,7 +231,7 @@ summary {
 }
 
 .nav-button:hover {
-  border-color: rgba(15, 118, 110, 0.22);
+  border-color: rgba(11, 71, 120, 0.22);
   color: var(--accent);
 }
 
@@ -249,7 +249,7 @@ summary {
   height: 24px;
   padding: 0 8px;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.12);
+  background: rgba(11, 71, 120, 0.12);
   color: var(--accent);
   font-size: 0.78rem;
   font-weight: 700;
@@ -421,8 +421,8 @@ summary {
 
 .setup-next-action {
   padding: 14px;
-  border: 1px solid rgba(15, 118, 110, 0.14);
-  border-radius: 18px;
+  border: 1px solid rgba(11, 71, 120, 0.14);
+  border-radius: var(--r-lg);
   background: rgba(236, 253, 245, 0.62);
 }
 
@@ -559,7 +559,7 @@ summary {
   margin-top: 20px;
   padding: 18px;
   border: 1px dashed var(--border);
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   background: rgba(248, 250, 252, 0.78);
 }
 
@@ -669,7 +669,7 @@ summary {
   margin-bottom: 18px;
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   background: rgba(248, 250, 252, 0.76);
 }
 
@@ -730,7 +730,7 @@ summary {
 .dashboard-proof-callout {
   margin-top: 16px;
   padding: 18px 20px;
-  border: 1px solid rgba(15, 118, 110, 0.14);
+  border: 1px solid rgba(11, 71, 120, 0.14);
   border-radius: var(--r-lg);
   background: var(--accent-soft);
 }
@@ -839,7 +839,7 @@ summary {
 .alert {
   margin: 16px 0 0;
   padding: 14px 16px;
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   border: 1px solid var(--border);
   line-height: 1.6;
 }
@@ -943,9 +943,9 @@ summary {
   align-items: center;
   min-height: 30px;
   padding: 0 12px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--surface-strong);
   color: var(--text);
   font-size: 0.78rem;
   font-weight: 600;
@@ -954,17 +954,17 @@ summary {
 
 .pill-high {
   background: var(--accent-soft);
-  border-color: rgba(15, 118, 110, 0.16);
+  border-color: rgba(11, 71, 120, 0.16);
   color: var(--accent);
 }
 
 .pill-medium,
 .pill-neutral {
-  background: rgba(248, 250, 252, 0.92);
+  background: var(--surface-2);
 }
 
 .pill-low {
-  background: rgba(254, 243, 242, 0.75);
+  background: var(--danger-soft);
   border-color: rgba(180, 35, 24, 0.14);
   color: var(--danger);
 }
@@ -1001,7 +1001,7 @@ summary {
   margin: 0;
   padding: 16px;
   overflow-x: auto;
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   border: 1px solid var(--border);
   background: rgba(248, 250, 252, 0.92);
   white-space: pre-wrap;
@@ -1016,7 +1016,7 @@ summary {
 
 .document-card {
   overflow: hidden;
-  border-radius: 22px;
+  border-radius: var(--r-lg);
 }
 
 .document-card summary {
@@ -1055,7 +1055,7 @@ summary {
   display: grid;
   gap: 14px;
   padding: 20px;
-  border-radius: 24px;
+  border-radius: var(--r-lg);
 }
 
 .action-row {
@@ -1077,7 +1077,7 @@ summary {
   width: 100%;
   padding: 12px 14px;
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--r-md);
   background: rgba(249, 250, 251, 0.96);
   color: var(--text);
   resize: vertical;
@@ -1085,7 +1085,7 @@ summary {
 
 .action-form input:focus-visible,
 .action-form textarea:focus-visible {
-  border-color: rgba(15, 118, 110, 0.28);
+  border-color: rgba(11, 71, 120, 0.28);
 }
 
 .supplier-review-fields {
@@ -1094,7 +1094,7 @@ summary {
   margin: 0;
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--r-md);
   background: rgba(248, 250, 252, 0.82);
 }
 
@@ -1142,7 +1142,7 @@ summary {
 
 .operator-summary-card {
   padding: 16px 18px;
-  border-radius: 20px;
+  border-radius: var(--r-lg);
 }
 
 .compact-list {
@@ -1187,7 +1187,7 @@ summary {
 .resolution-evidence {
   padding: 18px;
   border: 1px solid var(--border);
-  border-radius: 22px;
+  border-radius: var(--r-lg);
   background: rgba(248, 250, 252, 0.7);
 }
 
@@ -1228,7 +1228,7 @@ summary {
   gap: 6px;
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--r-md);
   background: rgba(248, 250, 252, 0.82);
 }
 
@@ -1250,18 +1250,18 @@ summary {
 
 .resolution-evidence-group {
   padding: 14px;
-  border-radius: 18px;
+  border-radius: var(--r-lg);
 }
 
 .resolution-candidate-card {
   display: grid;
   gap: 8px;
   padding: 14px;
-  border-radius: 16px;
+  border-radius: var(--r-md);
 }
 
 .resolution-candidate-card-selected {
-  border-color: rgba(15, 118, 110, 0.2);
+  border-color: rgba(11, 71, 120, 0.2);
   background: var(--accent-soft);
 }
 
@@ -1293,13 +1293,13 @@ summary {
 .review-guidance-card {
   margin-top: 16px;
   padding: 16px 18px;
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   border: 1px solid var(--border);
 }
 
 .review-guidance-card-info {
   background: rgba(236, 253, 245, 0.72);
-  border-color: rgba(15, 118, 110, 0.14);
+  border-color: rgba(11, 71, 120, 0.14);
 }
 
 .review-guidance-card-warning {
@@ -1412,7 +1412,7 @@ summary {
 
   .panel {
     padding: 22px;
-    border-radius: 22px;
+    border-radius: var(--r-lg);
   }
 
   .title {
@@ -1643,7 +1643,7 @@ summary {
   left: -10vw;
   width: min(360px, 32vw);
   height: 180px;
-  border-top: 1px solid rgba(15, 118, 110, 0.14);
+  border-top: 1px solid rgba(11, 71, 120, 0.14);
   background: linear-gradient(180deg, rgba(238, 247, 249, 0.78), transparent);
 }
 
@@ -1888,7 +1888,7 @@ summary {
   height: 72%;
   pointer-events: none;
   content: '';
-  border-left: 2px solid rgba(15, 118, 110, 0.28);
+  border-left: 2px solid rgba(11, 71, 120, 0.28);
   background:
     linear-gradient(90deg, rgba(236, 247, 251, 0.74), transparent 72%),
     repeating-linear-gradient(
@@ -2477,7 +2477,7 @@ summary {
       rgba(11, 71, 120, 0.045) 0 1px,
       transparent 1px 58px
     ),
-    linear-gradient(115deg, rgba(15, 118, 110, 0.08), transparent 32%),
+    linear-gradient(115deg, rgba(11, 71, 120, 0.08), transparent 32%),
     linear-gradient(135deg, #ffffff 0%, #f5fafc 56%, #e8f2f6 100%);
   box-shadow: 0 24px 58px rgba(8, 33, 58, 0.12);
 }
