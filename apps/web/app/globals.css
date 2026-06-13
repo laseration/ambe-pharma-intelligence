@@ -1,20 +1,75 @@
 :root {
   color-scheme: light;
-  --background: #f5f5f7;
-  --surface: rgba(255, 255, 255, 0.86);
+
+  /* ============================================================
+     Design tokens (PR1: additive + back-compat).
+     This block introduces the full token vocabulary. Existing
+     names are retained at their current values so nothing changes
+     visually yet. Visible shifts (teal->navy accent, glass->flat
+     surfaces, large->small radii) land in later PRs that consume
+     the new tokens below.
+     ============================================================ */
+
+  /* --- Brand / accent ---------------------------------------- */
+  /* Current accent (teal) retained for now. The navy family is the
+     target primary and is adopted by the chrome/button PRs. */
+  --accent: #0f766e;
+  --accent-strong: #0b5e57;
+  --accent-soft: #ecfdf5;
+  --navy: #0b4778;
+  --navy-strong: #08335c;
+  --navy-soft: #eef3f8;
+
+  /* --- Surfaces & text --------------------------------------- */
+  --bg: #f5f5f7;
+  --background: var(--bg); /* alias (legacy name) */
+  --surface: rgba(255, 255, 255, 0.86); /* translucent today; flattened in PR3 */
   --surface-strong: #ffffff;
+  --surface-2: #fafbfc;
   --text: #111827;
   --muted: #6b7280;
   --soft-muted: #9ca3af;
   --border: rgba(17, 24, 39, 0.08);
-  --accent: #0f766e;
-  --accent-soft: #ecfdf5;
+  --border-strong: #cdd4dd;
+
+  /* --- Semantic ---------------------------------------------- */
   --danger: #b42318;
   --danger-soft: #fef3f2;
   --success: #047857;
   --success-soft: #ecfdf3;
+  --warning: #b54708;
+  --warning-soft: #fffaeb;
+
+  /* --- Spacing scale (4px base) ------------------------------ */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+
+  /* --- Radius ------------------------------------------------ */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-pill: 999px;
+
+  /* --- Elevation --------------------------------------------- */
+  --shadow-1: 0 1px 2px rgba(15, 27, 45, 0.06);
+  --shadow-2: 0 2px 8px rgba(15, 27, 45, 0.08);
+  /* Legacy oversized shadows retained; phased out in PR3. */
   --shadow-soft: 0 18px 60px rgba(15, 23, 42, 0.08);
   --shadow-lift: 0 20px 48px rgba(15, 23, 42, 0.12);
+
+  /* --- Type -------------------------------------------------- */
+  /* Wired to a real typeface in PR2; body still uses its literal
+     stack until then. */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+    'Inter', 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', monospace;
+
   --ring: rgba(15, 118, 110, 0.16);
 }
 
