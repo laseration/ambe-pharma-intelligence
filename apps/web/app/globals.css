@@ -475,13 +475,26 @@ summary {
 
 .dashboard-hero-panel {
   overflow: hidden;
+  padding: 20px 24px;
 }
 
 .dashboard-hero {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.9fr);
-  gap: 20px;
-  align-items: end;
+  gap: 16px;
+  align-items: center;
+}
+
+/* Cockpit header is an operational title bar, not a marketing hero. */
+.dashboard-hero .title {
+  margin-bottom: 4px;
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.dashboard-hero .copy {
+  font-size: 0.95rem;
+  line-height: 1.5;
 }
 
 .dashboard-hero-copy {
@@ -513,9 +526,12 @@ summary {
   gap: 14px;
 }
 
+/* Next actions render as a dense full-width worklist, not a 3-up
+   marketing card grid. */
 .dashboard-feature-grid {
-  margin-top: 22px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 16px;
+  grid-template-columns: 1fr;
+  gap: 8px;
 }
 
 .dashboard-feature-card,
@@ -551,6 +567,12 @@ summary {
 .review-card:hover {
   border-color: var(--border-strong);
   box-shadow: var(--shadow-2);
+}
+
+/* Tighter padding for the worklist rows (overrides the shared card
+   padding above). */
+.dashboard-feature-card {
+  padding: 12px 16px;
 }
 
 .dashboard-empty-state {
@@ -618,9 +640,9 @@ summary {
 }
 
 .dashboard-feature-copy {
-  margin-top: 8px;
+  margin-top: 2px;
   color: var(--muted);
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 .dashboard-summary-grid {
@@ -719,7 +741,7 @@ summary {
 }
 
 .dashboard-metric-link:hover {
-  color: #0b5e58;
+  color: var(--accent-strong);
 }
 
 .dashboard-proof-grid {
