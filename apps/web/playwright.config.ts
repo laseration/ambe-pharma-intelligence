@@ -10,6 +10,7 @@ export default defineConfig({
   testIgnore:
     /(pilot-local-runtime-smoke|operator-commercial-workflow)\.spec\.ts/,
   timeout: 45_000,
+  workers: 1,
   expect: {
     timeout: 10_000,
   },

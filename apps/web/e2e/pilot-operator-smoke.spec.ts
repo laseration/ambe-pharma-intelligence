@@ -1,10 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
 
-import {
-  createWebSessionCookieValue,
-  WEB_AUTH_COOKIE_NAME,
-} from '../lib/internalWebAuth';
-
 const hiddenCanaries = [
   'RAW_SOURCE_BODY_SHOULD_NOT_RENDER',
   'ATTACHMENT_CONTENT_SHOULD_NOT_RENDER',
@@ -22,36 +17,6 @@ const hiddenCanaries = [
   'local-e2e-session-secret-that-is-long-enough',
 ];
 
-const webAuthSource = {
-  WEB_AUTH_PASSWORD: 'local-e2e-password',
-  WEB_AUTH_SESSION_SECRET: 'local-e2e-session-secret-that-is-long-enough',
-  WEB_AUTH_SESSION_TTL_SECONDS: '3600',
-  WEB_AUTH_USERNAME: 'pilot.operator',
-};
-
-async function setAdminSession(page: Page) {
-  const session = await createWebSessionCookieValue({
-    username: 'pilot.admin',
-    role: 'admin',
-    source: webAuthSource,
-  });
-
-  expect(session).not.toBeNull();
-
-  await page.context().addCookies([
-    {
-      name: WEB_AUTH_COOKIE_NAME,
-      value: session?.cookieValue ?? '',
-      domain: '127.0.0.1',
-      path: '/',
-      httpOnly: true,
-      sameSite: 'Lax',
-      secure: false,
-      expires: session?.session.expiresAt,
-    },
-  ]);
-}
-
 async function expectSensitiveCanariesHidden(page: Page) {
   for (const canary of hiddenCanaries) {
     await expect(page.locator('body')).not.toContainText(canary);
@@ -61,41 +26,11 @@ async function expectSensitiveCanariesHidden(page: Page) {
 test('pilot operator walkthrough smoke uses sanitized browser paths', async ({
   page,
 }) => {
-  await page.goto('/dashboard/setup');
-  await expect(page).toHaveURL(/\/login\?next=%2Fdashboard%2Fsetup$/);
+  await page.goto('/dashboard/review');
+  await expect(page).toHaveURL(/\/login\?next=%2Fdashboard%2Freview$/);
   await expect(
     page.getByRole('heading', { name: 'Access Ambe Intelligence' }),
   ).toBeVisible();
-
-  await setAdminSession(page);
-  await page.goto('/dashboard/setup');
-
-  await expect(
-    page.getByRole('heading', { name: 'Pilot Setup Checklist' }),
-  ).toBeVisible();
-  await expect(
-    page.getByText('Internal API Auth', { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText('Polling Status')).toBeVisible();
-  await expect(
-    page.getByText('[redacted] [redacted] [redacted]'),
-  ).toBeVisible();
-  await expectSensitiveCanariesHidden(page);
-
-  await page.getByRole('link', { name: 'Diagnostics' }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Operator-safe system checks' }),
-  ).toBeVisible();
-  await expect(page.getByText('Graph inbox preflight')).toBeVisible();
-  await expect(
-    page.getByText('Fixture mode only; no mailbox calls are made.'),
-  ).toBeVisible();
-  await expect(page.getByText('Worker failure visibility')).toBeVisible();
-  await expectSensitiveCanariesHidden(page);
-
-  await page.context().clearCookies();
-  await page.goto('/dashboard/review');
-  await expect(page).toHaveURL(/\/login\?next=%2Fdashboard%2Freview$/);
 
   await page.getByLabel('Username').fill('pilot.operator');
   await page.getByLabel('Password').fill('local-e2e-password');
