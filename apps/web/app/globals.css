@@ -11,14 +11,14 @@
      ============================================================ */
 
   /* --- Brand / accent ---------------------------------------- */
-  /* Current accent (teal) retained for now. The navy family is the
-     target primary and is adopted by the chrome/button PRs. */
-  --accent: #0f766e;
-  --accent-strong: #0b5e57;
-  --accent-soft: #ecfdf5;
+  /* Single brand accent: navy. (Teal is retired as a brand colour;
+     status semantics use the success/danger/warning tokens.) */
   --navy: #0b4778;
   --navy-strong: #08335c;
   --navy-soft: #eef3f8;
+  --accent: var(--navy);
+  --accent-strong: var(--navy-strong);
+  --accent-soft: var(--navy-soft);
 
   /* --- Surfaces & text --------------------------------------- */
   --bg: #f5f5f7;
@@ -73,7 +73,7 @@
     var(--font-plex-mono), ui-monospace, 'SF Mono', 'Cascadia Mono',
     'Segoe UI Mono', monospace;
 
-  --ring: rgba(15, 118, 110, 0.16);
+  --ring: rgba(11, 71, 120, 0.2);
 }
 
 * {
@@ -362,11 +362,12 @@ summary {
   align-items: center;
   justify-content: center;
   min-height: 44px;
-  padding: 0 16px;
-  border-radius: 999px;
+  padding: 0 18px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--border-strong);
   background: var(--surface-strong);
   color: var(--text);
+  font-weight: 600;
   box-shadow: var(--shadow-1);
   cursor: pointer;
 }
@@ -383,7 +384,8 @@ summary {
 }
 
 .button-primary:hover {
-  border-color: #0d5f59;
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
 }
 
 .button-large {
@@ -1559,33 +1561,35 @@ summary {
   display: none;
 }
 
+/* Public buttons share the dashboard button definition so the brand
+   reads as one product across surfaces (single navy accent, 4px radius). */
 .public-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 44px;
   padding: 0 18px;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   font-size: 0.92rem;
-  font-weight: 720;
+  font-weight: 600;
+  box-shadow: var(--shadow-1);
 }
 
 .public-button-primary {
-  border: 1px solid #0b4778;
-  background: #0b4778;
-  box-shadow: none;
+  border: 1px solid var(--accent);
+  background: var(--accent);
   color: #ffffff;
 }
 
 .public-button-secondary {
-  border: 1px solid rgba(11, 71, 120, 0.24);
-  background: #ffffff;
-  color: #0b4778;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-strong);
+  color: var(--accent);
 }
 
 .public-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 22px rgba(8, 33, 58, 0.1);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-2);
 }
 
 /* Public website motion: subtle lift only; content remains visible in all render modes. */
