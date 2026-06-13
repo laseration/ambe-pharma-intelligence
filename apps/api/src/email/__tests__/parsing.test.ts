@@ -123,3 +123,135 @@ test('deterministic parsing uses normalized working text but preserves raw sourc
   assert.equal(result.rawBodyText, rawBody);
   assert.equal(result.rawBody, rawBody);
 });
+
+// --- Realistic supplier formats (characterization; no parser changes) ---
+
+test('tab-separated supplier list parses each priced product line', () => {
+  const result = parseStructuredPriceEmailBody(
+    [
+      'Amlodipine 5mg tabs 28\t8.40 GBP',
+      'Metformin 500mg tabs 28\t3.10 GBP',
+    ].join('\n'),
+  );
+
+  assert.equal(result.parsedRows.length, 2);
+  assert.equal(result.parsedRows[0]?.currencyCode, 'GBP');
+  assert.equal(result.parsedRows[0]?.strength, '5mg');
+});
+
+test('trailing ISO currency code without a symbol is still recognised', () => {
+  const result = parseStructuredPriceEmailBody(
+    'Ibuprofen 200mg tablets 30 - 0.95 GBP',
+  );
+
+  assert.equal(result.parsedRows.length, 1);
+  assert.equal(result.parsedRows[0]?.currencyCode, 'GBP');
+  assert.equal(result.parsedRows[0]?.price, 0.95);
+});
+
+test('a polite supplier email still extracts its priced lines and asks for review on the prose', () => {
+  const result = parseStructuredPriceEmailBody(
+    [
+      'Hi there,',
+      'Please see our offer below:',
+      'Amlodipine 5mg tabs 28 - 8.40 GBP',
+      'Metformin 500mg tabs 28 - 3.10 GBP',
+      'Kind regards,',
+      'Supplier Co',
+    ].join('\n'),
+  );
+
+  assert.equal(result.parsedRows.length, 2);
+  // The prose/greeting lines are kept as skipped evidence and the email is
+  // flagged for review rather than trusted outright.
+  assert.ok(result.skippedLines.length >= 1);
+  assert.equal(result.reviewRecommended, true);
+});
+
+// --- Trailing-metadata and alternate-delimiter supplier formats ---
+
+test('an @-priced line with a trailing MOQ parses and extracts the MOQ', () => {
+  const result = parseStructuredPriceEmailBody(
+    'Paracetamol 500mg tablets 30 @ 8.40 GBP MOQ 100',
+  );
+
+  assert.equal(result.parsedRows.length, 1);
+  const row = result.parsedRows[0];
+  assert.ok(row);
+  assert.equal(row.price, 8.4);
+  assert.equal(row.currencyCode, 'GBP');
+  assert.equal(row.strength, '500mg');
+  assert.equal(row.minimumOrderQuantity, 100);
+  // " @ " is an explicit price separator, so a fully detailed line is trusted.
+  assert.equal(row.confidence, 'HIGH');
+  assert.equal(result.overallConfidence, 'HIGH');
+  assert.equal(result.reviewRecommended, false);
+});
+
+test('two @-priced supplier lines in one email both parse with their MOQs', () => {
+  const result = parseStructuredPriceEmailBody(
+    [
+      'Paracetamol 500mg tablets 30 @ 8.40 GBP MOQ 100',
+      'Ibuprofen 200mg tablets 30 @ 0.95 GBP MOQ 50',
+    ].join('\n'),
+  );
+
+  assert.equal(result.parsedRows.length, 2);
+  assert.equal(result.parsedRows[0]?.minimumOrderQuantity, 100);
+  assert.equal(result.parsedRows[1]?.minimumOrderQuantity, 50);
+  assert.equal(result.parsedRows[1]?.price, 0.95);
+  assert.equal(result.overallConfidence, 'HIGH');
+});
+
+test('pipe-delimited supplier line parses product, price, and MOQ', () => {
+  const result = parseStructuredPriceEmailBody(
+    'Amlodipine 5mg | tablets | 28 | 8.40 GBP | MOQ 100',
+  );
+
+  assert.equal(result.parsedRows.length, 1);
+  const row = result.parsedRows[0];
+  assert.ok(row);
+  assert.equal(row.strength, '5mg');
+  assert.equal(row.price, 8.4);
+  assert.equal(row.currencyCode, 'GBP');
+  assert.equal(row.minimumOrderQuantity, 100);
+});
+
+test('tab-delimited supplier line with a trailing MOQ parses', () => {
+  const result = parseStructuredPriceEmailBody(
+    'Metformin 500mg tablets 28\t3.10 GBP\tMOQ 250',
+  );
+
+  assert.equal(result.parsedRows.length, 1);
+  const row = result.parsedRows[0];
+  assert.ok(row);
+  assert.equal(row.strength, '500mg');
+  assert.equal(row.price, 3.1);
+  assert.equal(row.minimumOrderQuantity, 250);
+});
+
+test('a polite short email with no real product line still does not parse', () => {
+  const result = parseStructuredPriceEmailBody(
+    [
+      'Hi there,',
+      'Just checking in after our call earlier.',
+      'Let me know if anything is useful.',
+      'Speak soon,',
+      'Sam',
+    ].join('\n'),
+  );
+
+  assert.equal(result.parsedRows.length, 0);
+  assert.equal(result.reviewRecommended, true);
+});
+
+test('a price with MOQ but no identifiable product stays low confidence and review-safe', () => {
+  const result = parseStructuredPriceEmailBody('Item 8.40 GBP MOQ 100');
+
+  // The trailing-metadata path must not bypass product-quality standards.
+  assert.notEqual(result.overallConfidence, 'HIGH');
+  assert.equal(result.reviewRecommended, true);
+  for (const row of result.parsedRows) {
+    assert.equal(row.confidence, 'LOW');
+  }
+});

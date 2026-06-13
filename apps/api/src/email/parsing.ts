@@ -247,6 +247,130 @@ function isObviousContactOrFooterLine(line: string): boolean {
   return isMostlyNumericOrPunctuation(trimmed);
 }
 
+// --- Trailing-metadata aware pre-pass --------------------------------------
+// Many supplier lines put the price in the middle, with MOQ / pack / expiry
+// trailing it, and use "@" or "|" as delimiters, for example:
+//   "Paracetamol 500mg tablets 30 @ 8.40 GBP MOQ 100"
+//   "Amlodipine 5mg | tablets | 28 | 8.40 GBP | MOQ 100"
+// The strict price pattern only matches when the price is the final token, so
+// these would otherwise be skipped to review. This pre-pass normalises the
+// delimiters and strips *metadata-only* trailing text (capturing the MOQ) so
+// the cleaned line can go through the existing strict parser unchanged. It is
+// deliberately conservative: prose after the price is left in place so the
+// line still fails the strict parse and routes to review.
+
+const TRAILING_METADATA_KEYWORD =
+  /\b(?:moq|min(?:imum)?|qty|quantity|pack|packs|packsize|expiry|exp|expires|batch|units?)\b/i;
+const TRAILING_METADATA_START =
+  /^[\s|,;:./-]*(?:moq|min(?:imum)?|order|qty|quantity|pack|packs|packsize|expiry|exp|expires|batch|units?)\b/i;
+const SYMBOL_OR_CODE_PRICE_PATTERN =
+  /(?:£|\$|€)\s?\d+(?:\.\d{1,2})?(?:\s?(?:gbp|usd|eur))?|\d+(?:\.\d{1,2})?\s?(?:gbp|usd|eur)\b/i;
+const BARE_DECIMAL_PRICE_PATTERN = /\d+\.\d{2}\b/;
+const MINIMUM_ORDER_QUANTITY_PATTERN =
+  /(?:moq|min(?:imum)?(?:\s*order)?(?:\s*(?:qty|quantity))?)\s*[:=]?\s*(\d{1,7})/i;
+
+const METADATA_WORD_ALLOWLIST = new Set([
+  'moq',
+  'min',
+  'minimum',
+  'order',
+  'orders',
+  'qty',
+  'quantity',
+  'quantities',
+  'pack',
+  'packs',
+  'packsize',
+  'expiry',
+  'exp',
+  'expires',
+  'expiration',
+  'batch',
+  'batches',
+  'units',
+  'unit',
+  'x',
+]);
+
+function isTrailingMetadataOnly(tail: string): boolean {
+  const trimmed = tail.trim();
+
+  if (!trimmed || !TRAILING_METADATA_START.test(trimmed)) {
+    return false;
+  }
+
+  // Every purely alphabetic word must be a recognised metadata keyword, so a
+  // priced line followed by prose is never treated as a structured offer.
+  const alphaWords = trimmed.toLowerCase().match(/[a-z]+/g) ?? [];
+  return alphaWords.every((word) => METADATA_WORD_ALLOWLIST.has(word));
+}
+
+function extractMinimumOrderQuantity(text: string): number | null {
+  const match = text.match(MINIMUM_ORDER_QUANTITY_PATTERN);
+
+  if (!match) {
+    return null;
+  }
+
+  const value = Number(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function prepareStructuredOfferLine(line: string): {
+  coreLine: string;
+  minimumOrderQuantity: number | null;
+} {
+  const hasPipe = line.includes('|');
+  const hasSpacedAt = /\s@\s/.test(line);
+
+  // Fast path: leave the line untouched unless it carries an alternate
+  // delimiter or trailing commercial metadata. Everything else parses exactly
+  // as before, preserving existing behaviour.
+  if (!hasPipe && !hasSpacedAt && !TRAILING_METADATA_KEYWORD.test(line)) {
+    return { coreLine: line, minimumOrderQuantity: null };
+  }
+
+  let working = line;
+  if (hasPipe) {
+    working = working.replace(/\|/g, ' ');
+  }
+  if (hasSpacedAt) {
+    working = working.replace(/\s@\s/g, ' ');
+  }
+  working = working.replace(/\s{2,}/g, ' ').trim();
+
+  // Prefer a currency-marked price; fall back to a bare two-decimal amount so a
+  // trailing MOQ number (e.g. "MOQ 100") is never mistaken for the price.
+  const priceMatch =
+    working.match(SYMBOL_OR_CODE_PRICE_PATTERN) ??
+    working.match(BARE_DECIMAL_PRICE_PATTERN);
+
+  if (!priceMatch || priceMatch.index === undefined) {
+    return { coreLine: line, minimumOrderQuantity: null };
+  }
+
+  const priceEnd = priceMatch.index + priceMatch[0].length;
+  const head = working.slice(0, priceEnd).trim();
+  const tail = working.slice(priceEnd).trim();
+
+  if (tail === '') {
+    // Only delimiters were cleaned (pipe / spaced @); the price is already the
+    // final token, so hand the cleaned line to the strict parser.
+    return { coreLine: working, minimumOrderQuantity: null };
+  }
+
+  if (!isTrailingMetadataOnly(tail)) {
+    // Non-metadata text follows the price (likely prose). Preserve the original
+    // line so the strict parser skips it to review.
+    return { coreLine: line, minimumOrderQuantity: null };
+  }
+
+  return {
+    coreLine: head,
+    minimumOrderQuantity: extractMinimumOrderQuantity(tail),
+  };
+}
+
 function parseLine(
   line: string,
   lineNumber: number,
@@ -274,7 +398,9 @@ function parseLine(
     };
   }
 
-  const match = trimmed.match(STRUCTURED_PRICE_LINE_PATTERN);
+  const prepared = prepareStructuredOfferLine(trimmed);
+  const coreLine = prepared.coreLine;
+  const match = coreLine.match(STRUCTURED_PRICE_LINE_PATTERN);
 
   if (!match?.groups?.product || !match.groups.price) {
     return {
@@ -308,7 +434,9 @@ function parseLine(
     formulation: productCandidates.formulation,
     packSize: productCandidates.packSize,
     currencyCode,
-    usedExplicitSeparator: /\s[-:]\s/.test(trimmed),
+    // " @ " is the trade idiom for "<qty> units @ <price>", so treat it as an
+    // explicit price separator alongside "-" and ":".
+    usedExplicitSeparator: /\s[-:@]\s/.test(trimmed),
   });
 
   return {
@@ -322,6 +450,9 @@ function parseLine(
       packSize: productCandidates.packSize,
       price: Number(match.groups.price),
       currencyCode,
+      ...(prepared.minimumOrderQuantity !== null
+        ? { minimumOrderQuantity: prepared.minimumOrderQuantity }
+        : {}),
       productCandidates,
       confidence:
         currencyFromCode &&
