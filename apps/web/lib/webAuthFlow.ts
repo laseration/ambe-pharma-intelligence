@@ -86,9 +86,7 @@ export async function prepareWebLogin(input: {
   };
 }
 
-export function prepareWebLogout(input?: {
-  source?: WebAuthEnv;
-}): {
+export function prepareWebLogout(input?: { source?: WebAuthEnv }): {
   redirectTo: string;
   cookie: WebAuthCookieWrite;
 } {
