@@ -14,6 +14,17 @@ function lower(value: string | null | undefined): string {
   return (value || '').trim().toLowerCase();
 }
 
+// Subjects and filenames separate words with spaces, hyphens, underscores, or
+// dots (e.g. "price-list.xlsx", "price_list", "April.2026.price.list.xlsx").
+// Strong-phrase matching uses spaces, so collapse those separators first.
+// This only adds deterministic matching ability; it never weakens it.
+function normalizeSignalText(value: string | null | undefined): string {
+  return lower(value)
+    .replace(/[._\-/\\]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function extractDomain(senderEmail: string): string {
   const normalized = lower(senderEmail);
   const atIndex = normalized.lastIndexOf('@');
@@ -227,6 +238,7 @@ const IMPORT_SIGNALS: Record<
     strongPhrases: [
       'supplier price list',
       'price list',
+      'pricelist',
       'supplier quote',
       'supplier quotation',
     ],
@@ -322,8 +334,8 @@ export function inferEmailImportDecision(input: {
     };
   }
 
-  const normalizedSubject = lower(input.subject);
-  const normalizedFileName = lower(input.fileName);
+  const normalizedSubject = normalizeSignalText(input.subject);
+  const normalizedFileName = normalizeSignalText(input.fileName);
   const scores = Object.entries(IMPORT_SIGNALS).map(
     ([importType, signalSet]) => {
       const details = scoreImportType(
@@ -345,21 +357,25 @@ export function inferEmailImportDecision(input: {
 
   const best = scores[0];
   const secondBest = scores[1];
+  const secondBestScore = secondBest?.score ?? 0;
   const hasStrongEvidence = best
     ? best.strongHits >= 1 ||
       (best.subjectHits >= 1 && best.fileHits >= 1) ||
       best.score >= 6
     : false;
-  const hasMixedSignals =
-    best && secondBest ? best.score > 0 && secondBest.score > 0 : false;
+  // The best signal must clearly dominate the runner-up. A single overlapping
+  // weak keyword (for example "availability" nudging the inventory score)
+  // should not block an otherwise strong price-list match, but genuinely
+  // competing signals (such as a "sales inventory report") still go to review.
+  // A real strong phrase always scores at least 6 (a strong hit always carries
+  // its own weak keyword), so this margin admits every clearly single-type
+  // filename while keeping near-ties in the review queue.
+  const dominantMargin = 6;
+  const dominatesRunnerUp = best
+    ? best.score - secondBestScore >= dominantMargin
+    : false;
 
-  if (
-    !best ||
-    best.score < 4 ||
-    !hasStrongEvidence ||
-    hasMixedSignals ||
-    (secondBest && best.score === secondBest.score)
-  ) {
+  if (!best || best.score < 4 || !hasStrongEvidence || !dominatesRunnerUp) {
     return {
       processingStatus: 'NEEDS_REVIEW',
       inferredImportType: null,

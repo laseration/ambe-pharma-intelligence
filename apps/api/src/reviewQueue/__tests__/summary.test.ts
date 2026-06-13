@@ -117,6 +117,77 @@ test('buildReviewSummary falls back safely for unknown review reasons', () => {
   );
 });
 
+test('buildReviewSummary maps triage gate codes into specific operator text', () => {
+  const cases = [
+    {
+      triageBlockedReason: 'email_ai_review_disabled',
+      expectedReviewReason: 'Commercial email needs manual extraction',
+      suggestedAction: /confirm the supplier, products, and prices manually/i,
+    },
+    {
+      triageBlockedReason:
+        'unknown_sender_without_attachment_or_supplier_subject',
+      expectedReviewReason: 'Unconfirmed sender',
+      suggestedAction: /confirm who sent this/i,
+    },
+    {
+      triageBlockedReason: 'business_score_below_ai_threshold',
+      expectedReviewReason: 'Weak commercial signals',
+      suggestedAction: /confirm the products and prices/i,
+    },
+    {
+      triageBlockedReason: 'duplicate_recent_body_detected',
+      expectedReviewReason: 'Possible duplicate email',
+      suggestedAction: /repeats an earlier offer/i,
+    },
+    {
+      triageBlockedReason: 'daily_ai_review_limit_exceeded',
+      expectedReviewReason: 'Extraction limit reached for today',
+      suggestedAction: /daily limit to reset/i,
+    },
+    {
+      triageBlockedReason: 'per_supplier_ai_review_limit_exceeded',
+      expectedReviewReason: 'Extraction limit reached for this supplier',
+      suggestedAction: /limit to reset/i,
+    },
+  ];
+
+  for (const entry of cases) {
+    // A body-text email carries a triage sentence as its reason (not a code),
+    // so the specific explanation must come from the triage gate code.
+    const summary = buildReviewSummary({
+      processingStatus: 'NEEDS_REVIEW',
+      fileType: 'UNKNOWN',
+      fileName: null,
+      inferredImportType: null,
+      reason: 'subject matched supplier-like terms',
+      sender: 'pricing@supplier.co',
+      subjectOrCaption: 'Offer this week',
+      triageBlockedReason: entry.triageBlockedReason,
+    });
+
+    assert.ok(summary);
+    assert.equal(summary.reviewReason, entry.expectedReviewReason);
+    assert.match(summary.suggestedAction, entry.suggestedAction);
+  }
+});
+
+test('explicit offer reason codes still win over the triage gate code', () => {
+  const summary = buildReviewSummary({
+    processingStatus: 'NEEDS_REVIEW',
+    fileType: 'UNKNOWN',
+    fileName: null,
+    inferredImportType: null,
+    reason: 'missing_price',
+    sender: 'pricing@supplier.co',
+    subjectOrCaption: 'Offer',
+    triageBlockedReason: 'email_ai_review_disabled',
+  });
+
+  assert.ok(summary);
+  assert.equal(summary.reviewReason, 'Missing price');
+});
+
 test('buildReviewSummary prioritizes supplier cue flags over raw reason text', () => {
   const summary = buildReviewSummary({
     processingStatus: 'REVIEW_REQUIRED',
