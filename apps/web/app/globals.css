@@ -23,7 +23,7 @@
   /* --- Surfaces & text --------------------------------------- */
   --bg: #f5f5f7;
   --background: var(--bg); /* alias (legacy name) */
-  --surface: rgba(255, 255, 255, 0.86); /* translucent today; flattened in PR3 */
+  --surface: #ffffff;
   --surface-strong: #ffffff;
   --surface-2: #fafbfc;
   --text: #111827;
@@ -58,9 +58,10 @@
   /* --- Elevation --------------------------------------------- */
   --shadow-1: 0 1px 2px rgba(15, 27, 45, 0.06);
   --shadow-2: 0 2px 8px rgba(15, 27, 45, 0.08);
-  /* Legacy oversized shadows retained; phased out in PR3. */
-  --shadow-soft: 0 18px 60px rgba(15, 23, 42, 0.08);
-  --shadow-lift: 0 20px 48px rgba(15, 23, 42, 0.12);
+  /* Legacy names now alias the subtle elevation so every consumer
+     flattens at once. */
+  --shadow-soft: var(--shadow-1);
+  --shadow-lift: var(--shadow-2);
 
   /* --- Type -------------------------------------------------- */
   /* IBM Plex loaded via next/font in app/layout.tsx; falls back to
@@ -88,18 +89,7 @@ body {
 
 body {
   min-height: 100vh;
-  background:
-    radial-gradient(
-      circle at top left,
-      rgba(15, 118, 110, 0.08),
-      transparent 24%
-    ),
-    radial-gradient(
-      circle at top right,
-      rgba(15, 118, 110, 0.05),
-      transparent 22%
-    ),
-    linear-gradient(180deg, #fbfbfc 0%, var(--background) 100%);
+  background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -155,8 +145,7 @@ summary {
   min-height: 100vh;
   padding: 28px 22px;
   border-right: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(18px);
+  background: var(--surface-strong);
 }
 
 .brand {
@@ -173,8 +162,8 @@ summary {
   justify-content: center;
   width: 46px;
   height: 46px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, var(--accent) 0%, #14b8a6 100%);
+  border-radius: var(--r-lg);
+  background: var(--accent);
   color: #ffffff;
   font-size: 0.95rem;
   font-weight: 700;
@@ -269,9 +258,8 @@ summary {
 
 .nav a:hover {
   border-color: var(--border);
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--accent-soft);
   color: var(--text);
-  transform: translateY(-1px);
 }
 
 .content {
@@ -282,10 +270,9 @@ summary {
   max-width: 760px;
   padding: 28px;
   border: 1px solid var(--border);
-  border-radius: 24px;
+  border-radius: var(--r-lg);
   background: var(--surface);
-  backdrop-filter: blur(18px);
-  box-shadow: var(--shadow-soft);
+  box-shadow: var(--shadow-1);
 }
 
 .eyebrow {
@@ -377,22 +364,21 @@ summary {
   min-height: 44px;
   padding: 0 16px;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-strong);
   color: var(--text);
-  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.06);
+  box-shadow: var(--shadow-1);
   cursor: pointer;
 }
 
 .button:hover {
-  transform: translateY(-1px);
-  border-color: rgba(15, 118, 110, 0.22);
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-2);
 }
 
 .button-primary {
   border-color: var(--accent);
-  background: linear-gradient(135deg, var(--accent) 0%, #129183 100%);
+  background: var(--accent);
   color: #ffffff;
 }
 
@@ -506,12 +492,8 @@ summary {
   gap: 10px;
   padding: 18px 20px;
   border: 1px solid var(--border);
-  border-radius: 22px;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.96) 0%,
-    rgba(236, 253, 245, 0.8) 100%
-  );
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
 }
 
 .dashboard-hero-pill-row {
@@ -547,7 +529,7 @@ summary {
 .action-form {
   border: 1px solid var(--border);
   background: var(--surface-strong);
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.05);
+  box-shadow: var(--shadow-1);
 }
 
 .dashboard-feature-card,
@@ -558,15 +540,15 @@ summary {
 .offer-row-card,
 .operator-summary-card {
   padding: 18px;
-  border-radius: 22px;
+  border-radius: var(--r-lg);
 }
 
 .dashboard-feature-card:hover,
 .dashboard-opportunity-card:hover,
 .duplicate-product-card:hover,
 .review-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lift);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-2);
 }
 
 .dashboard-empty-state {
@@ -747,12 +729,8 @@ summary {
   margin-top: 16px;
   padding: 18px 20px;
   border: 1px solid rgba(15, 118, 110, 0.14);
-  border-radius: 22px;
-  background: linear-gradient(
-    180deg,
-    #ffffff 0%,
-    rgba(236, 253, 245, 0.7) 100%
-  );
+  border-radius: var(--r-lg);
+  background: var(--accent-soft);
 }
 
 .dashboard-proof-copy {
@@ -1282,11 +1260,7 @@ summary {
 
 .resolution-candidate-card-selected {
   border-color: rgba(15, 118, 110, 0.2);
-  background: linear-gradient(
-    180deg,
-    #ffffff 0%,
-    rgba(236, 253, 245, 0.72) 100%
-  );
+  background: var(--accent-soft);
 }
 
 .resolution-candidate-copy-secondary {
