@@ -58,6 +58,17 @@
   }
 }
 
+/* While the trust tower is a full-width band (between the two- and three-
+   column layouts) its two panels would otherwise stack in a single column and
+   leave the row sparse. Lay them side by side so the band fills its width;
+   align to the top so the shorter panel is not stretched to match the taller. */
+@media (min-width: 1100px) and (max-width: 1439.98px) {
+  .tower > .zoneStack {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
 /* Full cockpit: rail | deck | tower. The trust tower persists alongside the
    deck and sticks while the (usually taller) deck scrolls. */
 @media (min-width: 1440px) {
@@ -86,6 +97,23 @@
  */
 :global(.dashboard-panel).compactPanel {
   padding: 20px;
+}
+
+/*
+ * Supporting-column panel headers (rail + tower). The shared section header
+ * only stacks at the ~768px viewport breakpoint, but these panels are already
+ * ~300px wide on the desktop cockpit. Stack the header so a trailing action
+ * button drops beneath the title instead of being squeezed beside a wrapping
+ * title, and step the title down a notch so the central intelligence deck
+ * stays the clear visual lead.
+ */
+.compactPanel :global(.dashboard-section-header) {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.compactPanel :global(.section-title) {
+  font-size: 1.15rem;
 }
 
 /* Next-action worklist: one priority per row in the narrow rail; wraps to
