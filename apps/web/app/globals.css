@@ -473,48 +473,11 @@ summary {
   max-width: none;
 }
 
-.dashboard-hero-panel {
-  overflow: hidden;
-  padding: 20px 24px;
-}
-
-.dashboard-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.9fr);
-  gap: 16px;
-  align-items: center;
-}
-
-/* Cockpit header is an operational title bar, not a marketing hero. */
-.dashboard-hero .title {
-  margin-bottom: 4px;
-  font-size: 1.5rem;
-  line-height: 1.2;
-}
-
-.dashboard-hero .copy {
-  font-size: 0.95rem;
-  line-height: 1.5;
-}
-
-.dashboard-hero-copy {
-  display: grid;
-  gap: 2px;
-}
-
-.dashboard-hero-status {
-  display: grid;
-  gap: 10px;
-  padding: 18px 20px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  background: var(--surface-2);
-}
-
-.dashboard-hero-pill-row {
-  display: grid;
-  gap: 10px;
-}
+/*
+ * The overview cockpit header (.dashboard-hero*) now lives in
+ * app/components/dashboard/DashboardHero.module.css. It was the only consumer
+ * of these classes, so the rules were moved wholesale rather than duplicated.
+ */
 
 .dashboard-feature-grid,
 .dashboard-summary-grid,
@@ -1441,7 +1404,6 @@ summary {
     font-size: 2rem;
   }
 
-  .dashboard-hero,
   .review-detail-grid,
   .dashboard-detail-grid,
   .dashboard-detail-list,

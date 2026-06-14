@@ -1,0 +1,67 @@
+/*
+ * Overview cockpit header ("title bar").
+ *
+ * These rules were extracted verbatim from globals.css (the overview-exclusive
+ * `.dashboard-hero*` block) so the dashboard owns its own header styling
+ * instead of the monolithic global stylesheet. The hero panel reconstructs the
+ * shared `.panel` / `.dashboard-panel` surface locally so it does not depend on
+ * — or collide with — those global classes.
+ */
+
+.heroPanel {
+  max-width: none;
+  padding: 20px 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.9fr);
+  gap: 16px;
+  align-items: center;
+}
+
+/* Cockpit header is an operational title bar, not a marketing hero. */
+.hero :global(.title) {
+  margin-bottom: 4px;
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.hero :global(.copy) {
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.heroCopy {
+  display: grid;
+  gap: 2px;
+}
+
+.heroStatus {
+  display: grid;
+  gap: 10px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+
+.heroPillRow {
+  display: grid;
+  gap: 10px;
+}
+
+@media (max-width: 768px) {
+  .heroPanel {
+    padding: 22px;
+  }
+
+  .hero {
+    grid-template-columns: 1fr;
+  }
+}
