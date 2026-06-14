@@ -1,14 +1,21 @@
 import Link from 'next/link';
 
 import {
+  CockpitGrid,
+  CommandRail,
   DashboardHero,
   DashboardPanel,
   FeatureCard,
-  FeatureGrid,
+  IntelligenceDeck,
   KpiCard,
+  ReviewQueueRow,
   SectionHeader,
   StatusBadge,
+  TrustSummary,
+  TrustTower,
+  type TrustSummaryRow,
 } from '../components/dashboard';
+import cockpit from '../components/dashboard/Cockpit.module.css';
 import { getAutomationReadinessOverview } from '../../lib/automationApi';
 import { listCustomerContactOpportunities } from '../../lib/customersApi';
 import {
@@ -394,13 +401,42 @@ export default async function DashboardPage({
     OPEN_OPPORTUNITY_FILTER_OPTIONS.find(
       (option) => option.value === selectedOpenOpportunityType,
     )?.label ?? 'All';
+  const dataQualityCount = dataQualityIssues.length;
+  const readinessMode = readiness.value
+    ? readiness.value.policy.globalMode.replaceAll('_', ' ')
+    : 'Unavailable';
+  const trustRows: TrustSummaryRow[] = [
+    {
+      label: 'Freshness',
+      hint: 'How recent the open signals are',
+      badgeText: freshness.label,
+      badgeTone: freshness.pillClassName,
+    },
+    {
+      label: 'Automation readiness',
+      hint: readinessSummary.blocked
+        ? 'More evidence needed'
+        : 'Eligible for pilot use',
+      badgeText: readinessMode,
+      badgeTone: readinessSummary.blocked ? 'pill-medium' : 'pill-high',
+    },
+    {
+      label: 'Data quality',
+      hint: 'Records that affect matching',
+      badgeText:
+        dataQualityCount === 0
+          ? 'Clear'
+          : `${dataQualityCount} issue${dataQualityCount === 1 ? '' : 's'}`,
+      badgeTone: dataQualityCount === 0 ? 'pill-high' : 'pill-medium',
+    },
+  ];
 
   return (
     <section className="dashboard-layout">
       <DashboardHero
-        eyebrow="Operator Cockpit"
+        eyebrow="Operations overview"
         title="What needs doing next"
-        copy="Start with supplier decisions, then work the best commercial signals and clean the records that weaken trust."
+        copy="Start with supplier decisions, act on the best commercial signals, then clear the data issues that weaken trust."
         statusLabel="Signal freshness"
         freshnessTone={freshness.pillClassName}
         freshnessLabel={freshness.label}
@@ -457,396 +493,375 @@ export default async function DashboardPage({
         </div>
       </DashboardHero>
 
-      <FeatureGrid>
-        {nextActions.map((action) => (
-          <FeatureCard href={action.href} key={action.key}>
-            <div className="dashboard-opportunity-top">
-              <p className="dashboard-feature-title">{action.title}</p>
-              <StatusBadge variant={actionPriorityVariant(action.priority)}>
-                {action.value}
-              </StatusBadge>
-            </div>
-            <p className="dashboard-feature-copy">{action.meaning}</p>
-            <p className="dashboard-summary-note">{action.nextAction}</p>
-            <span className="dashboard-metric-link">{action.cta}</span>
-          </FeatureCard>
-        ))}
-      </FeatureGrid>
-
-      <DashboardPanel>
-        <SectionHeader
-          eyebrow="Pilot Metrics"
-          title="Is the bot creating value?"
-          copy="These are operational proof points from real review, opportunity, and readiness data."
-          action={
-            <StatusBadge variant={readinessSummary.blocked ? 'medium' : 'high'}>
-              {readiness.value
-                ? readiness.value.policy.globalMode.replaceAll('_', ' ')
-                : 'Metrics unavailable'}
-            </StatusBadge>
-          }
-        />
-
-        <div className="dashboard-summary-grid">
-          {valueMetrics.map((metric) => (
-            <KpiCard
-              key={metric.label}
-              value={metric.value}
-              label={metric.label}
-              note={metric.note}
+      <CockpitGrid>
+        <CommandRail>
+          <DashboardPanel className={cockpit.compactPanel}>
+            <SectionHeader
+              eyebrow="Needs review"
+              title="Supplier offers to decide"
+              action={
+                canViewReview ? (
+                  <Link className="button" href="/dashboard/review">
+                    Open queue
+                  </Link>
+                ) : null
+              }
             />
-          ))}
-        </div>
 
-        <div className="dashboard-proof-callout">
-          <p className="dashboard-proof-title">{readinessSummary.title}</p>
-          <p className="dashboard-proof-copy">{readinessSummary.detail}</p>
-        </div>
-      </DashboardPanel>
+            {topReviewItems.length === 0 ? (
+              <div className="dashboard-proof-callout">
+                <p className="dashboard-proof-title">No offers waiting</p>
+                <p className="dashboard-proof-copy">
+                  Supplier emails, Telegram files, and imports add staged offers
+                  here when they need an operator decision.
+                </p>
+              </div>
+            ) : (
+              <>
+                <p className={cockpit.queueCount}>
+                  {pendingSupplierEmailCount} supplier email
+                  {pendingSupplierEmailCount === 1 ? '' : 's'} awaiting a
+                  decision.
+                </p>
+                <div className={cockpit.queue}>
+                  {topReviewItems.map((item) => (
+                    <ReviewQueueRow
+                      decideHref={`/dashboard/review/${item.id}`}
+                      key={item.id}
+                      meta={item.inboundEmail?.subject ?? 'No subject'}
+                      priorityLabel={item.priority}
+                      priorityVariant={reviewPriorityVariant(item.priority)}
+                      title={describeReviewItem(item)}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </DashboardPanel>
 
-      <DashboardPanel>
-        <SectionHeader
-          eyebrow="Needs Review Now"
-          title="Supplier emails awaiting decision"
-          copy={`${pendingSupplierEmailCount} supplier email${
-            pendingSupplierEmailCount === 1 ? '' : 's'
-          } currently have staged offers that need operator judgment.`}
-          action={
-            canViewReview ? (
-              <Link className="button" href="/dashboard/review">
-                Open review queue
-              </Link>
-            ) : null
-          }
-        />
-
-        {topReviewItems.length === 0 ? (
-          <div className="dashboard-proof-callout">
-            <p className="dashboard-proof-title">No supplier offers waiting</p>
-            <p className="dashboard-proof-copy">
-              New review work appears here after supplier emails, Telegram
-              files, or imports produce staged offers that require a decision.
-            </p>
-            <div className="actions">
-              {canViewInbox ? (
-                <Link className="button" href="/dashboard/inbox">
-                  Check inbox
-                </Link>
-              ) : null}
-              {canViewImports ? (
-                <Link className="button" href="/dashboard/imports">
-                  View imports
-                </Link>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <div className="dashboard-opportunity-list">
-            {topReviewItems.map((item) => (
-              <article className="dashboard-opportunity-card" key={item.id}>
-                <div className="dashboard-opportunity-top">
-                  <div>
-                    <p className="dashboard-opportunity-title">
-                      {describeReviewItem(item)}
-                    </p>
-                    <p className="dashboard-opportunity-meta">
-                      {item.inboundEmail?.subject ?? 'No subject'}
-                      {item.inboundEmail?.receivedAt
-                        ? ` | received ${formatDateTime(item.inboundEmail.receivedAt)}`
-                        : ''}
-                    </p>
-                  </div>
-                  <div className="dashboard-opportunity-badges">
-                    <StatusBadge>{item.status}</StatusBadge>
-                    <StatusBadge variant={reviewPriorityVariant(item.priority)}>
-                      {item.priority}
+          <DashboardPanel className={cockpit.compactPanel}>
+            <SectionHeader eyebrow="Priorities" title="Next actions" />
+            <div className={cockpit.worklist}>
+              {nextActions.map((action) => (
+                <FeatureCard href={action.href} key={action.key}>
+                  <div className="dashboard-opportunity-top">
+                    <p className="dashboard-feature-title">{action.title}</p>
+                    <StatusBadge
+                      variant={actionPriorityVariant(action.priority)}
+                    >
+                      {action.value}
                     </StatusBadge>
                   </div>
-                </div>
-                <p className="dashboard-opportunity-copy">
-                  {item.qualificationRiskNote ??
-                    item.sourceReviewReason ??
-                    'Review the extracted supplier offer before approving any buying action.'}
+                  <p className="dashboard-feature-copy">{action.meaning}</p>
+                  <p className="dashboard-summary-note">{action.nextAction}</p>
+                  <span className="dashboard-metric-link">{action.cta}</span>
+                </FeatureCard>
+              ))}
+            </div>
+          </DashboardPanel>
+        </CommandRail>
+
+        <IntelligenceDeck>
+          <DashboardPanel>
+            <SectionHeader
+              eyebrow="Performance"
+              title="Is automation adding value?"
+              copy="Operational proof points from real review, opportunity, and readiness data."
+            />
+
+            <div className={cockpit.metricStrip}>
+              {valueMetrics.map((metric) => (
+                <KpiCard
+                  key={metric.label}
+                  value={metric.value}
+                  label={metric.label}
+                  note={metric.note}
+                />
+              ))}
+            </div>
+          </DashboardPanel>
+
+          <DashboardPanel id="best-buying-signals">
+            <SectionHeader
+              eyebrow="Buying Signals"
+              title="Best buying signals"
+              copy="Focus on the highest-scoring BUY and PRICE ALERT opportunities first. Mark them actioned only after an operator has checked the source context."
+              action={
+                <Link className="button" href="/dashboard/opportunities">
+                  Open all opportunities
+                </Link>
+              }
+            />
+
+            <div className="dashboard-filter-row">
+              <span className="dashboard-filter-label">Focus:</span>
+              {OPEN_OPPORTUNITY_FILTER_OPTIONS.map((option) => {
+                const isActive = option.value === selectedOpenOpportunityType;
+                const href = option.value
+                  ? `/dashboard?openType=${option.value}#best-buying-signals`
+                  : '/dashboard#best-buying-signals';
+
+                return (
+                  <Link
+                    className={`pill ${isActive ? 'pill-high' : 'pill-neutral'}`}
+                    href={href}
+                    key={option.label}
+                  >
+                    {option.label}
+                  </Link>
+                );
+              })}
+            </div>
+            {selectedOpenOpportunityType ? (
+              <p className="dashboard-summary-note">
+                Showing {selectedOpenOpportunityFilterLabel} opportunities in
+                this cockpit section.
+              </p>
+            ) : null}
+
+            {bestBuyingSignals.length === 0 ? (
+              <div className="dashboard-proof-callout">
+                <p className="dashboard-proof-title">
+                  No buy-side signal to act on
+                </p>
+                <p className="dashboard-proof-copy">
+                  Import supplier prices, stock, and sales data, then refresh
+                  opportunities. If data is already loaded, there may simply be
+                  no BUY or PRICE ALERT signal right now.
                 </p>
                 <div className="actions">
-                  <Link
-                    className="button button-primary"
-                    href={`/dashboard/review/${item.id}`}
-                  >
-                    Decide
-                  </Link>
-                  {item.inboundEmailId ? (
-                    <Link
-                      className="button"
-                      href={`/dashboard/review?inboundEmailId=${encodeURIComponent(item.inboundEmailId)}`}
-                    >
-                      Same email
+                  {canManageOpportunities ? (
+                    <form action={submitOpportunityRefreshAction}>
+                      <button className="button button-primary" type="submit">
+                        Refresh opportunities
+                      </button>
+                    </form>
+                  ) : null}
+                  {canViewImports ? (
+                    <Link className="button" href="/dashboard/imports">
+                      Check imports
                     </Link>
                   ) : null}
                 </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </DashboardPanel>
+              </div>
+            ) : (
+              <div className="dashboard-opportunity-list">
+                {bestBuyingSignals.map((item) => (
+                  <article className="dashboard-opportunity-card" key={item.id}>
+                    <div className="dashboard-opportunity-top">
+                      <div>
+                        <p className="dashboard-opportunity-title">
+                          {item.title}
+                        </p>
+                        <p className="dashboard-opportunity-meta">
+                          {item.product?.name ?? 'Product not found'}
+                          {item.supplier?.name
+                            ? ` | ${item.supplier.name}`
+                            : ''}
+                        </p>
+                      </div>
+                      <div className="dashboard-opportunity-badges">
+                        <StatusBadge>{item.type.replace('_', ' ')}</StatusBadge>
+                        <StatusBadge variant="high">
+                          Score {item.score}
+                        </StatusBadge>
+                      </div>
+                    </div>
+                    <p className="dashboard-opportunity-copy">
+                      {item.description}
+                    </p>
+                    <p className="dashboard-triage-meta">
+                      Signal refreshed{' '}
+                      {formatDateTime(item.updatedAt) ?? 'recently'}
+                    </p>
+                    <ul className="dashboard-signal-list">
+                      {buildOpportunitySignals(item).map((signal) => (
+                        <li key={signal}>{signal}</li>
+                      ))}
+                    </ul>
+                    {canManageOpportunities ? (
+                      <form
+                        action={submitOpportunityTriageAction}
+                        className="dashboard-opportunity-actions"
+                      >
+                        <input
+                          name="opportunityId"
+                          type="hidden"
+                          value={item.id}
+                        />
+                        <input
+                          name="redirectTo"
+                          type="hidden"
+                          value="/dashboard#best-buying-signals"
+                        />
+                        <button
+                          className="button"
+                          name="status"
+                          type="submit"
+                          value="REVIEWED"
+                        >
+                          Mark reviewed
+                        </button>
+                        <button
+                          className="button button-primary"
+                          name="status"
+                          type="submit"
+                          value="ACTIONED"
+                        >
+                          Mark actioned
+                        </button>
+                        <button
+                          className="button"
+                          name="status"
+                          type="submit"
+                          value="DISMISSED"
+                        >
+                          Dismiss
+                        </button>
+                      </form>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            )}
+          </DashboardPanel>
 
-      <DashboardPanel id="best-buying-signals">
-        <SectionHeader
-          eyebrow="Buying Signals"
-          title="Best buying signals"
-          copy="Focus on the highest-scoring BUY and PRICE ALERT opportunities first. Mark them actioned only after an operator has checked the source context."
-          action={
-            <Link className="button" href="/dashboard/opportunities">
-              Open all opportunities
-            </Link>
-          }
-        />
-
-        <div className="dashboard-filter-row">
-          <span className="dashboard-filter-label">Focus:</span>
-          {OPEN_OPPORTUNITY_FILTER_OPTIONS.map((option) => {
-            const isActive = option.value === selectedOpenOpportunityType;
-            const href = option.value
-              ? `/dashboard?openType=${option.value}#best-buying-signals`
-              : '/dashboard#best-buying-signals';
-
-            return (
-              <Link
-                className={`pill ${isActive ? 'pill-high' : 'pill-neutral'}`}
-                href={href}
-                key={option.label}
-              >
-                {option.label}
-              </Link>
-            );
-          })}
-        </div>
-        {selectedOpenOpportunityType ? (
-          <p className="dashboard-summary-note">
-            Showing {selectedOpenOpportunityFilterLabel} opportunities in this
-            cockpit section.
-          </p>
-        ) : null}
-
-        {bestBuyingSignals.length === 0 ? (
-          <div className="dashboard-proof-callout">
-            <p className="dashboard-proof-title">
-              No buy-side signal to act on
-            </p>
-            <p className="dashboard-proof-copy">
-              Import supplier prices, stock, and sales data, then refresh
-              opportunities. If data is already loaded, there may simply be no
-              BUY or PRICE ALERT signal right now.
-            </p>
-            <div className="actions">
-              {canManageOpportunities ? (
-                <form action={submitOpportunityRefreshAction}>
-                  <button className="button button-primary" type="submit">
-                    Refresh opportunities
-                  </button>
-                </form>
-              ) : null}
-              {canViewImports ? (
-                <Link className="button" href="/dashboard/imports">
-                  Check imports
+          <DashboardPanel id="recent-work">
+            <SectionHeader
+              eyebrow="Recent Decisions"
+              title="Recently approved, rejected, or actioned"
+              copy="A short audit-friendly view of work the team has already touched."
+              action={
+                <Link
+                  className="button"
+                  href="/dashboard/opportunities?status=ACTIONED"
+                >
+                  View actioned
                 </Link>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <div className="dashboard-opportunity-list">
-            {bestBuyingSignals.map((item) => (
-              <article className="dashboard-opportunity-card" key={item.id}>
-                <div className="dashboard-opportunity-top">
-                  <div>
-                    <p className="dashboard-opportunity-title">{item.title}</p>
-                    <p className="dashboard-opportunity-meta">
-                      {item.product?.name ?? 'Product not found'}
-                      {item.supplier?.name ? ` | ${item.supplier.name}` : ''}
-                    </p>
-                  </div>
-                  <div className="dashboard-opportunity-badges">
-                    <StatusBadge>{item.type.replace('_', ' ')}</StatusBadge>
-                    <StatusBadge variant="high">Score {item.score}</StatusBadge>
-                  </div>
-                </div>
-                <p className="dashboard-opportunity-copy">{item.description}</p>
-                <p className="dashboard-triage-meta">
-                  Signal refreshed{' '}
-                  {formatDateTime(item.updatedAt) ?? 'recently'}
-                </p>
-                <ul className="dashboard-signal-list">
-                  {buildOpportunitySignals(item).map((signal) => (
-                    <li key={signal}>{signal}</li>
-                  ))}
-                </ul>
-                {canManageOpportunities ? (
-                  <form
-                    action={submitOpportunityTriageAction}
-                    className="dashboard-opportunity-actions"
-                  >
-                    <input name="opportunityId" type="hidden" value={item.id} />
-                    <input
-                      name="redirectTo"
-                      type="hidden"
-                      value="/dashboard#best-buying-signals"
-                    />
-                    <button
-                      className="button"
-                      name="status"
-                      type="submit"
-                      value="REVIEWED"
-                    >
-                      Mark reviewed
-                    </button>
-                    <button
-                      className="button button-primary"
-                      name="status"
-                      type="submit"
-                      value="ACTIONED"
-                    >
-                      Mark actioned
-                    </button>
-                    <button
-                      className="button"
-                      name="status"
-                      type="submit"
-                      value="DISMISSED"
-                    >
-                      Dismiss
-                    </button>
-                  </form>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        )}
-      </DashboardPanel>
+              }
+            />
 
-      <DashboardPanel id="recent-work">
-        <SectionHeader
-          eyebrow="Recent Decisions"
-          title="Recently approved, rejected, or actioned"
-          copy="A short audit-friendly view of work the team has already touched."
-          action={
-            <Link
-              className="button"
-              href="/dashboard/opportunities?status=ACTIONED"
-            >
-              View actioned
-            </Link>
-          }
-        />
-
-        {approvedWorkflowItems.value.length === 0 &&
-        rejectedWorkflowItems.value.length === 0 &&
-        recentlyTriaged.length === 0 ? (
-          <div className="dashboard-proof-callout">
-            <p className="dashboard-proof-title">No recent decisions yet</p>
-            <p className="dashboard-proof-copy">
-              Approved buys, rejected offers, reviewed signals, and actioned
-              opportunities will appear here after operators start processing
-              the queue.
-            </p>
-          </div>
-        ) : (
-          <div className="dashboard-opportunity-list">
-            {approvedWorkflowItems.value.slice(0, 3).map((item) => (
-              <article className="dashboard-opportunity-card" key={item.id}>
-                <div className="dashboard-opportunity-top">
-                  <div>
-                    <p className="dashboard-opportunity-title">
-                      Approved to buy
-                    </p>
-                    <p className="dashboard-opportunity-meta">
-                      {describeReviewItem(item)}
-                    </p>
-                  </div>
-                  <StatusBadge variant="high">APPROVED</StatusBadge>
-                </div>
-                <p className="dashboard-triage-meta">
-                  Updated {formatDateTime(item.updatedAt) ?? 'recently'}
+            {approvedWorkflowItems.value.length === 0 &&
+            rejectedWorkflowItems.value.length === 0 &&
+            recentlyTriaged.length === 0 ? (
+              <div className="dashboard-proof-callout">
+                <p className="dashboard-proof-title">No recent decisions yet</p>
+                <p className="dashboard-proof-copy">
+                  Approved buys, rejected offers, reviewed signals, and actioned
+                  opportunities will appear here after operators start
+                  processing the queue.
                 </p>
-              </article>
-            ))}
-            {rejectedWorkflowItems.value.slice(0, 3).map((item) => (
-              <article className="dashboard-opportunity-card" key={item.id}>
-                <div className="dashboard-opportunity-top">
-                  <div>
-                    <p className="dashboard-opportunity-title">
-                      Rejected supplier offer
+              </div>
+            ) : (
+              <div className="dashboard-opportunity-list">
+                {approvedWorkflowItems.value.slice(0, 3).map((item) => (
+                  <article className="dashboard-opportunity-card" key={item.id}>
+                    <div className="dashboard-opportunity-top">
+                      <div>
+                        <p className="dashboard-opportunity-title">
+                          Approved to buy
+                        </p>
+                        <p className="dashboard-opportunity-meta">
+                          {describeReviewItem(item)}
+                        </p>
+                      </div>
+                      <StatusBadge variant="high">APPROVED</StatusBadge>
+                    </div>
+                    <p className="dashboard-triage-meta">
+                      Updated {formatDateTime(item.updatedAt) ?? 'recently'}
                     </p>
-                    <p className="dashboard-opportunity-meta">
-                      {describeReviewItem(item)}
+                  </article>
+                ))}
+                {rejectedWorkflowItems.value.slice(0, 3).map((item) => (
+                  <article className="dashboard-opportunity-card" key={item.id}>
+                    <div className="dashboard-opportunity-top">
+                      <div>
+                        <p className="dashboard-opportunity-title">
+                          Rejected supplier offer
+                        </p>
+                        <p className="dashboard-opportunity-meta">
+                          {describeReviewItem(item)}
+                        </p>
+                      </div>
+                      <StatusBadge variant="low">REJECTED</StatusBadge>
+                    </div>
+                    <p className="dashboard-triage-meta">
+                      Updated {formatDateTime(item.updatedAt) ?? 'recently'}
                     </p>
-                  </div>
-                  <StatusBadge variant="low">REJECTED</StatusBadge>
-                </div>
-                <p className="dashboard-triage-meta">
-                  Updated {formatDateTime(item.updatedAt) ?? 'recently'}
-                </p>
-              </article>
-            ))}
-            {recentlyTriaged.map((item) => (
-              <article className="dashboard-opportunity-card" key={item.id}>
-                <div className="dashboard-opportunity-top">
-                  <div>
-                    <p className="dashboard-opportunity-title">{item.title}</p>
-                    <p className="dashboard-opportunity-meta">
-                      {item.product?.name ?? 'Product not found'}
-                      {item.supplier?.name ? ` | ${item.supplier.name}` : ''}
+                  </article>
+                ))}
+                {recentlyTriaged.map((item) => (
+                  <article className="dashboard-opportunity-card" key={item.id}>
+                    <div className="dashboard-opportunity-top">
+                      <div>
+                        <p className="dashboard-opportunity-title">
+                          {item.title}
+                        </p>
+                        <p className="dashboard-opportunity-meta">
+                          {item.product?.name ?? 'Product not found'}
+                          {item.supplier?.name
+                            ? ` | ${item.supplier.name}`
+                            : ''}
+                        </p>
+                      </div>
+                      <div className="dashboard-opportunity-badges">
+                        <StatusBadge>{item.type.replace('_', ' ')}</StatusBadge>
+                        <StatusBadge>{item.status}</StatusBadge>
+                      </div>
+                    </div>
+                    <p className="dashboard-triage-meta">
+                      Triaged{' '}
+                      {formatDateTime(getOpportunityTriageTimestamp(item)) ??
+                        'recently'}
                     </p>
-                  </div>
-                  <div className="dashboard-opportunity-badges">
-                    <StatusBadge>{item.type.replace('_', ' ')}</StatusBadge>
-                    <StatusBadge>{item.status}</StatusBadge>
-                  </div>
-                </div>
-                <p className="dashboard-triage-meta">
-                  Triaged{' '}
-                  {formatDateTime(getOpportunityTriageTimestamp(item)) ??
-                    'recently'}
-                </p>
-              </article>
-            ))}
-          </div>
-        )}
-      </DashboardPanel>
+                  </article>
+                ))}
+              </div>
+            )}
+          </DashboardPanel>
+        </IntelligenceDeck>
 
-      <DashboardPanel>
-        <SectionHeader
-          eyebrow="Trust And Data Quality"
-          title="Issues to clear before relying on automation"
-          copy="These are not cosmetic. They affect product matching, signal usefulness, and whether operators can trust recommendations."
-          action={
-            <Link className="button" href="/dashboard/products">
-              Product records
-            </Link>
-          }
-        />
+        <TrustTower>
+          <DashboardPanel className={cockpit.compactPanel}>
+            <SectionHeader eyebrow="Trust" title="Signal you can trust" />
+            <TrustSummary note={readinessSummary.detail} rows={trustRows} />
+          </DashboardPanel>
 
-        {dataQualityIssues.length === 0 ? (
-          <div className="dashboard-proof-callout">
-            <p className="dashboard-proof-title">
-              No data-quality blockers shown
-            </p>
-            <p className="dashboard-proof-copy">
-              Keep reviewing imported aliases and source corrections as new
-              supplier files arrive.
-            </p>
-          </div>
-        ) : (
-          <FeatureGrid>
-            {dataQualityIssues.map((issue) => (
-              <FeatureCard href={issue.href} key={issue.key}>
-                <p className="dashboard-feature-title">{issue.title}</p>
-                <p className="dashboard-feature-copy">{issue.detail}</p>
-                <span className="dashboard-metric-link">{issue.cta}</span>
-              </FeatureCard>
-            ))}
-          </FeatureGrid>
-        )}
-      </DashboardPanel>
+          <DashboardPanel className={cockpit.compactPanel}>
+            <SectionHeader
+              eyebrow="Data quality"
+              title="Issues to clear"
+              action={
+                <Link className="button" href="/dashboard/products">
+                  Product records
+                </Link>
+              }
+            />
+
+            {dataQualityIssues.length === 0 ? (
+              <div className="dashboard-proof-callout">
+                <p className="dashboard-proof-title">
+                  No data-quality blockers shown
+                </p>
+                <p className="dashboard-proof-copy">
+                  Keep reviewing imported aliases and source corrections as new
+                  supplier files arrive.
+                </p>
+              </div>
+            ) : (
+              <div className={cockpit.dataQualityGrid}>
+                {dataQualityIssues.map((issue) => (
+                  <FeatureCard href={issue.href} key={issue.key}>
+                    <p className="dashboard-feature-title">{issue.title}</p>
+                    <p className="dashboard-feature-copy">{issue.detail}</p>
+                    <span className="dashboard-metric-link">{issue.cta}</span>
+                  </FeatureCard>
+                ))}
+              </div>
+            )}
+          </DashboardPanel>
+        </TrustTower>
+      </CockpitGrid>
     </section>
   );
 }
