@@ -1,8 +1,12 @@
-import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { logoutAction } from '../auth/actions';
-import { InboxNavBadge } from '../components/InboxNavBadge';
+import {
+  SidebarNav,
+  type SidebarNavGroup,
+  type SidebarNavItem,
+} from '../components/SidebarNav';
+import { DashboardTopBar } from '../components/DashboardTopBar';
 import { roleHasCapability } from '../../lib/authorisation';
 import { listInboundEmails } from '../../lib/inboxApi';
 import { requireCurrentWebCapability } from '../../lib/serverWebAuth';
@@ -21,6 +25,7 @@ export default async function DashboardLayout({
   const canViewImports = roleHasCapability(session.role, 'imports:view');
   const canReview = roleHasCapability(session.role, 'review:view');
   const canViewSetup = roleHasCapability(session.role, 'system:admin');
+
   const recentInboxEmails = canViewInbox
     ? await listInboundEmails({ take: 25 }).catch(() => [])
     : [];
@@ -43,6 +48,97 @@ export default async function DashboardLayout({
     })
     .filter((value): value is string => Boolean(value));
 
+  // `show !== false` keeps an item; items with `show: false` are gated out.
+  const rawGroups: Array<{
+    label: string;
+    items: Array<SidebarNavItem & { show?: boolean }>;
+  }> = [
+    {
+      label: 'Overview',
+      items: [{ href: '/dashboard', label: 'Overview', iconKey: 'overview' }],
+    },
+    {
+      label: 'Operations',
+      items: [
+        {
+          href: '/dashboard/inbox',
+          label: 'Bot Inbox',
+          iconKey: 'inbox',
+          inboxUnread: true,
+          show: canViewInbox,
+        },
+        {
+          href: '/dashboard/review',
+          label: 'Review',
+          iconKey: 'review',
+          show: canReview,
+        },
+        {
+          href: '/dashboard/trade-enquiries',
+          label: 'Trade Enquiries',
+          iconKey: 'trade',
+        },
+      ],
+    },
+    {
+      label: 'Commercial',
+      items: [
+        {
+          href: '/dashboard/opportunities',
+          label: 'Opportunities',
+          iconKey: 'opportunities',
+        },
+        { href: '/dashboard/deals', label: 'Deals', iconKey: 'deals' },
+        {
+          href: '/dashboard/customers',
+          label: 'Customers',
+          iconKey: 'customers',
+          show: canViewCustomers,
+        },
+      ],
+    },
+    {
+      label: 'Catalogue & Data',
+      items: [
+        {
+          href: '/dashboard/imports',
+          label: 'Imports',
+          iconKey: 'imports',
+          show: canViewImports,
+        },
+        {
+          href: '/dashboard/inventory',
+          label: 'Inventory',
+          iconKey: 'inventory',
+          show: canViewInventory,
+        },
+        {
+          href: '/dashboard/products',
+          label: 'Product Records',
+          iconKey: 'products',
+        },
+      ],
+    },
+    {
+      label: 'System',
+      items: [
+        {
+          href: '/dashboard/setup',
+          label: 'Setup',
+          iconKey: 'setup',
+          show: canViewSetup,
+        },
+      ],
+    },
+  ];
+
+  const groups: SidebarNavGroup[] = rawGroups
+    .map((group) => ({
+      label: group.label,
+      items: group.items.filter((item) => item.show !== false),
+    }))
+    .filter((group) => group.items.length > 0);
+
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -53,44 +149,16 @@ export default async function DashboardLayout({
             <h1 className="brand-title">Ambe Pharma</h1>
           </div>
         </div>
-        <nav className="nav">
-          <Link href="/login">Login</Link>
-          <Link href="/dashboard">Overview</Link>
-          {canViewInbox ? (
-            <InboxNavBadge
-              href="/dashboard/inbox"
-              label="Bot Inbox"
-              recentEmailTimestamps={recentEmailTimestamps}
-            />
-          ) : null}
-          <Link href="/dashboard/trade-enquiries">Trade Enquiries</Link>
-          {canViewImports ? (
-            <Link href="/dashboard/imports">Imports</Link>
-          ) : null}
-          {canViewInventory ? (
-            <Link href="/dashboard/inventory">Inventory</Link>
-          ) : null}
-          {canViewCustomers ? (
-            <Link href="/dashboard/customers">Customers</Link>
-          ) : null}
-          <Link href="/dashboard/opportunities">Opportunities</Link>
-          <Link href="/dashboard/deals">Deals</Link>
-          {canReview ? <Link href="/dashboard/review">Review</Link> : null}
-          <Link href="/dashboard/products">Product Records</Link>
-          {canViewSetup ? <Link href="/dashboard/setup">Setup</Link> : null}
-          <div className="nav-session">
-            <span>
-              {session.username} &middot; {session.role}
-            </span>
-            <form action={logoutAction}>
-              <button className="nav-button" type="submit">
-                Logout
-              </button>
-            </form>
-          </div>
-        </nav>
+        <SidebarNav groups={groups} recentEmailTimestamps={recentEmailTimestamps} />
       </aside>
-      <main className="content">{children}</main>
+      <div className="content-col">
+        <DashboardTopBar
+          username={session.username}
+          role={session.role}
+          logoutAction={logoutAction}
+        />
+        <main className="content">{children}</main>
+      </div>
     </div>
   );
 }

@@ -372,6 +372,53 @@ export default async function DashboardPage({
     }),
   );
   const pendingSupplierEmailCount = countPendingReviewEmails(reviewItems.value);
+
+  type KpiTile = {
+    label: string;
+    value: number;
+    sub: string;
+    href: string;
+  };
+  const kpiTiles: KpiTile[] = (
+    [
+      canViewReview
+        ? {
+            label: 'Needs review',
+            value: pendingSupplierEmailCount,
+            sub: 'supplier emails',
+            href: '/dashboard/review',
+          }
+        : null,
+      {
+        label: 'Open opportunities',
+        value: openOpportunities.value.length,
+        sub: 'buying signals',
+        href: '/dashboard/opportunities',
+      },
+      canViewInventory
+        ? {
+            label: 'Stock at risk',
+            value: stockRisk.value.length,
+            sub: 'lines flagged',
+            href: '/dashboard/inventory',
+          }
+        : null,
+      {
+        label: 'Data quality',
+        value: dataQualityIssues.length,
+        sub: 'issues to clear',
+        href: '/dashboard/products',
+      },
+      canViewCustomers
+        ? {
+            label: 'Customer follow-ups',
+            value: customerFollowUps.value.length,
+            sub: 'suggested',
+            href: '/dashboard/customers',
+          }
+        : null,
+    ] satisfies Array<KpiTile | null>
+  ).filter((tile): tile is KpiTile => tile !== null);
   const selectedOpenOpportunityFilterLabel =
     OPEN_OPPORTUNITY_FILTER_OPTIONS.find(
       (option) => option.value === selectedOpenOpportunityType,
@@ -450,6 +497,18 @@ export default async function DashboardPage({
           ) : null}
         </div>
       </section>
+
+      {kpiTiles.length > 0 ? (
+        <section className="kpi-row" aria-label="Key metrics">
+          {kpiTiles.map((tile) => (
+            <Link className="kpi-tile" href={tile.href} key={tile.label}>
+              <span className="kpi-label">{tile.label}</span>
+              <span className="kpi-value">{tile.value}</span>
+              <span className="kpi-sub">{tile.sub}</span>
+            </Link>
+          ))}
+        </section>
+      ) : null}
 
       <section className="dashboard-feature-grid">
         {nextActions.map((action) => (
