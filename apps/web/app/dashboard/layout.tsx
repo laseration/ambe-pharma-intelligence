@@ -1,8 +1,6 @@
-import Link from 'next/link';
 import type { ReactNode } from 'react';
 
-import { logoutAction } from '../auth/actions';
-import { InboxNavBadge } from '../components/InboxNavBadge';
+import { DashboardSidebar } from '../components/dashboard';
 import { roleHasCapability } from '../../lib/authorisation';
 import { listInboundEmails } from '../../lib/inboxApi';
 import { requireCurrentWebCapability } from '../../lib/serverWebAuth';
@@ -45,51 +43,17 @@ export default async function DashboardLayout({
 
   return (
     <div className="shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">AI</div>
-          <div className="brand-copy">
-            <p className="brand-eyebrow">Ambe Intelligence</p>
-            <h1 className="brand-title">Ambe Pharma</h1>
-          </div>
-        </div>
-        <nav className="nav">
-          <Link href="/login">Login</Link>
-          <Link href="/dashboard">Overview</Link>
-          {canViewInbox ? (
-            <InboxNavBadge
-              href="/dashboard/inbox"
-              label="Bot Inbox"
-              recentEmailTimestamps={recentEmailTimestamps}
-            />
-          ) : null}
-          <Link href="/dashboard/trade-enquiries">Trade Enquiries</Link>
-          {canViewImports ? (
-            <Link href="/dashboard/imports">Imports</Link>
-          ) : null}
-          {canViewInventory ? (
-            <Link href="/dashboard/inventory">Inventory</Link>
-          ) : null}
-          {canViewCustomers ? (
-            <Link href="/dashboard/customers">Customers</Link>
-          ) : null}
-          <Link href="/dashboard/opportunities">Opportunities</Link>
-          <Link href="/dashboard/deals">Deals</Link>
-          {canReview ? <Link href="/dashboard/review">Review</Link> : null}
-          <Link href="/dashboard/products">Product Records</Link>
-          {canViewSetup ? <Link href="/dashboard/setup">Setup</Link> : null}
-          <div className="nav-session">
-            <span>
-              {session.username} &middot; {session.role}
-            </span>
-            <form action={logoutAction}>
-              <button className="nav-button" type="submit">
-                Logout
-              </button>
-            </form>
-          </div>
-        </nav>
-      </aside>
+      <DashboardSidebar
+        username={session.username}
+        role={session.role}
+        canViewInbox={canViewInbox}
+        canViewImports={canViewImports}
+        canViewInventory={canViewInventory}
+        canViewCustomers={canViewCustomers}
+        canReview={canReview}
+        canViewSetup={canViewSetup}
+        recentEmailTimestamps={recentEmailTimestamps}
+      />
       <main className="content">{children}</main>
     </div>
   );

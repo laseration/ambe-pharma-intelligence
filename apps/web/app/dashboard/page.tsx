@@ -1,5 +1,14 @@
 import Link from 'next/link';
 
+import {
+  DashboardHero,
+  DashboardPanel,
+  FeatureCard,
+  FeatureGrid,
+  KpiCard,
+  SectionHeader,
+  StatusBadge,
+} from '../components/dashboard';
 import { getAutomationReadinessOverview } from '../../lib/automationApi';
 import { listCustomerContactOpportunities } from '../../lib/customersApi';
 import {
@@ -118,15 +127,24 @@ function normalizeOpenOpportunityFilterType(
   }
 }
 
-function actionPillClass(priority: 'high' | 'medium' | 'normal') {
-  switch (priority) {
-    case 'high':
-      return 'pill-high';
-    case 'medium':
-      return 'pill-medium';
-    case 'normal':
-      return 'pill-neutral';
+function actionPriorityVariant(
+  priority: 'high' | 'medium' | 'normal',
+): 'high' | 'medium' | 'neutral' {
+  return priority === 'normal' ? 'neutral' : priority;
+}
+
+function reviewPriorityVariant(
+  priority: ReviewWorkflowListItem['priority'],
+): 'high' | 'medium' | 'neutral' {
+  if (priority === 'HIGH') {
+    return 'high';
   }
+
+  if (priority === 'LOW') {
+    return 'neutral';
+  }
+
+  return 'medium';
 }
 
 function buildOpportunitySignals(item: OpportunityListItem): string[] {
@@ -379,27 +397,15 @@ export default async function DashboardPage({
 
   return (
     <section className="dashboard-layout">
-      <section className="panel dashboard-panel dashboard-hero-panel">
-        <div className="dashboard-hero">
-          <div className="dashboard-hero-copy">
-            <p className="eyebrow">Operator Cockpit</p>
-            <h2 className="title">What needs doing next</h2>
-            <p className="copy">
-              Start with supplier decisions, then work the best commercial
-              signals and clean the records that weaken trust.
-            </p>
-          </div>
-          <div className="dashboard-hero-status">
-            <p className="dashboard-summary-label">Signal freshness</p>
-            <div className="dashboard-hero-pill-row">
-              <span className={`pill ${freshness.pillClassName}`}>
-                {freshness.label}
-              </span>
-              <p className="dashboard-summary-note">{freshness.detail}</p>
-            </div>
-          </div>
-        </div>
-
+      <DashboardHero
+        eyebrow="Operator Cockpit"
+        title="What needs doing next"
+        copy="Start with supplier decisions, then work the best commercial signals and clean the records that weaken trust."
+        statusLabel="Signal freshness"
+        freshnessTone={freshness.pillClassName}
+        freshnessLabel={freshness.label}
+        freshnessDetail={freshness.detail}
+      >
         {query?.updated ? (
           <p className="dashboard-inline-message dashboard-inline-message-success">
             Opportunity updated: {query.updated.replace(/_/g, ' ')}.
@@ -449,54 +455,46 @@ export default async function DashboardPage({
             </form>
           ) : null}
         </div>
-      </section>
+      </DashboardHero>
 
-      <section className="dashboard-feature-grid">
+      <FeatureGrid>
         {nextActions.map((action) => (
-          <Link
-            className="dashboard-feature-card"
-            href={action.href}
-            key={action.key}
-          >
+          <FeatureCard href={action.href} key={action.key}>
             <div className="dashboard-opportunity-top">
               <p className="dashboard-feature-title">{action.title}</p>
-              <span className={`pill ${actionPillClass(action.priority)}`}>
+              <StatusBadge variant={actionPriorityVariant(action.priority)}>
                 {action.value}
-              </span>
+              </StatusBadge>
             </div>
             <p className="dashboard-feature-copy">{action.meaning}</p>
             <p className="dashboard-summary-note">{action.nextAction}</p>
             <span className="dashboard-metric-link">{action.cta}</span>
-          </Link>
+          </FeatureCard>
         ))}
-      </section>
+      </FeatureGrid>
 
-      <section className="panel dashboard-panel">
-        <div className="dashboard-section-header">
-          <div>
-            <p className="eyebrow">Pilot Metrics</p>
-            <h3 className="section-title">Is the bot creating value?</h3>
-            <p className="copy">
-              These are operational proof points from real review, opportunity,
-              and readiness data.
-            </p>
-          </div>
-          <span
-            className={`pill ${readinessSummary.blocked ? 'pill-medium' : 'pill-high'}`}
-          >
-            {readiness.value
-              ? readiness.value.policy.globalMode.replaceAll('_', ' ')
-              : 'Metrics unavailable'}
-          </span>
-        </div>
+      <DashboardPanel>
+        <SectionHeader
+          eyebrow="Pilot Metrics"
+          title="Is the bot creating value?"
+          copy="These are operational proof points from real review, opportunity, and readiness data."
+          action={
+            <StatusBadge variant={readinessSummary.blocked ? 'medium' : 'high'}>
+              {readiness.value
+                ? readiness.value.policy.globalMode.replaceAll('_', ' ')
+                : 'Metrics unavailable'}
+            </StatusBadge>
+          }
+        />
 
         <div className="dashboard-summary-grid">
           {valueMetrics.map((metric) => (
-            <article className="dashboard-summary-card" key={metric.label}>
-              <p className="dashboard-summary-value">{metric.value}</p>
-              <p className="dashboard-summary-label">{metric.label}</p>
-              <p className="dashboard-summary-note">{metric.note}</p>
-            </article>
+            <KpiCard
+              key={metric.label}
+              value={metric.value}
+              label={metric.label}
+              note={metric.note}
+            />
           ))}
         </div>
 
@@ -504,25 +502,23 @@ export default async function DashboardPage({
           <p className="dashboard-proof-title">{readinessSummary.title}</p>
           <p className="dashboard-proof-copy">{readinessSummary.detail}</p>
         </div>
-      </section>
+      </DashboardPanel>
 
-      <section className="panel dashboard-panel">
-        <div className="dashboard-section-header">
-          <div>
-            <p className="eyebrow">Needs Review Now</p>
-            <h3 className="section-title">Supplier emails awaiting decision</h3>
-            <p className="copy">
-              {pendingSupplierEmailCount} supplier email
-              {pendingSupplierEmailCount === 1 ? '' : 's'} currently have staged
-              offers that need operator judgment.
-            </p>
-          </div>
-          {canViewReview ? (
-            <Link className="button" href="/dashboard/review">
-              Open review queue
-            </Link>
-          ) : null}
-        </div>
+      <DashboardPanel>
+        <SectionHeader
+          eyebrow="Needs Review Now"
+          title="Supplier emails awaiting decision"
+          copy={`${pendingSupplierEmailCount} supplier email${
+            pendingSupplierEmailCount === 1 ? '' : 's'
+          } currently have staged offers that need operator judgment.`}
+          action={
+            canViewReview ? (
+              <Link className="button" href="/dashboard/review">
+                Open review queue
+              </Link>
+            ) : null
+          }
+        />
 
         {topReviewItems.length === 0 ? (
           <div className="dashboard-proof-callout">
@@ -561,18 +557,10 @@ export default async function DashboardPage({
                     </p>
                   </div>
                   <div className="dashboard-opportunity-badges">
-                    <span className="pill pill-neutral">{item.status}</span>
-                    <span
-                      className={`pill ${
-                        item.priority === 'HIGH'
-                          ? 'pill-high'
-                          : item.priority === 'LOW'
-                            ? 'pill-neutral'
-                            : 'pill-medium'
-                      }`}
-                    >
+                    <StatusBadge>{item.status}</StatusBadge>
+                    <StatusBadge variant={reviewPriorityVariant(item.priority)}>
                       {item.priority}
-                    </span>
+                    </StatusBadge>
                   </div>
                 </div>
                 <p className="dashboard-opportunity-copy">
@@ -600,23 +588,19 @@ export default async function DashboardPage({
             ))}
           </div>
         )}
-      </section>
+      </DashboardPanel>
 
-      <section className="panel dashboard-panel" id="best-buying-signals">
-        <div className="dashboard-section-header">
-          <div>
-            <p className="eyebrow">Buying Signals</p>
-            <h3 className="section-title">Best buying signals</h3>
-            <p className="copy">
-              Focus on the highest-scoring BUY and PRICE ALERT opportunities
-              first. Mark them actioned only after an operator has checked the
-              source context.
-            </p>
-          </div>
-          <Link className="button" href="/dashboard/opportunities">
-            Open all opportunities
-          </Link>
-        </div>
+      <DashboardPanel id="best-buying-signals">
+        <SectionHeader
+          eyebrow="Buying Signals"
+          title="Best buying signals"
+          copy="Focus on the highest-scoring BUY and PRICE ALERT opportunities first. Mark them actioned only after an operator has checked the source context."
+          action={
+            <Link className="button" href="/dashboard/opportunities">
+              Open all opportunities
+            </Link>
+          }
+        />
 
         <div className="dashboard-filter-row">
           <span className="dashboard-filter-label">Focus:</span>
@@ -682,10 +666,8 @@ export default async function DashboardPage({
                     </p>
                   </div>
                   <div className="dashboard-opportunity-badges">
-                    <span className="pill pill-neutral">
-                      {item.type.replace('_', ' ')}
-                    </span>
-                    <span className="pill pill-high">Score {item.score}</span>
+                    <StatusBadge>{item.type.replace('_', ' ')}</StatusBadge>
+                    <StatusBadge variant="high">Score {item.score}</StatusBadge>
                   </div>
                 </div>
                 <p className="dashboard-opportunity-copy">{item.description}</p>
@@ -739,26 +721,22 @@ export default async function DashboardPage({
             ))}
           </div>
         )}
-      </section>
+      </DashboardPanel>
 
-      <section className="panel dashboard-panel" id="recent-work">
-        <div className="dashboard-section-header">
-          <div>
-            <p className="eyebrow">Recent Decisions</p>
-            <h3 className="section-title">
-              Recently approved, rejected, or actioned
-            </h3>
-            <p className="copy">
-              A short audit-friendly view of work the team has already touched.
-            </p>
-          </div>
-          <Link
-            className="button"
-            href="/dashboard/opportunities?status=ACTIONED"
-          >
-            View actioned
-          </Link>
-        </div>
+      <DashboardPanel id="recent-work">
+        <SectionHeader
+          eyebrow="Recent Decisions"
+          title="Recently approved, rejected, or actioned"
+          copy="A short audit-friendly view of work the team has already touched."
+          action={
+            <Link
+              className="button"
+              href="/dashboard/opportunities?status=ACTIONED"
+            >
+              View actioned
+            </Link>
+          }
+        />
 
         {approvedWorkflowItems.value.length === 0 &&
         rejectedWorkflowItems.value.length === 0 &&
@@ -784,7 +762,7 @@ export default async function DashboardPage({
                       {describeReviewItem(item)}
                     </p>
                   </div>
-                  <span className="pill pill-high">APPROVED</span>
+                  <StatusBadge variant="high">APPROVED</StatusBadge>
                 </div>
                 <p className="dashboard-triage-meta">
                   Updated {formatDateTime(item.updatedAt) ?? 'recently'}
@@ -802,7 +780,7 @@ export default async function DashboardPage({
                       {describeReviewItem(item)}
                     </p>
                   </div>
-                  <span className="pill pill-low">REJECTED</span>
+                  <StatusBadge variant="low">REJECTED</StatusBadge>
                 </div>
                 <p className="dashboard-triage-meta">
                   Updated {formatDateTime(item.updatedAt) ?? 'recently'}
@@ -820,10 +798,8 @@ export default async function DashboardPage({
                     </p>
                   </div>
                   <div className="dashboard-opportunity-badges">
-                    <span className="pill pill-neutral">
-                      {item.type.replace('_', ' ')}
-                    </span>
-                    <span className="pill pill-neutral">{item.status}</span>
+                    <StatusBadge>{item.type.replace('_', ' ')}</StatusBadge>
+                    <StatusBadge>{item.status}</StatusBadge>
                   </div>
                 </div>
                 <p className="dashboard-triage-meta">
@@ -835,24 +811,19 @@ export default async function DashboardPage({
             ))}
           </div>
         )}
-      </section>
+      </DashboardPanel>
 
-      <section className="panel dashboard-panel">
-        <div className="dashboard-section-header">
-          <div>
-            <p className="eyebrow">Trust And Data Quality</p>
-            <h3 className="section-title">
-              Issues to clear before relying on automation
-            </h3>
-            <p className="copy">
-              These are not cosmetic. They affect product matching, signal
-              usefulness, and whether operators can trust recommendations.
-            </p>
-          </div>
-          <Link className="button" href="/dashboard/products">
-            Product records
-          </Link>
-        </div>
+      <DashboardPanel>
+        <SectionHeader
+          eyebrow="Trust And Data Quality"
+          title="Issues to clear before relying on automation"
+          copy="These are not cosmetic. They affect product matching, signal usefulness, and whether operators can trust recommendations."
+          action={
+            <Link className="button" href="/dashboard/products">
+              Product records
+            </Link>
+          }
+        />
 
         {dataQualityIssues.length === 0 ? (
           <div className="dashboard-proof-callout">
@@ -865,21 +836,17 @@ export default async function DashboardPage({
             </p>
           </div>
         ) : (
-          <div className="dashboard-feature-grid">
+          <FeatureGrid>
             {dataQualityIssues.map((issue) => (
-              <Link
-                className="dashboard-feature-card"
-                href={issue.href}
-                key={issue.key}
-              >
+              <FeatureCard href={issue.href} key={issue.key}>
                 <p className="dashboard-feature-title">{issue.title}</p>
                 <p className="dashboard-feature-copy">{issue.detail}</p>
                 <span className="dashboard-metric-link">{issue.cta}</span>
-              </Link>
+              </FeatureCard>
             ))}
-          </div>
+          </FeatureGrid>
         )}
-      </section>
+      </DashboardPanel>
     </section>
   );
 }
