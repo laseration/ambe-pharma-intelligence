@@ -1,0 +1,220 @@
+/*
+ * Three-zone operations cockpit for /dashboard.
+ *
+ * Owns all cockpit-specific layout so globals.css stays lean. The zones, in
+ * DOM/reading order (which is also operator priority and the mobile stacking
+ * order), are: command rail -> intelligence deck -> trust tower.
+ *
+ * Breakpoints account for the fixed 280px dashboard sidebar, so the deck only
+ * becomes a true centre column once there is room for it to stay the largest
+ * area. Zone-internal grids size against their container (auto-fill / fixed
+ * tracks) rather than the viewport, so they never overflow a narrow column.
+ */
+
+.grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    'rail'
+    'deck'
+    'tower';
+}
+
+.rail {
+  grid-area: rail;
+}
+
+.deck {
+  grid-area: deck;
+}
+
+.tower {
+  grid-area: tower;
+}
+
+/* min-width:0 lets long content (codes, titles) shrink instead of forcing
+   horizontal overflow inside a grid column. */
+.rail,
+.deck,
+.tower {
+  min-width: 0;
+}
+
+/* Vertical stack of panels inside a single zone. */
+.zoneStack {
+  display: grid;
+  gap: 20px;
+}
+
+/* Intermediate: command rail beside the deck, trust as a full-width band
+   directly below (still visible, never buried in a long scroll). */
+@media (min-width: 1100px) {
+  .grid {
+    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+    grid-template-areas:
+      'rail  deck'
+      'tower tower';
+  }
+}
+
+/* Full cockpit: rail | deck | tower. The trust tower persists alongside the
+   deck and sticks while the (usually taller) deck scrolls. */
+@media (min-width: 1440px) {
+  .grid {
+    grid-template-columns:
+      minmax(300px, 340px)
+      minmax(0, 1fr)
+      minmax(300px, 360px);
+    grid-template-areas: 'rail deck tower';
+  }
+
+  .tower {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+  }
+}
+
+/*
+ * Denser panel surface for the supporting rail / trust columns. Only tightens
+ * the shared `.panel` padding; border, radius, surface and shadow are
+ * inherited from the global rule. The doubled selector (`.dashboard-panel` is
+ * global, the module class is local) raises specificity above
+ * `.panel { padding: 28px }` so the override wins regardless of stylesheet
+ * order.
+ */
+:global(.dashboard-panel).compactPanel {
+  padding: 20px;
+}
+
+/* Next-action worklist: one priority per row in the narrow rail; wraps to
+   multiple columns only when the zone is full-width (stacked tiers). */
+.worklist {
+  margin-top: 16px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+/* Compact supplier-offer review queue. */
+.queueCount {
+  margin: 16px 0 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.queue {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+/* The whole row is a link (see ReviewQueueRow). color: inherit keeps the body
+   text colour; the border lifts on hover/focus as the interactive affordance. */
+.queueRow {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: inherit;
+}
+
+.queueRow:hover {
+  border-color: var(--border-strong);
+}
+
+.queueTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.queueTitle {
+  margin: 0;
+  min-width: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.queueMeta {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* KPI strip, constrained to the deck column width. */
+.metricStrip {
+  margin-top: 20px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 560px) {
+  .metricStrip {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Data-quality cards: single column in the narrow tower, multi-column when the
+   trust zone is a full-width band. */
+.dataQualityGrid {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+/* Trust scorecard: one trust dimension per row (label + status pill). */
+.trustScore {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.trustRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.trustRowLabel {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.trustLabel {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.trustHint {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.trustNote {
+  margin: 14px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
