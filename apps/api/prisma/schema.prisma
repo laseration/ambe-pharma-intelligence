@@ -532,6 +532,11 @@ model ImportBatch {
   fileName             String
   fileMimeType         String?
   fileSizeBytes        Int?
+  // Stable idempotency key for email-attachment imports (sha256 over source
+  // system + email id + attachment id + content checksum + import kind). Null
+  // for manual uploads, which are intentionally never deduplicated. The unique
+  // index makes "already imported" detection atomic and race-safe.
+  sourceAttachmentFingerprint String?         @unique
   totalRows            Int                   @default(0)
   validRows            Int                   @default(0)
   invalidRows          Int                   @default(0)

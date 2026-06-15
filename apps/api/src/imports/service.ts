@@ -552,6 +552,7 @@ async function createImportBatch(
   summary: ImportSummary,
   errors: RowIssue[],
   diagnostics: ImportDiagnostics,
+  idempotencyKey?: string,
 ) {
   return db.importBatch.create({
     data: {
@@ -560,6 +561,7 @@ async function createImportBatch(
       fileName: file.originalname,
       fileMimeType: file.mimetype,
       fileSizeBytes: file.size,
+      sourceAttachmentFingerprint: idempotencyKey ?? null,
       totalRows: summary.totalRows,
       validRows: summary.validRows,
       invalidRows: summary.invalidRows,
@@ -575,6 +577,119 @@ async function createImportBatch(
       },
     },
   });
+}
+
+// --- Attachment import idempotency -----------------------------------------
+//
+// Email-attachment imports carry a stable idempotency key (see
+// imports/types.ts and email/inbound/service.ts). When a key is supplied we
+// dedupe at the ImportBatch grain: if a batch already exists for the key we
+// return it instead of creating a second batch (and therefore avoid duplicating
+// any supplier price items, inventory rows, or sales rows). The unique index on
+// ImportBatch.sourceAttachmentFingerprint makes the claim atomic, so two
+// concurrent identical imports cannot both create a batch — the loser catches a
+// P2002 and returns the winner's batch. Manual uploads pass no key and are
+// never deduplicated.
+
+function buildSummaryFromBatch(batch: {
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  warnings: Prisma.JsonValue | null;
+}): ImportSummary {
+  return buildSummary(
+    batch.totalRows,
+    batch.validRows,
+    batch.invalidRows,
+    extractWarnings(batch.warnings, 100),
+  );
+}
+
+async function findExistingImportByKey(
+  idempotencyKey: string | undefined,
+): Promise<ImportResponse | null> {
+  if (!idempotencyKey) {
+    return null;
+  }
+
+  const existing = await db.importBatch.findUnique({
+    where: { sourceAttachmentFingerprint: idempotencyKey },
+    select: {
+      id: true,
+      totalRows: true,
+      validRows: true,
+      invalidRows: true,
+      warnings: true,
+      errors: {
+        orderBy: [{ rowNumber: 'asc' }, { createdAt: 'asc' }],
+        select: {
+          rowNumber: true,
+          fieldName: true,
+          message: true,
+          rawRow: true,
+        },
+      },
+    },
+  });
+
+  if (!existing) {
+    return null;
+  }
+
+  return {
+    importBatchId: existing.id,
+    summary: buildSummaryFromBatch(existing),
+    errors: existing.errors.map((error) => ({
+      rowNumber: error.rowNumber ?? 0,
+      ...(error.fieldName ? { fieldName: error.fieldName } : {}),
+      message: error.message,
+      rawRow: (redactImportRawRow(error.rawRow) ?? {}) as Prisma.InputJsonValue,
+    })),
+    alreadyImported: true,
+  };
+}
+
+function isImportKeyConflict(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2002'
+  );
+}
+
+type ImportBatchClaim =
+  | { kind: 'created'; batch: Awaited<ReturnType<typeof createImportBatch>> }
+  | { kind: 'deduplicated'; response: ImportResponse };
+
+async function claimImportBatch(
+  kind: 'SUPPLIER_PRICE_LIST' | 'INVENTORY' | 'SALES',
+  file: SupplierPriceListImportRequest['file'],
+  summary: ImportSummary,
+  errors: RowIssue[],
+  diagnostics: ImportDiagnostics,
+  idempotencyKey?: string,
+): Promise<ImportBatchClaim> {
+  try {
+    return {
+      kind: 'created',
+      batch: await createImportBatch(
+        kind,
+        file,
+        summary,
+        errors,
+        diagnostics,
+        idempotencyKey,
+      ),
+    };
+  } catch (error) {
+    if (isImportKeyConflict(error)) {
+      const raced = await findExistingImportByKey(idempotencyKey);
+      if (raced) {
+        return { kind: 'deduplicated', response: raced };
+      }
+    }
+
+    throw error;
+  }
 }
 
 function roundNumber(value: number | null, precision = 4): number | null {
@@ -1448,6 +1563,11 @@ function mapUnexpectedError(
 export async function importSupplierPriceList(
   request: SupplierPriceListImportRequest,
 ): Promise<ImportResponse> {
+  const deduplicated = await findExistingImportByKey(request.idempotencyKey);
+  if (deduplicated) {
+    return deduplicated;
+  }
+
   const parsed = await parseUploadedFile(request.file);
   const currencyCode = request.currencyCode?.trim() || 'USD';
   const { validRows, errors } = validateSupplierPriceRows(
@@ -1466,13 +1586,18 @@ export async function importSupplierPriceList(
     validRows,
     errors,
   );
-  const importBatch = await createImportBatch(
+  const claim = await claimImportBatch(
     'SUPPLIER_PRICE_LIST',
     request.file,
     summary,
     errors,
     initialDiagnostics,
+    request.idempotencyKey,
   );
+  if (claim.kind === 'deduplicated') {
+    return claim.response;
+  }
+  const importBatch = claim.batch;
 
   const firstRowSupplierName = parsed.rows.find(
     (row) => row.supplierName || row.SupplierName,
@@ -1593,6 +1718,11 @@ export async function importSupplierPriceList(
 export async function importInventory(
   request: InventoryImportRequest,
 ): Promise<ImportResponse> {
+  const deduplicated = await findExistingImportByKey(request.idempotencyKey);
+  if (deduplicated) {
+    return deduplicated;
+  }
+
   const parsed = await parseUploadedFile(request.file);
   const { validRows, errors } = validateInventoryRows(parsed.rows);
   const summary = buildSummary(
@@ -1607,13 +1737,18 @@ export async function importInventory(
     validRows,
     errors,
   );
-  const importBatch = await createImportBatch(
+  const claim = await claimImportBatch(
     'INVENTORY',
     request.file,
     summary,
     errors,
     initialDiagnostics,
+    request.idempotencyKey,
   );
+  if (claim.kind === 'deduplicated') {
+    return claim.response;
+  }
+  const importBatch = claim.batch;
 
   const persistenceErrors: RowIssue[] = [];
   for (const row of validRows) {
@@ -1674,6 +1809,11 @@ export async function importInventory(
 export async function importSales(
   request: SalesImportRequest,
 ): Promise<ImportResponse> {
+  const deduplicated = await findExistingImportByKey(request.idempotencyKey);
+  if (deduplicated) {
+    return deduplicated;
+  }
+
   const parsed = await parseUploadedFile(request.file);
   const { validRows, errors } = validateSalesRows(parsed.rows);
   const summary = buildSummary(
@@ -1688,13 +1828,18 @@ export async function importSales(
     validRows,
     errors,
   );
-  const importBatch = await createImportBatch(
+  const claim = await claimImportBatch(
     'SALES',
     request.file,
     summary,
     errors,
     initialDiagnostics,
+    request.idempotencyKey,
   );
+  if (claim.kind === 'deduplicated') {
+    return claim.response;
+  }
+  const importBatch = claim.batch;
 
   const persistenceErrors: RowIssue[] = [];
   for (const row of validRows) {

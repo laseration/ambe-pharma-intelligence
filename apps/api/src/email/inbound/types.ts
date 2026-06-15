@@ -176,6 +176,12 @@ export type EmailInboundItemResult = {
   importBatchId?: string;
   importSummary?: ImportResponse['summary'];
   errors?: ImportResponse['errors'];
+  /**
+   * True when this attachment had already been imported under the same
+   * idempotency key, so the existing import batch was reused instead of creating
+   * a duplicate. The attachment is still reported as IMPORTED.
+   */
+  alreadyImported?: boolean;
   error?: string;
   triageStatus?: EmailTriageStatus;
   triageReasons?: string[];
@@ -228,9 +234,16 @@ export type EmailInboundDependencies = {
     supplierName?: string;
     sourceDate?: string;
     currencyCode?: string;
+    idempotencyKey?: string;
   }) => Promise<ImportResponse>;
-  importInventory: (request: { file: UploadFile }) => Promise<ImportResponse>;
-  importSales: (request: { file: UploadFile }) => Promise<ImportResponse>;
+  importInventory: (request: {
+    file: UploadFile;
+    idempotencyKey?: string;
+  }) => Promise<ImportResponse>;
+  importSales: (request: {
+    file: UploadFile;
+    idempotencyKey?: string;
+  }) => Promise<ImportResponse>;
   parseUploadedFile: (file: UploadFile) => Promise<ParsedFileResult>;
   parseTextMessage: (rawText: string) => Promise<ParsedEmailBodyResult>;
   extractAttachmentText: (attachment: NormalizedEmailAttachment) => Promise<{

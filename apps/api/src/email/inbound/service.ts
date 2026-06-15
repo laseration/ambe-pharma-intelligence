@@ -114,6 +114,49 @@ function attachmentChecksumSha256(
     : null;
 }
 
+// Stable idempotency key for an email-attachment import. Binds the source email,
+// the specific attachment, the exact content bytes, and the import kind, so that
+// re-polling/replaying/reprocessing the SAME email attachment dedupes, while
+// different attachments — or the same content arriving in a different email —
+// import separately. Returns null (skip dedupe) when we lack attachment bytes or
+// any stable email identifier, since a weaker key could wrongly collide.
+export function buildImportIdempotencyKey(input: {
+  message: EmailInboundMessage;
+  attachment: NormalizedEmailAttachment;
+  importType: EmailInboundImportType;
+}): string | null {
+  const contentChecksum = attachmentChecksumSha256(input.attachment);
+  if (!contentChecksum) {
+    return null;
+  }
+
+  const emailId =
+    input.message.externalMessageId?.trim() ||
+    input.message.messageId?.trim() ||
+    '';
+  if (!emailId) {
+    return null;
+  }
+
+  const attachmentId =
+    input.attachment.graphAttachmentId?.trim() ||
+    input.attachment.contentId?.trim() ||
+    input.attachment.fileName?.trim() ||
+    '';
+
+  return createHash('sha256')
+    .update(
+      [
+        (input.message.sourceSystem ?? 'MICROSOFT_GRAPH').trim().toLowerCase(),
+        emailId,
+        attachmentId,
+        contentChecksum,
+        input.importType,
+      ].join('|'),
+    )
+    .digest('hex');
+}
+
 async function buildClassifierTables(input: {
   attachments: NormalizedEmailAttachment[];
   dependencies: Pick<EmailInboundDependencies, 'parseUploadedFile' | 'logger'>;
@@ -202,22 +245,26 @@ async function runImport(
   inferredImportType: EmailInboundImportType,
   uploadFile: UploadFile,
   supplierName?: string,
+  idempotencyKey?: string,
 ): Promise<ImportResponse> {
   if (inferredImportType === 'supplier-price-list') {
     return dependencies.importSupplierPriceList({
       file: uploadFile,
       supplierName,
+      idempotencyKey,
     });
   }
 
   if (inferredImportType === 'inventory') {
     return dependencies.importInventory({
       file: uploadFile,
+      idempotencyKey,
     });
   }
 
   return dependencies.importSales({
     file: uploadFile,
+    idempotencyKey,
   });
 }
 
@@ -1072,12 +1119,25 @@ export function createEmailInboundService(
             }
           }
 
+          const idempotencyKey =
+            buildImportIdempotencyKey({
+              message,
+              attachment,
+              importType: inferredImportType,
+            }) ?? undefined;
+
           const importResult = await runImport(
             dependencies,
             inferredImportType,
             uploadFile,
             trustedSupplierName,
+            idempotencyKey,
           );
+
+          const alreadyImported = importResult.alreadyImported === true;
+          const dedupeReasonSuffix = alreadyImported
+            ? ' This attachment was already imported; the existing import batch was reused (duplicate skipped).'
+            : '';
 
           items.push({
             ...buildTriageMetadata(baseItem, triage),
@@ -1085,9 +1145,10 @@ export function createEmailInboundService(
             importBatchId: importResult.importBatchId,
             importSummary: importResult.summary,
             errors: importResult.errors,
-            ...(supplierReasonSuffix
+            ...(alreadyImported ? { alreadyImported: true } : {}),
+            ...(supplierReasonSuffix || dedupeReasonSuffix
               ? {
-                  reason: `${decision.reason}${supplierReasonSuffix}`,
+                  reason: `${decision.reason}${supplierReasonSuffix}${dedupeReasonSuffix}`,
                 }
               : {}),
           });
@@ -1099,6 +1160,7 @@ export function createEmailInboundService(
             fileName: attachment.fileName,
             inferredImportType,
             importBatchId: importResult.importBatchId,
+            alreadyImported,
             supplierName: trustedSupplierName,
           });
         } catch (error) {
