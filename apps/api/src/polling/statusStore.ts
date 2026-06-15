@@ -58,6 +58,7 @@ function coercePollingWorkerSnapshot(
     lastRunStartedAt: asNullableString(raw.lastRunStartedAt),
     lastRunFinishedAt: asNullableString(raw.lastRunFinishedAt),
     lastSuccessAt: asNullableString(raw.lastSuccessAt),
+    lastFailureAt: asNullableString(raw.lastFailureAt),
     lastErrorAt: asNullableString(raw.lastErrorAt),
     lastError: asNullableString(raw.lastError),
     consecutiveFailures: asNumber(raw.consecutiveFailures),

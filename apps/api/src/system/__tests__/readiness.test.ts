@@ -9,10 +9,17 @@ import {
   configurePollingWorkerStatusStore,
   configurePollingWorkerStatus,
   resetPollingWorkerStatusesForTests,
+  type PollingWorkerSnapshot,
 } from '../../polling/status';
 import {
   createSystemReadinessService,
+  evaluatePollingWorkerHealth,
   systemReadinessService,
+  POLLING_MAX_CONSECUTIVE_FAILURES,
+  POLLING_RUN_STUCK_INTERVAL_MULTIPLIER,
+  POLLING_RUN_STUCK_MIN_MS,
+  POLLING_SUCCESS_STALE_INTERVAL_MULTIPLIER,
+  POLLING_SUCCESS_STALE_MIN_MS,
   type SystemReadinessReport,
 } from '../readiness';
 
@@ -301,6 +308,7 @@ test('system worker status endpoint is protected and returns safe runtime counte
           lastRunStartedAt: '2026-05-31T10:01:00.000Z',
           lastRunFinishedAt: '2026-05-31T10:01:01.000Z',
           lastSuccessAt: '2026-05-31T10:01:01.000Z',
+          lastFailureAt: null,
           lastErrorAt: null,
           lastError: null,
           consecutiveFailures: 0,
@@ -441,4 +449,362 @@ test('Graph mail dry-run endpoint requires admin access and returns safe summari
   assert.equal(payload.item.safety.markedRead, false);
   assert.equal(payload.item.safety.ingested, false);
   assert.doesNotMatch(JSON.stringify(payload), /test-secret|admin-secret/);
+});
+
+// --- PR2B: polling readiness/observability degradation ----------------------
+
+const READINESS_NOW = '2026-06-15T10:00:00.000Z';
+
+function healthyEmailSnapshot(
+  overrides: Partial<PollingWorkerSnapshot> = {},
+): PollingWorkerSnapshot {
+  return {
+    name: 'email-inbound',
+    enabled: true,
+    configured: true,
+    active: true,
+    running: true,
+    inFlight: false,
+    intervalMs: 30000,
+    startedAt: '2026-06-15T09:00:00.000Z',
+    stoppedAt: null,
+    lastRunStartedAt: '2026-06-15T09:59:00.000Z',
+    lastRunFinishedAt: '2026-06-15T09:59:05.000Z',
+    lastSuccessAt: '2026-06-15T09:59:05.000Z',
+    lastFailureAt: null,
+    lastErrorAt: null,
+    lastError: null,
+    consecutiveFailures: 0,
+    totalRuns: 5,
+    totalItemsSeen: 5,
+    totalItemsProcessed: 5,
+    totalItemsSkipped: 0,
+    totalItemsFailed: 0,
+    duplicateItemsSkipped: 0,
+    ...overrides,
+  };
+}
+
+function configurePersistedEmailWorker(
+  context: TestContext,
+  snapshot: PollingWorkerSnapshot,
+) {
+  resetPollingWorkerStatusesForTests();
+  context.after(() => resetPollingWorkerStatusesForTests());
+  configurePollingWorkerStatusStore({
+    async upsertStatus() {
+      // Readiness only needs persisted read behavior.
+    },
+    async listStatuses() {
+      return [snapshot];
+    },
+  });
+}
+
+function enableEmailPollingEnv(context: TestContext) {
+  overrideEnv(context, {
+    emailInboundPollingEnabled: true,
+    microsoftMailTenantId: 'tenant',
+    microsoftMailClientId: 'client',
+    microsoftMailClientSecret: 'client-secret-value',
+    microsoftGraphRefreshToken: '',
+    microsoftGraphSenderMailbox: 'intake@example.test',
+    emailInboundAllowedSenders: ['supplier.example'],
+    emailInboundSupplierMappings: [
+      { pattern: 'supplier.example', supplierName: 'Supplier Example' },
+    ],
+    emailInboundPollingIntervalMs: 30000,
+  });
+}
+
+async function getEmailPollingCheck() {
+  const service = createSystemReadinessService({
+    now: () => new Date(READINESS_NOW),
+    pingDatabase: async () => undefined,
+  });
+  const report = await service.getReadinessReport();
+  const check = report.checks.find((entry) => entry.key === 'email-polling');
+  if (!check) {
+    throw new Error('expected an email-polling readiness check');
+  }
+  return { report, check };
+}
+
+test('email polling readiness unit health flags not-running, stuck, failures, and staleness at thresholds', () => {
+  const now = new Date(READINESS_NOW);
+  const base = healthyEmailSnapshot();
+
+  assert.deepEqual(
+    evaluatePollingWorkerHealth(base, { now, intervalMs: 30000 }),
+    {
+      healthy: true,
+      reasons: [],
+    },
+  );
+
+  assert.deepEqual(
+    evaluatePollingWorkerHealth(
+      { ...base, running: false },
+      { now, intervalMs: 30000 },
+    ).reasons,
+    ['worker-not-running'],
+  );
+
+  assert.equal(
+    evaluatePollingWorkerHealth(
+      { ...base, consecutiveFailures: POLLING_MAX_CONSECUTIVE_FAILURES - 1 },
+      { now, intervalMs: 30000 },
+    ).reasons.includes('consecutive-failures'),
+    false,
+  );
+  assert.equal(
+    evaluatePollingWorkerHealth(
+      { ...base, consecutiveFailures: POLLING_MAX_CONSECUTIVE_FAILURES },
+      { now, intervalMs: 30000 },
+    ).reasons.includes('consecutive-failures'),
+    true,
+  );
+
+  const stuckThresholdMs = Math.max(
+    POLLING_RUN_STUCK_MIN_MS,
+    POLLING_RUN_STUCK_INTERVAL_MULTIPLIER * 30000,
+  );
+  assert.equal(
+    evaluatePollingWorkerHealth(
+      {
+        ...base,
+        inFlight: true,
+        lastRunStartedAt: new Date(
+          now.getTime() - stuckThresholdMs,
+        ).toISOString(),
+      },
+      { now, intervalMs: 30000 },
+    ).reasons.includes('run-stuck'),
+    false,
+  );
+  assert.equal(
+    evaluatePollingWorkerHealth(
+      {
+        ...base,
+        inFlight: true,
+        lastRunStartedAt: new Date(
+          now.getTime() - stuckThresholdMs - 1000,
+        ).toISOString(),
+      },
+      { now, intervalMs: 30000 },
+    ).reasons.includes('run-stuck'),
+    true,
+  );
+
+  const staleThresholdMs = Math.max(
+    POLLING_SUCCESS_STALE_MIN_MS,
+    POLLING_SUCCESS_STALE_INTERVAL_MULTIPLIER * 30000,
+  );
+  assert.equal(
+    evaluatePollingWorkerHealth(
+      {
+        ...base,
+        lastSuccessAt: new Date(now.getTime() - staleThresholdMs).toISOString(),
+      },
+      { now, intervalMs: 30000 },
+    ).reasons.includes('last-success-stale'),
+    false,
+  );
+  assert.equal(
+    evaluatePollingWorkerHealth(
+      {
+        ...base,
+        lastSuccessAt: new Date(
+          now.getTime() - staleThresholdMs - 1000,
+        ).toISOString(),
+      },
+      { now, intervalMs: 30000 },
+    ).reasons.includes('last-success-stale'),
+    true,
+  );
+});
+
+test('readiness stays healthy/idle when email polling is disabled even with a null lastSuccessAt', async (t) => {
+  overrideEnv(t, {
+    emailInboundPollingEnabled: false,
+    microsoftMailTenantId: '',
+    microsoftMailClientId: '',
+    microsoftMailClientSecret: '',
+    microsoftGraphRefreshToken: '',
+    microsoftGraphSenderMailbox: '',
+    emailInboundAllowedSenders: [],
+  });
+  configurePersistedEmailWorker(
+    t,
+    healthyEmailSnapshot({
+      enabled: false,
+      configured: false,
+      active: false,
+      running: false,
+      lastRunStartedAt: null,
+      lastRunFinishedAt: null,
+      lastSuccessAt: null,
+      totalRuns: 0,
+      totalItemsSeen: 0,
+      totalItemsProcessed: 0,
+    }),
+  );
+
+  const { check } = await getEmailPollingCheck();
+  assert.equal(check.status, 'disabled');
+  assert.equal(check.details.degraded, false);
+  assert.deepEqual(check.details.degradedReasons, []);
+});
+
+test('readiness degrades when email polling is enabled/configured but the worker is not running', async (t) => {
+  enableEmailPollingEnv(t);
+  configurePersistedEmailWorker(
+    t,
+    healthyEmailSnapshot({
+      running: false,
+      lastRunStartedAt: null,
+      lastRunFinishedAt: null,
+      lastSuccessAt: null,
+      totalRuns: 0,
+    }),
+  );
+
+  const { check } = await getEmailPollingCheck();
+  assert.equal(check.status, 'warning');
+  assert.equal(check.details.degraded, true);
+  assert.equal(
+    (check.details.degradedReasons as string[]).includes('worker-not-running'),
+    true,
+  );
+});
+
+test('readiness degrades when an in-flight poll run is stuck beyond the threshold', async (t) => {
+  enableEmailPollingEnv(t);
+  configurePersistedEmailWorker(
+    t,
+    healthyEmailSnapshot({
+      inFlight: true,
+      lastRunStartedAt: '2026-06-15T09:50:00.000Z',
+    }),
+  );
+
+  const { check } = await getEmailPollingCheck();
+  assert.equal(check.status, 'warning');
+  assert.equal(
+    (check.details.degradedReasons as string[]).includes('run-stuck'),
+    true,
+  );
+});
+
+test('readiness degrades when consecutive failures cross the threshold', async (t) => {
+  enableEmailPollingEnv(t);
+  configurePersistedEmailWorker(
+    t,
+    healthyEmailSnapshot({
+      consecutiveFailures: POLLING_MAX_CONSECUTIVE_FAILURES,
+      lastFailureAt: '2026-06-15T09:59:06.000Z',
+    }),
+  );
+
+  const { check } = await getEmailPollingCheck();
+  assert.equal(check.status, 'warning');
+  assert.equal(
+    (check.details.degradedReasons as string[]).includes(
+      'consecutive-failures',
+    ),
+    true,
+  );
+});
+
+test('readiness degrades when the last successful run is stale while polling is active', async (t) => {
+  enableEmailPollingEnv(t);
+  configurePersistedEmailWorker(
+    t,
+    healthyEmailSnapshot({
+      lastRunFinishedAt: '2026-06-15T09:40:00.000Z',
+      lastSuccessAt: '2026-06-15T09:40:00.000Z',
+    }),
+  );
+
+  const { check } = await getEmailPollingCheck();
+  assert.equal(check.status, 'warning');
+  assert.equal(
+    (check.details.degradedReasons as string[]).includes('last-success-stale'),
+    true,
+  );
+});
+
+test('readiness clears the degraded state once a recent successful run is recorded', async (t) => {
+  enableEmailPollingEnv(t);
+  configurePersistedEmailWorker(t, healthyEmailSnapshot());
+
+  const { check } = await getEmailPollingCheck();
+  assert.equal(check.status, 'ready');
+  assert.equal(check.details.degraded, false);
+  assert.deepEqual(check.details.degradedReasons, []);
+});
+
+test('readiness redacts secrets from a worker lastError', async (t) => {
+  enableEmailPollingEnv(t);
+  configurePersistedEmailWorker(
+    t,
+    healthyEmailSnapshot({
+      consecutiveFailures: POLLING_MAX_CONSECUTIVE_FAILURES,
+      lastError:
+        'Graph 500 token=supersecrettoken postgres://u:p@db.host/ambe mailbox=ops@corp.example',
+    }),
+  );
+
+  const { report, check } = await getEmailPollingCheck();
+  assert.equal(check.status, 'warning');
+  const serialized = JSON.stringify(report);
+  assert.doesNotMatch(serialized, /supersecrettoken/);
+  assert.doesNotMatch(serialized, /postgres:\/\//);
+  assert.doesNotMatch(serialized, /ops@corp\.example/);
+});
+
+test('worker status endpoint reflects persisted worker truth in a split deployment', async (t) => {
+  resetPollingWorkerStatusesForTests();
+  t.after(() => {
+    resetPollingWorkerStatusesForTests();
+  });
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
+  // Deliberately do NOT configure in-memory status: this API process never
+  // started the poller. Only the worker process persisted a running snapshot.
+  configurePollingWorkerStatusStore({
+    async upsertStatus() {
+      // Route test only needs persisted read behavior.
+    },
+    async listStatuses() {
+      return [
+        healthyEmailSnapshot({
+          running: true,
+          inFlight: true,
+          consecutiveFailures: 1,
+          totalRuns: 9,
+        }),
+      ];
+    },
+  });
+
+  const baseUrl = await startServer(t);
+  const response = await fetch(`${baseUrl}/api/system/workers`, {
+    headers: {
+      'x-internal-api-key': 'test-secret',
+    },
+  });
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  const emailWorker = payload.items.find(
+    (item: { name?: string }) => item.name === 'email-inbound',
+  );
+  assert.equal(emailWorker.enabled, true);
+  assert.equal(emailWorker.running, true);
+  assert.equal(emailWorker.inFlight, true);
+  assert.equal(emailWorker.consecutiveFailures, 1);
+  assert.equal(emailWorker.totalRuns, 9);
 });

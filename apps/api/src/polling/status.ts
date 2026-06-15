@@ -15,6 +15,7 @@ export type PollingWorkerSnapshot = {
   lastRunStartedAt: string | null;
   lastRunFinishedAt: string | null;
   lastSuccessAt: string | null;
+  lastFailureAt: string | null;
   lastErrorAt: string | null;
   lastError: string | null;
   consecutiveFailures: number;
@@ -73,6 +74,7 @@ function createInitialStatus(name: PollingWorkerName): PollingWorkerSnapshot {
     lastRunStartedAt: null,
     lastRunFinishedAt: null,
     lastSuccessAt: null,
+    lastFailureAt: null,
     lastErrorAt: null,
     lastError: null,
     consecutiveFailures: 0,
@@ -142,14 +144,19 @@ function mergePersistedStatus(
     return snapshotStatus(memoryStatus);
   }
 
+  // The process that actually runs the poller owns its runtime truth. In a
+  // split deployment the API process never starts the email poller, so its
+  // in-memory snapshot is the initial all-false/zero default and must NOT
+  // clobber the persisted row the worker wrote. We therefore take the
+  // process/runtime fields (enabled, configured, active, running, inFlight,
+  // consecutiveFailures) straight from the persisted row, pick the freshest
+  // timestamp for each lifecycle moment, and take the max of the monotonic
+  // counters so neither a stale reader nor a stale row loses progress.
+  // lastError keeps its existing precedence: a live in-process error wins,
+  // otherwise the persisted one. Every value is sanitized at its source.
   return {
     ...persistedStatus,
-    enabled: memoryStatus.enabled,
-    configured: memoryStatus.configured,
-    active: memoryStatus.active,
-    running: memoryStatus.running,
-    inFlight: memoryStatus.inFlight,
-    intervalMs: memoryStatus.intervalMs ?? persistedStatus.intervalMs,
+    intervalMs: persistedStatus.intervalMs ?? memoryStatus.intervalMs,
     startedAt: pickLatestTimestamp(
       memoryStatus.startedAt,
       persistedStatus.startedAt,
@@ -170,15 +177,15 @@ function mergePersistedStatus(
       memoryStatus.lastSuccessAt,
       persistedStatus.lastSuccessAt,
     ),
+    lastFailureAt: pickLatestTimestamp(
+      memoryStatus.lastFailureAt,
+      persistedStatus.lastFailureAt,
+    ),
     lastErrorAt: pickLatestTimestamp(
       memoryStatus.lastErrorAt,
       persistedStatus.lastErrorAt,
     ),
     lastError: memoryStatus.lastError ?? persistedStatus.lastError,
-    consecutiveFailures: Math.max(
-      memoryStatus.consecutiveFailures,
-      persistedStatus.consecutiveFailures,
-    ),
     totalRuns: Math.max(memoryStatus.totalRuns, persistedStatus.totalRuns),
     totalItemsSeen: Math.max(
       memoryStatus.totalItemsSeen,
@@ -263,6 +270,7 @@ export function markPollingRunFinished(
 
   if ((result.itemsFailed ?? 0) > 0) {
     status.consecutiveFailures += 1;
+    status.lastFailureAt = status.lastRunFinishedAt;
   } else {
     status.consecutiveFailures = 0;
     status.lastSuccessAt = status.lastRunFinishedAt;
