@@ -326,6 +326,20 @@ async function processMessage(
 
   const result = await dependencies.ingestInboundEmail(inboundMessage);
 
+  // Durability guard: only mark the Graph message read once durable staging is
+  // confirmed. A staging/DB failure (or any unexpectedly missing signal) leaves
+  // the message unread so the next poll can retry it, instead of marking it read
+  // and permanently losing it (polling fetches unread messages only). Throwing
+  // routes this through the existing per-message error handling, which records
+  // the failure and increments itemsFailed without calling markMessageRead.
+  if (result.durablyStaged !== true) {
+    throw new Error(
+      result.stagingError
+        ? `Inbound email was not durably staged; leaving message unread for retry. ${result.stagingError}`
+        : 'Inbound email was not durably staged; leaving message unread for retry.',
+    );
+  }
+
   dependencies.logger.info('Email inbox polling handled message', {
     correlationId: buildCorrelationId(correlation),
     messageId: inboundMessage.messageId ?? message.id,

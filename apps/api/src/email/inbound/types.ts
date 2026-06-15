@@ -203,6 +203,16 @@ export type EmailInboundResult = {
   ignored: boolean;
   reason?: string;
   items: EmailInboundItemResult[];
+  /**
+   * Whether the inbound email was durably persisted (staged) to the database.
+   * Set by `ingestInboundEmail`. The Graph poller only marks a message read
+   * when this is explicitly `true`, so a staging failure leaves the message
+   * unread for retry instead of silently losing it. Optional for backward
+   * compatibility with callers that build results without staging.
+   */
+  durablyStaged?: boolean;
+  /** Sanitized staging error message, present only when `durablyStaged` is false. */
+  stagingError?: string;
 };
 
 export type EmailInboundDependencies = {

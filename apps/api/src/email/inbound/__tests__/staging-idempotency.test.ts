@@ -3,6 +3,7 @@ import test, { type TestContext } from 'node:test';
 
 import { db } from '../../../lib/db';
 import { env } from '../../../config/env';
+import { logger } from '../../../lib/logger';
 import { createReviewQueueService as createReviewQueueServiceBase } from '../../../reviewQueue/service';
 import { parseStructuredPriceEmailBody } from '../../parsing';
 import {
@@ -13,6 +14,7 @@ import {
   mergeResolvedOffers,
   persistPromotion,
   stageInboundEmail,
+  stageInboundEmailSafely,
 } from '../pipeline';
 import { createEmailInboundService } from '../service';
 import type { EmailInboundResult } from '../types';
@@ -788,6 +790,86 @@ function installDbMocks(t: TestContext) {
 
   return state;
 }
+
+test('stageInboundEmailSafely returns persisted:true after durable staging succeeds', async (t) => {
+  const state = installDbMocks(t);
+
+  const outcome = await stageInboundEmailSafely(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'graph-safely-ok',
+      messageId: 'internet-safely-ok',
+      from: 'pricing@supplier.co',
+      subject: 'Offer',
+      bodyText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
+    },
+    createInboundResult(),
+  );
+
+  assert.deepEqual(outcome, { persisted: true });
+  assert.equal(state.inboundEmails.length, 1);
+});
+
+test('stageInboundEmailSafely returns structured failure and logs when persistence throws', async (t) => {
+  installDbMocks(t);
+
+  // Force the durable InboundEmail write to fail. This simulates the DB/staging
+  // error that previously got swallowed and returned void, letting the poller
+  // mark the message read and permanently lose it.
+  const originalUpsert = db.inboundEmail.upsert;
+  (db.inboundEmail as unknown as Record<string, unknown>).upsert = async () => {
+    // Include a secret-bearing connection string to assert it is redacted out
+    // of the value that escapes via the result / HTTP response.
+    throw new Error(
+      'staging DB write failed: postgres://app:s3cret@db.internal:5432/prod',
+    );
+  };
+  t.after(() => {
+    (db.inboundEmail as unknown as Record<string, unknown>).upsert =
+      originalUpsert;
+  });
+
+  // Confirm the failure is still logged (logging behavior is preserved).
+  const errorLogs: Array<{ message: string; meta?: Record<string, unknown> }> =
+    [];
+  const originalLoggerError = logger.error;
+  (logger as unknown as Record<string, unknown>).error = (
+    message: string,
+    meta?: Record<string, unknown>,
+  ) => {
+    errorLogs.push({ message, meta });
+  };
+  t.after(() => {
+    (logger as unknown as Record<string, unknown>).error = originalLoggerError;
+  });
+
+  const outcome = await stageInboundEmailSafely(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'graph-safely-fail',
+      messageId: 'internet-safely-fail',
+      from: 'pricing@supplier.co',
+      subject: 'Offer',
+      bodyText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
+    },
+    createInboundResult(),
+  );
+
+  assert.equal(outcome.persisted, false);
+  if (outcome.persisted === false) {
+    // The structured failure carries the reason, with secrets redacted out:
+    // the connection string and credentials must not leak to callers.
+    assert.match(outcome.error, /staging DB write failed/);
+    assert.doesNotMatch(outcome.error, /postgres:\/\//);
+    assert.doesNotMatch(outcome.error, /s3cret/);
+  }
+  assert.ok(
+    errorLogs.some(
+      (entry) => entry.message === 'Failed to stage inbound email',
+    ),
+    'expected the staging failure to still be logged',
+  );
+});
 
 test('same inbound email processed twice does not duplicate staged offers', async (t) => {
   const state = installDbMocks(t);

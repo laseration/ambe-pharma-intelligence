@@ -8,6 +8,7 @@ import { buildProductCandidates } from '../../imports/normalization';
 import { findOrCreateProduct } from '../../imports/service';
 import { db } from '../../lib/db';
 import { logger } from '../../lib/logger';
+import { redactSafeOutputString } from '../../safety/redaction';
 import { offerWorkflowService } from '../../reviewQueue/workflowService';
 import { getLearnedResolutionHints } from '../../corrections/service';
 import { extractAttachmentText } from '../attachmentTextExtraction';
@@ -2555,20 +2556,37 @@ export async function stageInboundEmail(
   });
 }
 
+/**
+ * Outcome of an attempt to durably stage an inbound email. `persisted: true`
+ * means {@link stageInboundEmail} completed without throwing; `persisted: false`
+ * carries the sanitized error so callers can decide what to do (the Graph poller
+ * leaves the message unread for retry rather than marking it read).
+ */
+export type StageInboundEmailOutcome =
+  | { persisted: true }
+  | { persisted: false; error: string };
+
 export async function stageInboundEmailSafely(
   message: EmailInboundMessage,
   result: EmailInboundResult,
-): Promise<void> {
+): Promise<StageInboundEmailOutcome> {
   try {
     await stageInboundEmail(message, result);
+    return { persisted: true };
   } catch (error) {
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : 'Unknown inbound email staging error.';
     logger.error('Failed to stage inbound email', {
-      error:
-        error instanceof Error
-          ? error.message
-          : 'Unknown inbound email staging error.',
+      error: errorMessage,
       messageId: message.messageId ?? message.externalMessageId ?? null,
       senderEmail: message.from,
     });
+    // Redact secrets (e.g. a Postgres connection string in a Prisma error)
+    // before the message escapes this process: it is surfaced on the
+    // EmailInboundResult and returned verbatim by the manual-ingest HTTP route,
+    // matching the redaction the poller applies to its own error path.
+    return { persisted: false, error: redactSafeOutputString(errorMessage) };
   }
 }
