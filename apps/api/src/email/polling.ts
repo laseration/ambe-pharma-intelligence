@@ -64,6 +64,7 @@ type GraphAttachment = {
 
 type GraphListResponse<T> = {
   value?: T[];
+  '@odata.nextLink'?: string | null;
 };
 
 type EmailInboundPollingDependencies = {
@@ -187,52 +188,283 @@ function toInboundMessage(message: GraphMessage): EmailInboundMessage | null {
   };
 }
 
-async function graphRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const accessToken = await getMicrosoftGraphAccessToken();
-  const response = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      ...(env.graphUseImmutableIds ? { Prefer: 'IdType="ImmutableId"' } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
+// --- Microsoft Graph HTTP plumbing: pagination + bounded retry --------------
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw buildGraphRequestError(response, errorText);
-  }
+// Bounded pagination caps (compile-time constants, NOT runtime config): cap how
+// many Graph pages we follow per poll so a very large — or pathologically
+// looping — inbox/attachment list can never trigger an unbounded request
+// fan-out. Anything beyond the cap is picked up on the next poll.
+export const GRAPH_INBOX_MAX_PAGES = 10; // x $top=10  => <= 100 messages / poll
+export const GRAPH_ATTACHMENT_MAX_PAGES = 10; // x $top=20 => <= 200 attachments
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
+// Bounded retry/backoff for transient Graph failures. We retry only 429 (rate
+// limited) and 5xx (server) responses, a capped number of times, with a capped
+// per-attempt delay — never an unbounded wait.
+export const GRAPH_REQUEST_MAX_RETRIES = 3;
+const GRAPH_RETRY_BASE_DELAY_MS = 500;
+const GRAPH_RETRY_MAX_DELAY_MS = 20_000;
 
-  return (await response.json()) as T;
+export type GraphHttpDeps = {
+  fetchImpl: typeof fetch;
+  getAccessToken: () => Promise<string>;
+  sleep: (ms: number) => Promise<void>;
+  logger: Pick<typeof logger, 'warn'>;
+};
+
+const defaultGraphHttpDeps: GraphHttpDeps = {
+  fetchImpl: (input, init) => fetch(input, init),
+  getAccessToken: () => getMicrosoftGraphAccessToken(),
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  logger,
+};
+
+function isRetryableGraphStatus(status: number): boolean {
+  return status === 429 || status >= 500;
 }
 
-async function listUnreadInboxMessages(): Promise<GraphMessage[]> {
+function parseRetryAfterMs(retryAfter: string | null): number | null {
+  if (!retryAfter) {
+    return null;
+  }
+
+  const seconds = Number(retryAfter.trim());
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1000, GRAPH_RETRY_MAX_DELAY_MS);
+  }
+
+  const dateMs = Date.parse(retryAfter);
+  if (!Number.isNaN(dateMs)) {
+    return Math.min(Math.max(dateMs - Date.now(), 0), GRAPH_RETRY_MAX_DELAY_MS);
+  }
+
+  return null;
+}
+
+function graphBackoffDelayMs(attempt: number): number {
+  return Math.min(
+    GRAPH_RETRY_BASE_DELAY_MS * 2 ** attempt,
+    GRAPH_RETRY_MAX_DELAY_MS,
+  );
+}
+
+// Defense-in-depth against SSRF / token exfiltration: graphRequestUrl attaches a
+// Microsoft Graph bearer token to whatever absolute URL it is given, and one of
+// those URLs is the server-supplied `@odata.nextLink`. Before issuing any
+// request we require the URL to be https, on graph.microsoft.com, under
+// `/v1.0/` — so a tampered or hostile nextLink can never cause the access token
+// to be sent elsewhere. The thrown error is sanitized (protocol + host only,
+// never the token or the full URL/query).
+function assertSafeGraphUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(
+      'Refusing to call a Microsoft Graph URL that could not be parsed.',
+    );
+  }
+
+  const isSafe =
+    parsed.protocol === 'https:' &&
+    parsed.hostname === 'graph.microsoft.com' &&
+    parsed.pathname.startsWith('/v1.0/');
+
+  if (!isSafe) {
+    throw new Error(
+      `Refusing to call a non-Microsoft-Graph URL: ${parsed.protocol}//${parsed.hostname}`,
+    );
+  }
+}
+
+// Performs a single Graph request against an absolute URL (the API base URL for
+// path-based calls, or a server-issued `@odata.nextLink`), with bounded
+// retry/backoff for transient (429/5xx) failures. The URL is validated up front
+// (see assertSafeGraphUrl) before any token fetch or network call. Errors stay
+// sanitized via buildGraphRequestError; access tokens are never logged.
+async function graphRequestUrl<T>(
+  url: string,
+  init: RequestInit | undefined,
+  deps: GraphHttpDeps,
+): Promise<T> {
+  assertSafeGraphUrl(url);
+
+  let attempt = 0;
+
+  while (attempt <= GRAPH_REQUEST_MAX_RETRIES) {
+    const accessToken = await deps.getAccessToken();
+    const response = await deps.fetchImpl(url, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        ...(env.graphUseImmutableIds ? { Prefer: 'IdType="ImmutableId"' } : {}),
+        ...(init?.headers ?? {}),
+      },
+    });
+
+    if (response.ok) {
+      if (response.status === 204) {
+        return undefined as T;
+      }
+
+      return (await response.json()) as T;
+    }
+
+    const errorText = await response.text();
+    const canRetry =
+      isRetryableGraphStatus(response.status) &&
+      attempt < GRAPH_REQUEST_MAX_RETRIES;
+
+    if (!canRetry) {
+      throw buildGraphRequestError(response, errorText);
+    }
+
+    const retryAfterMs =
+      response.status === 429
+        ? parseRetryAfterMs(response.headers.get('retry-after'))
+        : null;
+    const delayMs = retryAfterMs ?? graphBackoffDelayMs(attempt);
+
+    deps.logger.warn(
+      'Microsoft Graph request hit a transient failure; retrying after backoff',
+      {
+        status: response.status,
+        rateLimited: response.status === 429,
+        attempt: attempt + 1,
+        maxRetries: GRAPH_REQUEST_MAX_RETRIES,
+        delayMs,
+      },
+    );
+
+    await deps.sleep(delayMs);
+    attempt += 1;
+  }
+
+  // Unreachable: the loop returns on success, throws on a non-retryable failure,
+  // and throws on the final attempt. Present only to satisfy the type checker.
+  throw new Error('Microsoft Graph request retry loop exited unexpectedly.');
+}
+
+async function graphRequest<T>(
+  path: string,
+  init?: RequestInit,
+  deps: GraphHttpDeps = defaultGraphHttpDeps,
+): Promise<T> {
+  return graphRequestUrl<T>(
+    `https://graph.microsoft.com/v1.0${path}`,
+    init,
+    deps,
+  );
+}
+
+export async function listUnreadInboxMessages(
+  deps: GraphHttpDeps = defaultGraphHttpDeps,
+): Promise<GraphMessage[]> {
   const mailbox = encodeURIComponent(env.microsoftGraphSenderMailbox);
   const query =
     '/mailFolders/inbox/messages?$select=id,isRead,subject,internetMessageId,conversationId,receivedDateTime,from,sender,replyTo,internetMessageHeaders,body,hasAttachments' +
     '&$filter=isRead eq false&$orderby=receivedDateTime asc&$top=10';
 
-  const payload = await graphRequest<GraphListResponse<GraphMessage>>(
-    `/users/${mailbox}${query}`,
-  );
-  return Array.isArray(payload.value) ? payload.value : [];
+  // Follow @odata.nextLink (an absolute Graph URL) to page through all unread
+  // messages, preserving the receivedDateTime-ascending order (the orderby and
+  // filter are carried in the server-issued skiptoken), up to a bounded cap.
+  const messages: GraphMessage[] = [];
+  let nextLink: string | null = `/users/${mailbox}${query}`;
+  let isFirstPage = true;
+  let pages = 0;
+
+  while (nextLink !== null && pages < GRAPH_INBOX_MAX_PAGES) {
+    const requestUrl: string = nextLink;
+    const payload = isFirstPage
+      ? await graphRequest<GraphListResponse<GraphMessage>>(
+          requestUrl,
+          undefined,
+          deps,
+        )
+      : await graphRequestUrl<GraphListResponse<GraphMessage>>(
+          requestUrl,
+          undefined,
+          deps,
+        );
+    isFirstPage = false;
+
+    if (Array.isArray(payload.value)) {
+      messages.push(...payload.value);
+    }
+
+    nextLink = payload['@odata.nextLink'] ?? null;
+    pages += 1;
+  }
+
+  if (nextLink !== null) {
+    deps.logger.warn(
+      'Microsoft Graph inbox pagination hit the page cap; remaining unread messages will be processed on the next poll',
+      {
+        pages,
+        messagesFetched: messages.length,
+      },
+    );
+  }
+
+  return messages;
 }
 
-async function listAttachments(messageId: string): Promise<GraphAttachment[]> {
+export async function listAttachments(
+  messageId: string,
+  deps: GraphHttpDeps = defaultGraphHttpDeps,
+): Promise<GraphAttachment[]> {
   const mailbox = encodeURIComponent(env.microsoftGraphSenderMailbox);
-  const payload = await graphRequest<GraphListResponse<GraphAttachment>>(
-    `/users/${mailbox}/messages/${encodeURIComponent(messageId)}/attachments?$top=20`,
-  );
 
-  return Array.isArray(payload.value) ? payload.value : [];
+  // Page through all attachments via @odata.nextLink, up to a bounded cap. File
+  // vs. inline filtering is applied later (in processMessage), so this returns
+  // every attachment exactly as before — just no longer truncated at one page.
+  const attachments: GraphAttachment[] = [];
+  let nextLink: string | null =
+    `/users/${mailbox}/messages/${encodeURIComponent(messageId)}/attachments?$top=20`;
+  let isFirstPage = true;
+  let pages = 0;
+
+  while (nextLink !== null && pages < GRAPH_ATTACHMENT_MAX_PAGES) {
+    const requestUrl: string = nextLink;
+    const payload = isFirstPage
+      ? await graphRequest<GraphListResponse<GraphAttachment>>(
+          requestUrl,
+          undefined,
+          deps,
+        )
+      : await graphRequestUrl<GraphListResponse<GraphAttachment>>(
+          requestUrl,
+          undefined,
+          deps,
+        );
+    isFirstPage = false;
+
+    if (Array.isArray(payload.value)) {
+      attachments.push(...payload.value);
+    }
+
+    nextLink = payload['@odata.nextLink'] ?? null;
+    pages += 1;
+  }
+
+  if (nextLink !== null) {
+    deps.logger.warn(
+      'Microsoft Graph attachment pagination hit the page cap; some attachments were not fetched',
+      {
+        messageId,
+        pages,
+        attachmentsFetched: attachments.length,
+      },
+    );
+  }
+
+  return attachments;
 }
 
-async function markMessageRead(messageId: string): Promise<void> {
+export async function markMessageRead(
+  messageId: string,
+  deps: GraphHttpDeps = defaultGraphHttpDeps,
+): Promise<void> {
   const mailbox = encodeURIComponent(env.microsoftGraphSenderMailbox);
   await graphRequest<void>(
     `/users/${mailbox}/messages/${encodeURIComponent(messageId)}`,
@@ -242,6 +474,7 @@ async function markMessageRead(messageId: string): Promise<void> {
         isRead: true,
       }),
     },
+    deps,
   );
 }
 
