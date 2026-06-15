@@ -1141,6 +1141,11 @@ export async function ingestInboundEmail(
   message: EmailInboundMessage,
 ): Promise<EmailInboundResult> {
   const result = await createEmailInboundService().ingestMessage(message);
-  await stageInboundEmailSafely(message, result);
-  return result;
+  const staging = await stageInboundEmailSafely(message, result);
+
+  return {
+    ...result,
+    durablyStaged: staging.persisted,
+    ...(staging.persisted ? {} : { stagingError: staging.error }),
+  };
 }

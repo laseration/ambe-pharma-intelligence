@@ -48,7 +48,7 @@ test('allowed sender accepted through Graph polling and structured body reaches 
   const worker = createEmailInboundPollingWorker({
     ingestInboundEmail: async (message) => {
       capturedResult = await service.ingestMessage(message);
-      return capturedResult;
+      return { ...capturedResult, durablyStaged: true };
     },
     listUnreadInboxMessages: async () => [
       {
@@ -110,7 +110,7 @@ test('unapproved sender is ignored safely through Graph polling', async () => {
   const worker = createEmailInboundPollingWorker({
     ingestInboundEmail: async (message) => {
       capturedResult = await service.ingestMessage(message);
-      return capturedResult;
+      return { ...capturedResult, durablyStaged: true };
     },
     listUnreadInboxMessages: async () => [
       {
@@ -186,7 +186,7 @@ test('attachment email reaches import path through Graph polling', async () => {
   const worker = createEmailInboundPollingWorker({
     ingestInboundEmail: async (message) => {
       capturedResult = await service.ingestMessage(message);
-      return capturedResult;
+      return { ...capturedResult, durablyStaged: true };
     },
     listUnreadInboxMessages: async () => [
       {
@@ -251,6 +251,7 @@ test('one bad email does not kill the polling loop', async () => {
       return {
         ignored: false,
         items: [],
+        durablyStaged: true,
       };
     },
     listUnreadInboxMessages: async () => [
@@ -389,4 +390,141 @@ test('malformed sender-less message is marked read so it does not poison the inb
   assert.equal(ingestCalls, 0);
   assert.deepEqual(markReadCalls, ['graph-6']);
   assert.equal(logger.warnCalls.length, 1);
+});
+
+test('durable staging failure leaves the Graph message unread for retry', async () => {
+  resetPollingWorkerStatusesForTests();
+  const logger = createLogger();
+  const markReadCalls: string[] = [];
+
+  const worker = createEmailInboundPollingWorker({
+    ingestInboundEmail: async () => ({
+      ignored: false,
+      items: [],
+      durablyStaged: false,
+      stagingError: 'Staging failed: database connection lost.',
+    }),
+    listUnreadInboxMessages: async () => [
+      {
+        id: 'graph-staging-fail',
+        from: {
+          emailAddress: {
+            address: 'supplier@example.com',
+          },
+        },
+        subject: 'Price list',
+        body: {
+          contentType: 'text',
+          content: 'Amlodipine 5mg tabs 28 - 8.40 GBP',
+        },
+      },
+    ],
+    listAttachments: async () => [],
+    logger,
+    lookupExistingInboundEmail: async () => null,
+    markMessageRead: async (messageId) => {
+      markReadCalls.push(messageId);
+    },
+  });
+
+  await worker.runOnce();
+
+  // The message must NOT be marked read, so the next poll re-fetches it.
+  assert.deepEqual(markReadCalls, []);
+  const status = getPollingWorkerStatus('email-inbound');
+  assert.equal(status.totalItemsSeen, 1);
+  assert.equal(status.totalItemsProcessed, 0);
+  assert.equal(status.totalItemsFailed, 1);
+  assert.ok(
+    logger.errorCalls.some((call) => /continued/i.test(call.message)),
+    'expected the per-message failure to be logged',
+  );
+});
+
+test('durable staging success marks the Graph message read', async () => {
+  resetPollingWorkerStatusesForTests();
+  const logger = createLogger();
+  const markReadCalls: string[] = [];
+
+  const worker = createEmailInboundPollingWorker({
+    ingestInboundEmail: async () => ({
+      ignored: false,
+      items: [],
+      durablyStaged: true,
+    }),
+    listUnreadInboxMessages: async () => [
+      {
+        id: 'graph-staging-ok',
+        from: {
+          emailAddress: {
+            address: 'supplier@example.com',
+          },
+        },
+        subject: 'Price list',
+        body: {
+          contentType: 'text',
+          content: 'Amlodipine 5mg tabs 28 - 8.40 GBP',
+        },
+      },
+    ],
+    listAttachments: async () => [],
+    logger,
+    lookupExistingInboundEmail: async () => null,
+    markMessageRead: async (messageId) => {
+      markReadCalls.push(messageId);
+    },
+  });
+
+  await worker.runOnce();
+
+  assert.deepEqual(markReadCalls, ['graph-staging-ok']);
+  const status = getPollingWorkerStatus('email-inbound');
+  assert.equal(status.totalItemsProcessed, 1);
+  assert.equal(status.totalItemsFailed, 0);
+});
+
+test('ignored email that was durably staged is still marked read (no re-poll loop)', async () => {
+  resetPollingWorkerStatusesForTests();
+  const logger = createLogger();
+  const markReadCalls: string[] = [];
+
+  const worker = createEmailInboundPollingWorker({
+    // Intentionally ignored/rejected emails still receive a durable InboundEmail
+    // row from staging, so durablyStaged is true and they must be marked read —
+    // otherwise the poller would re-fetch and re-ignore them forever.
+    ingestInboundEmail: async () => ({
+      ignored: true,
+      reason: 'Email was ignored as non-actionable.',
+      items: [],
+      durablyStaged: true,
+    }),
+    listUnreadInboxMessages: async () => [
+      {
+        id: 'graph-ignored',
+        from: {
+          emailAddress: {
+            address: 'supplier@example.com',
+          },
+        },
+        subject: 'Out of office',
+        body: {
+          contentType: 'text',
+          content: 'I am away until next week.',
+        },
+      },
+    ],
+    listAttachments: async () => [],
+    logger,
+    lookupExistingInboundEmail: async () => null,
+    markMessageRead: async (messageId) => {
+      markReadCalls.push(messageId);
+    },
+  });
+
+  await worker.runOnce();
+
+  assert.deepEqual(markReadCalls, ['graph-ignored']);
+  const status = getPollingWorkerStatus('email-inbound');
+  assert.equal(status.totalItemsProcessed, 1);
+  assert.equal(status.totalItemsFailed, 0);
 });
