@@ -143,10 +143,22 @@ export type ImportResponse = {
   importBatchId: string;
   summary: ImportSummary;
   errors: RowIssue[];
+  /**
+   * True when an import batch already existed for the same idempotency key, so
+   * the existing batch was returned and no new batch or rows were created.
+   */
+  alreadyImported?: boolean;
 };
 
 export type ImportRequestBase = {
   file: UploadFile;
+  /**
+   * Optional stable idempotency key for the source attachment. When provided and
+   * a prior import batch already exists for the same key, the import short-
+   * circuits and returns the existing batch instead of creating duplicates.
+   * Manual uploads omit this and are therefore never deduplicated.
+   */
+  idempotencyKey?: string;
 };
 
 export type SupplierPriceListImportRequest = ImportRequestBase & {
