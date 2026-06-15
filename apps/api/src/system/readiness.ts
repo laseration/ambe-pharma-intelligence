@@ -4,7 +4,11 @@ import { isMicrosoftGraphConfigured } from '../email/graph';
 import { isEmailInboundPollingActive } from '../email/polling';
 import { isInternalAuthEnforced } from '../http/auth';
 import { db } from '../lib/db';
-import { getPollingWorkerStatus } from '../polling/status';
+import {
+  getPollingWorkerStatus,
+  listPollingWorkerStatusesWithStore,
+  type PollingWorkerSnapshot,
+} from '../polling/status';
 import { redactSafeOutputString } from '../safety/redaction';
 import {
   classifyDatabaseUrlForLocalSmoke,
@@ -39,6 +43,91 @@ type SystemReadinessDependencies = {
   now: () => Date;
   pingDatabase: () => Promise<void>;
 };
+
+// Compile-time polling-worker health thresholds. These are NOT runtime/env
+// configuration — they are fixed degradation boundaries used to decide when an
+// enabled+configured polling worker should drag readiness down because it looks
+// failing, stuck, or stale (independently of whether the worker runs in this
+// process). Exported so tests can assert exact boundary behavior.
+export const POLLING_RUN_STUCK_MIN_MS = 5 * 60_000;
+export const POLLING_RUN_STUCK_INTERVAL_MULTIPLIER = 5;
+export const POLLING_SUCCESS_STALE_MIN_MS = 15 * 60_000;
+export const POLLING_SUCCESS_STALE_INTERVAL_MULTIPLIER = 10;
+export const POLLING_MAX_CONSECUTIVE_FAILURES = 3;
+const POLLING_DEFAULT_INTERVAL_MS = 60_000;
+
+export type PollingWorkerHealthReason =
+  | 'worker-not-running'
+  | 'run-stuck'
+  | 'consecutive-failures'
+  | 'last-success-stale';
+
+export type PollingWorkerHealth = {
+  healthy: boolean;
+  reasons: PollingWorkerHealthReason[];
+};
+
+function resolvePollingIntervalMs(intervalMs: number | null): number {
+  return intervalMs && intervalMs > 0
+    ? intervalMs
+    : POLLING_DEFAULT_INTERVAL_MS;
+}
+
+// Pure, side-effect-free assessment of a polling worker's runtime snapshot.
+// Callers gate this behind "polling is enabled and configured" so a disabled or
+// intentionally idle worker never gets flagged. A worker is unhealthy when it
+// is not running, has a run that has been in flight far longer than a poll
+// cycle, has crossed the consecutive-failure threshold, or has gone too long
+// without a successful run while still claiming to run.
+export function evaluatePollingWorkerHealth(
+  snapshot: PollingWorkerSnapshot,
+  options: { now: Date; intervalMs: number | null },
+): PollingWorkerHealth {
+  const reasons: PollingWorkerHealthReason[] = [];
+  const nowMs = options.now.getTime();
+  const intervalMs = resolvePollingIntervalMs(options.intervalMs);
+
+  if (!snapshot.running) {
+    reasons.push('worker-not-running');
+  }
+
+  const stuckThresholdMs = Math.max(
+    POLLING_RUN_STUCK_MIN_MS,
+    POLLING_RUN_STUCK_INTERVAL_MULTIPLIER * intervalMs,
+  );
+  if (snapshot.inFlight && snapshot.lastRunStartedAt) {
+    const startedMs = Date.parse(snapshot.lastRunStartedAt);
+    if (Number.isFinite(startedMs) && nowMs - startedMs > stuckThresholdMs) {
+      reasons.push('run-stuck');
+    }
+  }
+
+  if (snapshot.consecutiveFailures >= POLLING_MAX_CONSECUTIVE_FAILURES) {
+    reasons.push('consecutive-failures');
+  }
+
+  // Staleness only makes sense for a worker that believes it is running: a
+  // not-running worker is already flagged above, and we must not warn merely
+  // because a never-started worker has a null lastSuccessAt.
+  if (snapshot.running) {
+    const staleThresholdMs = Math.max(
+      POLLING_SUCCESS_STALE_MIN_MS,
+      POLLING_SUCCESS_STALE_INTERVAL_MULTIPLIER * intervalMs,
+    );
+    if (!snapshot.lastSuccessAt) {
+      if (snapshot.totalRuns > 0) {
+        reasons.push('last-success-stale');
+      }
+    } else {
+      const successMs = Date.parse(snapshot.lastSuccessAt);
+      if (Number.isFinite(successMs) && nowMs - successMs > staleThresholdMs) {
+        reasons.push('last-success-stale');
+      }
+    }
+  }
+
+  return { healthy: reasons.length === 0, reasons };
+}
 
 function hasAny(...values: Array<string | null | undefined>): boolean {
   return values.some((value) => Boolean(value?.trim()));
@@ -214,14 +303,30 @@ function buildMicrosoftMailCheck(): SystemReadinessCheck {
   };
 }
 
-function buildEmailPollingCheck(): SystemReadinessCheck {
+function buildEmailPollingCheck(
+  workerStatus: PollingWorkerSnapshot,
+  now: Date,
+): SystemReadinessCheck {
   const graphConfigured = isMicrosoftGraphConfigured();
   const active = isEmailInboundPollingActive();
-  const workerStatus = getPollingWorkerStatus('email-inbound');
+  const hasAllowedSenders = env.emailInboundAllowedSenders.length > 0;
+
+  // Only assess worker health when polling is actually enabled and configured.
+  // A disabled or unconfigured poller is reported through the config-based
+  // states below and must never be dragged to "warning" by an idle worker
+  // snapshot (e.g. a null lastSuccessAt on an intentionally idle worker).
+  const health: PollingWorkerHealth = active
+    ? evaluatePollingWorkerHealth(workerStatus, {
+        now,
+        intervalMs:
+          workerStatus.intervalMs ?? env.emailInboundPollingIntervalMs,
+      })
+    : { healthy: true, reasons: [] };
+  const degraded = active && hasAllowedSenders && !health.healthy;
 
   let status: SystemReadinessStatus = 'disabled';
-  if (active && env.emailInboundAllowedSenders.length > 0) {
-    status = 'ready';
+  if (active && hasAllowedSenders) {
+    status = health.healthy ? 'ready' : 'warning';
   } else if (env.emailInboundPollingEnabled || graphConfigured) {
     status = 'warning';
   }
@@ -232,14 +337,18 @@ function buildEmailPollingCheck(): SystemReadinessCheck {
     status,
     meaning:
       status === 'ready'
-        ? 'Inbox polling is enabled, mail credentials are present, and allowed senders are configured.'
-        : env.emailInboundPollingEnabled
-          ? 'Inbox polling is enabled but required mail credentials or sender allowlists are incomplete.'
-          : 'Inbox polling is disabled.',
+        ? 'Inbox polling is enabled, mail credentials are present, allowed senders are configured, and the polling worker is healthy.'
+        : degraded
+          ? 'Inbox polling is enabled and configured, but the polling worker is failing, stuck, or stale (see degradedReasons).'
+          : env.emailInboundPollingEnabled
+            ? 'Inbox polling is enabled but required mail credentials or sender allowlists are incomplete.'
+            : 'Inbox polling is disabled.',
     nextAction:
       status === 'ready'
         ? 'Send a controlled supplier email through the configured intake mailbox.'
-        : 'Configure Graph mail, the sender mailbox, EMAIL_INBOUND_ALLOWED_SENDERS, then enable polling when ready.',
+        : degraded
+          ? 'Check the polling worker process and its logs; confirm it is running and completing poll runs.'
+          : 'Configure Graph mail, the sender mailbox, EMAIL_INBOUND_ALLOWED_SENDERS, then enable polling when ready.',
     envVars: [
       'START_WORKERS_WITH_API',
       'EMAIL_INBOUND_POLLING_ENABLED',
@@ -258,10 +367,14 @@ function buildEmailPollingCheck(): SystemReadinessCheck {
       pollingIntervalMs: env.emailInboundPollingIntervalMs,
       workerProcessExpected: !env.startWorkersWithApi,
       apiStartsWorkers: env.startWorkersWithApi,
+      degraded,
+      degradedReasons: health.reasons,
       runtimeRunning: workerStatus.running,
       runtimeInFlight: workerStatus.inFlight,
+      lastRunStartedAt: workerStatus.lastRunStartedAt,
       lastRunFinishedAt: workerStatus.lastRunFinishedAt,
       lastSuccessAt: workerStatus.lastSuccessAt,
+      lastFailureAt: workerStatus.lastFailureAt,
       lastErrorAt: workerStatus.lastErrorAt,
       lastError: workerStatus.lastError,
       consecutiveFailures: workerStatus.consecutiveFailures,
@@ -690,12 +803,21 @@ export function createSystemReadinessService(
 
   return {
     async getReadinessReport(): Promise<SystemReadinessReport> {
+      const now = resolvedDependencies.now();
+      // Read worker status through the persistence-backed accessor so readiness
+      // reflects the process that actually runs the poller (the worker process
+      // in a split deployment), not just this API process's in-memory view.
+      const workerStatuses = await listPollingWorkerStatusesWithStore();
+      const emailWorkerStatus =
+        workerStatuses.find((status) => status.name === 'email-inbound') ??
+        getPollingWorkerStatus('email-inbound');
+
       const checks = [
         await buildDatabaseCheck(resolvedDependencies),
         buildApiAuthCheck(),
         buildMicrosoftMailCheck(),
         buildGraphMailPreflightCheck(),
-        buildEmailPollingCheck(),
+        buildEmailPollingCheck(emailWorkerStatus, now),
         buildAllowedSendersCheck(),
         buildMicrosoftStorageCheck(),
         buildTelegramCheck(),
@@ -706,7 +828,7 @@ export function createSystemReadinessService(
       ];
 
       return {
-        generatedAt: resolvedDependencies.now().toISOString(),
+        generatedAt: now.toISOString(),
         status: aggregateStatus(checks),
         checks,
       };
