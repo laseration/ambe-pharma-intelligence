@@ -247,15 +247,47 @@ function graphBackoffDelayMs(attempt: number): number {
   );
 }
 
+// Defense-in-depth against SSRF / token exfiltration: graphRequestUrl attaches a
+// Microsoft Graph bearer token to whatever absolute URL it is given, and one of
+// those URLs is the server-supplied `@odata.nextLink`. Before issuing any
+// request we require the URL to be https, on graph.microsoft.com, under
+// `/v1.0/` — so a tampered or hostile nextLink can never cause the access token
+// to be sent elsewhere. The thrown error is sanitized (protocol + host only,
+// never the token or the full URL/query).
+function assertSafeGraphUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(
+      'Refusing to call a Microsoft Graph URL that could not be parsed.',
+    );
+  }
+
+  const isSafe =
+    parsed.protocol === 'https:' &&
+    parsed.hostname === 'graph.microsoft.com' &&
+    parsed.pathname.startsWith('/v1.0/');
+
+  if (!isSafe) {
+    throw new Error(
+      `Refusing to call a non-Microsoft-Graph URL: ${parsed.protocol}//${parsed.hostname}`,
+    );
+  }
+}
+
 // Performs a single Graph request against an absolute URL (the API base URL for
 // path-based calls, or a server-issued `@odata.nextLink`), with bounded
-// retry/backoff for transient (429/5xx) failures. Errors stay sanitized via
-// buildGraphRequestError; access tokens are never logged.
+// retry/backoff for transient (429/5xx) failures. The URL is validated up front
+// (see assertSafeGraphUrl) before any token fetch or network call. Errors stay
+// sanitized via buildGraphRequestError; access tokens are never logged.
 async function graphRequestUrl<T>(
   url: string,
   init: RequestInit | undefined,
   deps: GraphHttpDeps,
 ): Promise<T> {
+  assertSafeGraphUrl(url);
+
   let attempt = 0;
 
   while (attempt <= GRAPH_REQUEST_MAX_RETRIES) {

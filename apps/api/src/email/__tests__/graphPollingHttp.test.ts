@@ -273,3 +273,63 @@ test('a persistent 429 stops after the retry bound and then throws', async (t) =
   assert.equal(call, GRAPH_REQUEST_MAX_RETRIES + 1);
   assert.equal(slept.length, GRAPH_REQUEST_MAX_RETRIES);
 });
+
+test('a non-HTTPS nextLink is rejected without a second fetch or token request', async (t) => {
+  overrideEnv(t, { microsoftGraphSenderMailbox: 'intake@example.test' });
+
+  let fetchCalls = 0;
+  let tokenCalls = 0;
+  const deps = baseDeps(
+    async () => {
+      fetchCalls += 1;
+      return listResponse(
+        [{ id: 'm1' }],
+        'http://graph.microsoft.com/v1.0/inbox-page-2',
+      );
+    },
+    {
+      getAccessToken: async () => {
+        tokenCalls += 1;
+        return 'test-access-token';
+      },
+    },
+  );
+
+  await assert.rejects(
+    () => listUnreadInboxMessages(deps),
+    /Refusing to call a non-Microsoft-Graph URL/,
+  );
+  // Only the first (app-built) page is fetched; the unsafe nextLink is not.
+  assert.equal(fetchCalls, 1);
+  // No access token is requested for the rejected nextLink.
+  assert.equal(tokenCalls, 1);
+});
+
+test('a nextLink pointing at a foreign host is rejected without a second fetch or token request', async (t) => {
+  overrideEnv(t, { microsoftGraphSenderMailbox: 'intake@example.test' });
+
+  let fetchCalls = 0;
+  let tokenCalls = 0;
+  const deps = baseDeps(
+    async () => {
+      fetchCalls += 1;
+      return listResponse(
+        [{ id: 'm1' }],
+        'https://evil.example/v1.0/steal-token',
+      );
+    },
+    {
+      getAccessToken: async () => {
+        tokenCalls += 1;
+        return 'test-access-token';
+      },
+    },
+  );
+
+  await assert.rejects(
+    () => listUnreadInboxMessages(deps),
+    /Refusing to call a non-Microsoft-Graph URL/,
+  );
+  assert.equal(fetchCalls, 1);
+  assert.equal(tokenCalls, 1);
+});
