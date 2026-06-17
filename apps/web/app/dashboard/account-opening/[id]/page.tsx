@@ -20,6 +20,7 @@ import {
   submitAccountOpeningStatusAction,
 } from './actions';
 import { AccountOpeningSafetyReviewSections } from './SafetyReviewSections';
+import { UploadDocumentSection } from './UploadDocumentSection';
 import { requireCurrentWebCapability } from '../../../../lib/serverWebAuth';
 
 export const dynamic = 'force-dynamic';
@@ -901,6 +902,8 @@ export default async function AccountOpeningDetailPage({
         <WorkflowLifecycleSection item={item} />
         <DocumentClassificationSection item={item} />
         <CompanyProfileSection item={item} />
+
+        <UploadDocumentSection caseId={id} />
 
         <section className="panel dashboard-panel">
           <div className="dashboard-section-header">

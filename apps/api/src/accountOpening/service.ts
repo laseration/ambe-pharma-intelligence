@@ -643,7 +643,7 @@ function safeEvidenceSnippet(value: string | null | undefined): string | null {
   return sanitized.length > 360 ? `${sanitized.slice(0, 357)}...` : sanitized;
 }
 
-function normalizeSourceEvidenceInput(
+export function normalizeSourceEvidenceInput(
   evidence: AccountOpeningSourceEvidenceInput,
 ): Omit<AccountOpeningSourceEvidenceDetail, 'id' | 'createdAt' | 'updatedAt'> {
   const text = evidence.text?.trim() || '';

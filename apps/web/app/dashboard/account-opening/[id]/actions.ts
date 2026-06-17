@@ -13,6 +13,7 @@ import {
   saveAccountOpeningFieldMappings,
   saveAccountOpeningMissingInfo,
   updateAccountOpeningStatus,
+  uploadAccountOpeningCaseDocument,
   type AccountOpeningFieldMapping,
   type AccountOpeningFieldMappingSaveInput,
   type AccountOpeningFieldMappingStatus,
@@ -554,4 +555,58 @@ export async function submitAccountOpeningFieldMappingsAction(
       returnTo,
     ),
   );
+}
+
+export type UploadDocumentFormState = {
+  error: string | null;
+  classification: string | null;
+  fileName: string | null;
+};
+
+const MAX_ACCOUNT_OPENING_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+export async function uploadAccountOpeningDocumentAction(
+  caseId: string,
+  _prevState: UploadDocumentFormState,
+  formData: FormData,
+): Promise<UploadDocumentFormState> {
+  await requireCurrentWebCapability('account-opening:manage');
+
+  const file = formData.get('file');
+  if (!(file instanceof File) || file.size === 0) {
+    return {
+      error: 'Choose a document file to upload.',
+      classification: null,
+      fileName: null,
+    };
+  }
+  if (file.size > MAX_ACCOUNT_OPENING_UPLOAD_BYTES) {
+    return {
+      error: 'The file exceeds the 10MB limit.',
+      classification: null,
+      fileName: null,
+    };
+  }
+
+  const forward = new FormData();
+  forward.append('file', file, file.name);
+
+  try {
+    const result = await uploadAccountOpeningCaseDocument(caseId, forward);
+    revalidatePath(`/dashboard/account-opening/${caseId}`);
+    return {
+      error: null,
+      classification: result.classification.classification,
+      fileName: result.classification.fileName ?? file.name,
+    };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Failed to upload the document.',
+      classification: null,
+      fileName: null,
+    };
+  }
 }
