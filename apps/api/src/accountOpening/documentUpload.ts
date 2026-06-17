@@ -3,6 +3,7 @@ import path from 'node:path';
 import { Prisma } from '@prisma/client';
 
 import { extractAttachmentText } from '../email/attachmentTextExtraction';
+import { extractSupplierContact } from '../email/inbound/supplierContactExtraction';
 import type {
   EmailInboundFileType,
   NormalizedEmailAttachment,
@@ -95,12 +96,14 @@ function detectUploadFileType(
 
 export type AttachAccountOpeningDocumentResult = {
   classification: AccountOpeningDocumentClassification;
+  supplierNameCandidate: string | null;
   detail: AccountOpeningCaseDetail;
 };
 
 export type AttachAccountOpeningDocumentDeps = {
   loadStatus?: (id: string) => Promise<string | null>;
   extractText?: typeof extractAttachmentText;
+  extractSupplier?: typeof extractSupplierContact;
   persistEvidence?: (args: {
     caseId: string;
     evidence: AccountOpeningSourceEvidenceInput;
@@ -199,6 +202,7 @@ export async function attachAccountOpeningCaseDocument(
 
   const loadStatus = deps.loadStatus ?? defaultLoadStatus;
   const extractText = deps.extractText ?? extractAttachmentText;
+  const extractSupplier = deps.extractSupplier ?? extractSupplierContact;
   const persistEvidence = deps.persistEvidence ?? defaultPersistEvidence;
   const recordEvent = deps.recordEvent ?? defaultRecordEvent;
   const getDetail = deps.getDetail ?? getAccountOpeningCaseDetail;
@@ -233,6 +237,16 @@ export async function attachAccountOpeningCaseDocument(
     text,
   });
 
+  // Best-effort supplier/counterparty name from the document text + filename
+  // (deterministic signals). Surfaced for operator review only — never used to
+  // overwrite the case's counterparty automatically.
+  const supplier = extractSupplier({
+    bodyText: text,
+    attachmentTexts: text ? [{ text }] : [],
+    attachmentFileNames: [{ fileName }],
+  });
+  const supplierNameCandidate = supplier.supplierNameCandidate ?? null;
+
   const evidence: AccountOpeningSourceEvidenceInput = {
     sourceType: 'ATTACHMENT',
     sourceLabel: fileName,
@@ -247,6 +261,8 @@ export async function attachAccountOpeningCaseDocument(
       uploadSource: 'OPERATOR_UPLOAD',
       classification: classification.classification,
       classificationConfidence: classification.confidence,
+      supplierNameCandidate,
+      supplierNameConfidence: supplier.confidence,
       extractionWarnings: extracted?.warnings ?? [],
       rawBytesStoredInCase: false,
     },
@@ -264,6 +280,7 @@ export async function attachAccountOpeningCaseDocument(
       fileName,
       classification: classification.classification,
       confidence: classification.confidence,
+      supplierNameCandidate,
     },
   });
 
@@ -274,5 +291,5 @@ export async function attachAccountOpeningCaseDocument(
     );
   }
 
-  return { classification, detail };
+  return { classification, supplierNameCandidate, detail };
 }

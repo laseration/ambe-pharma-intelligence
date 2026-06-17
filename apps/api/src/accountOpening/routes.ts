@@ -351,6 +351,7 @@ export function createAccountOpeningRouter(
       response.status(201).json({
         item: result.detail,
         classification: result.classification,
+        supplierName: result.supplierNameCandidate,
       });
     }),
   );
