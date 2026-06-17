@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { Prisma } from '@prisma/client';
 
@@ -7,7 +7,10 @@ import type {
   AccountOpeningCaseDetail,
   AccountOpeningCaseListItem,
   AccountOpeningCaseSourceChannel,
+  AccountOpeningCaseType,
   AccountOpeningCaseTypeHint,
+  AccountOpeningManualCaseCreated,
+  AccountOpeningManualCaseInput,
   AccountOpeningCompanyProfileSummary,
   AccountOpeningCompletedFormFilingDetail,
   AccountOpeningDocumentLifecycleSummary,
@@ -34,7 +37,10 @@ export type {
   AccountOpeningCaseDetail,
   AccountOpeningCaseListItem,
   AccountOpeningCaseSourceChannel,
+  AccountOpeningCaseType,
   AccountOpeningCaseTypeHint,
+  AccountOpeningManualCaseCreated,
+  AccountOpeningManualCaseInput,
   AccountOpeningCompanyProfileSummary,
   AccountOpeningCompletedFormFilingDetail,
   AccountOpeningDocumentLifecycleSummary,
@@ -54,7 +60,7 @@ export type {
   AccountOpeningSourceProvenance,
   AccountOpeningStatusAction,
 } from '@ambe/shared';
-import { ConflictError } from '../http/errors';
+import { BadRequestError, ConflictError } from '../http/errors';
 import { db } from '../lib/db';
 import { buildCorrelationId } from '../observability/correlation';
 import {
@@ -166,6 +172,11 @@ export type AccountOpeningCasePersistenceInput = {
   inboundEmailId?: string | null;
   detectedFormType?: string | null;
   correlationId?: string | null;
+  // Authoritative intake metadata (set by manual creation; email/EML intake
+  // leaves these undefined so existing rows/behaviour are unchanged).
+  caseType?: string | null;
+  sourceChannel?: string | null;
+  missingInfoResponses?: AccountOpeningMissingInfoResponses;
 };
 
 export type PersistedAccountOpeningReviewCase = {
@@ -178,6 +189,8 @@ export type PersistedAccountOpeningReviewCase = {
   receivedAt: Date | null;
   companyName: string | null;
   detectedFormType: string | null;
+  caseType: string | null;
+  sourceChannel: string | null;
   status: string;
   recommendedSigner: string;
   signingStatement: string;
@@ -1768,6 +1781,8 @@ export function buildAccountOpeningCasePersistenceData(
         : null,
       companyName: accountCase.structuredFields.companyName,
       detectedFormType: input.detectedFormType ?? null,
+      caseType: input.caseType ?? null,
+      sourceChannel: input.sourceChannel ?? null,
       status: 'PENDING_REVIEW',
       recommendedSigner: signingNotes.recommendedSigner,
       signingStatement: signingNotes.defaultSigningStatement,
@@ -1779,7 +1794,7 @@ export function buildAccountOpeningCasePersistenceData(
       missingFields: jsonArray(accountCase.missingFields),
       reviewerChecks: jsonArray(signingNotes.reviewerChecks),
       signingNotes: jsonObject(signingNotes),
-      missingInfoResponses: jsonObject({}),
+      missingInfoResponses: jsonObject(input.missingInfoResponses ?? {}),
       extractedTextSummary: accountCase.extractedTextSummary,
       sourceAttachmentNames: jsonArray(accountCase.originalAttachmentNames),
       sourceFingerprint: accountCase.sourceFingerprint,
@@ -1795,6 +1810,8 @@ export function buildAccountOpeningCasePersistenceData(
         : null,
       companyName: accountCase.structuredFields.companyName,
       detectedFormType: input.detectedFormType ?? null,
+      caseType: input.caseType ?? undefined,
+      sourceChannel: input.sourceChannel ?? undefined,
       recommendedSigner: signingNotes.recommendedSigner,
       signingStatement: signingNotes.defaultSigningStatement,
       signingExplanation: accountCase.signingSummary.signingExplanation,
@@ -5264,6 +5281,39 @@ function deriveAccountOpeningSourceChannel(
   return accountCase.messageId ? 'EMAIL' : 'MANUAL';
 }
 
+function mapCaseTypeToHint(
+  caseType: string | null,
+): AccountOpeningCaseTypeHint | null {
+  switch (caseType) {
+    case 'SUPPLIER_ONBOARDING':
+      return 'SUPPLIER';
+    case 'CUSTOMER_ONBOARDING':
+      return 'CUSTOMER';
+    case 'UNKNOWN':
+      return 'UNKNOWN';
+    default:
+      return null;
+  }
+}
+
+function mapSourceChannel(
+  sourceChannel: string | null,
+): AccountOpeningCaseSourceChannel | null {
+  if (!sourceChannel) {
+    return null;
+  }
+  if (
+    sourceChannel.startsWith('MANUAL') ||
+    sourceChannel.startsWith('WEBSITE')
+  ) {
+    return 'MANUAL';
+  }
+  if (sourceChannel.startsWith('EMAIL') || sourceChannel.startsWith('EML')) {
+    return 'EMAIL';
+  }
+  return null;
+}
+
 export function toAccountOpeningCaseListItem(
   accountCase: PersistedAccountOpeningReviewCase,
 ): AccountOpeningCaseListItem {
@@ -5281,12 +5331,16 @@ export function toAccountOpeningCaseListItem(
     counterpartyDomain: accountCase.senderDomain,
     subject: accountCase.subject,
     detectedFormType: accountCase.detectedFormType,
-    caseTypeHint: deriveAccountOpeningCaseTypeHint(accountCase),
+    caseTypeHint:
+      mapCaseTypeToHint(accountCase.caseType) ??
+      deriveAccountOpeningCaseTypeHint(accountCase),
     status: accountCase.status,
     recommendedSigner: accountCase.recommendedSigner,
     riskFlagCount: rawRiskFlags.length,
     riskFlagLabels: riskFlagLabels.slice(0, 6),
-    sourceChannel: deriveAccountOpeningSourceChannel(accountCase),
+    sourceChannel:
+      mapSourceChannel(accountCase.sourceChannel) ??
+      deriveAccountOpeningSourceChannel(accountCase),
     receivedAt: accountCase.receivedAt
       ? accountCase.receivedAt.toISOString()
       : null,
@@ -5344,6 +5398,186 @@ export async function listAccountOpeningCases(
 ): Promise<AccountOpeningCaseListItem[]> {
   const cases = await queryAccountOpeningCases(filter);
   return cases.map(toAccountOpeningCaseListItem);
+}
+
+const MANUAL_ACCOUNT_OPENING_SOURCE_CHANNEL = 'MANUAL';
+const MANUAL_ACCOUNT_OPENING_CASE_TYPES: readonly AccountOpeningCaseType[] = [
+  'SUPPLIER_ONBOARDING',
+  'CUSTOMER_ONBOARDING',
+  'UNKNOWN',
+];
+
+function normalizeManualCounterpartyName(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+  return slug || 'counterparty';
+}
+
+// Deterministic, auditable, and collision-free: a `manual:` prefix + normalized
+// counterparty slug for readability, plus a unique suffix (UUID) so two manual
+// cases for the same counterparty never collide on the unique sourceFingerprint.
+export function buildManualAccountOpeningSourceFingerprint(input: {
+  counterpartyName: string;
+  uniqueSuffix: string;
+}): string {
+  return `manual:${normalizeManualCounterpartyName(input.counterpartyName)}:${input.uniqueSuffix}`;
+}
+
+export type CreateManualAccountOpeningCaseDeps = {
+  persist?: (
+    input: AccountOpeningCasePersistenceInput,
+  ) => Promise<{ id: string }>;
+  recordEvent?: (event: AccountOpeningCaseEventInput) => Promise<void>;
+  getDetail?: (id: string) => Promise<AccountOpeningCaseDetail | null>;
+  generateUniqueSuffix?: () => string;
+};
+
+async function defaultRecordManualCaseEvent(
+  event: AccountOpeningCaseEventInput,
+): Promise<void> {
+  const client = db as never as {
+    accountOpeningCaseEvent?: {
+      create: (args: {
+        data: AccountOpeningCaseEventInput;
+      }) => Promise<unknown>;
+    };
+  };
+  if (!client.accountOpeningCaseEvent) {
+    return;
+  }
+  await client.accountOpeningCaseEvent.create({ data: event });
+}
+
+export async function createManualAccountOpeningCase(
+  input: AccountOpeningManualCaseInput & {
+    actorType?: string | null;
+    actorIdentifier?: string | null;
+  },
+  deps: CreateManualAccountOpeningCaseDeps = {},
+): Promise<AccountOpeningManualCaseCreated> {
+  const counterpartyName = sanitizeDashboardText(input.counterpartyName);
+  if (!counterpartyName) {
+    throw new BadRequestError('Counterparty name is required.');
+  }
+
+  const caseType: AccountOpeningCaseType =
+    MANUAL_ACCOUNT_OPENING_CASE_TYPES.includes(input.caseType)
+      ? input.caseType
+      : 'UNKNOWN';
+  const counterpartyEmail = sanitizeDashboardText(input.counterpartyEmail);
+  const internalNote = sanitizeDashboardText(input.internalNote);
+
+  const persist = deps.persist ?? upsertAccountOpeningCase;
+  const recordEvent = deps.recordEvent ?? defaultRecordManualCaseEvent;
+  const getDetail = deps.getDetail ?? getAccountOpeningCaseDetail;
+  const generateUniqueSuffix =
+    deps.generateUniqueSuffix ?? (() => randomUUID());
+
+  const sourceFingerprint = buildManualAccountOpeningSourceFingerprint({
+    counterpartyName,
+    uniqueSuffix: generateUniqueSuffix(),
+  });
+
+  // No documents are scanned for a manual case, so there is no extracted text,
+  // no risk flags, and no evidence. Signing notes still default to Aman Dhillon,
+  // and any risky wording the operator typed into the internal note is escalated
+  // by the existing signing-summary scanner.
+  const signingSummary = buildAccountOpeningSigningSummary(internalNote ?? '');
+  const signingNotes = buildAccountOpeningSigningNotes({
+    signingSummary,
+    riskFlags: [],
+    missingOrUnclear: [],
+  });
+
+  // Counterparty name is stored in the display-only companyName field. The
+  // draft/autofill engine never reads this — it always uses the Ambe master
+  // profile — so this cannot leak the counterparty name into a filled form.
+  const structuredFields: AccountOpeningStructuredFields = {
+    companyName: counterpartyName,
+    tradingName: TO_BE_CONFIRMED,
+    companyNumber: TO_BE_CONFIRMED,
+    vatNumber: TO_BE_CONFIRMED,
+    registeredAddress: TO_BE_CONFIRMED,
+    tradingAddress: TO_BE_CONFIRMED,
+    contactName: TO_BE_CONFIRMED,
+    contactEmail: counterpartyEmail ?? TO_BE_CONFIRMED,
+    contactPhone: TO_BE_CONFIRMED,
+    accountsContact: TO_BE_CONFIRMED,
+    paymentMethodRequested: TO_BE_CONFIRMED,
+    directDebitRequested: false,
+    guaranteeDetected: false,
+    regulatoryDeclarationDetected: false,
+    riskyTerms: [],
+    missingOrUnclear: [],
+    recommendedSigner: DEFAULT_SIGNER,
+  };
+
+  const accountCase: AccountOpeningCase = {
+    sourceFingerprint,
+    status: 'pending_review',
+    senderEmail: counterpartyEmail ?? '',
+    senderDomain: counterpartyEmail
+      ? extractSenderDomain(counterpartyEmail)
+      : null,
+    subject: `Manual account-opening case — ${counterpartyName}`,
+    receivedDate: null,
+    detectedCompanyOrSupplierName: counterpartyName,
+    originalAttachmentNames: [],
+    extractedTextSummary:
+      'Manually created account-opening case. No documents have been uploaded yet.',
+    riskFlags: [],
+    missingFields: [],
+    structuredFields,
+    signingSummary,
+    signingNotes,
+    sourceEvidence: [],
+  };
+
+  const persisted = await persist({
+    accountCase,
+    detectedFormType: null,
+    caseType,
+    sourceChannel: MANUAL_ACCOUNT_OPENING_SOURCE_CHANNEL,
+    missingInfoResponses: internalNote
+      ? sanitizeAccountOpeningMissingInfoResponses({
+          reviewerNotes: internalNote,
+        })
+      : undefined,
+  });
+
+  if (!persisted) {
+    throw new Error('Account-opening case could not be persisted.');
+  }
+
+  await recordEvent({
+    accountOpeningCaseId: persisted.id,
+    actionType: 'MANUAL_CASE_CREATED',
+    newStatus: 'PENDING_REVIEW',
+    actorType: input.actorType?.trim() || 'OPERATOR',
+    actorIdentifier: sanitizeDashboardText(input.actorIdentifier),
+    note: internalNote,
+    metadata: jsonObject({
+      caseType,
+      sourceChannel: MANUAL_ACCOUNT_OPENING_SOURCE_CHANNEL,
+    }),
+  });
+
+  const detail = await getDetail(persisted.id);
+  if (!detail) {
+    throw new Error('Account-opening case could not be loaded after creation.');
+  }
+
+  return {
+    id: detail.id,
+    companyName: detail.companyName,
+    caseType,
+    sourceChannel: 'MANUAL',
+    status: detail.status,
+  };
 }
 
 export function buildSigningNotesFromPersistedCase(

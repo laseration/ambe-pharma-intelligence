@@ -530,6 +530,13 @@ async function startServer(
     saveMissingInfo: async () => defaultDetail,
     updateStatus: async () => defaultDetail,
     listCases: async () => [],
+    createManualCase: async () => ({
+      id: 'manual-case-1',
+      companyName: 'Example Supplier Ltd',
+      caseType: 'SUPPLIER_ONBOARDING',
+      sourceChannel: 'MANUAL',
+      status: 'PENDING_REVIEW',
+    }),
     ...dependencies,
   };
   app.use(express.json());
@@ -1784,4 +1791,80 @@ test('account-opening list route requires operator access and forwards status/se
   assert.equal(listInputs[0]?.search, 'ambe');
   assert.equal(listInputs[0]?.limit, 10);
   assert.doesNotMatch(JSON.stringify(payload), /12345678/);
+});
+
+test('account-opening create route requires operator access, validates input, and creates a manual case', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
+
+  const createInputs: Array<{
+    counterpartyName: string;
+    caseType: string;
+    counterpartyEmail: string | null;
+  }> = [];
+
+  const baseUrl = await startServer(t, {
+    createManualCase: async (input) => {
+      createInputs.push({
+        counterpartyName: input.counterpartyName,
+        caseType: input.caseType,
+        counterpartyEmail: input.counterpartyEmail ?? null,
+      });
+      return {
+        id: 'manual-9',
+        companyName: input.counterpartyName,
+        caseType: input.caseType,
+        sourceChannel: 'MANUAL',
+        status: 'PENDING_REVIEW',
+      };
+    },
+  });
+
+  const unauthorized = await fetch(`${baseUrl}/account-opening`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      counterpartyName: 'X',
+      caseType: 'SUPPLIER_ONBOARDING',
+    }),
+  });
+
+  const invalid = await fetch(`${baseUrl}/account-opening`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-internal-api-key': 'test-secret',
+    },
+    body: JSON.stringify({ caseType: 'SUPPLIER_ONBOARDING' }),
+  });
+
+  const response = await fetch(`${baseUrl}/account-opening`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-internal-api-key': 'test-secret',
+    },
+    body: JSON.stringify({
+      counterpartyName: 'Example Supplier Ltd',
+      counterpartyEmail: 'forms@supplier.test',
+      caseType: 'SUPPLIER_ONBOARDING',
+      internalNote: 'Arrived via WhatsApp.',
+    }),
+  });
+  const payload = (await response.json()) as {
+    item: { id: string; sourceChannel: string; status: string };
+  };
+
+  assert.equal(unauthorized.status, 401);
+  assert.equal(invalid.status, 422);
+  assert.equal(response.status, 201);
+  assert.equal(payload.item.id, 'manual-9');
+  assert.equal(payload.item.sourceChannel, 'MANUAL');
+  assert.equal(payload.item.status, 'PENDING_REVIEW');
+  assert.equal(createInputs[0]?.counterpartyName, 'Example Supplier Ltd');
+  assert.equal(createInputs[0]?.caseType, 'SUPPLIER_ONBOARDING');
+  assert.equal(createInputs[0]?.counterpartyEmail, 'forms@supplier.test');
 });

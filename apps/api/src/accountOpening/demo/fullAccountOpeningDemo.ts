@@ -209,6 +209,8 @@ function buildInitialCase(
     receivedAt: iso('2026-05-18T09:00:00.000Z'),
     companyName: accountCase.detectedCompanyOrSupplierName,
     detectedFormType: 'account opening form',
+    caseType: null,
+    sourceChannel: null,
     status: 'PENDING_REVIEW',
     recommendedSigner: accountCase.signingSummary.defaultSigner,
     signingStatement:

@@ -572,6 +572,29 @@ export type AccountOpeningCaseListResponse = {
   statusFilter: string | null;
 };
 
+/** Authoritative onboarding type chosen by an operator on manual case creation. */
+export type AccountOpeningCaseType =
+  | 'SUPPLIER_ONBOARDING'
+  | 'CUSTOMER_ONBOARDING'
+  | 'UNKNOWN';
+
+/** Operator-supplied metadata for a manually created account-opening case. */
+export type AccountOpeningManualCaseInput = {
+  counterpartyName: string;
+  counterpartyEmail?: string | null;
+  caseType: AccountOpeningCaseType;
+  internalNote?: string | null;
+};
+
+/** Minimal created-case echo for the web app to redirect to the detail page. */
+export type AccountOpeningManualCaseCreated = {
+  id: string;
+  companyName: string | null;
+  caseType: AccountOpeningCaseType;
+  sourceChannel: AccountOpeningCaseSourceChannel;
+  status: string;
+};
+
 export type AccountOpeningCaseDetail = {
   id: string;
   diagnosticCorrelationId: string | null;

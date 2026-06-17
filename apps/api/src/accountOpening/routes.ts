@@ -16,6 +16,7 @@ import {
 } from '../http/validation';
 import {
   approveAccountOpeningCompletedFormFiling,
+  createManualAccountOpeningCase,
   downloadAccountOpeningBinaryFillPreviewFile,
   downloadAccountOpeningFillPreviewFile,
   downloadAccountOpeningReviewedExportFile,
@@ -34,6 +35,7 @@ import {
   updateAccountOpeningCaseStatus,
   type AccountOpeningCaseDetail,
   type AccountOpeningCaseListItem,
+  type AccountOpeningManualCaseCreated,
   type AccountOpeningMissingInfoResponses,
   type AccountOpeningStatusAction,
 } from './service';
@@ -60,6 +62,7 @@ type AccountOpeningRouteDependencies = {
   saveMissingInfo: typeof saveAccountOpeningMissingInfo;
   updateStatus: typeof updateAccountOpeningCaseStatus;
   listCases: typeof listAccountOpeningCases;
+  createManualCase: typeof createManualAccountOpeningCase;
 };
 
 const missingInfoBodySchema = z
@@ -101,6 +104,22 @@ const listQuerySchema = z.object({
   search: optionalTrimmedStringSchema,
   limit: optionalNumberQuerySchema,
 });
+
+const createCaseBodySchema = z
+  .object({
+    counterpartyName: z.string().trim().min(1).max(200),
+    counterpartyEmail: z.preprocess(
+      (value) => (typeof value === 'string' ? value.trim() : value),
+      z
+        .union([z.string().email().max(200), z.literal(''), z.null()])
+        .optional(),
+    ),
+    caseType: z
+      .enum(['SUPPLIER_ONBOARDING', 'CUSTOMER_ONBOARDING', 'UNKNOWN'])
+      .default('UNKNOWN'),
+    internalNote: nullableTrimmedStringSchema,
+  })
+  .merge(actorBodySchema);
 
 const generateDraftBodySchema = actorBodySchema.partial().default({});
 const reprocessStoredSourceBodySchema = actorBodySchema.partial().default({});
@@ -178,6 +197,7 @@ const defaultDependencies: AccountOpeningRouteDependencies = {
   saveMissingInfo: saveAccountOpeningMissingInfo,
   updateStatus: updateAccountOpeningCaseStatus,
   listCases: listAccountOpeningCases,
+  createManualCase: createManualAccountOpeningCase,
 };
 
 function pickMissingInfoResponses(
@@ -241,6 +261,32 @@ export function createAccountOpeningRouter(
         total: items.length,
         statusFilter: query.status ?? null,
       });
+    }),
+  );
+
+  router.post(
+    '/',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { body } = parseRequest<
+        unknown,
+        unknown,
+        z.infer<typeof createCaseBodySchema>
+      >(request, {
+        body: createCaseBodySchema,
+      });
+      const actor = resolveInternalActor(request, body);
+
+      const created: AccountOpeningManualCaseCreated =
+        await dependencies.createManualCase({
+          counterpartyName: body.counterpartyName,
+          counterpartyEmail: body.counterpartyEmail ?? null,
+          caseType: body.caseType,
+          internalNote: body.internalNote ?? null,
+          ...actor,
+        });
+
+      response.status(201).json({ item: created });
     }),
   );
 

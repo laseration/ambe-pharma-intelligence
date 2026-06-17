@@ -117,9 +117,17 @@ export function AccountOpeningCasesContent({
               sends, or submits anything.
             </p>
           </div>
-          <Link className="button" href="/dashboard">
-            Back to dashboard
-          </Link>
+          <div className="actions">
+            <Link
+              className="button button-primary"
+              href="/dashboard/account-opening/new"
+            >
+              New case
+            </Link>
+            <Link className="button" href="/dashboard">
+              Back to dashboard
+            </Link>
+          </div>
         </div>
 
         <div className="actions">
@@ -186,8 +194,8 @@ export function AccountOpeningCasesContent({
           <div className="dashboard-proof-callout">
             <p className="dashboard-proof-title">No account-opening cases</p>
             <p className="dashboard-proof-copy">
-              Cases appear here once an account-opening pack is imported. Manual
-              case creation from the dashboard is coming in a follow-up change.
+              Cases appear here once an account-opening pack is imported, or
+              start one now with the “New case” button above.
             </p>
           </div>
         ) : (

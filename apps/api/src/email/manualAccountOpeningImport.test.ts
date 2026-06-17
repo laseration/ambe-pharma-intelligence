@@ -115,6 +115,8 @@ function createPersistedCase(
     senderDomain: data.senderDomain,
     subject: data.subject,
     receivedAt: data.receivedAt,
+    caseType: data.caseType,
+    sourceChannel: data.sourceChannel,
     companyName: data.companyName,
     detectedFormType: data.detectedFormType,
     status: data.status,
