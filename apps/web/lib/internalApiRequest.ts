@@ -313,6 +313,37 @@ export async function requestInternalJson<T>(
   return (await response.json()) as T;
 }
 
+export async function requestInternalMultipart<T>(
+  path: string,
+  options: RequestInternalOptions & { formData: FormData },
+): Promise<T> {
+  const source = options.source ?? process.env;
+  const actor = await resolveAuthorisedSession(options);
+  const response = await (options.fetchImpl ?? fetch)(buildUrl(path, source), {
+    method: options.init?.method ?? 'POST',
+    cache: 'no-store',
+    body: options.formData,
+    // No explicit content-type: fetch sets the multipart/form-data boundary.
+    headers: buildInternalApiHeaders({
+      callerName: options.callerName,
+      requiredCapability: options.requiredCapability,
+      actor,
+      includeJsonContentType: false,
+      source,
+      extraHeaders: options.init?.headers,
+    }),
+  });
+
+  if (!response.ok) {
+    throw buildInternalApiError(
+      response,
+      await safeErrorMessage(response, source),
+    );
+  }
+
+  return (await response.json()) as T;
+}
+
 function fileNameFromDisposition(
   disposition: string,
   fallback: string,

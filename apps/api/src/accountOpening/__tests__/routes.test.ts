@@ -537,6 +537,20 @@ async function startServer(
       sourceChannel: 'MANUAL',
       status: 'PENDING_REVIEW',
     }),
+    uploadDocument: async () => ({
+      classification: {
+        sourceEvidenceId: null,
+        fileName: 'account-opening-form.pdf',
+        classification: 'ACCOUNT_OPENING_FORM',
+        confidence: 'HIGH',
+        score: 40,
+        matchedEvidence: ['account opening form wording'],
+        missingEvidence: [],
+        warnings: [],
+        safeForAutomaticCompletion: false,
+      },
+      detail: defaultDetail,
+    }),
     ...dependencies,
   };
   app.use(express.json());
@@ -1867,4 +1881,91 @@ test('account-opening create route requires operator access, validates input, an
   assert.equal(createInputs[0]?.counterpartyName, 'Example Supplier Ltd');
   assert.equal(createInputs[0]?.caseType, 'SUPPLIER_ONBOARDING');
   assert.equal(createInputs[0]?.counterpartyEmail, 'forms@supplier.test');
+});
+
+test('account-opening document upload route requires auth, parses multipart, and blocks bad types', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
+
+  const uploadInputs: Array<{
+    caseId: string;
+    fileName: string;
+    mimeType: string | null;
+  }> = [];
+
+  const baseUrl = await startServer(t, {
+    uploadDocument: async (input) => {
+      uploadInputs.push({
+        caseId: input.caseId,
+        fileName: input.file.fileName,
+        mimeType: input.file.mimeType,
+      });
+      return {
+        classification: {
+          sourceEvidenceId: null,
+          fileName: input.file.fileName,
+          classification: 'ACCOUNT_OPENING_FORM',
+          confidence: 'HIGH',
+          score: 40,
+          matchedEvidence: ['account opening form wording'],
+          missingEvidence: [],
+          warnings: [],
+          safeForAutomaticCompletion: false,
+        },
+        detail: buildCaseDetail(),
+      };
+    },
+  });
+
+  function pdfForm(): FormData {
+    const form = new FormData();
+    form.append(
+      'file',
+      new Blob([Buffer.from('Supplier Account Opening Form')], {
+        type: 'application/pdf',
+      }),
+      'account-opening-form.pdf',
+    );
+    return form;
+  }
+
+  const unauthorized = await fetch(
+    `${baseUrl}/account-opening/case-1/documents`,
+    { method: 'POST', body: pdfForm() },
+  );
+
+  const response = await fetch(`${baseUrl}/account-opening/case-1/documents`, {
+    method: 'POST',
+    headers: { 'x-internal-api-key': 'test-secret' },
+    body: pdfForm(),
+  });
+  const payload = (await response.json()) as {
+    item: AccountOpeningCaseDetail;
+    classification: { classification: string; confidence: string };
+  };
+
+  // Disallowed type rejected by the real multer fileFilter.
+  const blockedForm = new FormData();
+  blockedForm.append(
+    'file',
+    new Blob([Buffer.from('MZ')], { type: 'application/x-msdownload' }),
+    'malware.exe',
+  );
+  const blocked = await fetch(`${baseUrl}/account-opening/case-1/documents`, {
+    method: 'POST',
+    headers: { 'x-internal-api-key': 'test-secret' },
+    body: blockedForm,
+  });
+
+  assert.equal(unauthorized.status, 401);
+  assert.equal(response.status, 201);
+  assert.equal(payload.classification.classification, 'ACCOUNT_OPENING_FORM');
+  assert.equal(payload.item.id, 'case-1');
+  assert.equal(blocked.status, 400);
+  assert.equal(uploadInputs[0]?.caseId, 'case-1');
+  assert.equal(uploadInputs[0]?.fileName, 'account-opening-form.pdf');
+  assert.equal(uploadInputs[0]?.mimeType, 'application/pdf');
 });

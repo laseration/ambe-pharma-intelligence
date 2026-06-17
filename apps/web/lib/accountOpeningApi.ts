@@ -3,6 +3,7 @@ import 'server-only';
 import type {
   AccountOpeningCaseDetail,
   AccountOpeningCaseListResponse,
+  AccountOpeningDocumentClassification,
   AccountOpeningManualCaseCreated,
   AccountOpeningManualCaseInput,
   AccountOpeningCompletionDraft,
@@ -17,6 +18,7 @@ import type {
 import {
   requestInternalBinaryFile,
   requestInternalJson,
+  requestInternalMultipart,
   requestInternalTextFile,
 } from './internalApiRequest';
 import type { WebCapability } from './authorisation';
@@ -160,6 +162,25 @@ export async function createManualAccountOpeningCase(
     },
   );
   return payload.item;
+}
+
+export type AccountOpeningDocumentUploadResult = {
+  item: AccountOpeningCaseDetail;
+  classification: AccountOpeningDocumentClassification;
+};
+
+export async function uploadAccountOpeningCaseDocument(
+  id: string,
+  formData: FormData,
+): Promise<AccountOpeningDocumentUploadResult> {
+  return requestInternalMultipart<AccountOpeningDocumentUploadResult>(
+    `/account-opening/${encodeURIComponent(id)}/documents`,
+    {
+      callerName: CALLER_NAME,
+      requiredCapability: 'account-opening:manage',
+      formData,
+    },
+  );
 }
 
 export async function getAccountOpeningCase(

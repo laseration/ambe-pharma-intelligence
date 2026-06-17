@@ -1,11 +1,17 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 
 import {
   requireInternalOperatorAccess,
   resolveInternalActor,
 } from '../http/auth';
-import { asyncHandler, NotFoundError, requireFound } from '../http/errors';
+import {
+  asyncHandler,
+  BadRequestError,
+  NotFoundError,
+  requireFound,
+} from '../http/errors';
 import { actorBodySchema } from '../http/routeSchemas';
 import {
   idParamSchema,
@@ -43,6 +49,11 @@ import { ACCOUNT_OPENING_REVIEW_EXPORT_FILE_NAMES } from './reviewExport';
 import { ACCOUNT_OPENING_FILL_PREVIEW_FILE_NAMES } from './fillPreview';
 import { ACCOUNT_OPENING_BINARY_FILL_PREVIEW_FILE_NAMES } from './binaryFillPreview';
 import type { AccountOpeningFieldMappingSaveInput } from './fieldMapping';
+import {
+  attachAccountOpeningCaseDocument,
+  isAllowedAccountOpeningUpload,
+  MAX_ACCOUNT_OPENING_UPLOAD_BYTES,
+} from './documentUpload';
 
 type AccountOpeningRouteDependencies = {
   getCaseDetail: typeof getAccountOpeningCaseDetail;
@@ -63,6 +74,7 @@ type AccountOpeningRouteDependencies = {
   updateStatus: typeof updateAccountOpeningCaseStatus;
   listCases: typeof listAccountOpeningCases;
   createManualCase: typeof createManualAccountOpeningCase;
+  uploadDocument: typeof attachAccountOpeningCaseDocument;
 };
 
 const missingInfoBodySchema = z
@@ -120,6 +132,24 @@ const createCaseBodySchema = z
     internalNote: nullableTrimmedStringSchema,
   })
   .merge(actorBodySchema);
+
+const accountOpeningDocumentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_ACCOUNT_OPENING_UPLOAD_BYTES },
+  fileFilter: (_request, file, callback) => {
+    if (
+      isAllowedAccountOpeningUpload(file.originalname, file.mimetype ?? null)
+    ) {
+      callback(null, true);
+      return;
+    }
+    callback(
+      new BadRequestError(
+        'Unsupported file type. Allowed: PDF, image (PNG/JPG/WEBP), DOCX, XLSX, CSV, or TXT.',
+      ),
+    );
+  },
+});
 
 const generateDraftBodySchema = actorBodySchema.partial().default({});
 const reprocessStoredSourceBodySchema = actorBodySchema.partial().default({});
@@ -198,6 +228,7 @@ const defaultDependencies: AccountOpeningRouteDependencies = {
   updateStatus: updateAccountOpeningCaseStatus,
   listCases: listAccountOpeningCases,
   createManualCase: createManualAccountOpeningCase,
+  uploadDocument: attachAccountOpeningCaseDocument,
 };
 
 function pickMissingInfoResponses(
@@ -287,6 +318,40 @@ export function createAccountOpeningRouter(
         });
 
       response.status(201).json({ item: created });
+    }),
+  );
+
+  router.post(
+    '/:id/documents',
+    requireInternalOperatorAccess,
+    accountOpeningDocumentUpload.single('file'),
+    asyncHandler(async (request, response) => {
+      const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {
+        params: idParamSchema,
+      });
+      const actor = resolveInternalActor(request, request.body ?? {});
+      const file = request.file;
+      if (!file) {
+        throw new BadRequestError(
+          'No file uploaded. Send the document as multipart field "file".',
+        );
+      }
+
+      const result = await dependencies.uploadDocument({
+        caseId: params.id,
+        file: {
+          fileName: file.originalname,
+          mimeType: file.mimetype ?? null,
+          buffer: file.buffer,
+          size: file.size,
+        },
+        ...actor,
+      });
+
+      response.status(201).json({
+        item: result.detail,
+        classification: result.classification,
+      });
     }),
   );
 
