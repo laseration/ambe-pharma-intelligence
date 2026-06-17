@@ -5,6 +5,7 @@ type UploadDocumentFormProps = {
   error?: string | null;
   classification?: string | null;
   fileName?: string | null;
+  supplierName?: string | null;
   pending?: boolean;
 };
 
@@ -18,6 +19,7 @@ export function UploadDocumentForm({
   error,
   classification,
   fileName,
+  supplierName,
   pending,
 }: UploadDocumentFormProps) {
   return (
@@ -43,6 +45,8 @@ export function UploadDocumentForm({
       {classification ? (
         <div className="alert alert-success" role="status">
           Uploaded {fileName ?? 'document'} — classified as {classification}.
+          {supplierName ? ` Detected supplier: ${supplierName}.` : ''} Review
+          the case before completion.
         </div>
       ) : null}
 

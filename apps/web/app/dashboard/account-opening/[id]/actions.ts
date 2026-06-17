@@ -561,6 +561,7 @@ export type UploadDocumentFormState = {
   error: string | null;
   classification: string | null;
   fileName: string | null;
+  supplierName: string | null;
 };
 
 const MAX_ACCOUNT_OPENING_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -578,6 +579,7 @@ export async function uploadAccountOpeningDocumentAction(
       error: 'Choose a document file to upload.',
       classification: null,
       fileName: null,
+      supplierName: null,
     };
   }
   if (file.size > MAX_ACCOUNT_OPENING_UPLOAD_BYTES) {
@@ -585,6 +587,7 @@ export async function uploadAccountOpeningDocumentAction(
       error: 'The file exceeds the 10MB limit.',
       classification: null,
       fileName: null,
+      supplierName: null,
     };
   }
 
@@ -598,6 +601,7 @@ export async function uploadAccountOpeningDocumentAction(
       error: null,
       classification: result.classification.classification,
       fileName: result.classification.fileName ?? file.name,
+      supplierName: result.supplierName,
     };
   } catch (error) {
     return {
@@ -607,6 +611,7 @@ export async function uploadAccountOpeningDocumentAction(
           : 'Failed to upload the document.',
       classification: null,
       fileName: null,
+      supplierName: null,
     };
   }
 }

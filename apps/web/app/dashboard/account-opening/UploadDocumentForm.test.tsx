@@ -50,10 +50,12 @@ test('upload document form surfaces a classification result and an error state',
       action: noop,
       classification: 'ACCOUNT_OPENING_FORM',
       fileName: 'account-opening-form.pdf',
+      supplierName: 'Acme Pharma Ltd',
     }),
   );
   assert.match(ok, /classified as\s+ACCOUNT_OPENING_FORM/);
   assert.match(ok, /account-opening-form\.pdf/);
+  assert.match(ok, /Detected supplier:\s+Acme Pharma Ltd/);
 
   const failed = collectText(
     UploadDocumentForm({

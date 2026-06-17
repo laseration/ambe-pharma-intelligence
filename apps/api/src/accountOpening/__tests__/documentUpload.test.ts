@@ -125,6 +125,30 @@ test('attachAccountOpeningCaseDocument classifies an account-opening form and st
   assert.equal(captured.events[0]?.actorIdentifier, 'operator-1');
 });
 
+test('attachAccountOpeningCaseDocument extracts a supplier name from the document text', async () => {
+  const { deps, captured } = captureDeps({
+    extractText: async () => ({
+      method: 'PDF_TEXT',
+      text: 'Account Opening Form. Supplier: Acme Pharma Ltd. Main contact: Jane Doe, jane@acmepharma.co.uk.',
+      warnings: [],
+    }),
+  });
+
+  const result = await attachAccountOpeningCaseDocument(
+    { caseId: 'case-1', file: pdfFile() },
+    deps,
+  );
+
+  assert.match(result.supplierNameCandidate ?? '', /Acme Pharma/i);
+  // Candidate is stored on the evidence metadata for operator review (not
+  // auto-applied to the case header).
+  const meta = captured.evidence[0]!.evidence.metadata as Record<
+    string,
+    unknown
+  >;
+  assert.match(String(meta.supplierNameCandidate), /Acme Pharma/i);
+});
+
 test('attachAccountOpeningCaseDocument differentiates a price list from an account-opening form', async () => {
   const { deps } = captureDeps({
     extractText: async () => ({

@@ -12,6 +12,7 @@ const INITIAL_STATE: UploadDocumentFormState = {
   error: null,
   classification: null,
   fileName: null,
+  supplierName: null,
 };
 
 export function UploadDocumentSection({ caseId }: { caseId: string }) {
@@ -24,6 +25,7 @@ export function UploadDocumentSection({ caseId }: { caseId: string }) {
       error={state.error}
       classification={state.classification}
       fileName={state.fileName}
+      supplierName={state.supplierName}
       pending={pending}
     />
   );

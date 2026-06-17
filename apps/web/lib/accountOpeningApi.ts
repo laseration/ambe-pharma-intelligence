@@ -167,6 +167,7 @@ export async function createManualAccountOpeningCase(
 export type AccountOpeningDocumentUploadResult = {
   item: AccountOpeningCaseDetail;
   classification: AccountOpeningDocumentClassification;
+  supplierName: string | null;
 };
 
 export async function uploadAccountOpeningCaseDocument(

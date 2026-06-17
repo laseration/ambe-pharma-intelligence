@@ -549,6 +549,7 @@ async function startServer(
         warnings: [],
         safeForAutomaticCompletion: false,
       },
+      supplierNameCandidate: 'Example Supplier Ltd',
       detail: defaultDetail,
     }),
     ...dependencies,
@@ -1915,6 +1916,7 @@ test('account-opening document upload route requires auth, parses multipart, and
           warnings: [],
           safeForAutomaticCompletion: false,
         },
+        supplierNameCandidate: 'Example Supplier Ltd',
         detail: buildCaseDetail(),
       };
     },
@@ -1945,6 +1947,7 @@ test('account-opening document upload route requires auth, parses multipart, and
   const payload = (await response.json()) as {
     item: AccountOpeningCaseDetail;
     classification: { classification: string; confidence: string };
+    supplierName: string | null;
   };
 
   // Disallowed type rejected by the real multer fileFilter.
@@ -1963,6 +1966,7 @@ test('account-opening document upload route requires auth, parses multipart, and
   assert.equal(unauthorized.status, 401);
   assert.equal(response.status, 201);
   assert.equal(payload.classification.classification, 'ACCOUNT_OPENING_FORM');
+  assert.equal(payload.supplierName, 'Example Supplier Ltd');
   assert.equal(payload.item.id, 'case-1');
   assert.equal(blocked.status, 400);
   assert.equal(uploadInputs[0]?.caseId, 'case-1');
