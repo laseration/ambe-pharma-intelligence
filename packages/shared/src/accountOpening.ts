@@ -21,6 +21,7 @@ export type AccountOpeningFieldClass =
   | 'CREDIT_RISK'
   | 'LEGAL_RISK'
   | 'REGULATORY_DECLARATION'
+  | 'STOCKHOLDING'
   | 'UNKNOWN';
 
 export type AccountOpeningPolicyDecisionKind =
@@ -36,6 +37,7 @@ export type AccountOpeningPolicyRiskCategory =
   | 'CREDIT_RISK'
   | 'LEGAL_RISK'
   | 'REGULATORY'
+  | 'STOCKHOLDING'
   | 'UNKNOWN';
 
 export type AccountOpeningPolicyRiskFlag = {
@@ -534,6 +536,41 @@ export type AccountOpeningStatusAction =
   | 'MARKED_NEEDS_INFO'
   | 'APPROVED_FOR_COMPLETION'
   | 'REJECTED';
+
+export type AccountOpeningCaseTypeHint = 'SUPPLIER' | 'CUSTOMER' | 'UNKNOWN';
+
+export type AccountOpeningCaseSourceChannel = 'EMAIL' | 'MANUAL';
+
+/**
+ * Lightweight read-only projection of an AccountOpeningCase for the dedicated
+ * operator list view. This is a summary DTO, NOT a new persistence model.
+ * `caseTypeHint` and `sourceChannel` are best-effort derivations from existing
+ * fields until the authoritative caseType / sourceChannel columns land in the
+ * manual-create PR.
+ */
+export type AccountOpeningCaseListItem = {
+  id: string;
+  companyName: string | null;
+  counterpartyEmail: string | null;
+  counterpartyDomain: string | null;
+  subject: string | null;
+  detectedFormType: string | null;
+  caseTypeHint: AccountOpeningCaseTypeHint;
+  status: string;
+  recommendedSigner: string;
+  riskFlagCount: number;
+  riskFlagLabels: string[];
+  sourceChannel: AccountOpeningCaseSourceChannel;
+  receivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AccountOpeningCaseListResponse = {
+  items: AccountOpeningCaseListItem[];
+  total: number;
+  statusFilter: string | null;
+};
 
 export type AccountOpeningCaseDetail = {
   id: string;

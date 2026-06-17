@@ -8,6 +8,7 @@ export type AccountOpeningFieldClass =
   | 'CREDIT_RISK'
   | 'LEGAL_RISK'
   | 'REGULATORY_DECLARATION'
+  | 'STOCKHOLDING'
   | 'UNKNOWN';
 
 export type AccountOpeningPolicyDecisionKind =
@@ -23,6 +24,7 @@ export type AccountOpeningPolicyRiskCategory =
   | 'CREDIT_RISK'
   | 'LEGAL_RISK'
   | 'REGULATORY'
+  | 'STOCKHOLDING'
   | 'UNKNOWN';
 
 export type AccountOpeningFieldPolicyDecision = {
@@ -41,6 +43,7 @@ export type AccountOpeningFieldPolicyDecision = {
     | 'GUARANTEE_OR_INDEMNITY'
     | 'CREDIT_APPROVAL'
     | 'REGULATORY_DECLARATION'
+    | 'STOCKHOLDING'
     | 'UNKNOWN';
 };
 
@@ -75,6 +78,8 @@ const REGULATORY_SIGNATORY_ROUTING_NOTE =
   'Route RP/GDP/WDA/regulatory declarations to Dilshad Moulana for review.';
 const NO_AUTO_SIGN_NOTE =
   'Never auto-sign, insert a signature image, or fill signature/date fields. Prepare a review-ready draft only.';
+const STOCKHOLDING_REVIEW_NOTE =
+  'Warehouse, stockholding, storage, and cold-chain capability claims must stay blank and be verified by a human against active source evidence. Do not assert that Ambe holds stock or operates a warehouse unless an active document confirms it (Ambe is trading-focused by default).';
 
 const FORBIDDEN_PATTERNS: Array<{
   category: AccountOpeningFieldPolicyDecision['category'];
@@ -138,6 +143,16 @@ const FORBIDDEN_PATTERNS: Array<{
       'Credit approval, credit-account, and credit-term fields must not be auto-filled.',
     signingNote:
       'Credit terms and credit-risk fields require commercial review before completion.',
+  },
+  {
+    category: 'STOCKHOLDING',
+    fieldClass: 'STOCKHOLDING',
+    riskCategory: 'STOCKHOLDING',
+    pattern:
+      /\b(warehous(?:e|es|ing)|stock[-\s]?holding|stock[-\s]?storage|storage\s+(?:capacity|facilit(?:y|ies)|capabilit(?:y|ies)|site|sites|premises)|cold[-\s]?chain|temperature[-\s]?(?:controlled|monitored|monitoring)|refrigerat(?:ed|ion))\b/i,
+    reason:
+      'Warehouse/stockholding/storage/cold-chain capability questions must stay blank and be verified by a human against active source evidence (Ambe is trading-focused).',
+    signingNote: STOCKHOLDING_REVIEW_NOTE,
   },
   {
     category: 'REGULATORY_DECLARATION',

@@ -18,6 +18,10 @@ export default async function DashboardLayout({
   const canViewCustomers = roleHasCapability(session.role, 'customers:view');
   const canViewImports = roleHasCapability(session.role, 'imports:view');
   const canReview = roleHasCapability(session.role, 'review:view');
+  const canViewAccountOpening = roleHasCapability(
+    session.role,
+    'account-opening:view',
+  );
   const canViewSetup = roleHasCapability(session.role, 'system:admin');
   const recentInboxEmails = canViewInbox
     ? await listInboundEmails({ take: 25 }).catch(() => [])
@@ -51,6 +55,7 @@ export default async function DashboardLayout({
         canViewInventory={canViewInventory}
         canViewCustomers={canViewCustomers}
         canReview={canReview}
+        canViewAccountOpening={canViewAccountOpening}
         canViewSetup={canViewSetup}
         recentEmailTimestamps={recentEmailTimestamps}
       />

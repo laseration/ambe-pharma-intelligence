@@ -18,6 +18,7 @@ import {
 import { evaluateAccountOpeningAutofillPolicy } from '../policy';
 import type {
   AccountOpeningCaseDetail,
+  AccountOpeningCaseListItem,
   AccountOpeningMissingInfoResponses,
   AccountOpeningReadinessReport,
 } from '../service';
@@ -528,6 +529,7 @@ async function startServer(
     },
     saveMissingInfo: async () => defaultDetail,
     updateStatus: async () => defaultDetail,
+    listCases: async () => [],
     ...dependencies,
   };
   app.use(express.json());
@@ -1716,4 +1718,70 @@ test('account-opening review export routes require internal operator access', as
     exportedInputs[0]?.actorIdentifier,
     'internal-operator:route-export-test',
   );
+});
+
+test('account-opening list route requires operator access and forwards status/search filters', async (t) => {
+  overrideEnv(t, {
+    nodeEnv: 'test',
+    internalApiKey: 'test-secret',
+    internalAdminApiKey: 'admin-secret',
+  });
+
+  const listInputs: Array<{
+    statuses?: readonly string[];
+    search?: string | null;
+    limit?: number;
+  }> = [];
+
+  const listItem: AccountOpeningCaseListItem = {
+    id: 'case-1',
+    companyName: 'AMBE LTD',
+    counterpartyEmail: 'forms@supplier.co.uk',
+    counterpartyDomain: 'supplier.co.uk',
+    subject: 'Supplier account opening form',
+    detectedFormType: 'supplier account application',
+    caseTypeHint: 'SUPPLIER',
+    status: 'PENDING_REVIEW',
+    recommendedSigner: 'Aman Dhillon',
+    riskFlagCount: 1,
+    riskFlagLabels: ['Direct Debit mandate'],
+    sourceChannel: 'EMAIL',
+    receivedAt: '2026-05-12T09:00:00.000Z',
+    createdAt: '2026-05-12T09:00:00.000Z',
+    updatedAt: '2026-05-12T09:05:00.000Z',
+  };
+
+  const baseUrl = await startServer(t, {
+    listCases: async (filter) => {
+      listInputs.push(filter ?? {});
+      return [listItem];
+    },
+  });
+
+  const unauthorizedResponse = await fetch(`${baseUrl}/account-opening`);
+  const response = await fetch(
+    `${baseUrl}/account-opening?status=PENDING_REVIEW&search=ambe&limit=10`,
+    {
+      headers: {
+        'x-internal-api-key': 'test-secret',
+      },
+    },
+  );
+  const payload = (await response.json()) as {
+    items: AccountOpeningCaseListItem[];
+    total: number;
+    statusFilter: string | null;
+  };
+
+  assert.equal(unauthorizedResponse.status, 401);
+  assert.equal(response.status, 200);
+  assert.equal(payload.items.length, 1);
+  assert.equal(payload.total, 1);
+  assert.equal(payload.statusFilter, 'PENDING_REVIEW');
+  assert.equal(payload.items[0]?.id, 'case-1');
+  assert.equal(payload.items[0]?.caseTypeHint, 'SUPPLIER');
+  assert.deepEqual(listInputs[0]?.statuses, ['PENDING_REVIEW']);
+  assert.equal(listInputs[0]?.search, 'ambe');
+  assert.equal(listInputs[0]?.limit, 10);
+  assert.doesNotMatch(JSON.stringify(payload), /12345678/);
 });

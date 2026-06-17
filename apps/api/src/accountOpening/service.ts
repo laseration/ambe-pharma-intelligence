@@ -5,6 +5,9 @@ import { Prisma } from '@prisma/client';
 import type {
   AccountOpeningBinaryFillPreviewDetail,
   AccountOpeningCaseDetail,
+  AccountOpeningCaseListItem,
+  AccountOpeningCaseSourceChannel,
+  AccountOpeningCaseTypeHint,
   AccountOpeningCompanyProfileSummary,
   AccountOpeningCompletedFormFilingDetail,
   AccountOpeningDocumentLifecycleSummary,
@@ -29,6 +32,9 @@ import type {
 export type {
   AccountOpeningBinaryFillPreviewDetail,
   AccountOpeningCaseDetail,
+  AccountOpeningCaseListItem,
+  AccountOpeningCaseSourceChannel,
+  AccountOpeningCaseTypeHint,
   AccountOpeningCompanyProfileSummary,
   AccountOpeningCompletedFormFilingDetail,
   AccountOpeningDocumentLifecycleSummary,
@@ -48,6 +54,7 @@ export type {
   AccountOpeningSourceProvenance,
   AccountOpeningStatusAction,
 } from '@ambe/shared';
+import { ConflictError } from '../http/errors';
 import { db } from '../lib/db';
 import { buildCorrelationId } from '../observability/correlation';
 import {
@@ -2850,6 +2857,16 @@ export async function updateAccountOpeningCaseStatus(input: {
     throw new Error('Account-opening case not found.');
   }
 
+  // Terminal-state guard: once a case is REJECTED or CLOSED it must not be
+  // transitioned again. Without this, re-approving a rejected case would fall
+  // through to APPROVED_FOR_COMPLETION below and re-trigger a Drive archive
+  // upload of the completed pack. Block it before any write or side effect.
+  if (existing.status === 'REJECTED' || existing.status === 'CLOSED') {
+    throw new ConflictError(
+      'Rejected or closed account-opening cases cannot change status.',
+    );
+  }
+
   const newStatus = STATUS_ACTIONS[input.action];
   let updated = await repository.update({
     where: { id: input.id },
@@ -5164,9 +5181,123 @@ export async function upsertAccountOpeningCase(
   });
 }
 
-export async function listOpenAccountOpeningCases(): Promise<
-  PersistedAccountOpeningReviewCase[]
-> {
+export type AccountOpeningCaseListFilter = {
+  statuses?: readonly string[];
+  search?: string | null;
+  limit?: number;
+};
+
+const ACCOUNT_OPENING_LIST_DEFAULT_LIMIT = 100;
+const ACCOUNT_OPENING_LIST_MAX_LIMIT = 200;
+
+function clampAccountOpeningListLimit(limit: number | undefined): number {
+  const requested = Math.trunc(limit ?? ACCOUNT_OPENING_LIST_DEFAULT_LIMIT);
+  if (!Number.isFinite(requested)) {
+    return ACCOUNT_OPENING_LIST_DEFAULT_LIMIT;
+  }
+  return Math.min(Math.max(requested, 1), ACCOUNT_OPENING_LIST_MAX_LIMIT);
+}
+
+// Pure query-args builder so the filter logic is unit-testable without a
+// database. Status filtering is pushed to the database; free-text search is
+// applied in-memory (see queryAccountOpeningCases) to keep this provider-
+// agnostic — no Prisma `mode: 'insensitive'` that would break on SQLite.
+export function buildAccountOpeningCaseListQueryArgs(
+  filter: AccountOpeningCaseListFilter = {},
+): { where: Record<string, unknown>; take: number } {
+  const where: Record<string, unknown> = {};
+  if (filter.statuses && filter.statuses.length > 0) {
+    where.status = { in: [...filter.statuses] };
+  }
+
+  // When searching, scan a wider window before slicing to the requested limit.
+  const take = filter.search?.trim()
+    ? ACCOUNT_OPENING_LIST_MAX_LIMIT
+    : clampAccountOpeningListLimit(filter.limit);
+
+  return { where, take };
+}
+
+export function accountOpeningCaseMatchesSearch(
+  accountCase: Pick<
+    PersistedAccountOpeningReviewCase,
+    'companyName' | 'senderEmail' | 'senderDomain' | 'subject'
+  >,
+  search: string,
+): boolean {
+  const needle = search.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  const haystack = [
+    accountCase.companyName,
+    accountCase.senderEmail,
+    accountCase.senderDomain,
+    accountCase.subject,
+  ]
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(needle);
+}
+
+function deriveAccountOpeningCaseTypeHint(
+  accountCase: PersistedAccountOpeningReviewCase,
+): AccountOpeningCaseTypeHint {
+  const haystack = `${accountCase.detectedFormType ?? ''} ${
+    accountCase.subject ?? ''
+  }`.toLowerCase();
+  if (/\bsupplier\b/.test(haystack)) {
+    return 'SUPPLIER';
+  }
+  if (/\bcustomer\b/.test(haystack)) {
+    return 'CUSTOMER';
+  }
+  return 'UNKNOWN';
+}
+
+function deriveAccountOpeningSourceChannel(
+  accountCase: PersistedAccountOpeningReviewCase,
+): AccountOpeningCaseSourceChannel {
+  // Best-effort until an authoritative sourceChannel column exists: cases that
+  // carry an email message id arrived through the email/EML intake pipeline.
+  return accountCase.messageId ? 'EMAIL' : 'MANUAL';
+}
+
+export function toAccountOpeningCaseListItem(
+  accountCase: PersistedAccountOpeningReviewCase,
+): AccountOpeningCaseListItem {
+  const rawRiskFlags = Array.isArray(accountCase.riskFlags)
+    ? accountCase.riskFlags
+    : [];
+  const riskFlagLabels = rawRiskFlags.filter(
+    (value): value is string => typeof value === 'string',
+  );
+
+  return {
+    id: accountCase.id,
+    companyName: accountCase.companyName,
+    counterpartyEmail: accountCase.senderEmail,
+    counterpartyDomain: accountCase.senderDomain,
+    subject: accountCase.subject,
+    detectedFormType: accountCase.detectedFormType,
+    caseTypeHint: deriveAccountOpeningCaseTypeHint(accountCase),
+    status: accountCase.status,
+    recommendedSigner: accountCase.recommendedSigner,
+    riskFlagCount: rawRiskFlags.length,
+    riskFlagLabels: riskFlagLabels.slice(0, 6),
+    sourceChannel: deriveAccountOpeningSourceChannel(accountCase),
+    receivedAt: accountCase.receivedAt
+      ? accountCase.receivedAt.toISOString()
+      : null,
+    createdAt: accountCase.createdAt.toISOString(),
+    updatedAt: accountCase.updatedAt.toISOString(),
+  };
+}
+
+async function queryAccountOpeningCases(
+  filter: AccountOpeningCaseListFilter = {},
+): Promise<PersistedAccountOpeningReviewCase[]> {
   const client = db as never as {
     accountOpeningCase?: {
       findMany: (args: unknown) => Promise<PersistedAccountOpeningReviewCase[]>;
@@ -5177,15 +5308,42 @@ export async function listOpenAccountOpeningCases(): Promise<
     return [];
   }
 
-  return client.accountOpeningCase.findMany({
-    where: {
-      status: {
-        in: ['PENDING_REVIEW', 'NEEDS_INFO'],
-      },
-    },
+  const { where, take } = buildAccountOpeningCaseListQueryArgs(filter);
+  const cases = await client.accountOpeningCase.findMany({
+    where,
     orderBy: [{ updatedAt: 'desc' }],
-    take: 100,
+    take,
   });
+
+  const search = filter.search?.trim();
+  if (!search) {
+    return cases;
+  }
+
+  const limit = clampAccountOpeningListLimit(filter.limit);
+  return cases
+    .filter((accountCase) =>
+      accountOpeningCaseMatchesSearch(accountCase, search),
+    )
+    .slice(0, limit);
+}
+
+// Preserved for the unified Review Queue consumer: the open review subset only.
+export async function listOpenAccountOpeningCases(): Promise<
+  PersistedAccountOpeningReviewCase[]
+> {
+  return queryAccountOpeningCases({
+    statuses: ['PENDING_REVIEW', 'NEEDS_INFO'],
+  });
+}
+
+// Dedicated operator list: any status, optional status filter + free-text
+// search, projected to the read-only list DTO.
+export async function listAccountOpeningCases(
+  filter: AccountOpeningCaseListFilter = {},
+): Promise<AccountOpeningCaseListItem[]> {
+  const cases = await queryAccountOpeningCases(filter);
+  return cases.map(toAccountOpeningCaseListItem);
 }
 
 export function buildSigningNotesFromPersistedCase(
