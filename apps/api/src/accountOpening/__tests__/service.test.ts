@@ -27,9 +27,13 @@ import {
   saveAccountOpeningMissingInfo,
   accountOpeningCaseMatchesSearch,
   buildAccountOpeningCaseListQueryArgs,
+  buildManualAccountOpeningSourceFingerprint,
+  createManualAccountOpeningCase,
   toAccountOpeningCaseListItem,
   updateAccountOpeningCaseStatus,
   writeDraftAuditEvents,
+  type AccountOpeningCaseDetail,
+  type AccountOpeningCasePersistenceInput,
   type AccountOpeningCaseRepository,
   type AccountOpeningCaseEventInput,
   type PersistedAccountOpeningBinaryFillPreview,
@@ -411,6 +415,8 @@ function buildPersistedAccountOpeningCase(
     receivedAt: new Date('2026-05-12T09:00:00.000Z'),
     companyName: 'AMBE LTD',
     detectedFormType: 'account opening form',
+    caseType: null,
+    sourceChannel: null,
     status: 'PENDING_REVIEW',
     recommendedSigner: 'Aman Dhillon',
     signingStatement:
@@ -3285,4 +3291,141 @@ test('a non-terminal case can still transition normally', async () => {
 
   assert.equal(getCurrent().status, 'NEEDS_INFO');
   assert.equal((events[0] as { newStatus?: string }).newStatus, 'NEEDS_INFO');
+});
+
+test('createManualAccountOpeningCase builds a safe review-first case and records an audit event', async () => {
+  const persistInputs: AccountOpeningCasePersistenceInput[] = [];
+  const events: AccountOpeningCaseEventInput[] = [];
+
+  const created = await createManualAccountOpeningCase(
+    {
+      counterpartyName: '  Example Supplier Ltd  ',
+      counterpartyEmail: 'forms@supplier.test',
+      caseType: 'SUPPLIER_ONBOARDING',
+      internalNote:
+        'Forwarded via WhatsApp. Account number 12345678 mentioned.',
+      actorType: 'OPERATOR',
+      actorIdentifier: 'operator-1',
+    },
+    {
+      persist: async (input) => {
+        persistInputs.push(input);
+        return { id: 'manual-1' };
+      },
+      recordEvent: async (event) => {
+        events.push(event);
+      },
+      getDetail: async (id) =>
+        ({
+          id,
+          companyName: 'Example Supplier Ltd',
+          status: 'PENDING_REVIEW',
+        }) as unknown as AccountOpeningCaseDetail,
+      generateUniqueSuffix: () => 'uuid-123',
+    },
+  );
+
+  const persisted = persistInputs[0]!;
+  // Authoritative intake metadata is persisted.
+  assert.equal(persisted.caseType, 'SUPPLIER_ONBOARDING');
+  assert.equal(persisted.sourceChannel, 'MANUAL');
+  // Deterministic, prefixed source fingerprint.
+  assert.equal(
+    persisted.accountCase.sourceFingerprint,
+    'manual:example-supplier-ltd:uuid-123',
+  );
+  // Counterparty name is the display company name; signer defaults to Aman.
+  assert.equal(
+    persisted.accountCase.structuredFields.companyName,
+    'Example Supplier Ltd',
+  );
+  assert.equal(
+    persisted.accountCase.signingNotes.recommendedSigner,
+    'Aman Dhillon',
+  );
+  // No documents, no invented values, no risk flags.
+  assert.equal(persisted.accountCase.sourceEvidence.length, 0);
+  assert.equal(
+    persisted.accountCase.structuredFields.vatNumber,
+    'To be confirmed',
+  );
+  assert.deepEqual(persisted.accountCase.riskFlags, []);
+  // Bank account number in the note is redacted before storage.
+  assert.doesNotMatch(
+    JSON.stringify(persisted.missingInfoResponses),
+    /12345678/,
+  );
+
+  // Operator-attributed creation event, also redacted.
+  assert.equal(events[0]?.actionType, 'MANUAL_CASE_CREATED');
+  assert.equal(events[0]?.actorType, 'OPERATOR');
+  assert.equal(events[0]?.actorIdentifier, 'operator-1');
+  assert.doesNotMatch(JSON.stringify(events[0]), /12345678/);
+
+  // Echo for the web redirect.
+  assert.equal(created.id, 'manual-1');
+  assert.equal(created.caseType, 'SUPPLIER_ONBOARDING');
+  assert.equal(created.sourceChannel, 'MANUAL');
+  assert.equal(created.status, 'PENDING_REVIEW');
+});
+
+test('createManualAccountOpeningCase rejects a missing counterparty name without persisting', async () => {
+  let persisted = false;
+  await assert.rejects(
+    () =>
+      createManualAccountOpeningCase(
+        { counterpartyName: '   ', caseType: 'UNKNOWN' },
+        {
+          persist: async () => {
+            persisted = true;
+            return { id: 'should-not-happen' };
+          },
+        },
+      ),
+    /counterparty name is required/i,
+  );
+  assert.equal(persisted, false);
+});
+
+test('buildManualAccountOpeningSourceFingerprint is deterministic, prefixed, and collision-free per suffix', () => {
+  const a = buildManualAccountOpeningSourceFingerprint({
+    counterpartyName: 'Example Supplier Ltd',
+    uniqueSuffix: 's1',
+  });
+  const b = buildManualAccountOpeningSourceFingerprint({
+    counterpartyName: 'Example Supplier Ltd',
+    uniqueSuffix: 's2',
+  });
+  assert.equal(a, 'manual:example-supplier-ltd:s1');
+  // Same counterparty name, different suffix => different fingerprint (no collision).
+  assert.notEqual(a, b);
+  // Normalization stays stable/prefixed for messy punctuation and casing.
+  assert.equal(
+    buildManualAccountOpeningSourceFingerprint({
+      counterpartyName: '  Example & Co.!  ',
+      uniqueSuffix: 's',
+    }),
+    'manual:example-co:s',
+  );
+});
+
+test('toAccountOpeningCaseListItem prefers authoritative caseType/sourceChannel columns', () => {
+  const item = toAccountOpeningCaseListItem(
+    buildPersistedAccountOpeningCase({
+      caseType: 'CUSTOMER_ONBOARDING',
+      sourceChannel: 'MANUAL',
+      messageId: null,
+      detectedFormType: null,
+      subject: null,
+    }),
+  );
+  assert.equal(item.caseTypeHint, 'CUSTOMER');
+  assert.equal(item.sourceChannel, 'MANUAL');
+
+  // Falls back to the derived hint when the columns are absent (messageId set
+  // in the fixture => derived EMAIL channel).
+  const derived = toAccountOpeningCaseListItem(
+    buildPersistedAccountOpeningCase({ caseType: null, sourceChannel: null }),
+  );
+  assert.equal(derived.sourceChannel, 'EMAIL');
 });

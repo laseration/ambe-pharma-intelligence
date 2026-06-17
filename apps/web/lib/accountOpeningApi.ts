@@ -3,6 +3,8 @@ import 'server-only';
 import type {
   AccountOpeningCaseDetail,
   AccountOpeningCaseListResponse,
+  AccountOpeningManualCaseCreated,
+  AccountOpeningManualCaseInput,
   AccountOpeningCompletionDraft,
   AccountOpeningCompletedFormFilingDetail,
   AccountOpeningFieldMappingReview,
@@ -24,6 +26,9 @@ export type {
   AccountOpeningCaseDetail,
   AccountOpeningCaseListItem,
   AccountOpeningCaseListResponse,
+  AccountOpeningCaseType,
+  AccountOpeningManualCaseCreated,
+  AccountOpeningManualCaseInput,
   AccountOpeningCompletedFormFilingDetail,
   AccountOpeningCompletionDraft,
   AccountOpeningDocumentLifecycleSummary,
@@ -132,6 +137,29 @@ export async function listAccountOpeningCases(
     `/account-opening${query ? `?${query}` : ''}`,
     { requiredCapability: 'account-opening:view' },
   );
+}
+
+export async function createManualAccountOpeningCase(
+  input: AccountOpeningManualCaseInput,
+): Promise<AccountOpeningManualCaseCreated> {
+  const payload = await requestJson<{ item: AccountOpeningManualCaseCreated }>(
+    '/account-opening',
+    {
+      requiredCapability: 'account-opening:manage',
+      init: {
+        method: 'POST',
+        body: JSON.stringify({
+          counterpartyName: input.counterpartyName,
+          counterpartyEmail: input.counterpartyEmail ?? null,
+          caseType: input.caseType,
+          internalNote: input.internalNote ?? null,
+          actorType: 'OPERATOR',
+          actorIdentifier: 'web-account-opening-create',
+        }),
+      },
+    },
+  );
+  return payload.item;
 }
 
 export async function getAccountOpeningCase(

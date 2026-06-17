@@ -63,6 +63,8 @@ test('account-opening cases content renders safe read-only case rows', () => {
   );
 
   assert.match(text, /Account Opening Cases/);
+  // The operator can start a manual case from the list.
+  assert.match(text, /New case/);
   // Read-only safety promise is surfaced to the operator.
   assert.match(text, /never signs, sends, or submits/i);
   assert.match(text, /Example Supplier Ltd/);
@@ -77,7 +79,7 @@ test('account-opening cases content renders safe read-only case rows', () => {
   assert.doesNotMatch(text, /\d{2}-\d{2}-\d{2}/);
 });
 
-test('account-opening cases content shows an empty state noting manual create is coming', () => {
+test('account-opening cases content shows an empty state pointing to New case', () => {
   const text = collectText(
     AccountOpeningCasesContent({
       cases: { total: 0, statusFilter: 'PENDING_REVIEW', items: [] },
@@ -86,5 +88,5 @@ test('account-opening cases content shows an empty state noting manual create is
   );
 
   assert.match(text, /No account-opening cases/);
-  assert.match(text, /Manual case creation from the dashboard is coming/);
+  assert.match(text, /start one now with the .New case. button/);
 });

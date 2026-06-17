@@ -650,6 +650,8 @@ model AccountOpeningCase {
   receivedAt            DateTime?
   companyName           String?
   detectedFormType      String?
+  caseType              String?
+  sourceChannel         String?
   status                AccountOpeningStatus           @default(PENDING_REVIEW)
   recommendedSigner     String                         @default("Aman Dhillon")
   signingStatement      String                         @default("Aman Dhillon can sign this account-opening form by default.")
