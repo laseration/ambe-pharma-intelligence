@@ -11,6 +11,7 @@ type DashboardSidebarProps = {
   canViewInventory: boolean;
   canViewCustomers: boolean;
   canReview: boolean;
+  canViewAccountOpening: boolean;
   canViewSetup: boolean;
   recentEmailTimestamps: string[];
 };
@@ -28,6 +29,7 @@ export function DashboardSidebar({
   canViewInventory,
   canViewCustomers,
   canReview,
+  canViewAccountOpening,
   canViewSetup,
   recentEmailTimestamps,
 }: DashboardSidebarProps) {
@@ -61,6 +63,9 @@ export function DashboardSidebar({
         <Link href="/dashboard/opportunities">Opportunities</Link>
         <Link href="/dashboard/deals">Deals</Link>
         {canReview ? <Link href="/dashboard/review">Review</Link> : null}
+        {canViewAccountOpening ? (
+          <Link href="/dashboard/account-opening">Account Opening</Link>
+        ) : null}
         <Link href="/dashboard/products">Product Records</Link>
         {canViewSetup ? <Link href="/dashboard/setup">Setup</Link> : null}
         <div className="nav-session">

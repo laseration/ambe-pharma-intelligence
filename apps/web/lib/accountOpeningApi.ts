@@ -2,6 +2,7 @@ import 'server-only';
 
 import type {
   AccountOpeningCaseDetail,
+  AccountOpeningCaseListResponse,
   AccountOpeningCompletionDraft,
   AccountOpeningCompletedFormFilingDetail,
   AccountOpeningFieldMappingReview,
@@ -21,6 +22,8 @@ import type { WebCapability } from './authorisation';
 export type {
   AccountOpeningBinaryFillPreviewDetail,
   AccountOpeningCaseDetail,
+  AccountOpeningCaseListItem,
+  AccountOpeningCaseListResponse,
   AccountOpeningCompletedFormFilingDetail,
   AccountOpeningCompletionDraft,
   AccountOpeningDocumentLifecycleSummary,
@@ -103,6 +106,32 @@ async function requestBinaryFile(
     fallbackFileName: 'binary-fill-preview.pdf',
     fallbackContentType: 'application/pdf',
   });
+}
+
+export type AccountOpeningCaseListFilter = {
+  status?: string;
+  search?: string;
+  limit?: number;
+};
+
+export async function listAccountOpeningCases(
+  filter: AccountOpeningCaseListFilter = {},
+): Promise<AccountOpeningCaseListResponse> {
+  const params = new URLSearchParams();
+  if (filter.status) {
+    params.set('status', filter.status);
+  }
+  if (filter.search) {
+    params.set('search', filter.search);
+  }
+  if (filter.limit != null) {
+    params.set('limit', String(filter.limit));
+  }
+  const query = params.toString();
+  return requestJson<AccountOpeningCaseListResponse>(
+    `/account-opening${query ? `?${query}` : ''}`,
+    { requiredCapability: 'account-opening:view' },
+  );
 }
 
 export async function getAccountOpeningCase(

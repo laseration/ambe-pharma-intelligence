@@ -10,6 +10,7 @@ import { actorBodySchema } from '../http/routeSchemas';
 import {
   idParamSchema,
   nullableTrimmedStringSchema,
+  optionalNumberQuerySchema,
   optionalTrimmedStringSchema,
   parseRequest,
 } from '../http/validation';
@@ -26,11 +27,13 @@ import {
   getAccountOpeningFieldMappingReview,
   getAccountOpeningCaseDetail,
   getAccountOpeningReadinessReport,
+  listAccountOpeningCases,
   reprocessAccountOpeningCaseFromStoredSource,
   saveAccountOpeningMissingInfo,
   saveAccountOpeningFieldMappings,
   updateAccountOpeningCaseStatus,
   type AccountOpeningCaseDetail,
+  type AccountOpeningCaseListItem,
   type AccountOpeningMissingInfoResponses,
   type AccountOpeningStatusAction,
 } from './service';
@@ -56,6 +59,7 @@ type AccountOpeningRouteDependencies = {
   downloadExportFile: typeof downloadAccountOpeningReviewedExportFile;
   saveMissingInfo: typeof saveAccountOpeningMissingInfo;
   updateStatus: typeof updateAccountOpeningCaseStatus;
+  listCases: typeof listAccountOpeningCases;
 };
 
 const missingInfoBodySchema = z
@@ -83,6 +87,20 @@ const statusBodySchema = z
     note: optionalTrimmedStringSchema,
   })
   .merge(actorBodySchema);
+
+const ACCOUNT_OPENING_STATUS_VALUES = [
+  'PENDING_REVIEW',
+  'APPROVED_FOR_COMPLETION',
+  'NEEDS_INFO',
+  'REJECTED',
+  'CLOSED',
+] as const;
+
+const listQuerySchema = z.object({
+  status: z.enum(ACCOUNT_OPENING_STATUS_VALUES).optional(),
+  search: optionalTrimmedStringSchema,
+  limit: optionalNumberQuerySchema,
+});
 
 const generateDraftBodySchema = actorBodySchema.partial().default({});
 const reprocessStoredSourceBodySchema = actorBodySchema.partial().default({});
@@ -159,6 +177,7 @@ const defaultDependencies: AccountOpeningRouteDependencies = {
   downloadExportFile: downloadAccountOpeningReviewedExportFile,
   saveMissingInfo: saveAccountOpeningMissingInfo,
   updateStatus: updateAccountOpeningCaseStatus,
+  listCases: listAccountOpeningCases,
 };
 
 function pickMissingInfoResponses(
@@ -199,6 +218,31 @@ export function createAccountOpeningRouter(
   dependencies: AccountOpeningRouteDependencies = defaultDependencies,
 ) {
   const router = Router();
+
+  router.get(
+    '/',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { query } = parseRequest<unknown, z.infer<typeof listQuerySchema>>(
+        request,
+        {
+          query: listQuerySchema,
+        },
+      );
+
+      const items: AccountOpeningCaseListItem[] = await dependencies.listCases({
+        statuses: query.status ? [query.status] : undefined,
+        search: query.search ?? null,
+        limit: query.limit,
+      });
+
+      response.json({
+        items,
+        total: items.length,
+        statusFilter: query.status ?? null,
+      });
+    }),
+  );
 
   router.get(
     '/:id',

@@ -25,6 +25,9 @@ import {
   saveAccountOpeningFieldMappings,
   sanitizeAccountOpeningMissingInfoResponses,
   saveAccountOpeningMissingInfo,
+  accountOpeningCaseMatchesSearch,
+  buildAccountOpeningCaseListQueryArgs,
+  toAccountOpeningCaseListItem,
   updateAccountOpeningCaseStatus,
   writeDraftAuditEvents,
   type AccountOpeningCaseRepository,
@@ -3158,4 +3161,128 @@ test('reject changes account-opening status without send/sign/upload side effect
   assert.equal(detail.status, 'REJECTED');
   assert.equal((events[0] as { actionType?: string }).actionType, 'REJECTED');
   assert.equal((events[0] as { newStatus?: string }).newStatus, 'REJECTED');
+});
+
+test('buildAccountOpeningCaseListQueryArgs filters by status and clamps the limit', () => {
+  assert.deepEqual(buildAccountOpeningCaseListQueryArgs(), {
+    where: {},
+    take: 100,
+  });
+  assert.deepEqual(
+    buildAccountOpeningCaseListQueryArgs({
+      statuses: ['PENDING_REVIEW', 'NEEDS_INFO'],
+      limit: 5,
+    }),
+    { where: { status: { in: ['PENDING_REVIEW', 'NEEDS_INFO'] } }, take: 5 },
+  );
+  // Over/under-sized limits are clamped to [1, 200].
+  assert.equal(buildAccountOpeningCaseListQueryArgs({ limit: 9999 }).take, 200);
+  assert.equal(buildAccountOpeningCaseListQueryArgs({ limit: 0 }).take, 1);
+  // A search widens the scan window before in-memory filtering.
+  assert.equal(
+    buildAccountOpeningCaseListQueryArgs({ search: 'ambe', limit: 5 }).take,
+    200,
+  );
+});
+
+test('accountOpeningCaseMatchesSearch matches counterparty, subject and email case-insensitively', () => {
+  const accountCase = buildPersistedAccountOpeningCase();
+  assert.equal(accountOpeningCaseMatchesSearch(accountCase, 'AMBE'), true);
+  assert.equal(
+    accountOpeningCaseMatchesSearch(accountCase, 'supplier.co.uk'),
+    true,
+  );
+  assert.equal(accountOpeningCaseMatchesSearch(accountCase, 'opening'), true);
+  assert.equal(
+    accountOpeningCaseMatchesSearch(accountCase, 'no-match-xyz'),
+    false,
+  );
+  // An empty needle matches everything (no filter applied).
+  assert.equal(accountOpeningCaseMatchesSearch(accountCase, '  '), true);
+});
+
+test('toAccountOpeningCaseListItem projects a safe read-only summary with derived hints', () => {
+  const supplierItem = toAccountOpeningCaseListItem(
+    buildPersistedAccountOpeningCase(),
+  );
+  assert.equal(supplierItem.id, 'account-case-1');
+  assert.equal(supplierItem.companyName, 'AMBE LTD');
+  assert.equal(supplierItem.counterpartyEmail, 'forms@supplier.co.uk');
+  assert.equal(supplierItem.status, 'PENDING_REVIEW');
+  assert.equal(supplierItem.recommendedSigner, 'Aman Dhillon');
+  assert.equal(supplierItem.riskFlagCount, 3);
+  assert.equal(supplierItem.riskFlagLabels.length, 3);
+  // messageId present => derived EMAIL channel.
+  assert.equal(supplierItem.sourceChannel, 'EMAIL');
+  assert.equal(supplierItem.receivedAt, '2026-05-12T09:00:00.000Z');
+  // Plain "account opening form" wording yields no supplier/customer hint.
+  assert.equal(supplierItem.caseTypeHint, 'UNKNOWN');
+
+  // caseTypeHint derives SUPPLIER / CUSTOMER from form type or subject wording.
+  assert.equal(
+    toAccountOpeningCaseListItem(
+      buildPersistedAccountOpeningCase({
+        detectedFormType: 'supplier account application',
+      }),
+    ).caseTypeHint,
+    'SUPPLIER',
+  );
+  assert.equal(
+    toAccountOpeningCaseListItem(
+      buildPersistedAccountOpeningCase({
+        detectedFormType: null,
+        subject: 'Customer account opening',
+      }),
+    ).caseTypeHint,
+    'CUSTOMER',
+  );
+
+  // No email message id => derived MANUAL channel.
+  assert.equal(
+    toAccountOpeningCaseListItem(
+      buildPersistedAccountOpeningCase({ messageId: null }),
+    ).sourceChannel,
+    'MANUAL',
+  );
+});
+
+test('status transition is blocked for rejected or closed cases (no re-approval, no archive upload)', async () => {
+  for (const terminalStatus of ['REJECTED', 'CLOSED'] as const) {
+    const { repository, events } = createAccountOpeningRepository(
+      buildPersistedAccountOpeningCase({ status: terminalStatus }),
+    );
+
+    await assert.rejects(
+      () =>
+        updateAccountOpeningCaseStatus({
+          id: 'account-case-1',
+          action: 'APPROVED_FOR_COMPLETION',
+          repository,
+        }),
+      (error) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /cannot change status/i);
+        return true;
+      },
+    );
+
+    // The guard runs before any write, so no status change, event, or archive
+    // upload side effect occurs.
+    assert.equal(events.length, 0);
+  }
+});
+
+test('a non-terminal case can still transition normally', async () => {
+  const { repository, events, getCurrent } = createAccountOpeningRepository(
+    buildPersistedAccountOpeningCase({ status: 'PENDING_REVIEW' }),
+  );
+
+  await updateAccountOpeningCaseStatus({
+    id: 'account-case-1',
+    action: 'MARKED_NEEDS_INFO',
+    repository,
+  });
+
+  assert.equal(getCurrent().status, 'NEEDS_INFO');
+  assert.equal((events[0] as { newStatus?: string }).newStatus, 'NEEDS_INFO');
 });
