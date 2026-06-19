@@ -50,6 +50,16 @@ function captureDeps(
       captured.events.push(event);
     },
     getDetail: async (id) => fakeDetail(id),
+    fileToSharePoint: async () => ({
+      status: 'SKIPPED_DISABLED',
+      note: 'SharePoint filing disabled.',
+      storageProvider: null,
+      folderUrl: null,
+      fileUrl: null,
+      driveItemId: null,
+      skippedReason: 'SharePoint filing disabled.',
+      attemptedAt: new Date('2026-05-12T10:00:00.000Z'),
+    }),
     ...overrides,
   };
   return { deps, captured };
@@ -233,4 +243,52 @@ test('attachAccountOpeningCaseDocument 404s for an unknown case and blocks termi
     /rejected or closed/i,
   );
   assert.equal(rejected.captured.evidence.length, 0);
+});
+
+test('attachAccountOpeningCaseDocument files the uploaded document to SharePoint when enabled', async () => {
+  const fileToSharePointCalls: Array<{ fileName: string; bytes: number }> = [];
+  const { deps, captured } = captureDeps({
+    fileToSharePoint: async (input) => {
+      fileToSharePointCalls.push({
+        fileName: input.file.fileName,
+        bytes: input.file.content.length,
+      });
+      return {
+        status: 'UPLOADED',
+        note: 'Filed.',
+        storageProvider: 'SHAREPOINT',
+        folderUrl: 'https://sharepoint.example/folder',
+        fileUrl: 'https://sharepoint.example/file.pdf',
+        driveItemId: 'drive-item-1',
+        skippedReason: null,
+        attemptedAt: new Date('2026-05-12T10:00:00.000Z'),
+      };
+    },
+  });
+
+  const result = await attachAccountOpeningCaseDocument(
+    { caseId: 'case-1', file: pdfFile() },
+    deps,
+  );
+
+  assert.equal(result.sharePoint.status, 'UPLOADED');
+  assert.equal(
+    result.sharePoint.fileUrl,
+    'https://sharepoint.example/file.pdf',
+  );
+  assert.equal(fileToSharePointCalls.length, 1);
+  assert.equal(fileToSharePointCalls[0]?.fileName, 'account-opening-form.pdf');
+  assert.ok((fileToSharePointCalls[0]?.bytes ?? 0) > 0);
+  // The filing status is recorded on the audit event.
+  const eventMeta = captured.events[0]?.metadata as Record<string, unknown>;
+  assert.equal(eventMeta.sharePointStatus, 'UPLOADED');
+});
+
+test('attachAccountOpeningCaseDocument is a safe no-op for SharePoint when disabled', async () => {
+  const { deps } = captureDeps(); // default fileToSharePoint => SKIPPED_DISABLED
+  const result = await attachAccountOpeningCaseDocument(
+    { caseId: 'case-1', file: pdfFile() },
+    deps,
+  );
+  assert.equal(result.sharePoint.status, 'SKIPPED_DISABLED');
 });

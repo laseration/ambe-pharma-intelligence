@@ -7,6 +7,7 @@ import {
   buildAccountOpeningCase,
   upsertAccountOpeningCase,
 } from '../../accountOpening/service';
+import { autoReplyAccountOpeningForm } from '../../accountOpening/autoReply';
 import { env } from '../../config/env';
 import { extractAttachmentText } from '../attachmentTextExtraction';
 import {
@@ -534,6 +535,7 @@ export function createEmailInboundService(
     emailReviewMinBusinessScore: env.openAiEmailReviewMinBusinessScore,
     listStoredReviewItems: listStoredEmailReviewItems,
     persistAccountOpeningCase: upsertAccountOpeningCase,
+    replyWithFilledAccountOpeningForm: autoReplyAccountOpeningForm,
     logger,
     ...overrides,
   };
@@ -686,6 +688,39 @@ export function createEmailInboundService(
           detectedFormType: documentClassification.evidence[0]?.signal ?? null,
           correlationId: accountOpeningCorrelationId,
         });
+
+        // Internal-sender auto-fill-and-reply (gated OFF by default). Best-effort
+        // and non-blocking: a failure here must never break case ingestion.
+        try {
+          const autoReply =
+            await dependencies.replyWithFilledAccountOpeningForm?.({
+              senderEmail,
+              attachments: normalizedAttachments,
+              supplierName:
+                payloadSupplierName ??
+                extractedSupplierName ??
+                mappedSupplierName,
+            });
+          const autoReplyStatus =
+            autoReply && typeof autoReply === 'object' && 'status' in autoReply
+              ? (autoReply as { status: string }).status
+              : undefined;
+          if (autoReplyStatus && autoReplyStatus !== 'SKIPPED_DISABLED') {
+            dependencies.logger.info(
+              'Inbound account opening auto-reply evaluated',
+              { senderEmail, autoReplyStatus },
+            );
+          }
+        } catch (error) {
+          dependencies.logger.info(
+            'Inbound account opening auto-reply errored',
+            {
+              senderEmail,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          );
+        }
+
         recordEmailReviewItems([accountOpeningItem]);
         dependencies.logger.info(
           'Inbound account opening form queued for review',

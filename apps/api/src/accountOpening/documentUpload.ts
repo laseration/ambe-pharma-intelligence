@@ -4,6 +4,10 @@ import { Prisma } from '@prisma/client';
 
 import { extractAttachmentText } from '../email/attachmentTextExtraction';
 import { extractSupplierContact } from '../email/inbound/supplierContactExtraction';
+import {
+  uploadAccountOpeningOriginalDocument,
+  type AccountOpeningOriginalDocumentUploadResult,
+} from './driveArchive';
 import type {
   EmailInboundFileType,
   NormalizedEmailAttachment,
@@ -97,6 +101,7 @@ function detectUploadFileType(
 export type AttachAccountOpeningDocumentResult = {
   classification: AccountOpeningDocumentClassification;
   supplierNameCandidate: string | null;
+  sharePoint: AccountOpeningOriginalDocumentUploadResult;
   detail: AccountOpeningCaseDetail;
 };
 
@@ -104,6 +109,7 @@ export type AttachAccountOpeningDocumentDeps = {
   loadStatus?: (id: string) => Promise<string | null>;
   extractText?: typeof extractAttachmentText;
   extractSupplier?: typeof extractSupplierContact;
+  fileToSharePoint?: typeof uploadAccountOpeningOriginalDocument;
   persistEvidence?: (args: {
     caseId: string;
     evidence: AccountOpeningSourceEvidenceInput;
@@ -203,6 +209,8 @@ export async function attachAccountOpeningCaseDocument(
   const loadStatus = deps.loadStatus ?? defaultLoadStatus;
   const extractText = deps.extractText ?? extractAttachmentText;
   const extractSupplier = deps.extractSupplier ?? extractSupplierContact;
+  const fileToSharePoint =
+    deps.fileToSharePoint ?? uploadAccountOpeningOriginalDocument;
   const persistEvidence = deps.persistEvidence ?? defaultPersistEvidence;
   const recordEvent = deps.recordEvent ?? defaultRecordEvent;
   const getDetail = deps.getDetail ?? getAccountOpeningCaseDetail;
@@ -270,6 +278,25 @@ export async function attachAccountOpeningCaseDocument(
 
   await persistEvidence({ caseId: input.caseId, evidence });
 
+  const detail = await getDetail(input.caseId);
+  if (!detail) {
+    throw new Error(
+      'Account-opening case could not be loaded after document upload.',
+    );
+  }
+
+  // Gated SharePoint filing of the raw uploaded form for review. Stays a safe
+  // no-op (SKIPPED_DISABLED) until SharePoint is configured and enabled — it
+  // never signs, sends, or submits anything.
+  const sharePoint = await fileToSharePoint({
+    item: detail,
+    file: {
+      fileName,
+      contentType: input.file.mimeType ?? 'application/octet-stream',
+      content: input.file.buffer,
+    },
+  });
+
   await recordEvent({
     accountOpeningCaseId: input.caseId,
     actionType: 'DOCUMENT_UPLOADED',
@@ -281,15 +308,10 @@ export async function attachAccountOpeningCaseDocument(
       classification: classification.classification,
       confidence: classification.confidence,
       supplierNameCandidate,
+      sharePointStatus: sharePoint.status,
+      sharePointFileUrl: sharePoint.fileUrl,
     },
   });
 
-  const detail = await getDetail(input.caseId);
-  if (!detail) {
-    throw new Error(
-      'Account-opening case could not be loaded after document upload.',
-    );
-  }
-
-  return { classification, supplierNameCandidate, detail };
+  return { classification, supplierNameCandidate, sharePoint, detail };
 }
