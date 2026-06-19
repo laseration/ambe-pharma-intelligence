@@ -25,6 +25,22 @@ export type AccountOpeningMasterProfile = {
     wholesaleDealerAuthorisation: string;
     cqcRegistration: string;
     standardPaymentPreference: string;
+    faxNumber: string;
+    regulatoryAuthority: string;
+    countryRegion: string;
+    dateStartedTrading: string;
+    wdaGrantedDate: string;
+    lastGdpInspectionDate: string;
+    responsiblePersonEmail: string;
+    responsiblePersonPhone: string;
+    accountsEmail: string;
+    accountsPhone: string;
+    salesName: string;
+    salesEmail: string;
+    salesPhone: string;
+    customerServiceName: string;
+    customerServiceEmail: string;
+    customerServicePhone: string;
     directDebitPlaceholder: string;
     bankDetailsPlaceholder: string;
   };
@@ -74,6 +90,38 @@ export function buildAccountOpeningMasterProfile(): AccountOpeningMasterProfile 
       cqcRegistration: profileValue(env.accountOpeningProfileCqcRegistration),
       standardPaymentPreference: profileValue(
         env.accountOpeningProfileStandardPaymentPreference,
+      ),
+      faxNumber: profileValue(env.accountOpeningProfileFaxNumber),
+      regulatoryAuthority: profileValue(
+        env.accountOpeningProfileRegulatoryAuthority,
+      ),
+      countryRegion: profileValue(env.accountOpeningProfileCountryRegion),
+      dateStartedTrading: profileValue(
+        env.accountOpeningProfileDateStartedTrading,
+      ),
+      wdaGrantedDate: profileValue(env.accountOpeningProfileWdaGrantedDate),
+      lastGdpInspectionDate: profileValue(
+        env.accountOpeningProfileLastGdpInspectionDate,
+      ),
+      responsiblePersonEmail: profileValue(
+        env.accountOpeningProfileResponsiblePersonEmail,
+      ),
+      responsiblePersonPhone: profileValue(
+        env.accountOpeningProfileResponsiblePersonPhone,
+      ),
+      accountsEmail: profileValue(env.accountOpeningProfileAccountsEmail),
+      accountsPhone: profileValue(env.accountOpeningProfileAccountsPhone),
+      salesName: profileValue(env.accountOpeningProfileSalesName),
+      salesEmail: profileValue(env.accountOpeningProfileSalesEmail),
+      salesPhone: profileValue(env.accountOpeningProfileSalesPhone),
+      customerServiceName: profileValue(
+        env.accountOpeningProfileCustomerServiceName,
+      ),
+      customerServiceEmail: profileValue(
+        env.accountOpeningProfileCustomerServiceEmail,
+      ),
+      customerServicePhone: profileValue(
+        env.accountOpeningProfileCustomerServicePhone,
       ),
       directDebitPlaceholder: `${SECURE_REVIEW_PLACEHOLDER}. Do not complete Direct Debit or bank authority fields automatically.`,
       bankDetailsPlaceholder: `${SECURE_REVIEW_PLACEHOLDER}. Bank account and sort code details must not be exposed in dashboard drafts.`,

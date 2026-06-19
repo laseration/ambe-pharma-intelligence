@@ -131,6 +131,15 @@ function clean(value: string | null | undefined): string | undefined {
  * profile is the single source of truth; contact sections it does not carry are
  * left blank (and still appear on the answers sheet for manual completion).
  */
+function contactFrom(
+  name: string,
+  email: string,
+  phone: string,
+): AccountOpeningDocxFillValues['director'] {
+  const c = { name: clean(name), email: clean(email), phone: clean(phone) };
+  return c.name || c.email || c.phone ? c : undefined;
+}
+
 export function masterProfileToDocxValues(): AccountOpeningDocxFillValues {
   const p = getAccountOpeningMasterProfile().values;
   return {
@@ -141,21 +150,31 @@ export function masterProfileToDocxValues(): AccountOpeningDocxFillValues {
     companyNumber: clean(p.companyNumber),
     vatNumber: clean(p.vatNumber),
     website: clean(p.website),
+    fax: clean(p.faxNumber),
     telephone: clean(p.mainContactPhone),
+    dateStartedTrading: clean(p.dateStartedTrading),
+    regulatoryAuthority: clean(p.regulatoryAuthority),
+    countryRegion: clean(p.countryRegion),
     wdaNumber: clean(p.wholesaleDealerAuthorisation),
-    director: clean(p.mainContactName)
-      ? {
-          name: clean(p.mainContactName),
-          email: clean(p.mainContactEmail),
-          phone: clean(p.mainContactPhone),
-        }
-      : undefined,
-    responsiblePerson: clean(p.responsiblePerson)
-      ? { name: clean(p.responsiblePerson) }
-      : undefined,
-    accounts: clean(p.accountsContact)
-      ? { name: clean(p.accountsContact) }
-      : undefined,
+    wdaGrantedDate: clean(p.wdaGrantedDate),
+    lastGdpInspectionDate: clean(p.lastGdpInspectionDate),
+    director: contactFrom(
+      p.mainContactName,
+      p.mainContactEmail,
+      p.mainContactPhone,
+    ),
+    responsiblePerson: contactFrom(
+      p.responsiblePerson,
+      p.responsiblePersonEmail,
+      p.responsiblePersonPhone,
+    ),
+    accounts: contactFrom(p.accountsContact, p.accountsEmail, p.accountsPhone),
+    sales: contactFrom(p.salesName, p.salesEmail, p.salesPhone),
+    customerService: contactFrom(
+      p.customerServiceName,
+      p.customerServiceEmail,
+      p.customerServicePhone,
+    ),
   };
 }
 

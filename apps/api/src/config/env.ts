@@ -436,6 +436,38 @@ export const env = {
   accountOpeningProfileStandardPaymentPreference:
     process.env.ACCOUNT_OPENING_PROFILE_STANDARD_PAYMENT_PREFERENCE?.trim() ||
     '',
+  accountOpeningProfileFaxNumber:
+    process.env.ACCOUNT_OPENING_PROFILE_FAX_NUMBER?.trim() || '',
+  accountOpeningProfileRegulatoryAuthority:
+    process.env.ACCOUNT_OPENING_PROFILE_REGULATORY_AUTHORITY?.trim() || '',
+  accountOpeningProfileCountryRegion:
+    process.env.ACCOUNT_OPENING_PROFILE_COUNTRY_REGION?.trim() || '',
+  accountOpeningProfileDateStartedTrading:
+    process.env.ACCOUNT_OPENING_PROFILE_DATE_STARTED_TRADING?.trim() || '',
+  accountOpeningProfileWdaGrantedDate:
+    process.env.ACCOUNT_OPENING_PROFILE_WDA_GRANTED_DATE?.trim() || '',
+  accountOpeningProfileLastGdpInspectionDate:
+    process.env.ACCOUNT_OPENING_PROFILE_LAST_GDP_INSPECTION_DATE?.trim() || '',
+  accountOpeningProfileResponsiblePersonEmail:
+    process.env.ACCOUNT_OPENING_PROFILE_RESPONSIBLE_PERSON_EMAIL?.trim() || '',
+  accountOpeningProfileResponsiblePersonPhone:
+    process.env.ACCOUNT_OPENING_PROFILE_RESPONSIBLE_PERSON_PHONE?.trim() || '',
+  accountOpeningProfileAccountsEmail:
+    process.env.ACCOUNT_OPENING_PROFILE_ACCOUNTS_EMAIL?.trim() || '',
+  accountOpeningProfileAccountsPhone:
+    process.env.ACCOUNT_OPENING_PROFILE_ACCOUNTS_PHONE?.trim() || '',
+  accountOpeningProfileSalesName:
+    process.env.ACCOUNT_OPENING_PROFILE_SALES_NAME?.trim() || '',
+  accountOpeningProfileSalesEmail:
+    process.env.ACCOUNT_OPENING_PROFILE_SALES_EMAIL?.trim() || '',
+  accountOpeningProfileSalesPhone:
+    process.env.ACCOUNT_OPENING_PROFILE_SALES_PHONE?.trim() || '',
+  accountOpeningProfileCustomerServiceName:
+    process.env.ACCOUNT_OPENING_PROFILE_CUSTOMER_SERVICE_NAME?.trim() || '',
+  accountOpeningProfileCustomerServiceEmail:
+    process.env.ACCOUNT_OPENING_PROFILE_CUSTOMER_SERVICE_EMAIL?.trim() || '',
+  accountOpeningProfileCustomerServicePhone:
+    process.env.ACCOUNT_OPENING_PROFILE_CUSTOMER_SERVICE_PHONE?.trim() || '',
   openAiApiKey: process.env.OPENAI_API_KEY?.trim() || '',
   openAiParserEnabled: readBoolean(process.env.OPENAI_PARSER_ENABLED, false),
   openAiParserModel: readString(
