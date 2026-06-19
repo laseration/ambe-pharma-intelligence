@@ -775,6 +775,146 @@ export function createGraphCompletedFormFilingUploader(
   };
 }
 
+export type AccountOpeningOriginalDocumentUploader = {
+  uploadOriginalDocument: (pack: {
+    folderPath: string;
+    file: { fileName: string; contentType: string; content: Uint8Array };
+  }) => Promise<{
+    folderUrl: string | null;
+    fileUrl: string | null;
+    driveItemId: string | null;
+  }>;
+};
+
+export type AccountOpeningOriginalDocumentUploadResult = {
+  status: 'UPLOADED' | 'SKIPPED_DISABLED' | 'UPLOAD_FAILED';
+  note: string;
+  storageProvider: 'SHAREPOINT' | 'ONEDRIVE' | null;
+  folderUrl: string | null;
+  fileUrl: string | null;
+  driveItemId: string | null;
+  skippedReason: string | null;
+  attemptedAt: Date;
+};
+
+// Uploads a raw uploaded original document (any type) to the same case folder as
+// the review archive, under a "Received documents" subfolder. Generic
+// contentType (PDF/image/DOCX/XLSX), unlike the completed-form uploader.
+export function createGraphOriginalDocumentUploader(
+  config: AccountOpeningDriveArchiveConfig,
+  dependencies: GraphRequestDependencies = {},
+): AccountOpeningOriginalDocumentUploader {
+  return {
+    uploadOriginalDocument: async (pack) => {
+      const accessToken = await (
+        dependencies.accessTokenProvider ?? getMicrosoftStorageGraphAccessToken
+      )();
+      const fetchImpl = dependencies.fetchImpl ?? fetch;
+      const driveId = await resolveDriveId(accessToken, config, fetchImpl);
+      const configWithDrive = { ...config, driveId };
+      const folderUrl = await ensureDriveFolderPath(
+        accessToken,
+        configWithDrive,
+        pack.folderPath,
+        fetchImpl,
+      );
+      const driveBasePath = driveApiBasePath(configWithDrive, driveId);
+      const uploadResult = await graphJsonRequest<{
+        id?: string;
+        webUrl?: string;
+      }>(
+        accessToken,
+        `${driveBasePath}/root:/${encodeDrivePath(`${pack.folderPath}/${pack.file.fileName}`)}:/content`,
+        fetchImpl,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': pack.file.contentType },
+          body: Buffer.from(pack.file.content),
+        },
+      );
+
+      if (!uploadResult.ok) {
+        throw new Error(
+          `${storageTargetLabel(config)} original document upload failed for ${pack.file.fileName} with status ${uploadResult.status}.`,
+        );
+      }
+
+      return {
+        folderUrl,
+        fileUrl: uploadResult.payload?.webUrl ?? null,
+        driveItemId: uploadResult.payload?.id ?? null,
+      };
+    },
+  };
+}
+
+export async function uploadAccountOpeningOriginalDocument(input: {
+  item: AccountOpeningCaseDetail;
+  file: { fileName: string; contentType: string; content: Uint8Array };
+  config?: AccountOpeningDriveArchiveConfig;
+  uploader?: AccountOpeningOriginalDocumentUploader;
+  now?: Date;
+}): Promise<AccountOpeningOriginalDocumentUploadResult> {
+  const attemptedAt = input.now ?? new Date();
+  const config = input.config ?? getAccountOpeningDriveArchiveConfig();
+  const skippedReason = getDriveArchiveSkippedReason(config);
+
+  if (skippedReason) {
+    return {
+      status: 'SKIPPED_DISABLED',
+      note: skippedReason,
+      storageProvider: null,
+      folderUrl: null,
+      fileUrl: null,
+      driveItemId: null,
+      skippedReason,
+      attemptedAt,
+    };
+  }
+
+  const folderPath = `${buildAccountOpeningArchiveFolderPath(input.item, config, attemptedAt)}/Received documents`;
+  const safeFileName = folderSegment(input.file.fileName, 'document');
+  const uploader =
+    input.uploader ?? createGraphOriginalDocumentUploader(config);
+
+  try {
+    const result = await uploader.uploadOriginalDocument({
+      folderPath,
+      file: {
+        fileName: safeFileName,
+        contentType: input.file.contentType,
+        content: input.file.content,
+      },
+    });
+
+    return {
+      status: 'UPLOADED',
+      note: `Filed the uploaded document to ${storageProviderLabel(config)} for review.`,
+      storageProvider: config.provider,
+      folderUrl: result.folderUrl,
+      fileUrl: result.fileUrl,
+      driveItemId: result.driveItemId,
+      skippedReason: null,
+      attemptedAt,
+    };
+  } catch (error) {
+    return {
+      status: 'UPLOAD_FAILED',
+      note: redactSensitiveText(
+        error instanceof Error
+          ? error.message
+          : 'Original document upload failed.',
+      ),
+      storageProvider: config.provider,
+      folderUrl: null,
+      fileUrl: null,
+      driveItemId: null,
+      skippedReason: null,
+      attemptedAt,
+    };
+  }
+}
+
 export async function uploadAccountOpeningArchivePack(input: {
   item: AccountOpeningCaseDetail;
   config?: AccountOpeningDriveArchiveConfig;

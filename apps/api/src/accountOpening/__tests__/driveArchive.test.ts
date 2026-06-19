@@ -12,6 +12,7 @@ import {
   getDriveArchiveSkippedReason,
   uploadAccountOpeningCompletedFormFiling,
   uploadAccountOpeningArchivePack,
+  uploadAccountOpeningOriginalDocument,
   type AccountOpeningDriveArchiveConfig,
 } from '../driveArchive';
 import type { AccountOpeningCaseDetail } from '../service';
@@ -826,4 +827,87 @@ test('SharePoint archive uploader keeps site and drive path behavior', async () 
     requestedUrls.every((url) => url.includes('/sites/site-1/drives/drive-1/')),
     true,
   );
+});
+
+test('uploadAccountOpeningOriginalDocument skips safely when disabled and never calls the uploader', async () => {
+  let called = false;
+  const result = await uploadAccountOpeningOriginalDocument({
+    item: buildDetail(),
+    file: {
+      fileName: 'form.pdf',
+      contentType: 'application/pdf',
+      content: new Uint8Array([1, 2, 3]),
+    },
+    config: disabledConfig,
+    uploader: {
+      uploadOriginalDocument: async () => {
+        called = true;
+        return { folderUrl: null, fileUrl: null, driveItemId: null };
+      },
+    },
+  });
+
+  assert.equal(result.status, 'SKIPPED_DISABLED');
+  assert.equal(called, false);
+});
+
+test('uploadAccountOpeningOriginalDocument files raw bytes to a Received documents folder when enabled', async () => {
+  const calls: Array<{
+    folderPath: string;
+    fileName: string;
+    bytes: number;
+    contentType: string;
+  }> = [];
+
+  const result = await uploadAccountOpeningOriginalDocument({
+    item: buildDetail(),
+    file: {
+      fileName: 'Supplier Account Opening Form.pdf',
+      contentType: 'application/pdf',
+      content: new Uint8Array([1, 2, 3, 4]),
+    },
+    config: enabledConfig,
+    uploader: {
+      uploadOriginalDocument: async (pack) => {
+        calls.push({
+          folderPath: pack.folderPath,
+          fileName: pack.file.fileName,
+          bytes: pack.file.content.length,
+          contentType: pack.file.contentType,
+        });
+        return {
+          folderUrl: 'https://sp.example/folder',
+          fileUrl: 'https://sp.example/file.pdf',
+          driveItemId: 'item-1',
+        };
+      },
+    },
+  });
+
+  assert.equal(result.status, 'UPLOADED');
+  assert.equal(result.storageProvider, 'SHAREPOINT');
+  assert.equal(result.fileUrl, 'https://sp.example/file.pdf');
+  assert.match(calls[0]?.folderPath ?? '', /Received documents$/);
+  assert.equal(calls[0]?.bytes, 4);
+  assert.equal(calls[0]?.contentType, 'application/pdf');
+});
+
+test('uploadAccountOpeningOriginalDocument returns a redacted UPLOAD_FAILED when the uploader throws', async () => {
+  const result = await uploadAccountOpeningOriginalDocument({
+    item: buildDetail(),
+    file: {
+      fileName: 'form.pdf',
+      contentType: 'application/pdf',
+      content: new Uint8Array([1]),
+    },
+    config: enabledConfig,
+    uploader: {
+      uploadOriginalDocument: async () => {
+        throw new Error('Graph 403 Forbidden');
+      },
+    },
+  });
+
+  assert.equal(result.status, 'UPLOAD_FAILED');
+  assert.match(result.note, /403|Forbidden|failed/i);
 });

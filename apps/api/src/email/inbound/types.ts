@@ -254,6 +254,11 @@ export type EmailInboundDependencies = {
   persistAccountOpeningCase?: (
     input: AccountOpeningCasePersistenceInput,
   ) => Promise<unknown>;
+  replyWithFilledAccountOpeningForm?: (input: {
+    senderEmail: string;
+    attachments: NormalizedEmailAttachment[];
+    supplierName?: string | null;
+  }) => Promise<unknown>;
   allowedSenders: string[];
   supplierMappings: EmailInboundSupplierMapping[];
   emailReviewEnabled?: boolean;

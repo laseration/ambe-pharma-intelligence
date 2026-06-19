@@ -352,6 +352,10 @@ export function createAccountOpeningRouter(
         item: result.detail,
         classification: result.classification,
         supplierName: result.supplierNameCandidate,
+        sharePoint: {
+          status: result.sharePoint.status,
+          fileUrl: result.sharePoint.fileUrl,
+        },
       });
     }),
   );

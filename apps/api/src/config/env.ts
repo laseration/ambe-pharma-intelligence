@@ -283,6 +283,9 @@ export const env = {
   internalAlertEmailRecipients: readIdList(
     process.env.INTERNAL_ALERT_EMAIL_RECIPIENTS,
   ),
+  accountOpeningReviewEmailRecipients: readIdList(
+    process.env.ACCOUNT_OPENING_REVIEW_EMAIL_RECIPIENTS,
+  ),
   sharePointAccountOpeningEnabled: readBoolean(
     process.env.SHAREPOINT_ACCOUNT_OPENING_ENABLED,
     false,
@@ -337,6 +340,13 @@ export const env = {
   emailInboundPollingIntervalMs: readPort(
     process.env.EMAIL_INBOUND_POLLING_INTERVAL_MS,
     30000,
+  ),
+  // When an INTERNAL Ambe sender emails an account-opening form, auto-fill it
+  // and reply to them. Off by default — external/supplier senders are never
+  // auto-replied (they only ever create a review case).
+  accountOpeningAutoReplyEnabled: readBoolean(
+    process.env.ACCOUNT_OPENING_AUTO_REPLY_ENABLED,
+    false,
   ),
   graphUseMessageDelta: readBoolean(process.env.GRAPH_USE_MESSAGE_DELTA, true),
   graphUseImmutableIds: readBoolean(process.env.GRAPH_USE_IMMUTABLE_IDS, true),
