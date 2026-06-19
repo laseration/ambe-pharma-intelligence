@@ -246,3 +246,82 @@ test('duplicate account-opening inbound message upserts one durable case and cre
   assert.equal(first.items[0]?.importBatchId, undefined);
   assert.equal(second.items[0]?.importBatchId, undefined);
 });
+
+test('inbound ingestion passes the persisted case id and sender to the auto-reply step', async () => {
+  const replyCalls: Array<{
+    caseId: string | null;
+    senderEmail: string;
+    attachmentCount: number;
+  }> = [];
+  const service = createEmailInboundService({
+    allowedSenders: ['ambemedical.com'],
+    isTrustedSender: () => true,
+    importSupplierPriceList: async () => {
+      throw new Error('import should not run for account-opening forms');
+    },
+    importInventory: async () => {
+      throw new Error('import should not run for account-opening forms');
+    },
+    importSales: async () => {
+      throw new Error('import should not run for account-opening forms');
+    },
+    parseUploadedFile: async () => ({
+      rows: [],
+      warnings: [],
+      detectedColumns: [],
+    }),
+    parseTextMessage: async () => ({
+      totalLines: 0,
+      candidateLines: 0,
+      parsedRows: [],
+      skippedLines: [],
+      overallConfidence: 'LOW',
+      reviewRecommended: true,
+      reviewRequired: true,
+      aiFallbackAttempted: false,
+      aiFallbackUsed: false,
+      aiFallbackDecision: 'not_needed',
+      rawBodyText: '',
+      rawBody: '',
+    }),
+    extractAttachmentText: async () => ({
+      method: 'PDF_TEXT',
+      text: 'Credit account application. Direct Debit mandate. Director signature.',
+      warnings: [],
+    }),
+    // The upsert returns the persisted case; the wiring must forward its id.
+    persistAccountOpeningCase: async () => ({ id: 'persisted-case-1' }),
+    replyWithFilledAccountOpeningForm: async (input) => {
+      replyCalls.push({
+        caseId: input.caseId,
+        senderEmail: input.senderEmail,
+        attachmentCount: input.attachments.length,
+      });
+      return { status: 'SKIPPED_DISABLED' };
+    },
+    logger: {
+      info: () => undefined,
+      warn: () => undefined,
+      error: () => undefined,
+    },
+  });
+
+  await service.ingestMessage({
+    messageId: '<auto-reply-wiring>',
+    from: 'sandeep@ambemedical.com',
+    subject: 'Account opening form',
+    bodyText: 'Please complete the attached onboarding questionnaire.',
+    attachments: [
+      {
+        fileName: 'new-account-form.pdf',
+        mimeType: 'application/pdf',
+        content: Buffer.from('fake').toString('base64'),
+      },
+    ],
+  });
+
+  assert.equal(replyCalls.length, 1);
+  assert.equal(replyCalls[0]?.caseId, 'persisted-case-1');
+  assert.equal(replyCalls[0]?.senderEmail, 'sandeep@ambemedical.com');
+  assert.equal(replyCalls[0]?.attachmentCount, 1);
+});
