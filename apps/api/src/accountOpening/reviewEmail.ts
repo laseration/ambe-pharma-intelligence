@@ -232,6 +232,21 @@ export function buildAccountOpeningReviewEmailBody(
         'and signatures must always be completed by hand. Do not send as-is.',
       ];
 
+  // When most controls could not be mapped, the form layout is probably
+  // non-standard (the heuristics are tuned to typical forms) — warn the reviewer.
+  const totalControls = fill.filledFields.length + fill.blankFields.length;
+  const unrecognised = fill.blankFields.filter(
+    (b) => b.reason === 'UNRECOGNISED_FIELD',
+  ).length;
+  const lowMatch =
+    didFill && totalControls >= 6 && unrecognised / totalControls >= 0.5;
+  const lowMatchNotice = lowMatch
+    ? [
+        '',
+        `NOTE: ${unrecognised} of ${totalControls} fields on this form were not recognised — its layout may be non-standard. Please check EVERY field against the attached answers sheet.`,
+      ]
+    : [];
+
   return [
     header,
     '',
@@ -239,6 +254,7 @@ export function buildAccountOpeningReviewEmailBody(
     supplierName ? `Counterparty: ${supplierName}` : null,
     '',
     ...intro,
+    ...lowMatchNotice,
     '',
     ...(didFill
       ? [`Auto-filled (${fill.filledCount}):`, ...filledLines, '']
