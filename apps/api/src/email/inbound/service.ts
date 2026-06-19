@@ -682,18 +682,27 @@ export function createEmailInboundService(
               accountOpeningItem.accountOpeningCase?.sourceFingerprint,
           });
 
-        await dependencies.persistAccountOpeningCase?.({
-          accountCase: accountOpeningItem.accountOpeningCase!,
-          messageId: message.messageId ?? message.externalMessageId ?? null,
-          detectedFormType: documentClassification.evidence[0]?.signal ?? null,
-          correlationId: accountOpeningCorrelationId,
-        });
+        const persistedAccountOpeningCase =
+          await dependencies.persistAccountOpeningCase?.({
+            accountCase: accountOpeningItem.accountOpeningCase!,
+            messageId: message.messageId ?? message.externalMessageId ?? null,
+            detectedFormType:
+              documentClassification.evidence[0]?.signal ?? null,
+            correlationId: accountOpeningCorrelationId,
+          });
+        const accountOpeningCaseId =
+          persistedAccountOpeningCase &&
+          typeof persistedAccountOpeningCase === 'object' &&
+          'id' in persistedAccountOpeningCase
+            ? String((persistedAccountOpeningCase as { id: unknown }).id)
+            : null;
 
         // Internal-sender auto-fill-and-reply (gated OFF by default). Best-effort
         // and non-blocking: a failure here must never break case ingestion.
         try {
           const autoReply =
             await dependencies.replyWithFilledAccountOpeningForm?.({
+              caseId: accountOpeningCaseId,
               senderEmail,
               attachments: normalizedAttachments,
               supplierName:

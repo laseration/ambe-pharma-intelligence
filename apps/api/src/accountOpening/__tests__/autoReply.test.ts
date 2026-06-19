@@ -60,6 +60,7 @@ test('isInternalAmbeSender matches the internal domain only', () => {
 
 test('autoReplyAccountOpeningForm is a no-op when disabled (default)', async () => {
   const result = await autoReplyAccountOpeningForm({
+    caseId: 'case-1',
     senderEmail: 'sandeep@ambemedical.com',
     attachments: [docxAttachment()],
   });
@@ -71,6 +72,7 @@ test('autoReplyAccountOpeningForm never replies to an external sender', async ()
     let called = false;
     const result = await autoReplyAccountOpeningForm(
       {
+        caseId: 'case-1',
         senderEmail: 'forms@supplier.co.uk',
         attachments: [docxAttachment()],
       },
@@ -86,17 +88,22 @@ test('autoReplyAccountOpeningForm never replies to an external sender', async ()
   });
 });
 
-test('autoReplyAccountOpeningForm replies to an internal sender with the filled form', async () => {
+test('autoReplyAccountOpeningForm replies to an internal sender and records an audit event', async () => {
   await withAutoReplyEnabled(async () => {
     const calls: Array<{ recipients: string[]; fileName: string }> = [];
+    const events: Array<{ caseId: string; status: string }> = [];
     const result = await autoReplyAccountOpeningForm(
       {
+        caseId: 'case-1',
         senderEmail: 'sandeep@ambemedical.com',
         attachments: [docxAttachment()],
         supplierName: 'Test Supplier',
       },
       {
         values: { legalCompanyName: 'AMBE LTD' },
+        alreadyReplied: async () => false,
+        recordReplyEvent: async (e) =>
+          void events.push({ caseId: e.caseId, status: e.status }),
         emailReviewDraft: async (input) => {
           calls.push({
             recipients: input.recipients,
@@ -110,6 +117,39 @@ test('autoReplyAccountOpeningForm replies to an internal sender with the filled 
     assert.equal(calls.length, 1);
     assert.deepEqual(calls[0]?.recipients, ['sandeep@ambemedical.com']);
     assert.equal(calls[0]?.fileName, 'account opening form.docx');
+    // Audit/idempotency event recorded exactly once on success.
+    assert.deepEqual(events, [{ caseId: 'case-1', status: 'SENT' }]);
+  });
+});
+
+test('autoReplyAccountOpeningForm does not reply twice for the same case', async () => {
+  await withAutoReplyEnabled(async () => {
+    let sendCalled = false;
+    let eventRecorded = false;
+    const result = await autoReplyAccountOpeningForm(
+      {
+        caseId: 'case-1',
+        senderEmail: 'sandeep@ambemedical.com',
+        attachments: [docxAttachment()],
+      },
+      {
+        alreadyReplied: async () => true, // a reply already exists for this case
+        recordReplyEvent: async () => {
+          eventRecorded = true;
+        },
+        emailReviewDraft: async () => {
+          sendCalled = true;
+          return sentDraft(['sandeep@ambemedical.com']);
+        },
+      },
+    );
+    assert.equal(result.status, 'SKIPPED_ALREADY_REPLIED');
+    assert.equal(
+      sendCalled,
+      false,
+      'must not re-send for an already-replied case',
+    );
+    assert.equal(eventRecorded, false);
   });
 });
 
@@ -117,6 +157,7 @@ test('autoReplyAccountOpeningForm skips when there is no PDF/Word form attached'
   await withAutoReplyEnabled(async () => {
     const result = await autoReplyAccountOpeningForm(
       {
+        caseId: 'case-1',
         senderEmail: 'sandeep@ambemedical.com',
         attachments: [
           docxAttachment({

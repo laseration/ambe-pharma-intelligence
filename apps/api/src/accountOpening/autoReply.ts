@@ -1,5 +1,6 @@
 import { env } from '../config/env';
 import type { NormalizedEmailAttachment } from '../email/inbound/types';
+import { db } from '../lib/db';
 import type { AccountOpeningDocxFillValues } from './docxFill';
 import { getAccountOpeningMasterProfile } from './masterProfile';
 import {
@@ -23,6 +24,7 @@ export type AccountOpeningAutoReplyStatus =
   | 'SKIPPED_DISABLED'
   | 'SKIPPED_EXTERNAL_SENDER'
   | 'SKIPPED_NO_FORM'
+  | 'SKIPPED_ALREADY_REPLIED'
   | 'FAILED';
 
 export type AccountOpeningAutoReplyResult = {
@@ -35,7 +37,67 @@ export type AutoReplyDeps = {
   emailReviewDraft?: typeof emailAccountOpeningReviewDraft;
   values?: AccountOpeningDocxFillValues;
   now?: () => Date;
+  alreadyReplied?: (caseId: string) => Promise<boolean>;
+  recordReplyEvent?: (input: {
+    caseId: string;
+    status: AccountOpeningAutoReplyStatus;
+    recipient: string;
+    fileName: string;
+    note: string;
+  }) => Promise<void>;
 };
+
+// Audit + idempotency in one: a single durable case event marks "we replied".
+// Its presence proves the reply happened (audit trail) AND stops a re-polled
+// message from emailing the reviewer the same draft twice.
+const AUTO_REPLY_EVENT = 'ACCOUNT_OPENING_AUTO_REPLIED';
+
+async function defaultAlreadyReplied(caseId: string): Promise<boolean> {
+  const client = db as never as {
+    accountOpeningCaseEvent?: {
+      findFirst: (args: unknown) => Promise<{ id: string } | null>;
+    };
+  };
+  if (!client.accountOpeningCaseEvent) {
+    return false;
+  }
+  const found = await client.accountOpeningCaseEvent.findFirst({
+    where: { accountOpeningCaseId: caseId, actionType: AUTO_REPLY_EVENT },
+    select: { id: true },
+  });
+  return Boolean(found);
+}
+
+async function defaultRecordReplyEvent(input: {
+  caseId: string;
+  status: AccountOpeningAutoReplyStatus;
+  recipient: string;
+  fileName: string;
+  note: string;
+}): Promise<void> {
+  const client = db as never as {
+    accountOpeningCaseEvent?: {
+      create: (args: { data: unknown }) => Promise<unknown>;
+    };
+  };
+  if (!client.accountOpeningCaseEvent) {
+    return;
+  }
+  await client.accountOpeningCaseEvent.create({
+    data: {
+      accountOpeningCaseId: input.caseId,
+      actionType: AUTO_REPLY_EVENT,
+      actorType: 'SYSTEM',
+      actorIdentifier: 'account-opening-auto-reply',
+      note: input.note,
+      metadata: {
+        status: input.status,
+        recipient: input.recipient,
+        fileName: input.fileName,
+      },
+    },
+  });
+}
 
 /** A sender is internal if its domain matches a configured internal domain. */
 export function isInternalAmbeSender(senderEmail: string): boolean {
@@ -114,6 +176,7 @@ function pickFormAttachment(
 
 export async function autoReplyAccountOpeningForm(
   input: {
+    caseId: string | null;
     senderEmail: string;
     attachments: NormalizedEmailAttachment[];
     supplierName?: string | null;
@@ -146,26 +209,51 @@ export async function autoReplyAccountOpeningForm(
     };
   }
 
+  const alreadyReplied = deps.alreadyReplied ?? defaultAlreadyReplied;
+  const recordReplyEvent = deps.recordReplyEvent ?? defaultRecordReplyEvent;
+
+  // Idempotency guard: if this same email is re-processed (worker restart,
+  // transient failure, Graph re-delivery), never email the reviewer twice.
+  if (input.caseId && (await alreadyReplied(input.caseId))) {
+    return {
+      status: 'SKIPPED_ALREADY_REPLIED',
+      note: 'A reply was already sent for this case; not sending again.',
+      recipient,
+    };
+  }
+
   const emailReviewDraft =
     deps.emailReviewDraft ?? emailAccountOpeningReviewDraft;
   const values = deps.values ?? masterProfileToDocxValues();
+  const fileName = form.fileName ?? 'account-opening-form';
 
   try {
     const result: EmailAccountOpeningReviewDraftResult = await emailReviewDraft(
       {
         formBytes: form.buffer,
-        fileName: form.fileName ?? 'account-opening-form',
+        fileName,
         values,
         recipients: [recipient],
         supplierName: input.supplierName ?? null,
       },
       { now: deps.now },
     );
-    return {
-      status: result.email.status === 'SENT' ? 'SENT' : 'FAILED',
-      note: result.email.note,
-      recipient,
-    };
+    const status: AccountOpeningAutoReplyStatus =
+      result.email.status === 'SENT' ? 'SENT' : 'FAILED';
+
+    // Record the audit/idempotency event ONLY on a confirmed send, so a failed
+    // attempt is still retried on the next poll rather than silently swallowed.
+    if (status === 'SENT' && input.caseId) {
+      await recordReplyEvent({
+        caseId: input.caseId,
+        status,
+        recipient,
+        fileName,
+        note: result.email.note,
+      });
+    }
+
+    return { status, note: result.email.note, recipient };
   } catch (error) {
     return {
       status: 'FAILED',
