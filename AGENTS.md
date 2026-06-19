@@ -58,3 +58,29 @@ When implementing:
 3. Explain files changed
 4. Include run/test steps
 5. Note assumptions
+
+## Shared VPS — protection rules (read before ANY VPS action)
+
+The host `ambe-vps` (77.68.101.61) runs **two independent apps** under one global PM2:
+
+- **App A — this repo** (`/var/www/ambe-pharma-intelligence`): PM2 `ambe-api`,
+  `ambe-web`, `ambe-worker`; config `apps/api/.env`. Hosts BOTH the
+  account-opening bot AND the offer/price email pipeline — they share that
+  `.env`, the inbox poller, and these processes.
+- **App B — MT5 trading bot** (`/root/bot`, separate repo, own `.env`): PM2
+  `trading-bot-demo`, `mt5-bridge-demo`. Do **not** touch from this repo.
+
+Rules:
+
+- **Never use global PM2** (`pm2 restart/reload/stop/delete all`, `pm2 kill`,
+  `pm2 save`+`resurrect`, `pm2 update`). Always name App A processes, e.g.
+  `pm2 restart ambe-api ambe-worker --update-env`.
+- **`apps/api/.env` is shared** by account-opening and the offer pipeline (e.g.
+  `EMAIL_INBOUND_POLLING_ENABLED` affects both). Back it up before editing and
+  change only your keys.
+- **Take the advisory lock** before any App A deploy / `.env` edit / restart:
+  `bash /root/ambe-app-A.lock.sh acquire "<who>"` … then `release`.
+- **Verify isolation** after a restart: `pm2 list` — App B's uptime must be
+  unchanged (it was not restarted).
+- Account-opening stays dormant (`ACCOUNT_OPENING_AUTO_REPLY_ENABLED=false`) until
+  an explicit, watched canary. Full plan: `/root/VPS-PROTECTION.md`.
