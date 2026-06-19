@@ -179,3 +179,44 @@ test('sendAccountOpeningReviewEmail returns FAILED on a non-2xx Graph response',
     assert.match(result.note, /403|Forbidden/);
   });
 });
+
+test('review email body warns when most fields were not recognised', () => {
+  const blankFields = Array.from({ length: 8 }, (_, i) => ({
+    section: null,
+    label: `X${i}`,
+    reason: 'UNRECOGNISED_FIELD',
+  }));
+  const body = buildAccountOpeningReviewEmailBody(
+    'weird-layout.docx',
+    null,
+    fillResult({
+      filledCount: 2,
+      filledFields: [
+        { section: null, label: 'COMPANY NAME', value: 'AMBE LTD' },
+        { section: null, label: 'VAT NUMBER', value: 'GB1' },
+      ],
+      blankFields,
+    }),
+  );
+  assert.match(body, /not recognised/);
+  assert.match(body, /layout may be non-standard/);
+});
+
+test('review email body does not warn on a clean fill', () => {
+  const body = buildAccountOpeningReviewEmailBody(
+    'form.docx',
+    null,
+    fillResult({
+      filledCount: 5,
+      filledFields: Array.from({ length: 5 }, (_, i) => ({
+        section: null,
+        label: `F${i}`,
+        value: 'v',
+      })),
+      blankFields: [
+        { section: null, label: 'SORT CODE', reason: 'POLICY_MUST_STAY_BLANK' },
+      ],
+    }),
+  );
+  assert.doesNotMatch(body, /not recognised/);
+});
