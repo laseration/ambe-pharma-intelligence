@@ -6,6 +6,7 @@ import type { NormalizedEmailAttachment } from '../../email/inbound/types';
 import {
   autoReplyAccountOpeningForm,
   isInternalAmbeSender,
+  masterProfileToDocxValues,
 } from '../autoReply';
 
 function docxAttachment(
@@ -175,4 +176,31 @@ test('autoReplyAccountOpeningForm skips when there is no PDF/Word form attached'
     );
     assert.equal(result.status, 'SKIPPED_NO_FORM');
   });
+});
+
+test('masterProfileToDocxValues maps env profile values and drops "To be confirmed"', () => {
+  const e = env as Record<string, unknown>;
+  const snap = {
+    legal: e.accountOpeningProfileLegalCompanyName,
+    name: e.accountOpeningProfileMainContactName,
+    email: e.accountOpeningProfileMainContactEmail,
+  };
+  try {
+    // Unset profile field => masterProfile yields "To be confirmed" => dropped.
+    e.accountOpeningProfileLegalCompanyName = '';
+    assert.equal(masterProfileToDocxValues().legalCompanyName, undefined);
+
+    // Populated fields are mapped (main contact => director block).
+    e.accountOpeningProfileLegalCompanyName = 'AMBE LTD';
+    e.accountOpeningProfileMainContactName = 'Aman Dhillon';
+    e.accountOpeningProfileMainContactEmail = 'aman@ambemedical.com';
+    const values = masterProfileToDocxValues();
+    assert.equal(values.legalCompanyName, 'AMBE LTD');
+    assert.equal(values.director?.name, 'Aman Dhillon');
+    assert.equal(values.director?.email, 'aman@ambemedical.com');
+  } finally {
+    e.accountOpeningProfileLegalCompanyName = snap.legal;
+    e.accountOpeningProfileMainContactName = snap.name;
+    e.accountOpeningProfileMainContactEmail = snap.email;
+  }
 });
