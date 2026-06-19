@@ -112,8 +112,10 @@ the bot replies to **you**.
 - **Scanned forms may not classify.** OCR'd text is weighted below the
   account-opening gate in the shared classifier, so a scanned form can stay in
   manual review and not trigger auto-reply.
-- **Master profile is thin.** Per-section sales/customer-service contacts and
-  several dates are not yet in the profile env.
+- **Master profile must be populated.** The code supports a rich profile
+  (company, regulatory, dates, and per-section director/RP/sales/customer-service/
+  accounts contacts via `ACCOUNT_OPENING_PROFILE_*`), but unset values render as
+  "To be confirmed" and are dropped — so fills are only as full as the `.env`.
 
 ## Tests
 

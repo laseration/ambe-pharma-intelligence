@@ -204,3 +204,27 @@ test('masterProfileToDocxValues maps env profile values and drops "To be confirm
     e.accountOpeningProfileMainContactEmail = snap.email;
   }
 });
+
+test('masterProfileToDocxValues maps the enriched profile (sales, regulator, dates)', () => {
+  const e = env as Record<string, unknown>;
+  const keys = [
+    'accountOpeningProfileSalesName',
+    'accountOpeningProfileSalesEmail',
+    'accountOpeningProfileRegulatoryAuthority',
+    'accountOpeningProfileDateStartedTrading',
+  ];
+  const snap = Object.fromEntries(keys.map((k) => [k, e[k]]));
+  try {
+    e.accountOpeningProfileSalesName = 'Aman Dhillon';
+    e.accountOpeningProfileSalesEmail = 'info@ambemedical.com';
+    e.accountOpeningProfileRegulatoryAuthority = 'MHRA';
+    e.accountOpeningProfileDateStartedTrading = '1999';
+    const v = masterProfileToDocxValues();
+    assert.equal(v.sales?.name, 'Aman Dhillon');
+    assert.equal(v.sales?.email, 'info@ambemedical.com');
+    assert.equal(v.regulatoryAuthority, 'MHRA');
+    assert.equal(v.dateStartedTrading, '1999');
+  } finally {
+    for (const k of keys) e[k] = snap[k];
+  }
+});
