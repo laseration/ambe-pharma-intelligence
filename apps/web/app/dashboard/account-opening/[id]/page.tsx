@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import {
   getAccountOpeningCase,
+  getAccountOpeningCaseTimeline,
   getAccountOpeningReadiness,
   type AccountOpeningCaseDetail,
   type AccountOpeningMissingInfoResponses,
@@ -20,6 +21,7 @@ import {
   submitAccountOpeningStatusAction,
 } from './actions';
 import { AccountOpeningSafetyReviewSections } from './SafetyReviewSections';
+import { CaseActivityTimeline } from './CaseActivityTimeline';
 import { UploadDocumentSection } from './UploadDocumentSection';
 import { requireCurrentWebCapability } from '../../../../lib/serverWebAuth';
 
@@ -840,9 +842,10 @@ export default async function AccountOpeningDetailPage({
   const returnTo = sanitizeReturnTo(query?.returnTo);
 
   try {
-    const [item, readiness] = await Promise.all([
+    const [item, readiness, timeline] = await Promise.all([
       getAccountOpeningCase(id),
       getAccountOpeningReadiness(id),
+      getAccountOpeningCaseTimeline(id),
     ]);
     const signingNotes = item.signingNotes;
     const latestBinaryPreview = item.latestBinaryFillPreview;
@@ -904,6 +907,8 @@ export default async function AccountOpeningDetailPage({
         <CompanyProfileSection item={item} />
 
         <UploadDocumentSection caseId={id} />
+
+        <CaseActivityTimeline entries={timeline} />
 
         <section className="panel dashboard-panel">
           <div className="dashboard-section-header">
