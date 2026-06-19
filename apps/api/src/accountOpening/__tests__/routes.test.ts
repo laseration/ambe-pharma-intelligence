@@ -279,6 +279,7 @@ async function startServer(
   const defaultDetail = buildCaseDetail();
   const routerDependencies: Parameters<typeof createAccountOpeningRouter>[0] = {
     getCaseDetail: async () => defaultDetail,
+    getCaseTimeline: async () => [],
     generateDraft: async () => defaultDetail,
     reprocessFromStoredSource: async () => defaultDetail,
     getReadiness: async () => buildReadinessReport(),

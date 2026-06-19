@@ -194,6 +194,28 @@ export async function getAccountOpeningCase(
   return payload.item;
 }
 
+export type AccountOpeningCaseTimelineEntry = {
+  id: string;
+  actionType: string;
+  label: string;
+  actorType: string | null;
+  actorIdentifier: string | null;
+  note: string | null;
+  detail: string | null;
+  occurredAt: string;
+};
+
+export async function getAccountOpeningCaseTimeline(
+  id: string,
+): Promise<AccountOpeningCaseTimelineEntry[]> {
+  const payload = await requestJson<{
+    items: AccountOpeningCaseTimelineEntry[];
+  }>(`/account-opening/${encodeURIComponent(id)}/timeline`, {
+    requiredCapability: 'account-opening:view',
+  });
+  return payload.items;
+}
+
 export async function getAccountOpeningDraft(
   id: string,
 ): Promise<AccountOpeningCompletionDraft> {

@@ -2269,6 +2269,135 @@ export async function getAccountOpeningCaseDetail(
   return accountCase ? buildAccountOpeningCaseDetail(accountCase) : null;
 }
 
+export type AccountOpeningCaseTimelineEntry = {
+  id: string;
+  actionType: string;
+  label: string;
+  actorType: string | null;
+  actorIdentifier: string | null;
+  note: string | null;
+  detail: string | null;
+  occurredAt: string;
+};
+
+type AccountOpeningTimelineEventRow = {
+  id: string;
+  actionType: string;
+  actorType: string | null;
+  actorIdentifier: string | null;
+  note: string | null;
+  metadata: unknown;
+  createdAt: Date;
+};
+
+export type ListAccountOpeningCaseTimelineDeps = {
+  loadEvents?: (caseId: string) => Promise<AccountOpeningTimelineEventRow[]>;
+};
+
+const TIMELINE_ACTION_LABELS: Record<string, string> = {
+  ACCOUNT_OPENING_AUTO_REPLIED: 'Auto-reply sent to internal reviewer',
+  DOCUMENT_UPLOADED: 'Document uploaded',
+  SOURCE_EVIDENCE_CAPTURED: 'Source evidence captured',
+  FILL_PREVIEW_GENERATED: 'Fill preview generated',
+  FILL_PREVIEW_FILE_DOWNLOADED: 'Fill preview downloaded',
+  BINARY_FILL_PREVIEW_DOWNLOADED: 'Completed-form preview downloaded',
+  FIELD_MAPPINGS_SAVED: 'Field mappings saved',
+  MISSING_INFO_SAVED: 'Missing info saved',
+  ORIGINAL_FORM_REFERENCE_CAPTURED: 'Original form reference captured',
+};
+
+function timelineActionLabel(actionType: string): string {
+  if (TIMELINE_ACTION_LABELS[actionType]) {
+    return TIMELINE_ACTION_LABELS[actionType];
+  }
+  const words = actionType.replace(/_/g, ' ').toLowerCase().trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : actionType;
+}
+
+/**
+ * Build a SAFE one-line detail from event metadata. Only a small allow-list of
+ * known string fields is ever surfaced — never the raw metadata object — so no
+ * stored snippet/extracted text can leak into the activity timeline.
+ */
+function safeTimelineDetail(
+  actionType: string,
+  metadata: unknown,
+): string | null {
+  if (!metadata || typeof metadata !== 'object') {
+    return null;
+  }
+  const record = metadata as Record<string, unknown>;
+  const str = (key: string): string | null => {
+    const value = record[key];
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+  };
+  if (actionType === 'ACCOUNT_OPENING_AUTO_REPLIED') {
+    return (
+      [str('status'), str('recipient')].filter(Boolean).join(' → ') || null
+    );
+  }
+  if (actionType === 'DOCUMENT_UPLOADED') {
+    return (
+      [str('fileName'), str('classification')].filter(Boolean).join(' · ') ||
+      null
+    );
+  }
+  return str('classification') ?? str('status') ?? null;
+}
+
+async function defaultLoadTimelineEvents(
+  caseId: string,
+): Promise<AccountOpeningTimelineEventRow[]> {
+  const client = db as never as {
+    accountOpeningCaseEvent?: {
+      findMany: (args: unknown) => Promise<AccountOpeningTimelineEventRow[]>;
+    };
+  };
+  if (!client.accountOpeningCaseEvent) {
+    return [];
+  }
+  return client.accountOpeningCaseEvent.findMany({
+    where: { accountOpeningCaseId: caseId },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+    select: {
+      id: true,
+      actionType: true,
+      actorType: true,
+      actorIdentifier: true,
+      note: true,
+      metadata: true,
+      createdAt: true,
+    },
+  });
+}
+
+/**
+ * Read-only audit timeline for a case (auto-reply sent/failed, document
+ * uploaded, evidence captured, …). Self-contained — does not touch the heavy
+ * case-detail query — and surfaces only redacted, allow-listed fields.
+ */
+export async function listAccountOpeningCaseTimeline(
+  caseId: string,
+  deps: ListAccountOpeningCaseTimelineDeps = {},
+): Promise<AccountOpeningCaseTimelineEntry[]> {
+  const loadEvents = deps.loadEvents ?? defaultLoadTimelineEvents;
+  const events = await loadEvents(caseId);
+  return events.map((event) => ({
+    id: event.id,
+    actionType: event.actionType,
+    label: timelineActionLabel(event.actionType),
+    actorType: event.actorType ?? null,
+    actorIdentifier: event.actorIdentifier ?? null,
+    note: event.note ?? null,
+    detail: safeTimelineDetail(event.actionType, event.metadata),
+    occurredAt:
+      event.createdAt instanceof Date
+        ? event.createdAt.toISOString()
+        : String(event.createdAt),
+  }));
+}
+
 function readinessCheck(input: {
   key: AccountOpeningReadinessCheckKey;
   label: string;

@@ -35,6 +35,7 @@ import {
   getAccountOpeningCaseDetail,
   getAccountOpeningReadinessReport,
   listAccountOpeningCases,
+  listAccountOpeningCaseTimeline,
   reprocessAccountOpeningCaseFromStoredSource,
   saveAccountOpeningMissingInfo,
   saveAccountOpeningFieldMappings,
@@ -57,6 +58,7 @@ import {
 
 type AccountOpeningRouteDependencies = {
   getCaseDetail: typeof getAccountOpeningCaseDetail;
+  getCaseTimeline: typeof listAccountOpeningCaseTimeline;
   generateDraft: typeof generateAccountOpeningDraft;
   reprocessFromStoredSource: typeof reprocessAccountOpeningCaseFromStoredSource;
   getReadiness: typeof getAccountOpeningReadinessReport;
@@ -211,6 +213,7 @@ const binaryFillPreviewFileNames = new Set<string>(
 
 const defaultDependencies: AccountOpeningRouteDependencies = {
   getCaseDetail: getAccountOpeningCaseDetail,
+  getCaseTimeline: listAccountOpeningCaseTimeline,
   generateDraft: generateAccountOpeningDraft,
   reprocessFromStoredSource: reprocessAccountOpeningCaseFromStoredSource,
   getReadiness: getAccountOpeningReadinessReport,
@@ -373,6 +376,25 @@ export function createAccountOpeningRouter(
           await dependencies.getCaseDetail(params.id),
           'Account-opening case not found.',
         ),
+      });
+    }),
+  );
+
+  router.get(
+    '/:id/timeline',
+    requireInternalOperatorAccess,
+    asyncHandler(async (request, response) => {
+      const { params } = parseRequest<z.infer<typeof idParamSchema>>(request, {
+        params: idParamSchema,
+      });
+      // 404 if the case doesn't exist, mirroring the other reads.
+      requireFound(
+        await dependencies.getCaseDetail(params.id),
+        'Account-opening case not found.',
+      );
+
+      response.json({
+        items: await dependencies.getCaseTimeline(params.id),
       });
     }),
   );
