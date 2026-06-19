@@ -255,6 +255,7 @@ export type EmailInboundDependencies = {
     input: AccountOpeningCasePersistenceInput,
   ) => Promise<unknown>;
   replyWithFilledAccountOpeningForm?: (input: {
+    caseId: string | null;
     senderEmail: string;
     attachments: NormalizedEmailAttachment[];
     supplierName?: string | null;

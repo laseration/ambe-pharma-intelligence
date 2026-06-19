@@ -183,7 +183,7 @@ export type EmailAccountOpeningReviewDraftResult = {
   email: AccountOpeningReviewEmailResult;
 };
 
-function buildBodyText(
+export function buildAccountOpeningReviewEmailBody(
   fileName: string,
   supplierName: string | null | undefined,
   fill: AccountOpeningUnifiedFillResult,
@@ -214,20 +214,35 @@ function buildBodyText(
         }`,
     );
 
+  const didFill = fill.filledCount > 0;
+  const header = didFill
+    ? 'ACCOUNT OPENING — REVIEW DRAFT (NOT SIGNED, NOT SENT)'
+    : 'ACCOUNT OPENING — COULD NOT AUTO-FILL (manual completion needed)';
+  const intro = didFill
+    ? [
+        'The bot has filled the safe fields of the attached form from the Ambe',
+        'master profile. This is a DRAFT for your review only. Bank details and',
+        'signatures are deliberately left blank and must be completed by hand.',
+        'Do not send this to the supplier as-is.',
+      ]
+    : [
+        'The bot could NOT auto-fill this form (no matching fields were found, or',
+        'the master profile is incomplete). The ORIGINAL form is attached unchanged.',
+        'Use the attached "Ambe answers" sheet to complete it by hand. Bank details',
+        'and signatures must always be completed by hand. Do not send as-is.',
+      ];
+
   return [
-    'ACCOUNT OPENING — REVIEW DRAFT (NOT SIGNED, NOT SENT)',
+    header,
     '',
     `Supplier form: ${fileName}`,
     supplierName ? `Counterparty: ${supplierName}` : null,
     '',
-    'The bot has filled the safe fields of the attached form from the Ambe',
-    'master profile. This is a DRAFT for your review only. Bank details and',
-    'signatures are deliberately left blank and must be completed by hand.',
-    'Do not send this to the supplier as-is.',
+    ...intro,
     '',
-    `Auto-filled (${fill.filledCount}):`,
-    ...filledLines,
-    '',
+    ...(didFill
+      ? [`Auto-filled (${fill.filledCount}):`, ...filledLines, '']
+      : []),
     'Left blank for you to complete/verify:',
     ...blankForYou,
     '',
@@ -253,6 +268,13 @@ export async function emailAccountOpeningReviewDraft(
     values: input.values,
   });
 
+  if (fill.filledCount === 0) {
+    logger.info(
+      'Account-opening form produced zero auto-filled fields; sending manual-completion notice',
+      { fileName: input.fileName, format: fill.format },
+    );
+  }
+
   const baseName = input.fileName.replace(/\.(docx?|pdf)$/i, '');
   const attachment: AccountOpeningReviewEmailAttachment =
     fill.filledBytes && fill.filledContentType
@@ -268,9 +290,10 @@ export async function emailAccountOpeningReviewDraft(
         };
 
   const supplierLabel = input.supplierName?.trim() || null;
-  const subject = fill.filledBytes
-    ? `Account opening draft for review${supplierLabel ? ` — ${supplierLabel}` : ''}`
-    : `Account opening form needs manual completion${supplierLabel ? ` — ${supplierLabel}` : ''}`;
+  const subject =
+    fill.filledCount > 0
+      ? `Account opening draft for review${supplierLabel ? ` — ${supplierLabel}` : ''}`
+      : `Account opening form needs manual completion${supplierLabel ? ` — ${supplierLabel}` : ''}`;
 
   // The answers sheet is ALWAYS attached — it is the reliable fallback for forms
   // the bot cannot fill in place (flat/scanned PDFs, legacy .doc).
@@ -294,7 +317,11 @@ export async function emailAccountOpeningReviewDraft(
     {
       recipients: input.recipients,
       subject,
-      bodyText: buildBodyText(input.fileName, supplierLabel, fill),
+      bodyText: buildAccountOpeningReviewEmailBody(
+        input.fileName,
+        supplierLabel,
+        fill,
+      ),
       attachments,
     },
     deps,
