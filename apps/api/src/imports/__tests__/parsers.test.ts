@@ -382,6 +382,64 @@ test('validates inventory CSV fixture', async () => {
   assert.equal(result.validRows[0]?.quantityAvailable, 100);
 });
 
+test('supplier price validation rejects non-finite numbers (Infinity)', () => {
+  const result = validateSupplierPriceRows(
+    [{ productName: 'Aspirin 100mg', unitPrice: 'Infinity' }],
+    'USD',
+  );
+
+  assert.equal(result.validRows.length, 0);
+  assert.ok(
+    result.errors.some((issue) => /must be a number/i.test(issue.message)),
+  );
+});
+
+test('integer validation rejects scientific notation but accepts trailing-zero decimals', () => {
+  const scientific = validateInventoryRows([
+    {
+      productName: 'Aspirin 100mg',
+      warehouseCode: 'WH1',
+      snapshotDate: '2026-01-01',
+      quantityOnHand: '1e3',
+    },
+  ]);
+  assert.equal(scientific.validRows.length, 0);
+  assert.ok(
+    scientific.errors.some((issue) =>
+      /must be an integer/i.test(issue.message),
+    ),
+  );
+
+  const trailingZero = validateInventoryRows([
+    {
+      productName: 'Aspirin 100mg',
+      warehouseCode: 'WH1',
+      snapshotDate: '2026-01-01',
+      quantityOnHand: '100.0',
+      quantityReserved: '0',
+    },
+  ]);
+  assert.equal(trailingZero.validRows.length, 1);
+  assert.equal(trailingZero.validRows[0]?.quantityAvailable, 100);
+});
+
+test('inventory validation rejects a negative derived available quantity', () => {
+  const result = validateInventoryRows([
+    {
+      productName: 'Aspirin 100mg',
+      warehouseCode: 'WH1',
+      snapshotDate: '2026-01-01',
+      quantityOnHand: '5',
+      quantityReserved: '10',
+    },
+  ]);
+
+  assert.equal(result.validRows.length, 0);
+  assert.ok(
+    result.errors.some((issue) => /cannot be negative/i.test(issue.message)),
+  );
+});
+
 test('validates sales CSV fixture', async () => {
   const buffer = await readFile(path.join(fixturesDir, 'sales.csv'));
   const parsed = await parseUploadedFile({

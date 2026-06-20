@@ -23,7 +23,7 @@ export function getIssues(context: ParseContext): RowIssue[] {
   return context.issues;
 }
 
-function addIssue(
+export function addIssue(
   context: ParseContext,
   message: string,
   fieldName?: string,
@@ -34,6 +34,20 @@ function addIssue(
     message,
     rawRow: context.rawRow,
   });
+}
+
+/**
+ * Parse a spreadsheet cell as a plain decimal integer. Accepts an optional sign
+ * and trailing-zero fraction ("100", "-5", "100.0"); rejects scientific ("1e3"),
+ * hex ("0x10"), binary/octal, and non-integers — `Number()` would otherwise
+ * silently coerce those into surprising values.
+ */
+function parseIntegerCell(value: string): number | null {
+  if (!/^[+-]?\d+(\.0+)?$/.test(value)) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? parsed : null;
 }
 
 function findValue(rawRow: ParsedTableRow, keys: string[]): string {
@@ -91,9 +105,9 @@ export function optionalInteger(
     return null;
   }
 
-  const parsed = Number(value);
+  const parsed = parseIntegerCell(value);
 
-  if (!Number.isInteger(parsed)) {
+  if (parsed === null) {
     addIssue(context, `${fieldName} must be an integer.`, fieldName);
     return null;
   }
@@ -112,9 +126,9 @@ export function requireInteger(
     return null;
   }
 
-  const parsed = Number(value);
+  const parsed = parseIntegerCell(value);
 
-  if (!Number.isInteger(parsed)) {
+  if (parsed === null) {
     addIssue(context, `${fieldName} must be an integer.`, fieldName);
     return null;
   }
@@ -136,7 +150,9 @@ export function optionalDecimal(
   const normalized = value.replace(/,/g, '');
   const parsed = Number(normalized);
 
-  if (Number.isNaN(parsed)) {
+  // `Number.isFinite` (not `Number.isNaN`) also rejects "Infinity"/"-Infinity",
+  // which would otherwise build a Prisma.Decimal that explodes at persistence.
+  if (!Number.isFinite(parsed)) {
     addIssue(context, `${fieldName} must be a number.`, fieldName);
     return null;
   }
@@ -158,7 +174,9 @@ export function requireDecimal(
   const normalized = value.replace(/,/g, '');
   const parsed = Number(normalized);
 
-  if (Number.isNaN(parsed)) {
+  // `Number.isFinite` (not `Number.isNaN`) also rejects "Infinity"/"-Infinity",
+  // which would otherwise build a Prisma.Decimal that explodes at persistence.
+  if (!Number.isFinite(parsed)) {
     addIssue(context, `${fieldName} must be a number.`, fieldName);
     return null;
   }
