@@ -42,9 +42,10 @@ calls `replyWithFilledAccountOpeningForm` after the case is persisted.
 ## Safety model
 
 - **Never auto-filled** (deny-by-default, `NEVER_FILL` in `docxFill.ts`): bank
-  name, account name/number, sort code, SWIFT/BIC, IBAN, **signature / print
-  name**, credit terms, and unverifiable licence/GDP fields. These are listed on
-  the answers sheet as "complete by hand".
+  name, account name/number, sort code, SWIFT/BIC, IBAN, **direct debit /
+  standing order / payment mandate**, **signature / print name**, **personal
+  identity (date of birth, passport)**, credit terms, and unverifiable licence/GDP
+  fields. These are listed on the answers sheet as "complete by hand".
 - **Internal senders only.** `autoReplyAccountOpeningForm` replies only when the
   sender's domain is in `EMAIL_INBOUND_INTERNAL_DOMAINS` (default
   `ambemedical.com`). An external/supplier sender is **never** auto-replied — it
