@@ -36,3 +36,25 @@ upstream packages catch up:
 
 These overrides should be removed once the parent packages resolve safe versions
 without overrides and the full verification suite remains green.
+
+## 2026-06 advisory clean-up (api dependencies)
+
+`pnpm audit --prod` reported 7 advisories (3 high, 4 moderate) across three
+`apps/api` packages. All were resolved without overrides:
+
+- **`nodemailer` (direct dep) removed.** It was declared in `apps/api` but never
+  imported anywhere in the source tree (verified by grep). Dropping it — and the
+  now-unused `@types/nodemailer` — cleared the TLS-validation, `jsonTransport`
+  file-access, and CRLF List-header advisories on the `apps/api > nodemailer`
+  path with zero code impact.
+- **`mailparser` `^3.9.9` → `^3.9.11`.** The newer release already depends on the
+  patched `nodemailer@9.0.1`, which clears the transitive "raw option bypass"
+  high advisory. `mailparser` only uses `nodemailer/lib/addressparser`, which is
+  unchanged across the bump.
+- **`multer` `^2.1.1` → `^2.2.0`.** Closes both upload DoS advisories (deeply
+  nested fields; incomplete cleanup of aborted uploads). Usage is limited to
+  `memoryStorage()` in the imports and account-opening upload routes; the API is
+  stable across the minor bump.
+
+After the change `pnpm audit --prod` reports no known vulnerabilities and the
+full verification suite (build, test, lint) remains green.
