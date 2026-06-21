@@ -104,6 +104,67 @@ test('supplier CSV attachment auto-imports through the import pipeline', async (
   );
 });
 
+test('a confidently classified price list imports without filename/subject keywords', async () => {
+  const calls: string[] = [];
+  const service = createEmailInboundService({
+    allowedSenders: ['supplier@example.com'],
+    supplierMappings: [
+      { pattern: 'supplier@example.com', supplierName: 'Acme Labs' },
+    ],
+    logger: createLogger(),
+    importSupplierPriceList: async ({ supplierName }) => {
+      calls.push(supplierName ?? '');
+      return {
+        importBatchId: 'batch-classified',
+        summary: { totalRows: 1, validRows: 1, invalidRows: 0, warnings: [] },
+        errors: [],
+      };
+    },
+    importInventory: async () => {
+      throw new Error('inventory import should not run');
+    },
+    importSales: async () => {
+      throw new Error('sales import should not run');
+    },
+    // A clear price-list table — the document classifier should recognise it
+    // even though the subject and filename carry no import keywords.
+    parseUploadedFile: async () =>
+      parsedFile([
+        {
+          productName: 'Aspirin 75mg tablets 100',
+          unitPrice: '1.50',
+          packSize: '100',
+          currency: 'GBP',
+        } as ParsedTableRow,
+      ]),
+  });
+
+  const csv = [
+    'productName,unitPrice,packSize,currency',
+    'Aspirin 75mg tablets 100,1.50,100,GBP',
+  ].join('\n');
+
+  const result = await service.ingestMessage({
+    messageId: 'msg-classified',
+    from: 'supplier@example.com',
+    subject: 'Hello there', // deliberately no import keyword
+    bodyText:
+      'Please find our latest wholesale price list with unit prices and pack sizes attached.',
+    attachments: [
+      {
+        fileName: 'data.csv', // deliberately no import keyword
+        mimeType: 'text/csv',
+        content: Buffer.from(csv).toString('base64'),
+      },
+    ],
+  });
+
+  assert.equal(result.items[0]?.processingStatus, 'IMPORTED');
+  assert.equal(result.items[0]?.inferredImportType, 'supplier-price-list');
+  assert.match(result.items[0]?.reason ?? '', /document classifier/i);
+  assert.deepEqual(calls, ['Acme Labs']);
+});
+
 test('trusted domain sender is allowed for direct supplier emails', async () => {
   let called = false;
   const service = createEmailInboundService({
