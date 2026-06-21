@@ -50,6 +50,39 @@ function parseIntegerCell(value: string): number | null {
   return Number.isInteger(parsed) ? parsed : null;
 }
 
+/**
+ * Normalise a numeric cell that may use either `,` or `.` as the decimal point.
+ * For drug prices the separator is always the decimal point ("12,00" === "12.00"),
+ * so comma and dot are treated symmetrically: the rightmost separator is the
+ * decimal point and any earlier separators are thousands grouping. Spaces (incl.
+ * non-breaking) are dropped as grouping. Returns a JS/Decimal-parseable string.
+ *
+ * Examples: "12,00"→"12.00", "12.00"→"12.00", "1.250,00"→"1250.00",
+ * "1,250.00"→"1250.00", "1,250,000"→"1250000", "1 250,5"→"1250.5".
+ */
+function normalizeDecimalString(value: string): string {
+  let s = value.replace(/\s/g, '');
+  const hasComma = s.includes(',');
+  const hasDot = s.includes('.');
+
+  if (hasComma && hasDot) {
+    // Mixed separators: the rightmost is the decimal point, the other groups
+    // thousands. "1.250,00" → comma decimal; "1,250.00" → dot decimal.
+    s =
+      s.lastIndexOf(',') > s.lastIndexOf('.')
+        ? s.replace(/\./g, '').replace(',', '.')
+        : s.replace(/,/g, '');
+  } else if (hasComma) {
+    // A lone comma is the decimal point; repeated commas are thousands grouping.
+    s = s.split(',').length > 2 ? s.replace(/,/g, '') : s.replace(',', '.');
+  } else if ((s.match(/\./g)?.length ?? 0) > 1) {
+    // Repeated dots are thousands grouping ("1.250.000"); a lone dot is decimal.
+    s = s.replace(/\./g, '');
+  }
+
+  return s;
+}
+
 function findValue(rawRow: ParsedTableRow, keys: string[]): string {
   for (const key of keys) {
     const direct = rawRow[key];
@@ -147,7 +180,7 @@ export function optionalDecimal(
     return null;
   }
 
-  const normalized = value.replace(/,/g, '');
+  const normalized = normalizeDecimalString(value);
   const parsed = Number(normalized);
 
   // `Number.isFinite` (not `Number.isNaN`) also rejects "Infinity"/"-Infinity",
@@ -171,7 +204,7 @@ export function requireDecimal(
     return null;
   }
 
-  const normalized = value.replace(/,/g, '');
+  const normalized = normalizeDecimalString(value);
   const parsed = Number(normalized);
 
   // `Number.isFinite` (not `Number.isNaN`) also rejects "Infinity"/"-Infinity",
