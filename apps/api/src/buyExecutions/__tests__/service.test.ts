@@ -305,6 +305,37 @@ test('price drift is flagged when invoiced unit price exceeds the configured thr
   assert.equal(updated.summary.quoteToInvoicePriceDriftPct, 0.05);
 });
 
+test('a fully-received order above MOQ is not flagged as quantity drift', async () => {
+  const harness = createHarness();
+  // MOQ is 100; the buyer ordered 200 (above the floor) and received all 200.
+  const execution = await upsertExecutionForBuyDecision(
+    harness.repository as never,
+    harness.buyDecisions[0] as BuyDecisionExecutionSnapshot,
+    {
+      actorType: 'USER',
+      actorIdentifier: 'buyer-1',
+      externalOrderReference: 'PO-001',
+      orderPlacedAt: new Date('2026-04-21T09:00:00.000Z'),
+      orderedQuantity: 200,
+      orderedUnitPrice: '10.00',
+      orderedCurrencyCode: 'GBP',
+      fulfillmentStatus: 'ORDER_PLACED',
+    },
+  );
+
+  const updated = await harness.service.updateBuyExecution(execution.id, {
+    actorType: 'USER',
+    actorIdentifier: 'buyer-1',
+    receivedQuantity: 200,
+    receivedAt: new Date('2026-04-23T12:00:00.000Z'),
+  });
+
+  // Received exactly what was ordered — no drift, even though it exceeds MOQ.
+  assert.equal(updated.summary.quantityVariance, 0);
+  assert.equal(updated.summary.hasQuantityDrift, false);
+  assert.notEqual(updated.summary.reconciliationStatus, 'QUANTITY_DRIFT');
+});
+
 test('quantity drift is flagged when received quantity materially differs from the quote expectation', async () => {
   const harness = createHarness();
   const execution = await createOrderedExecution(harness);
