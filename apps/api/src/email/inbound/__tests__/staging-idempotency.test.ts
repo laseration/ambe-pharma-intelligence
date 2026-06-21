@@ -222,7 +222,19 @@ function installDbMocks(t: TestContext) {
       );
 
       if (existing) {
-        Object.assign(existing, update);
+        for (const [key, value] of Object.entries(update)) {
+          // Honour Prisma's atomic increment shape ({ increment: n }).
+          if (
+            value &&
+            typeof value === 'object' &&
+            'increment' in (value as Record<string, unknown>)
+          ) {
+            existing[key] =
+              (existing[key] ?? 0) + (value as { increment: number }).increment;
+          } else {
+            existing[key] = value;
+          }
+        }
         return existing;
       }
 
@@ -808,6 +820,39 @@ test('stageInboundEmailSafely returns persisted:true after durable staging succe
 
   assert.deepEqual(outcome, { persisted: true });
   assert.equal(state.inboundEmails.length, 1);
+});
+
+test('a poison message is dead-lettered after repeated failed ingest attempts', async (t) => {
+  const state = installDbMocks(t);
+  // Simulate a message that has already failed the maximum number of attempts.
+  state.inboundEmails.push({
+    id: 'email-poison',
+    sourceSystem: 'MICROSOFT_GRAPH',
+    externalMessageId: 'graph-poison',
+    processingStatus: 'RECEIVED',
+    ingestAttempts: 5,
+  });
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'graph-poison',
+      messageId: 'internet-poison',
+      from: 'pricing@supplier.co',
+      subject: 'Offer',
+      bodyText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
+    },
+    createInboundResult(),
+  );
+
+  const row = state.inboundEmails.find((item) => item.id === 'email-poison');
+  assert.equal(row?.processingStatus, 'FAILED');
+  assert.equal(
+    row?.reviewReason,
+    'dead_lettered_after_repeated_ingest_failures',
+  );
+  // It bailed before extracting or persisting any offers.
+  assert.equal(state.offers.length, 0);
 });
 
 test('stageInboundEmailSafely returns structured failure and logs when persistence throws', async (t) => {

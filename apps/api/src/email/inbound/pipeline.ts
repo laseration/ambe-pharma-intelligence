@@ -38,6 +38,9 @@ import {
 import type { EmailInboundMessage, EmailInboundResult } from './types';
 
 const EXTRACTOR_VERSION = 'email-staging-v1';
+// After this many failed staging attempts a message is dead-lettered (terminal
+// FAILED) instead of being retried on every poll forever.
+const MAX_INGEST_ATTEMPTS = 5;
 const PRICE_PATTERN =
   /\b(?:((?:GBP|USD|EUR))\s*(\d+(?:\.\d{1,2})?)|([\u00A3$€])\s*(\d+(?:\.\d{1,2})?)|(\d+(?:\.\d{1,2})?)\s*((?:GBP|USD|EUR)))\b/i;
 const MOQ_PATTERN =
@@ -1944,12 +1947,35 @@ export async function stageInboundEmail(
             externalMessageId,
           },
         },
-        update: baseInboundEmailData,
-        create: baseInboundEmailData,
+        // Count each staging attempt. A successful run terminalises the status
+        // (non-RECEIVED), so the poller's dedup stops re-polling it — meaning
+        // this counter only climbs while a message keeps failing.
+        update: { ...baseInboundEmailData, ingestAttempts: { increment: 1 } },
+        create: { ...baseInboundEmailData, ingestAttempts: 1 },
       })
     : await db.inboundEmail.create({
-        data: baseInboundEmailData,
+        data: { ...baseInboundEmailData, ingestAttempts: 1 },
       });
+
+  // Dead-letter a poison message: after too many failed attempts, move it to a
+  // terminal FAILED state (and stop here) so it is not re-staged on every poll
+  // forever. The poller marks a non-RECEIVED message read, so it leaves the
+  // inbox while staying visible to operators as FAILED.
+  if (inboundEmail.ingestAttempts > MAX_INGEST_ATTEMPTS) {
+    await db.inboundEmail.update({
+      where: { id: inboundEmail.id },
+      data: {
+        processingStatus: 'FAILED',
+        reviewReason: 'dead_lettered_after_repeated_ingest_failures',
+        processedAt: new Date(),
+      },
+    });
+    logger.warn('Inbound email dead-lettered after repeated ingest failures', {
+      inboundEmailId: inboundEmail.id,
+      ingestAttempts: inboundEmail.ingestAttempts,
+    });
+    return;
+  }
 
   await db.$transaction([
     db.emailDerivedOfferEvidence.deleteMany({
