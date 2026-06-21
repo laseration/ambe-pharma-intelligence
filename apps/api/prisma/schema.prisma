@@ -574,6 +574,8 @@ model Supplier {
   normalizedName            String
   country                   String?
   contactEmail              String?
+  contactName               String?
+  contactPhone              String?
   reliabilityScore          Float                      @default(0.5)
   isActive                  Boolean                    @default(true)
   inventorySnapshots        InventorySnapshot[]

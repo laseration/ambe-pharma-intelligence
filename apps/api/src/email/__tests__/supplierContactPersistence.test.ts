@@ -55,7 +55,17 @@ function createHarness() {
   const contacts: PersistedSupplierContactCandidate[] = [];
   const events: SupplierContactEventRecord[] = [];
   const evidence = new Map<string, unknown[]>();
-  const suppliers = new Map([
+  const suppliers = new Map<
+    string,
+    {
+      id: string;
+      name: string;
+      normalizedName: string;
+      contactEmail?: string | null;
+      contactName?: string | null;
+      contactPhone?: string | null;
+    }
+  >([
     [
       'supplier-1',
       {
@@ -120,6 +130,18 @@ function createHarness() {
     },
     async findSupplierById(id) {
       return suppliers.get(id) ?? null;
+    },
+    async updateSupplierContactDetails(id, data) {
+      const existing = suppliers.get(id);
+      if (!existing) {
+        return;
+      }
+      suppliers.set(id, {
+        ...existing,
+        ...(data.contactEmail ? { contactEmail: data.contactEmail } : {}),
+        ...(data.contactName ? { contactName: data.contactName } : {}),
+        ...(data.contactPhone ? { contactPhone: data.contactPhone } : {}),
+      });
     },
   };
 
@@ -229,7 +251,7 @@ test('approved supplier contact candidates are not overwritten by replay', async
   assert.equal(replay?.supplierId, 'supplier-1');
 });
 
-test('review actions link only to existing suppliers and never update supplier records', async () => {
+test('linking to a supplier writes the captured contact details onto the supplier record', async () => {
   const harness = createHarness();
   const created = await persistSupplierContactCandidate({
     inboundEmailId: 'email-1',
@@ -260,10 +282,21 @@ test('review actions link only to existing suppliers and never update supplier r
 
   assert.equal(linked.status, 'STAGED');
   assert.equal(linked.supplierId, 'supplier-1');
-  assert.equal(harness.suppliers.get('supplier-1')?.name, 'Delta Pharma Ltd');
+  // The captured contact details are written back to the canonical supplier so
+  // operators have correct, up-to-date contact info in place.
+  const supplier = harness.suppliers.get('supplier-1');
+  assert.equal(supplier?.name, 'Delta Pharma Ltd'); // name untouched
+  assert.equal(supplier?.contactEmail, 'jane@delta-pharma.example');
+  assert.equal(supplier?.contactName, 'Jane Buyer');
+  assert.equal(supplier?.contactPhone, '+442070001111'); // canonical preferred
   assert.equal(
     harness.events.at(-1)?.actionType,
     'SUPPLIER_CONTACT_LINKED_TO_SUPPLIER',
+  );
+  assert.equal(
+    (harness.events.at(-1)?.metadata as { supplierRecordUpdated?: boolean })
+      ?.supplierRecordUpdated,
+    true,
   );
 });
 
