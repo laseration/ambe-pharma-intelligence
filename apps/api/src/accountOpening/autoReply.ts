@@ -24,6 +24,7 @@ export type AccountOpeningAutoReplyStatus =
   | 'SKIPPED_DISABLED'
   | 'SKIPPED_EXTERNAL_SENDER'
   | 'SKIPPED_NO_FORM'
+  | 'SKIPPED_NO_CASE_ID'
   | 'SKIPPED_ALREADY_REPLIED'
   | 'FAILED';
 
@@ -228,12 +229,24 @@ export async function autoReplyAccountOpeningForm(
     };
   }
 
+  // Without a case id there is no durable idempotency key: we could neither
+  // check for a prior reply nor record this one, so every re-poll of the same
+  // message would re-send. Refuse rather than send un-deduplicated.
+  if (!input.caseId) {
+    return {
+      status: 'SKIPPED_NO_CASE_ID',
+      note: 'No case id available; refusing to auto-reply without a durable idempotency key.',
+      recipient,
+    };
+  }
+  const caseId = input.caseId;
+
   const alreadyReplied = deps.alreadyReplied ?? defaultAlreadyReplied;
   const recordReplyEvent = deps.recordReplyEvent ?? defaultRecordReplyEvent;
 
   // Idempotency guard: if this same email is re-processed (worker restart,
   // transient failure, Graph re-delivery), never email the reviewer twice.
-  if (input.caseId && (await alreadyReplied(input.caseId))) {
+  if (await alreadyReplied(caseId)) {
     return {
       status: 'SKIPPED_ALREADY_REPLIED',
       note: 'A reply was already sent for this case; not sending again.',
@@ -246,8 +259,9 @@ export async function autoReplyAccountOpeningForm(
   const values = deps.values ?? masterProfileToDocxValues();
   const fileName = form.fileName ?? 'account-opening-form';
 
+  let result: EmailAccountOpeningReviewDraftResult;
   try {
-    const result: EmailAccountOpeningReviewDraftResult = await emailReviewDraft(
+    result = await emailReviewDraft(
       {
         formBytes: form.buffer,
         fileName,
@@ -257,27 +271,41 @@ export async function autoReplyAccountOpeningForm(
       },
       { now: deps.now },
     );
-    const status: AccountOpeningAutoReplyStatus =
-      result.email.status === 'SENT' ? 'SENT' : 'FAILED';
-
-    // Record the audit/idempotency event ONLY on a confirmed send, so a failed
-    // attempt is still retried on the next poll rather than silently swallowed.
-    if (status === 'SENT' && input.caseId) {
-      await recordReplyEvent({
-        caseId: input.caseId,
-        status,
-        recipient,
-        fileName,
-        note: result.email.note,
-      });
-    }
-
-    return { status, note: result.email.note, recipient };
   } catch (error) {
+    // The send itself failed — nothing went out, so reporting FAILED (which lets
+    // the next poll retry) is correct.
     return {
       status: 'FAILED',
       note: `Auto-reply failed: ${(error as Error).message}`,
       recipient,
     };
   }
+
+  const status: AccountOpeningAutoReplyStatus =
+    result.email.status === 'SENT' ? 'SENT' : 'FAILED';
+
+  // Record the audit/idempotency event ONLY on a confirmed send, so a failed
+  // attempt is still retried on the next poll rather than silently swallowed.
+  if (status === 'SENT') {
+    try {
+      await recordReplyEvent({
+        caseId,
+        status,
+        recipient,
+        fileName,
+        note: result.email.note,
+      });
+    } catch (recordError) {
+      // The email already went out. Returning FAILED here would make the next
+      // poll re-send (the dedup event was never written) — a DUPLICATE reply.
+      // Surface SENT with the bookkeeping failure noted instead.
+      return {
+        status,
+        note: `${result.email.note} (warning: idempotency/audit record failed: ${(recordError as Error).message})`,
+        recipient,
+      };
+    }
+  }
+
+  return { status, note: result.email.note, recipient };
 }
