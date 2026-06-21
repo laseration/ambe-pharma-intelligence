@@ -1563,7 +1563,7 @@ test('a supplier cue with irregular whitespace still resolves to the canonical s
   assert.notEqual(state.offers[0]?.reviewReason, 'unresolved_supplier');
 });
 
-test('mapped supplier cue without canonical supplier record stays unresolved', async (t) => {
+test('a trusted sender mapping auto-creates the canonical supplier and resolves it', async (t) => {
   const state = installDbMocks(t);
   const originalMappings = env.emailInboundSupplierMappings;
   const originalAllowedSenders = env.emailInboundAllowedSenders;
@@ -1579,6 +1579,7 @@ test('mapped supplier cue without canonical supplier record stays unresolved', a
     baseName: 'amlodipine',
     manufacturer: null,
   });
+  // No Supplier record is seeded — the trusted operator mapping should mint it.
 
   t.after(() => {
     env.emailInboundSupplierMappings = originalMappings;
@@ -1588,8 +1589,8 @@ test('mapped supplier cue without canonical supplier record stays unresolved', a
   await stageInboundEmail(
     {
       sourceSystem: 'MICROSOFT_GRAPH',
-      externalMessageId: 'graph-mapped-but-unresolved-supplier',
-      messageId: 'internet-mapped-but-unresolved-supplier',
+      externalMessageId: 'graph-mapped-autocreate-supplier',
+      messageId: 'internet-mapped-autocreate-supplier',
       from: 'pricing@supplier.co',
       subject: 'Offer',
       bodyText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
@@ -1597,18 +1598,15 @@ test('mapped supplier cue without canonical supplier record stays unresolved', a
     createInboundResult(),
   );
 
-  assert.equal(state.offers.length, 1);
-  assert.equal(state.offers[0]?.status, 'REVIEW_REQUIRED');
-  assert.equal(state.offers[0]?.reviewReason, 'unresolved_supplier');
-  assert.equal(state.offers[0]?.supplierCandidate, 'Supplier Co');
-  assert.equal(state.promotionDecisions[0]?.reason, 'unresolved_supplier');
-  assert.equal(state.workflowItems.length, 1);
+  // The trusted mapping minted the canonical supplier...
   assert.equal(
-    state.workflowItems[0]?.sourceReviewReason,
-    'unresolved_supplier',
+    state.suppliers.some((supplier) => supplier.name === 'Supplier Co'),
+    true,
   );
-  assert.equal(state.priceLists.length, 0);
-  assert.equal(state.priceItems.length, 0);
+  // ...so the offer is no longer held as unresolved_supplier.
+  assert.equal(state.offers.length, 1);
+  assert.notEqual(state.offers[0]?.reviewReason, 'unresolved_supplier');
+  assert.equal(state.offers[0]?.supplierCandidate, 'Supplier Co');
 });
 
 test('forwarded supplier cues and shared pricing stay review-only but preserve supplier evidence', async (t) => {

@@ -8,7 +8,10 @@ import {
   buildProductCandidates,
   normalizeText,
 } from '../../imports/normalization';
-import { findOrCreateProduct } from '../../imports/service';
+import {
+  findOrCreateProduct,
+  findOrCreateSupplier,
+} from '../../imports/service';
 import { db } from '../../lib/db';
 import { logger } from '../../lib/logger';
 import { redactSafeOutputString } from '../../safety/redaction';
@@ -1506,7 +1509,11 @@ async function resolveOfferCandidates(
     let selectedResolvedSupplierName: string | null = null;
 
     for (const candidate of supplierCandidates) {
-      const supplier = await db.supplier.findFirst({
+      const isSelectedCue =
+        Boolean(selectedSupplierCue) &&
+        normalizeFingerprintText(selectedSupplierCue?.candidateName) ===
+          normalizeFingerprintText(candidate.candidateName);
+      let supplier = await db.supplier.findFirst({
         where: {
           // Use the SAME normaliser suppliers are stored with (collapses internal
           // whitespace too) — a bare trim().toLowerCase() would fail to match
@@ -1514,6 +1521,13 @@ async function resolveOfferCandidates(
           normalizedName: normalizeText(candidate.candidateName),
         },
       });
+      // First-time supplier from a trusted, operator-configured mapping: create
+      // the canonical record so its price list is attributed and persisted
+      // rather than held forever as unresolved_supplier. Only the sender_mapping
+      // cue is trusted enough to mint a supplier — body/forwarded cues never do.
+      if (!supplier && isSelectedCue && candidate.reason === 'sender_mapping') {
+        supplier = await findOrCreateSupplier(candidate.candidateName);
+      }
       const candidateSelected =
         Boolean(selectedSupplierCue) &&
         Boolean(supplier?.id) &&
