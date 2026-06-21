@@ -56,6 +56,11 @@ test('redacts common secret-like strings while preserving safe debugging labels'
       input: 'from=pricing.person@supplier.example',
       forbidden: ['pricing.person@supplier.example'],
     },
+    {
+      label: 'dot-less intranet email',
+      input: 'from=ops@localhost',
+      forbidden: ['ops@localhost'],
+    },
   ];
 
   for (const item of cases) {

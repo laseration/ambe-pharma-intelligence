@@ -54,8 +54,10 @@ export function redactEmailAddress(value: string): string {
 }
 
 function redactEmailAddresses(value: string): string {
+  // Match dotted domains (user@example.co.uk) AND dot-less intranet-style hosts
+  // (user@localhost) — both can leak in free-text safe-output strings.
   return value.replace(
-    /\b[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,})\b/gi,
+    /\b[A-Z0-9._%+-]+@([A-Z0-9-]+(?:\.[A-Z0-9-]+)*)\b/gi,
     (_match, domain: string) => `***@${domain.toLowerCase()}`,
   );
 }

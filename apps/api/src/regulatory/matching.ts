@@ -155,9 +155,9 @@ export async function matchRegulatoryProductText(
 
   return {
     status: confident ? 'CONFIDENT' : 'UNCLEAR',
-    productId: confident
-      ? decision.matchedProductId
-      : decision.matchedProductId,
+    // The candidate product is surfaced for reviewer context regardless of
+    // confidence; auto-alerting is separately gated on CONFIDENT downstream.
+    productId: decision.matchedProductId,
     confidence: confident ? confidence : Math.min(confidence, 65),
     reason: buildReason(decision, baseNameCandidateCount),
     candidates,
