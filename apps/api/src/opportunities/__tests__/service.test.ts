@@ -3,7 +3,33 @@ import test, { type TestContext } from 'node:test';
 import type { Opportunity, Prisma } from '@prisma/client';
 
 import { db } from '../../lib/db';
-import { listOpportunities, updateOpportunityStatus } from '../service';
+import {
+  listOpportunities,
+  updateOpportunityStatus,
+  volumeWeightedAverageSalePrice,
+} from '../service';
+
+const decimal = (value: number) => ({ toNumber: () => value });
+
+test('volumeWeightedAverageSalePrice weights by quantity, not sale count', () => {
+  // One tiny outlier order must not drag the average: 100 @ 2 and 1 @ 10.
+  const weighted = volumeWeightedAverageSalePrice([
+    { unitPrice: decimal(2), quantity: 100 },
+    { unitPrice: decimal(10), quantity: 1 },
+  ]);
+  assert.ok(weighted !== null);
+  // Realised average = (200 + 10) / 101 ≈ 2.079, not the unweighted mean of 6.
+  assert.ok(Math.abs(weighted - 210 / 101) < 1e-9);
+  assert.ok(weighted < 2.1);
+});
+
+test('volumeWeightedAverageSalePrice returns null when there are no units', () => {
+  assert.equal(volumeWeightedAverageSalePrice([]), null);
+  assert.equal(
+    volumeWeightedAverageSalePrice([{ unitPrice: decimal(5), quantity: 0 }]),
+    null,
+  );
+});
 
 type OpportunityRecord = Opportunity & {
   product: { id: string; name: string; normalizedName: string } | null;
