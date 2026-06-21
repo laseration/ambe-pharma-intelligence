@@ -195,8 +195,12 @@ function shouldPersistSupplierContactForClassification(
   return (
     classification.routing === 'SUPPLIER_CONTACT_REVIEW' ||
     classification.routing === 'SUPPLIER_ONBOARDING_REVIEW' ||
+    // Price-list emails are the primary channel for supplier contact details, so
+    // capture a (review-first) contact candidate from them too.
+    classification.routing === 'SUPPLIER_IMPORT' ||
     classification.primaryClass === 'SUPPLIER_CONTACT_FORM' ||
-    classification.primaryClass === 'SUPPLIER_ONBOARDING_OR_KYC'
+    classification.primaryClass === 'SUPPLIER_ONBOARDING_OR_KYC' ||
+    classification.primaryClass === 'SUPPLIER_PRICE_LIST'
   );
 }
 
@@ -2129,64 +2133,73 @@ export async function stageInboundEmail(
   });
 
   if (shouldPersistSupplierContactForClassification(documentClassification)) {
-    const supplierContactCandidate = extractSupplierContact({
-      fromEmail: message.from,
-      fromName: message.fromName ?? null,
-      senderEmail: message.sender ?? null,
-      senderName: message.senderName ?? null,
-      replyTo: message.replyTo ?? null,
-      internetMessageHeaders: message.internetMessageHeaders ?? null,
-      bodyText: message.bodyText ?? null,
-      attachmentRows: documents
-        .filter((document) => document.kind === 'ATTACHMENT_TABLE')
-        .flatMap((document) => tableRowsFromDocumentText(document)),
-      attachmentTexts: documents
-        .filter((document) => document.kind === 'ATTACHMENT_TEXT')
-        .map((document) => ({
-          attachmentId: classifierAttachmentId({
-            label: document.label,
-            documentIndex: document.documentIndex,
+    // Contact capture is best-effort — a failure must never break inbound
+    // ingestion (the price-list import has already run). Swallow and log.
+    try {
+      const supplierContactCandidate = extractSupplierContact({
+        fromEmail: message.from,
+        fromName: message.fromName ?? null,
+        senderEmail: message.sender ?? null,
+        senderName: message.senderName ?? null,
+        replyTo: message.replyTo ?? null,
+        internetMessageHeaders: message.internetMessageHeaders ?? null,
+        bodyText: message.bodyText ?? null,
+        attachmentRows: documents
+          .filter((document) => document.kind === 'ATTACHMENT_TABLE')
+          .flatMap((document) => tableRowsFromDocumentText(document)),
+        attachmentTexts: documents
+          .filter((document) => document.kind === 'ATTACHMENT_TEXT')
+          .map((document) => ({
+            attachmentId: classifierAttachmentId({
+              label: document.label,
+              documentIndex: document.documentIndex,
+            }),
+            sourceDocumentId: document.id,
+            text: document.textContent,
+          })),
+        attachmentFileNames: (message.attachments ?? []).map(
+          (attachment, index) => ({
+            attachmentId:
+              attachment.graphAttachmentId ??
+              attachment.contentId ??
+              attachment.fileName ??
+              `attachment-${index + 1}`,
+            fileName: attachment.fileName ?? null,
           }),
-          sourceDocumentId: document.id,
-          text: document.textContent,
-        })),
-      attachmentFileNames: (message.attachments ?? []).map(
-        (attachment, index) => ({
-          attachmentId:
-            attachment.graphAttachmentId ??
-            attachment.contentId ??
-            attachment.fileName ??
-            `attachment-${index + 1}`,
-          fileName: attachment.fileName ?? null,
-        }),
-      ),
-      supplierMappings: env.emailInboundSupplierMappings,
-      internalDomains: env.emailInboundInternalDomains,
-    });
-    const persistedSupplierContacts =
-      await persistSupplierContactCandidatesForInboundEmail({
-        inboundEmailId: inboundEmail.id,
-        message,
-        documents: documents.map((document) => ({
-          id: document.id,
-          kind: document.kind,
-          label: document.label,
-          textContent: document.textContent,
-        })),
-        classification: documentClassification,
-        candidates: [supplierContactCandidate],
-      });
-
-    if (persistedSupplierContacts.length > 0) {
-      logger.info('Inbound supplier contact candidate staged for review', {
-        inboundEmailId: inboundEmail.id,
-        persistedSupplierContactIds: persistedSupplierContacts.map(
-          (candidate) => candidate.id,
         ),
-        routing: documentClassification.routing,
-        primaryClass: documentClassification.primaryClass,
-        confidence: supplierContactCandidate.confidence,
-        conflictCount: supplierContactCandidate.conflicts.length,
+        supplierMappings: env.emailInboundSupplierMappings,
+        internalDomains: env.emailInboundInternalDomains,
+      });
+      const persistedSupplierContacts =
+        await persistSupplierContactCandidatesForInboundEmail({
+          inboundEmailId: inboundEmail.id,
+          message,
+          documents: documents.map((document) => ({
+            id: document.id,
+            kind: document.kind,
+            label: document.label,
+            textContent: document.textContent,
+          })),
+          classification: documentClassification,
+          candidates: [supplierContactCandidate],
+        });
+
+      if (persistedSupplierContacts.length > 0) {
+        logger.info('Inbound supplier contact candidate staged for review', {
+          inboundEmailId: inboundEmail.id,
+          persistedSupplierContactIds: persistedSupplierContacts.map(
+            (candidate) => candidate.id,
+          ),
+          routing: documentClassification.routing,
+          primaryClass: documentClassification.primaryClass,
+          confidence: supplierContactCandidate.confidence,
+          conflictCount: supplierContactCandidate.conflicts.length,
+        });
+      }
+    } catch (error) {
+      logger.warn('Inbound supplier contact capture failed (non-blocking)', {
+        inboundEmailId: inboundEmail.id,
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   }
