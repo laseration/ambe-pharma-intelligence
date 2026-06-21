@@ -106,6 +106,7 @@ export type SyncWorkflowItemInput = {
   manufacturerCandidate: string | null;
   resolutionCandidates: ResolutionCandidate[];
   supplierQualificationStatus?: SupplierQualificationStatus | null;
+  supplierQualificationExpiresAt?: Date | null;
 };
 
 export type WorkflowListFilters = {
@@ -1488,6 +1489,7 @@ function buildWorkflowFlags(input: SyncWorkflowItemInput): {
 function buildQualificationSnapshot(
   qualificationStatus: SupplierQualificationStatus | null,
   hasUnresolvedSupplier: boolean,
+  expiresAt: Date | null = null,
 ): {
   supplierQualificationStatus: SupplierQualificationStatus;
   hasUnknownSupplierQualification: boolean;
@@ -1531,6 +1533,22 @@ function buildQualificationSnapshot(
         normalizedStatus === 'PENDING_REVIEW'
           ? 'Supplier qualification is pending review.'
           : 'Supplier qualification is unknown and should be reviewed before purchase.',
+    };
+  }
+
+  // An otherwise-APPROVED qualification past its expiry has lapsed (the periodic
+  // WDA/GDP re-vetting a UK wholesaler must enforce). Treat it as needing review
+  // so the buy-approval gate requires explicit operator re-confirmation rather
+  // than silently clearing an expired supplier.
+  if (expiresAt && expiresAt.getTime() <= Date.now()) {
+    return {
+      supplierQualificationStatus: 'PENDING_REVIEW',
+      hasUnknownSupplierQualification: true,
+      hasRestrictedSupplier: false,
+      hasBlockedSupplier: false,
+      qualificationRiskNote: `Supplier qualification expired on ${expiresAt
+        .toISOString()
+        .slice(0, 10)} and must be re-vetted before purchase.`,
     };
   }
 
@@ -1578,6 +1596,7 @@ export function determineWorkflowPriority(input: SyncWorkflowItemInput): {
   const qualification = buildQualificationSnapshot(
     input.supplierQualificationStatus ?? null,
     flags.hasUnresolvedSupplier,
+    input.supplierQualificationExpiresAt ?? null,
   );
   const sourceKind = input.sourceKind ?? '';
 
@@ -1769,6 +1788,10 @@ async function buildPriorityForSync(
     supplierQualificationStatus:
       input.supplierQualificationStatus ??
       supplierQualification?.qualificationStatus ??
+      null,
+    supplierQualificationExpiresAt:
+      input.supplierQualificationExpiresAt ??
+      supplierQualification?.expiresAt ??
       null,
   });
 }
@@ -2077,6 +2100,7 @@ export function createOfferWorkflowService(
         supplierQualification?.qualificationStatus ??
           existing.supplierQualificationStatus,
         existing.hasUnresolvedSupplier,
+        supplierQualification?.expiresAt ?? null,
       );
 
       if (qualification.hasBlockedSupplier) {

@@ -1556,3 +1556,26 @@ test('conflicting supplier cues and qualification risk drive explainable priorit
   assert.equal(blocked.priority, 'HIGH');
   assert.equal(blocked.hasBlockedSupplier, true);
 });
+
+test('an expired APPROVED supplier qualification is treated as a review risk', () => {
+  const expired = determineWorkflowPriority(
+    createSyncInput({
+      supplierQualificationStatus: 'APPROVED',
+      supplierQualificationExpiresAt: new Date('2020-01-01T00:00:00.000Z'),
+    }),
+  );
+  // Lapsed qualification must not auto-clear — it requires re-vetting.
+  assert.equal(expired.supplierQualificationStatus, 'PENDING_REVIEW');
+  assert.equal(expired.hasUnknownSupplierQualification, true);
+  assert.match(expired.qualificationRiskNote ?? '', /expired/i);
+
+  const current = determineWorkflowPriority(
+    createSyncInput({
+      supplierQualificationStatus: 'APPROVED',
+      supplierQualificationExpiresAt: new Date('2999-01-01T00:00:00.000Z'),
+    }),
+  );
+  assert.equal(current.supplierQualificationStatus, 'APPROVED');
+  assert.equal(current.hasUnknownSupplierQualification, false);
+  assert.equal(current.qualificationRiskNote, null);
+});
