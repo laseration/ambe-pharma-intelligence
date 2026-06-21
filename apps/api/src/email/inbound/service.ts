@@ -1137,20 +1137,26 @@ export function createEmailInboundService(
                 dependencies.supplierMappings,
               ) ?? undefined;
 
+            // The trusted sender mapping outranks a supplierName column in the
+            // attachment: spreadsheets often carry the manufacturer (or a
+            // referenced third party) in that column, so trusting it over the
+            // known sender would attribute the whole sheet to the wrong supplier.
+            // Explicit operator overrides (payload / forwarded "Supplier:" line)
+            // still win first.
             trustedSupplierName =
               payloadSupplierName ??
               extractedSupplierName ??
-              supplierNameFromRows ??
-              supplierNameFromMapping;
+              supplierNameFromMapping ??
+              supplierNameFromRows;
 
             if (payloadSupplierName) {
               supplierReasonSuffix = ` Payload supplier override was used for ${payloadSupplierName}.`;
             } else if (extractedSupplierName) {
               supplierReasonSuffix = ` Manual supplier override from forwarded email content was used for ${extractedSupplierName}.`;
-            } else if (supplierNameFromRows) {
-              supplierReasonSuffix = ` Supplier name was taken from the attachment rows (${supplierNameFromRows}).`;
             } else if (supplierNameFromMapping) {
               supplierReasonSuffix = ` Trusted supplier mapping was used for ${supplierNameFromMapping}.`;
+            } else if (supplierNameFromRows) {
+              supplierReasonSuffix = ` Supplier name was taken from the attachment rows (${supplierNameFromRows}).`;
             } else {
               items.push({
                 ...buildTriageMetadata(baseItem, triage),

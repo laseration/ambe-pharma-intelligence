@@ -4,7 +4,10 @@ import { Prisma } from '@prisma/client';
 
 import { env } from '../../config/env';
 import { parseUploadedFile } from '../../imports/parsers';
-import { buildProductCandidates } from '../../imports/normalization';
+import {
+  buildProductCandidates,
+  normalizeText,
+} from '../../imports/normalization';
 import { findOrCreateProduct } from '../../imports/service';
 import { db } from '../../lib/db';
 import { logger } from '../../lib/logger';
@@ -1505,7 +1508,10 @@ async function resolveOfferCandidates(
     for (const candidate of supplierCandidates) {
       const supplier = await db.supplier.findFirst({
         where: {
-          normalizedName: candidate.candidateName.trim().toLowerCase(),
+          // Use the SAME normaliser suppliers are stored with (collapses internal
+          // whitespace too) — a bare trim().toLowerCase() would fail to match
+          // "Acme  Pharma" against the stored "acme pharma".
+          normalizedName: normalizeText(candidate.candidateName),
         },
       });
       const candidateSelected =
