@@ -1934,7 +1934,10 @@ export async function stageInboundEmail(
     senderDomain: extractSenderDomain(message.from),
     attachmentSummary: buildAttachmentSummary(message),
     receivedAt: message.receivedAt ?? null,
-    processedAt: new Date(),
+    // processedAt is set only when staging COMPLETES (the final update below, or
+    // the review-route early-return). Setting it on this initial upsert would
+    // leave a row that crashed mid-staging looking "processed" (RECEIVED status
+    // but a processedAt timestamp the inbox UI renders as "Processed …").
   };
   const inboundEmail = externalMessageId
     ? await db.inboundEmail.upsert({
@@ -2204,6 +2207,7 @@ export async function stageInboundEmail(
       data: {
         processingStatus: result.ignored ? 'REJECTED' : 'REVIEW_REQUIRED',
         reviewReason: documentClassification.reason,
+        processedAt: new Date(),
       },
     });
     return;

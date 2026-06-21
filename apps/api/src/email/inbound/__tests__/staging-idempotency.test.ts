@@ -810,6 +810,65 @@ test('stageInboundEmailSafely returns persisted:true after durable staging succe
   assert.equal(state.inboundEmails.length, 1);
 });
 
+test('processedAt is recorded when staging completes', async (t) => {
+  const state = installDbMocks(t);
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'graph-processedat-ok',
+      messageId: 'internet-processedat-ok',
+      from: 'pricing@supplier.co',
+      subject: 'Offer',
+      bodyText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
+    },
+    createInboundResult(),
+  );
+
+  assert.equal(state.inboundEmails.length, 1);
+  assert.ok(
+    state.inboundEmails[0]?.processedAt instanceof Date,
+    'a completed stage records processedAt',
+  );
+});
+
+test('a mid-staging failure leaves the email unprocessed (no processedAt)', async (t) => {
+  const state = installDbMocks(t);
+
+  // Fail AFTER the inbound row is upserted but before staging completes. The row
+  // must NOT carry a processedAt — otherwise the inbox shows "Processed …" for an
+  // email still stuck at RECEIVED.
+  const originalUpsert = db.emailDerivedOffer.upsert;
+  (db.emailDerivedOffer as unknown as Record<string, unknown>).upsert =
+    async () => {
+      throw new Error('offer write failed mid-staging');
+    };
+  t.after(() => {
+    (db.emailDerivedOffer as unknown as Record<string, unknown>).upsert =
+      originalUpsert;
+  });
+
+  await assert.rejects(() =>
+    stageInboundEmail(
+      {
+        sourceSystem: 'MICROSOFT_GRAPH',
+        externalMessageId: 'graph-processedat-fail',
+        messageId: 'internet-processedat-fail',
+        from: 'pricing@supplier.co',
+        subject: 'Offer',
+        bodyText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
+      },
+      createInboundResult(),
+    ),
+  );
+
+  assert.equal(state.inboundEmails.length, 1);
+  assert.ok(
+    !state.inboundEmails[0]?.processedAt,
+    'a crashed stage must not mark the email processed',
+  );
+});
+
 test('stageInboundEmailSafely returns structured failure and logs when persistence throws', async (t) => {
   installDbMocks(t);
 
