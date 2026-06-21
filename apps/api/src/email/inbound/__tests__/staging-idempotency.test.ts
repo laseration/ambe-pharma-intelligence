@@ -810,6 +810,44 @@ test('stageInboundEmailSafely returns persisted:true after durable staging succe
   assert.equal(state.inboundEmails.length, 1);
 });
 
+test('price-list contact capture is non-blocking — a capture failure never breaks ingestion', async (t) => {
+  const state = installDbMocks(t);
+
+  // A CSV price list classifies as SUPPLIER_PRICE_LIST, so the (now broadened)
+  // contact-capture gate fires. supplierContact is intentionally NOT mocked, so
+  // the capture write throws — and without the non-blocking guard this whole
+  // stageInboundEmail call would reject, losing the (already-imported) price
+  // list. The call must instead resolve cleanly.
+  const csv = [
+    'productName,unitPrice,currency',
+    'Amlodipine 5mg tabs 28,8.40,GBP',
+  ].join('\n');
+
+  await assert.doesNotReject(() =>
+    stageInboundEmail(
+      {
+        sourceSystem: 'MICROSOFT_GRAPH',
+        externalMessageId: 'graph-contact-nonblocking',
+        messageId: 'internet-contact-nonblocking',
+        from: 'pricing@supplier.co',
+        subject: 'Prices',
+        bodyText: '',
+        attachments: [
+          {
+            fileName: 'prices.csv',
+            mimeType: 'text/csv',
+            content: Buffer.from(csv).toString('base64'),
+          },
+        ],
+      },
+      createInboundResult(),
+    ),
+  );
+
+  // Ingestion still completed and persisted the inbound email.
+  assert.equal(state.inboundEmails.length, 1);
+});
+
 test('stageInboundEmailSafely returns structured failure and logs when persistence throws', async (t) => {
   installDbMocks(t);
 
