@@ -394,6 +394,32 @@ test('supplier price validation rejects non-finite numbers (Infinity)', () => {
   );
 });
 
+test('decimal parsing treats comma and dot as the same decimal point and handles thousands grouping', () => {
+  const cases: Array<[string, number]> = [
+    ['12.00', 12], // dot decimal
+    ['12,00', 12], // comma decimal — drug price, NOT 1200
+    ['12,5', 12.5], // single fractional digit
+    ['2,35', 2.35],
+    ['1.250,00', 1250], // European: dot thousands, comma decimal
+    ['1,250.00', 1250], // Anglo: comma thousands, dot decimal
+    ['1,250,000.50', 1250000.5], // multiple thousands separators + decimal
+    ['1.250.000', 1250000], // repeated dots = thousands grouping
+  ];
+
+  for (const [input, expected] of cases) {
+    const result = validateSupplierPriceRows(
+      [{ productName: 'Drug', unitPrice: input }],
+      'GBP',
+    );
+    assert.equal(result.validRows.length, 1, `expected "${input}" to be valid`);
+    assert.equal(
+      result.validRows[0]?.unitPrice.toNumber(),
+      expected,
+      `parsing "${input}"`,
+    );
+  }
+});
+
 test('integer validation rejects scientific notation but accepts trailing-zero decimals', () => {
   const scientific = validateInventoryRows([
     {
