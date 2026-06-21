@@ -2523,12 +2523,34 @@ test('rejected account-opening case cannot be approved for completed unsigned fo
       assert.ok(error instanceof Error);
       assert.equal(
         error.message,
-        'Rejected account-opening cases cannot be approved or filed.',
+        'Rejected or closed account-opening cases cannot be approved or filed.',
       );
       assert.doesNotMatch(error.message, /12345678/);
       assert.doesNotMatch(error.message, /12-34-56/);
       return true;
     },
+  );
+  assert.equal(getCompletedFormFilings().length, 0);
+  assert.equal(events.length, 0);
+});
+
+test('closed account-opening case cannot be approved for completed unsigned form filing', async () => {
+  const { repository, events, getCompletedFormFilings } =
+    createAccountOpeningRepository(
+      buildPersistedAccountOpeningCase({
+        status: 'CLOSED',
+        binaryFillPreviews: [buildPersistedBinaryFillPreview()],
+      }),
+    );
+
+  await assert.rejects(
+    () =>
+      approveAccountOpeningCompletedFormFiling({
+        id: 'account-case-1',
+        binaryFillPreviewId: 'binary-fill-preview-1',
+        repository,
+      }),
+    /Rejected or closed account-opening cases cannot be approved or filed\./,
   );
   assert.equal(getCompletedFormFilings().length, 0);
   assert.equal(events.length, 0);
@@ -2605,7 +2627,7 @@ test('rejected account-opening case cannot be filed to SharePoint', async () => 
       assert.ok(error instanceof Error);
       assert.equal(
         error.message,
-        'Rejected account-opening cases cannot be approved or filed.',
+        'Rejected or closed account-opening cases cannot be approved or filed.',
       );
       assert.doesNotMatch(error.message, /12345678/);
       assert.doesNotMatch(error.message, /12-34-56/);

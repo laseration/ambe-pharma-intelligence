@@ -208,8 +208,10 @@ export async function buildAccountOpeningAnswersSheetPdf(input: {
     'Sort code',
     'SWIFT / BIC',
     'IBAN',
+    'Direct debit / payment mandate',
     'Authorised signature',
     'Signatory name & position',
+    'Date of birth / identity document (if requested)',
     'Date',
   ]) {
     row(writer, label, '__________________________');
