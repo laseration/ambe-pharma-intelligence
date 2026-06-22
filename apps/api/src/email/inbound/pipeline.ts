@@ -3,6 +3,10 @@ import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 
 import { env } from '../../config/env';
+import {
+  getActiveInternalCompanyNames,
+  getActiveInternalEmailDomains,
+} from '../../organization/activeOrganizationConfig';
 import { parseUploadedFile } from '../../imports/parsers';
 import { buildProductCandidates } from '../../imports/normalization';
 import { findOrCreateProduct } from '../../imports/service';
@@ -325,7 +329,7 @@ function isInternalSupplierDomain(domain: string | null | undefined): boolean {
     return false;
   }
 
-  return env.emailInboundInternalDomains.some((entry) => {
+  return getActiveInternalEmailDomains().some((entry) => {
     const normalizedEntry = normalizeFingerprintText(entry).replace(/^@+/, '');
     return (
       Boolean(normalizedEntry) &&
@@ -344,7 +348,7 @@ function isInternalSupplierCompanyName(
     return false;
   }
 
-  return env.emailInboundInternalCompanyNames.some((entry) => {
+  return getActiveInternalCompanyNames().some((entry) => {
     const normalizedEntry = normalizeSupplierIdentityToken(entry);
     return (
       Boolean(normalizedEntry) &&
@@ -2161,7 +2165,7 @@ export async function stageInboundEmail(
         }),
       ),
       supplierMappings: env.emailInboundSupplierMappings,
-      internalDomains: env.emailInboundInternalDomains,
+      internalDomains: getActiveInternalEmailDomains(),
     });
     const persistedSupplierContacts =
       await persistSupplierContactCandidatesForInboundEmail({

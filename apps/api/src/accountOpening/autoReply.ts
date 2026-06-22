@@ -1,6 +1,7 @@
 import { env } from '../config/env';
 import type { NormalizedEmailAttachment } from '../email/inbound/types';
 import { db } from '../lib/db';
+import { getActiveInternalEmailDomains } from '../organization/activeOrganizationConfig';
 import type { AccountOpeningDocxFillValues } from './docxFill';
 import { getAccountOpeningMasterProfile } from './masterProfile';
 import {
@@ -109,7 +110,7 @@ export function isInternalAmbeSender(senderEmail: string): boolean {
   if (!domain) {
     return false;
   }
-  return env.emailInboundInternalDomains.some((entry) => {
+  return getActiveInternalEmailDomains().some((entry) => {
     const normalized = entry.trim().toLowerCase().replace(/^@+/, '');
     return (
       Boolean(normalized) &&

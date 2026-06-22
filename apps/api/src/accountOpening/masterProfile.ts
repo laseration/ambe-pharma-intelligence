@@ -1,4 +1,5 @@
 import { env } from '../config/env';
+import { getActiveAccountOpeningProfileValues } from '../organization/activeOrganizationConfig';
 
 export type AccountOpeningMasterProfile = {
   profileId: string;
@@ -54,73 +55,136 @@ function profileValue(value: string): string {
 }
 
 export function buildAccountOpeningMasterProfile(): AccountOpeningMasterProfile {
+  // Prefer the active organisation's stored profile (if loaded) over env, per
+  // field, so a client can run on its own company identity. The bank /
+  // direct-debit placeholders are intentionally NOT sourced from the org — they
+  // remain hardcoded safety text and must never be auto-completed.
+  const orgValues = getActiveAccountOpeningProfileValues();
+  const field = (
+    key: keyof AccountOpeningMasterProfile['values'],
+    envValue: string,
+  ): string => profileValue(orgValues?.[key] ?? envValue);
+
   return {
     profileId: 'ambe-account-opening-profile',
     version: '2026-06-09',
     approvedBy: 'configurable-profile-source',
     approvedAt: '2026-06-09T00:00:00.000Z',
     values: {
-      legalCompanyName: profileValue(env.accountOpeningProfileLegalCompanyName),
-      tradingName: profileValue(env.accountOpeningProfileTradingName),
-      companyNumber: profileValue(env.accountOpeningProfileCompanyNumber),
-      vatNumber: profileValue(env.accountOpeningProfileVatNumber),
-      registeredAddress: profileValue(
+      legalCompanyName: field(
+        'legalCompanyName',
+        env.accountOpeningProfileLegalCompanyName,
+      ),
+      tradingName: field('tradingName', env.accountOpeningProfileTradingName),
+      companyNumber: field(
+        'companyNumber',
+        env.accountOpeningProfileCompanyNumber,
+      ),
+      vatNumber: field('vatNumber', env.accountOpeningProfileVatNumber),
+      registeredAddress: field(
+        'registeredAddress',
         env.accountOpeningProfileRegisteredAddress,
       ),
-      tradingAddress: profileValue(env.accountOpeningProfileTradingAddress),
-      mainContactName: profileValue(env.accountOpeningProfileMainContactName),
-      mainContactEmail: profileValue(env.accountOpeningProfileMainContactEmail),
-      mainContactPhone: profileValue(env.accountOpeningProfileMainContactPhone),
-      accountsContact: profileValue(env.accountOpeningProfileAccountsContact),
-      website: profileValue(env.accountOpeningProfileWebsite),
-      businessHours: profileValue(env.accountOpeningProfileBusinessHours),
-      companyType: profileValue(env.accountOpeningProfileCompanyType),
-      businessDescription: profileValue(
+      tradingAddress: field(
+        'tradingAddress',
+        env.accountOpeningProfileTradingAddress,
+      ),
+      mainContactName: field(
+        'mainContactName',
+        env.accountOpeningProfileMainContactName,
+      ),
+      mainContactEmail: field(
+        'mainContactEmail',
+        env.accountOpeningProfileMainContactEmail,
+      ),
+      mainContactPhone: field(
+        'mainContactPhone',
+        env.accountOpeningProfileMainContactPhone,
+      ),
+      accountsContact: field(
+        'accountsContact',
+        env.accountOpeningProfileAccountsContact,
+      ),
+      website: field('website', env.accountOpeningProfileWebsite),
+      businessHours: field(
+        'businessHours',
+        env.accountOpeningProfileBusinessHours,
+      ),
+      companyType: field('companyType', env.accountOpeningProfileCompanyType),
+      businessDescription: field(
+        'businessDescription',
         env.accountOpeningProfileBusinessDescription,
       ),
-      gphcPremisesNumber: profileValue(
+      gphcPremisesNumber: field(
+        'gphcPremisesNumber',
         env.accountOpeningProfileGphcPremisesNumber,
       ),
-      responsiblePerson: profileValue(
+      responsiblePerson: field(
+        'responsiblePerson',
         env.accountOpeningProfileResponsiblePerson,
       ),
-      wholesaleDealerAuthorisation: profileValue(
+      wholesaleDealerAuthorisation: field(
+        'wholesaleDealerAuthorisation',
         env.accountOpeningProfileWholesaleDealerAuthorisation,
       ),
-      cqcRegistration: profileValue(env.accountOpeningProfileCqcRegistration),
-      standardPaymentPreference: profileValue(
+      cqcRegistration: field(
+        'cqcRegistration',
+        env.accountOpeningProfileCqcRegistration,
+      ),
+      standardPaymentPreference: field(
+        'standardPaymentPreference',
         env.accountOpeningProfileStandardPaymentPreference,
       ),
-      faxNumber: profileValue(env.accountOpeningProfileFaxNumber),
-      regulatoryAuthority: profileValue(
+      faxNumber: field('faxNumber', env.accountOpeningProfileFaxNumber),
+      regulatoryAuthority: field(
+        'regulatoryAuthority',
         env.accountOpeningProfileRegulatoryAuthority,
       ),
-      countryRegion: profileValue(env.accountOpeningProfileCountryRegion),
-      dateStartedTrading: profileValue(
+      countryRegion: field(
+        'countryRegion',
+        env.accountOpeningProfileCountryRegion,
+      ),
+      dateStartedTrading: field(
+        'dateStartedTrading',
         env.accountOpeningProfileDateStartedTrading,
       ),
-      wdaGrantedDate: profileValue(env.accountOpeningProfileWdaGrantedDate),
-      lastGdpInspectionDate: profileValue(
+      wdaGrantedDate: field(
+        'wdaGrantedDate',
+        env.accountOpeningProfileWdaGrantedDate,
+      ),
+      lastGdpInspectionDate: field(
+        'lastGdpInspectionDate',
         env.accountOpeningProfileLastGdpInspectionDate,
       ),
-      responsiblePersonEmail: profileValue(
+      responsiblePersonEmail: field(
+        'responsiblePersonEmail',
         env.accountOpeningProfileResponsiblePersonEmail,
       ),
-      responsiblePersonPhone: profileValue(
+      responsiblePersonPhone: field(
+        'responsiblePersonPhone',
         env.accountOpeningProfileResponsiblePersonPhone,
       ),
-      accountsEmail: profileValue(env.accountOpeningProfileAccountsEmail),
-      accountsPhone: profileValue(env.accountOpeningProfileAccountsPhone),
-      salesName: profileValue(env.accountOpeningProfileSalesName),
-      salesEmail: profileValue(env.accountOpeningProfileSalesEmail),
-      salesPhone: profileValue(env.accountOpeningProfileSalesPhone),
-      customerServiceName: profileValue(
+      accountsEmail: field(
+        'accountsEmail',
+        env.accountOpeningProfileAccountsEmail,
+      ),
+      accountsPhone: field(
+        'accountsPhone',
+        env.accountOpeningProfileAccountsPhone,
+      ),
+      salesName: field('salesName', env.accountOpeningProfileSalesName),
+      salesEmail: field('salesEmail', env.accountOpeningProfileSalesEmail),
+      salesPhone: field('salesPhone', env.accountOpeningProfileSalesPhone),
+      customerServiceName: field(
+        'customerServiceName',
         env.accountOpeningProfileCustomerServiceName,
       ),
-      customerServiceEmail: profileValue(
+      customerServiceEmail: field(
+        'customerServiceEmail',
         env.accountOpeningProfileCustomerServiceEmail,
       ),
-      customerServicePhone: profileValue(
+      customerServicePhone: field(
+        'customerServicePhone',
         env.accountOpeningProfileCustomerServicePhone,
       ),
       directDebitPlaceholder: `${SECURE_REVIEW_PLACEHOLDER}. Do not complete Direct Debit or bank authority fields automatically.`,
