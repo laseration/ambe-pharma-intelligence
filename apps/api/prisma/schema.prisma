@@ -480,6 +480,30 @@ model User {
   updatedAt                  DateTime            @updatedAt
 }
 
+// Tenancy / per-company configuration root. Today the deployment runs a single
+// "default" organisation (Ambe), seeded from environment values by
+// scripts/seedDefaultOrganization.ts. This table is the seam that lets the
+// system later serve multiple client companies without re-deploying per client.
+// `status` is a plain string ("ACTIVE" | "SUSPENDED") validated in app code, and
+// list-type config is stored as JSON, matching the conventions used elsewhere in
+// this schema.
+model Organization {
+  id                     String   @id @default(cuid())
+  slug                   String   @unique
+  name                   String
+  status                 String   @default("ACTIVE")
+  isDefault              Boolean  @default(false)
+  internalEmailDomains   Json?
+  internalCompanyNames   Json?
+  alertEmailRecipients   Json?
+  reviewEmailRecipients  Json?
+  senderMailbox          String?
+  telegramInternalChatId String?
+  accountOpeningProfile  Json?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
 model Product {
   id                        String              @id @default(cuid())
   sku                       String?             @unique
