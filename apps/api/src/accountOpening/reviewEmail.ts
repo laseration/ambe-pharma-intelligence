@@ -4,6 +4,10 @@ import {
   isMicrosoftGraphConfigured,
 } from '../email/graph';
 import { logger } from '../lib/logger';
+import {
+  getActiveAlertEmailRecipients,
+  getActiveReviewEmailRecipients,
+} from '../organization/activeOrganizationConfig';
 import { buildAccountOpeningAnswersSheetPdf } from './answersSheet';
 import type { AccountOpeningDocxFillValues } from './docxFill';
 import {
@@ -56,11 +60,11 @@ function toBase64(bytes: Uint8Array): string {
 
 /** Resolve the review-email recipients (dedicated var, else the alert list). */
 export function getAccountOpeningReviewRecipients(): string[] {
-  const dedicated = env.accountOpeningReviewEmailRecipients ?? [];
+  const dedicated = getActiveReviewEmailRecipients();
   if (dedicated.length > 0) {
     return dedicated;
   }
-  return env.internalAlertEmailRecipients ?? [];
+  return getActiveAlertEmailRecipients();
 }
 
 export async function sendAccountOpeningReviewEmail(

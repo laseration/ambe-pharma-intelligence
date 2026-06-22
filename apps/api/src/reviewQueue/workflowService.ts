@@ -1,5 +1,8 @@
 import { db } from '../lib/db';
-import { env } from '../config/env';
+import {
+  getActiveInternalCompanyNames,
+  getActiveInternalEmailDomains,
+} from '../organization/activeOrganizationConfig';
 import {
   upsertExecutionForBuyDecision,
   type BuyExecutionRecord,
@@ -691,7 +694,7 @@ function isInternalSupplierDomain(domain: string | null | undefined): boolean {
     return false;
   }
 
-  return env.emailInboundInternalDomains.some((entry) => {
+  return getActiveInternalEmailDomains().some((entry) => {
     const normalizedEntry = normalizeEmailDomain(entry);
     return (
       Boolean(normalizedEntry) &&
@@ -710,7 +713,7 @@ function isInternalSupplierCompanyName(
     return false;
   }
 
-  return env.emailInboundInternalCompanyNames.some((entry) => {
+  return getActiveInternalCompanyNames().some((entry) => {
     const normalizedEntry = normalizeSupplierIdentityToken(entry);
     return (
       Boolean(normalizedEntry) &&

@@ -5,6 +5,10 @@ import { isEmailInboundPollingActive } from '../email/polling';
 import { isInternalAuthEnforced } from '../http/auth';
 import { db } from '../lib/db';
 import {
+  getActiveInternalCompanyNames,
+  getActiveInternalEmailDomains,
+} from '../organization/activeOrganizationConfig';
+import {
   getPollingWorkerStatus,
   listPollingWorkerStatusesWithStore,
   type PollingWorkerSnapshot,
@@ -485,8 +489,8 @@ function buildAllowedSendersCheck(): SystemReadinessCheck {
     details: safeDetails({
       allowedSenderCount: env.emailInboundAllowedSenders.length,
       supplierMappingCount: env.emailInboundSupplierMappings.length,
-      internalDomainCount: env.emailInboundInternalDomains.length,
-      internalCompanyNameCount: env.emailInboundInternalCompanyNames.length,
+      internalDomainCount: getActiveInternalEmailDomains().length,
+      internalCompanyNameCount: getActiveInternalCompanyNames().length,
       inboxIntakeConfigured,
     }),
   };
