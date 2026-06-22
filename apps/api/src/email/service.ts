@@ -1,6 +1,7 @@
 import { env } from '../config/env';
 import { db } from '../lib/db';
 import { logger } from '../lib/logger';
+import { getActiveAlertEmailRecipients } from '../organization/activeOrganizationConfig';
 import { assertOpportunityReviewedForNotification } from '../safety/commercialApprovalGuard';
 import {
   buildDailySummaryMessage,
@@ -43,7 +44,7 @@ function isEmailConfigured(): boolean {
   return Boolean(
     env.emailAlertsEnabled &&
     isMicrosoftGraphConfigured() &&
-    env.internalAlertEmailRecipients.length > 0,
+    getActiveAlertEmailRecipients().length > 0,
   );
 }
 
@@ -85,7 +86,7 @@ async function sendEmail(subject: string, text: string) {
           contentType: 'Text',
           content: text,
         },
-        toRecipients: env.internalAlertEmailRecipients.map((emailAddress) => ({
+        toRecipients: getActiveAlertEmailRecipients().map((emailAddress) => ({
           emailAddress: {
             address: emailAddress,
           },
@@ -110,13 +111,13 @@ async function sendEmail(subject: string, text: string) {
     authMode: env.microsoftGraphRefreshToken
       ? 'delegated_refresh_token'
       : 'application',
-    recipientCount: env.internalAlertEmailRecipients.length,
+    recipientCount: getActiveAlertEmailRecipients().length,
     subject,
   });
 
   return {
     messageId,
-    recipients: env.internalAlertEmailRecipients,
+    recipients: getActiveAlertEmailRecipients(),
     subject,
     text,
   };
@@ -142,7 +143,7 @@ export async function previewOpportunityEmail(opportunityId: string) {
 
   return {
     configured: isEmailConfigured(),
-    recipients: env.internalAlertEmailRecipients,
+    recipients: getActiveAlertEmailRecipients(),
     subject: buildOpportunityEmailSubject(opportunity),
     text: buildOpportunityMessage(opportunity),
   };
@@ -194,7 +195,7 @@ export async function previewDailySummaryEmail() {
 
   return {
     configured: isEmailConfigured(),
-    recipients: env.internalAlertEmailRecipients,
+    recipients: getActiveAlertEmailRecipients(),
     subject: buildDailySummaryEmailSubject(generatedAt),
     text: buildDailySummaryMessage(opportunities, generatedAt),
   };

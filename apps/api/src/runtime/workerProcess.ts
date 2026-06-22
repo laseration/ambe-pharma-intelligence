@@ -1,6 +1,7 @@
 import { env } from '../config/env';
 import { db } from '../lib/db';
 import { logger } from '../lib/logger';
+import { loadActiveOrganizationConfig } from '../organization/activeOrganizationConfig';
 import { configurePollingWorkerStatusStore } from '../polling/status';
 import { createAppSettingPollingWorkerStatusStore } from '../polling/statusStore';
 import { verifyDatabaseReadiness } from '../startup/databaseHealth';
@@ -98,6 +99,18 @@ export async function startWorkerProcess(
 
   await dependencies.connect();
   await dependencies.verifyReadiness();
+  try {
+    const activeOrganization = await loadActiveOrganizationConfig();
+    dependencies.logger.info('Active organisation config loaded', {
+      organizationId: activeOrganization?.organizationId ?? null,
+      seeded: Boolean(activeOrganization),
+    });
+  } catch (error: unknown) {
+    dependencies.logger.warn(
+      'Active organisation config not loaded; using environment fallback',
+      { error: error instanceof Error ? error.message : 'Unknown error' },
+    );
+  }
   dependencies.configureStatusStore();
 
   const runtime = dependencies.createRuntime();

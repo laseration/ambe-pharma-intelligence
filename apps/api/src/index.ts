@@ -2,6 +2,7 @@ import { createApp } from './app';
 import { env } from './config/env';
 import { db } from './lib/db';
 import { logger } from './lib/logger';
+import { loadActiveOrganizationConfig } from './organization/activeOrganizationConfig';
 import { configurePollingWorkerStatusStore } from './polling/status';
 import { createAppSettingPollingWorkerStatusStore } from './polling/statusStore';
 import {
@@ -24,6 +25,18 @@ async function start() {
 
   await db.$connect();
   await verifyDatabaseReadiness();
+  try {
+    const activeOrganization = await loadActiveOrganizationConfig();
+    logger.info('Active organisation config loaded', {
+      organizationId: activeOrganization?.organizationId ?? null,
+      seeded: Boolean(activeOrganization),
+    });
+  } catch (error: unknown) {
+    logger.warn(
+      'Active organisation config not loaded; using environment fallback',
+      { error: error instanceof Error ? error.message : 'Unknown error' },
+    );
+  }
   configurePollingWorkerStatusStore(
     createAppSettingPollingWorkerStatusStore(db),
   );
