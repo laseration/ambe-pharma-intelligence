@@ -640,6 +640,7 @@ model InboundEmail {
   businessWorthinessScore   Int?
   parserConfidence          String?
   reviewReason              String?
+  ingestAttempts            Int                          @default(0)
   receivedAt                DateTime?
   processedAt               DateTime?
   documents                 InboundEmailDocument[]
