@@ -130,6 +130,14 @@ export type SupplierContactPersistenceRepository = {
   findSupplierById: (
     supplierId: string,
   ) => Promise<{ id: string; name: string; normalizedName: string } | null>;
+  updateSupplierContactDetails: (
+    supplierId: string,
+    data: {
+      contactEmail: string | null;
+      contactName: string | null;
+      contactPhone: string | null;
+    },
+  ) => Promise<void>;
 };
 
 type SupplierContactDbClient = {
@@ -149,6 +157,7 @@ type SupplierContactDbClient = {
   };
   supplier: {
     findUnique: (args: unknown) => Promise<unknown>;
+    update: (args: unknown) => Promise<unknown>;
   };
 };
 
@@ -381,6 +390,18 @@ export function createSupplierContactPersistenceRepository(
           normalizedName: true,
         },
       })) as { id: string; name: string; normalizedName: string } | null,
+    updateSupplierContactDetails: async (supplierId, data) => {
+      // Only overwrite a field when the approved contact actually has a value,
+      // so an approval never blanks existing supplier contact details.
+      await client.supplier.update({
+        where: { id: supplierId },
+        data: {
+          ...(data.contactEmail ? { contactEmail: data.contactEmail } : {}),
+          ...(data.contactName ? { contactName: data.contactName } : {}),
+          ...(data.contactPhone ? { contactPhone: data.contactPhone } : {}),
+        },
+      });
+    },
   };
 }
 
@@ -591,6 +612,29 @@ export async function reviewSupplierContactCandidate(input: {
   };
 
   const updated = await repository.updateCandidate(existing.id, update);
+
+  // On approval (or an explicit link) write the captured contact details back to
+  // the canonical Supplier so operators have correct, up-to-date contact info in
+  // place — not just a staged candidate.
+  const resolvedSupplierId = supplierId ?? existing.supplierId;
+  const contactPhone =
+    existing.contactPhoneCanonical ??
+    existing.contactPhoneRaw ??
+    existing.contactPhone;
+  let supplierRecordUpdated = false;
+  if (
+    (input.action === 'APPROVE' || input.action === 'LINK_SUPPLIER') &&
+    resolvedSupplierId &&
+    (existing.contactEmail || existing.contactName || contactPhone)
+  ) {
+    await repository.updateSupplierContactDetails(resolvedSupplierId, {
+      contactEmail: existing.contactEmail,
+      contactName: existing.contactName,
+      contactPhone,
+    });
+    supplierRecordUpdated = true;
+  }
+
   await repository.createEvent({
     supplierContactId: existing.id,
     actionType:
@@ -605,9 +649,9 @@ export async function reviewSupplierContactCandidate(input: {
     actorIdentifier: actor.actorIdentifier,
     note,
     metadata: {
-      supplierId: supplier?.id ?? null,
+      supplierId: resolvedSupplierId,
       supplierName: supplier?.name ?? null,
-      supplierRecordUpdated: false,
+      supplierRecordUpdated,
     },
   });
 
