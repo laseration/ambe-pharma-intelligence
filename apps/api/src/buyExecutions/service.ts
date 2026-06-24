@@ -644,9 +644,17 @@ export function calculateBuyExecutionReconciliation(
     quotedUnitPrice,
     invoicedUnitPrice,
   );
+  // Reconcile the received quantity against what was actually ORDERED, not the
+  // supplier's MOQ (a floor, not a commitment). Falls back to MOQ only when no
+  // ordered quantity is recorded — otherwise any order placed above MOQ and
+  // fully received would be falsely flagged as quantity drift.
+  const expectedQuantity =
+    execution.orderedQuantity ?? buyDecision.quotedMinimumOrderQuantity ?? null;
+  const actualQuantity =
+    execution.receivedQuantity ?? execution.orderedQuantity ?? null;
   const quantityVariance = calculateQuantityVariance(
-    buyDecision.quotedMinimumOrderQuantity ?? null,
-    execution.receivedQuantity ?? execution.orderedQuantity ?? null,
+    expectedQuantity,
+    actualQuantity,
   );
   const hasOrderPriceDrift =
     Math.abs(orderPriceDrift.deltaPct ?? 0) >
@@ -662,8 +670,8 @@ export function calculateBuyExecutionReconciliation(
       (Boolean(invoicedCurrencyCode) &&
         invoicedCurrencyCode !== quotedCurrencyCode));
   const hasQuantityDriftFlag = hasQuantityDrift(
-    buyDecision.quotedMinimumOrderQuantity ?? null,
-    execution.receivedQuantity ?? execution.orderedQuantity ?? null,
+    expectedQuantity,
+    actualQuantity,
   );
   const expectedAvailability = normalizeAvailabilityExpectation(
     buyDecision.quotedAvailability,
