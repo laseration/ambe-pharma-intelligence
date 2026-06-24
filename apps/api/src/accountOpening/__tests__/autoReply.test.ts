@@ -178,6 +178,59 @@ test('autoReplyAccountOpeningForm skips when there is no PDF/Word form attached'
   });
 });
 
+test('autoReplyAccountOpeningForm refuses to send without a case id (no idempotency key)', async () => {
+  await withAutoReplyEnabled(async () => {
+    let sendCalled = false;
+    const result = await autoReplyAccountOpeningForm(
+      {
+        caseId: null,
+        senderEmail: 'sandeep@ambemedical.com',
+        attachments: [docxAttachment()],
+      },
+      {
+        emailReviewDraft: async () => {
+          sendCalled = true;
+          return sentDraft(['sandeep@ambemedical.com']);
+        },
+      },
+    );
+    assert.equal(result.status, 'SKIPPED_NO_CASE_ID');
+    assert.equal(
+      sendCalled,
+      false,
+      'must not send without a durable idempotency key',
+    );
+  });
+});
+
+test('a record-write failure after a successful send returns SENT, not FAILED', async () => {
+  await withAutoReplyEnabled(async () => {
+    let sends = 0;
+    const result = await autoReplyAccountOpeningForm(
+      {
+        caseId: 'case-1',
+        senderEmail: 'sandeep@ambemedical.com',
+        attachments: [docxAttachment()],
+      },
+      {
+        alreadyReplied: async () => false,
+        recordReplyEvent: async () => {
+          throw new Error('db down');
+        },
+        emailReviewDraft: async () => {
+          sends += 1;
+          return sentDraft(['sandeep@ambemedical.com']);
+        },
+      },
+    );
+    // The email already went out — reporting FAILED would make the next poll
+    // re-send (the dedup event was never written), causing a duplicate reply.
+    assert.equal(result.status, 'SENT');
+    assert.equal(sends, 1);
+    assert.match(result.note, /idempotency\/audit record failed/i);
+  });
+});
+
 test('masterProfileToDocxValues maps env profile values and drops "To be confirmed"', () => {
   const e = env as Record<string, unknown>;
   const snap = {
