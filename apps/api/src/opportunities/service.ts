@@ -50,12 +50,24 @@ function startOfWindow(now: Date, days: number): Date {
   return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 }
 
-function average(numbers: number[]): number | null {
-  if (numbers.length === 0) {
+/**
+ * Volume-weighted average sale price (total revenue / total units). A plain mean
+ * of per-sale unit prices lets one tiny outlier order dominate (e.g. 100 @ £2 and
+ * 1 @ £10 averages to £6, not the realised £2.08), distorting the margin estimate
+ * that gates BUY / PUSH / LOW_MARGIN. Mirrors the deals path (recentRevenue/units).
+ */
+export function volumeWeightedAverageSalePrice(
+  sales: Array<{ unitPrice: { toNumber: () => number }; quantity: number }>,
+): number | null {
+  const units = sales.reduce((total, sale) => total + sale.quantity, 0);
+  if (units <= 0) {
     return null;
   }
-
-  return numbers.reduce((total, value) => total + value, 0) / numbers.length;
+  const revenue = sales.reduce(
+    (total, sale) => total + sale.unitPrice.toNumber() * sale.quantity,
+    0,
+  );
+  return revenue / units;
 }
 
 async function buildScoringContexts(
@@ -209,9 +221,7 @@ async function buildScoringContexts(
           (total, record) => total + record.quantity,
           0,
         ),
-        averageSalePrice: average(
-          recentSales.map((record) => record.unitPrice.toNumber()),
-        ),
+        averageSalePrice: volumeWeightedAverageSalePrice(recentSales),
         lastSaleDate: recentSales[0]?.saleDate ?? null,
       },
       supplierPriceHistory: comparableSupplierPriceHistory.map((priceItem) => ({
