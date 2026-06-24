@@ -93,6 +93,14 @@ function createRepositoryHarness() {
         return corrections
           .filter((correction) => {
             if (
+              Array.isArray(filters.emailDerivedOfferIds) &&
+              !filters.emailDerivedOfferIds.includes(
+                correction.emailDerivedOfferId,
+              )
+            ) {
+              return false;
+            }
+            if (
               filters.emailDerivedOfferId &&
               correction.emailDerivedOfferId !== filters.emailDerivedOfferId
             ) {
@@ -109,7 +117,8 @@ function createRepositoryHarness() {
           .sort(
             (left, right) =>
               right.createdAt.getTime() - left.createdAt.getTime(),
-          ) as never;
+          )
+          .slice(0, filters.take ?? 100) as never;
       },
       async findCorrectionById(correctionId: string) {
         return (corrections.find(
@@ -566,6 +575,55 @@ test('source profile aggregates accepted, rejected, and corrected samples determ
   assert.equal(profile?.acceptedSupplierResolutionCount, 1);
   assert.equal(profile?.rejectedSupplierResolutionCount, 1);
   assert.equal(profile?.aiAssistCount, 1);
+});
+
+test('reliability scoring scopes the correction query to the source offers, not a global fetch', async () => {
+  const harness = createRepositoryHarness();
+  seedOffer(harness, {
+    id: 'offer-scope-1',
+    senderEmail: 'pricing@scope.test',
+    senderDomain: 'scope.test',
+    templateFingerprint: 'fingerprint-scope',
+  });
+  harness.corrections.push({
+    id: 'corr-scope-1',
+    emailDerivedOfferId: 'offer-scope-1',
+    correctionType: 'EXTRACTION',
+    correctionStatus: 'APPLIED',
+    createdAt: new Date('2020-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2020-01-01T00:00:00.000Z'),
+  });
+
+  const seenFilters: Array<Record<string, any>> = [];
+  const realList = harness.repository.listCorrections;
+  harness.repository.listCorrections = async (filters: Record<string, any>) => {
+    seenFilters.push(filters);
+    return realList(filters);
+  };
+
+  const service = createOfferCorrectionService(harness.repository as never);
+  await service.getOfferLearningSummariesForOfferIds(['offer-scope-1']);
+
+  // The APPLIED-correction lookup must be scoped to the requested offers so a
+  // source's older corrections can't fall outside a global newest-N window.
+  assert.ok(
+    seenFilters.some(
+      (filters) =>
+        filters.status === 'APPLIED' &&
+        Array.isArray(filters.emailDerivedOfferIds) &&
+        filters.emailDerivedOfferIds.includes('offer-scope-1'),
+    ),
+    'expected a correction query scoped by emailDerivedOfferIds',
+  );
+  assert.ok(
+    !seenFilters.some(
+      (filters) =>
+        filters.status === 'APPLIED' &&
+        !filters.emailDerivedOfferIds &&
+        !filters.emailDerivedOfferId,
+    ),
+    'must not issue an unscoped global APPLIED correction fetch',
+  );
 });
 
 test('risky and trusted source tiers surface in learned summaries', async () => {

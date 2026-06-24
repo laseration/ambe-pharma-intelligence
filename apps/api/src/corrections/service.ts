@@ -240,6 +240,7 @@ type SourceProfileLookupInput = {
 
 type OfferCorrectionFilters = {
   emailDerivedOfferId?: string | null;
+  emailDerivedOfferIds?: string[] | null;
   inboundEmailId?: string | null;
   offerWorkflowItemId?: string | null;
   status?: OfferCorrectionStatus | null;
@@ -737,7 +738,9 @@ function createOfferCorrectionRepository(
       })) as OfferRecord[],
     listCorrections: async (filters) => {
       const where: Record<string, unknown> = {};
-      if (filters.emailDerivedOfferId) {
+      if (filters.emailDerivedOfferIds) {
+        where.emailDerivedOfferId = { in: filters.emailDerivedOfferIds };
+      } else if (filters.emailDerivedOfferId) {
         where.emailDerivedOfferId = filters.emailDerivedOfferId;
       }
       if (filters.inboundEmailId) {
@@ -1098,13 +1101,14 @@ async function refreshSourceReliabilityProfileByTuple(
     emailDerivedOfferIds.length > 0
       ? await repository.listCorrections({
           status: 'APPLIED',
+          // Scope to THIS source's offers in the query — a global "newest 500"
+          // would drop this source's older corrections once the system passes
+          // 500 applied corrections overall, silently skewing the score.
+          emailDerivedOfferIds,
           take: 500,
         })
       : [];
-  const relevantCorrections = corrections.filter((correction) =>
-    emailDerivedOfferIds.includes(correction.emailDerivedOfferId),
-  );
-  const latestCorrections = latestByOfferId(relevantCorrections);
+  const latestCorrections = latestByOfferId(corrections);
   let acceptedExtractionCount = 0;
   let rejectedExtractionCount = 0;
   let acceptedSupplierResolutionCount = 0;
@@ -1843,13 +1847,13 @@ export function createOfferCorrectionService(
       const offers = await repository.listOffersByIds(emailDerivedOfferIds);
       const corrections = await repository.listCorrections({
         status: 'APPLIED',
+        // Scope to the requested offers in the query rather than fetching the
+        // global newest-500 and filtering in memory (which loses older
+        // corrections once total applied corrections exceed 500).
+        emailDerivedOfferIds,
         take: 500,
       });
-      const latestCorrections = latestByOfferId(
-        corrections.filter((correction) =>
-          emailDerivedOfferIds.includes(correction.emailDerivedOfferId),
-        ),
-      );
+      const latestCorrections = latestByOfferId(corrections);
 
       const summaries: Record<string, OfferLearningSummary> = {};
       for (const offer of offers) {
