@@ -111,15 +111,25 @@ const MAX_HEADER_WORDS = 5;
 const SECTION_LOOKBACK = 14;
 
 // Fields that must NEVER be auto-filled (deny-by-default): bank/payment details,
-// any signature/declaration field, and unverifiable licence/credit numbers.
+// any signature/declaration field, unverifiable licence/credit numbers, and
+// personal-identity (KYC) fields. masterProfile.ts promises Direct Debit / bank
+// authority are never auto-completed; these patterns enforce that promise so the
+// reviewer sees a deliberate POLICY_MUST_STAY_BLANK rather than a vague
+// UNRECOGNISED_FIELD.
 const NEVER_FILL = [
   /\bBANK\b/,
   /\bACCOUNT\s+(NAME|NUMBER|NO)\b/,
   /\bSORT\s*CODE\b/,
   /\bSWIFT\b|\bBIC\b/,
   /\bIBAN\b/,
+  /\bDIRECT\s+DEBIT\b/,
+  /\bSTANDING\s+ORDER\b/,
+  /\bMANDATE\b/,
+  /\bPAYMENT\s+(AUTHORITY|AUTHORISATION|AUTHORIZATION)\b/,
   /\bSIGN(ED|ATURE)?\b/,
   /\bPRINT\s+NAME\b/,
+  /\bDATE\s+OF\s+BIRTH\b|\bDOB\b/,
+  /\bPASSPORT\b/,
   /\bNATIONAL\s+AUTHORITY\b/,
   /\bCONTACT\s+PERSON\b/,
   /\bREFERENCE\b/,
@@ -180,6 +190,23 @@ export function resolveControl(
     }
   }
 
+  // Generic person sub-labels (NAME / E-MAIL / PHONE / TELEPHONE) resolve via the
+  // active contact section BEFORE the company-level matches below. This must come
+  // first so a contact's "TELEPHONE" is that person's phone rather than the
+  // company switchboard (the company-level /TELEPHONE/ rule would otherwise win).
+  // Outside a contact block (section === null) these labels fall through and are
+  // left blank — keeping names out of signature/office-use fields.
+  const sectionKey = section
+    ? CONTACT_SECTIONS.find((s) => s.test.test(section))?.key
+    : undefined;
+  if (sectionKey && /^(NAME|E-?MAIL|MAIL|PHONE|TEL|TELEPHONE)$/.test(label)) {
+    const contact = values[sectionKey] as AccountOpeningDocxContact | undefined;
+    const value = contactValue(contact, label);
+    return value && value.trim()
+      ? { kind: 'FILL', value: value.trim() }
+      : { kind: 'BLANK', reason: 'NO_PROFILE_VALUE' };
+  }
+
   // Specific labels are matched before generic ones — e.g. "DATE CURRENT WDA
   // GRANTED" must resolve to the grant date, not the WDA number.
   const direct: Array<{ test: RegExp; value?: string }> = [
@@ -227,20 +254,6 @@ export function resolveControl(
         ? { kind: 'FILL', value: entry.value.trim() }
         : { kind: 'BLANK', reason: 'NO_PROFILE_VALUE' };
     }
-  }
-
-  // Generic person sub-labels (NAME / E-MAIL / PHONE) are filled ONLY when a
-  // trusted contact section is active. Outside a contact block (section === null)
-  // they are always left blank — this keeps names out of signature/office fields.
-  const sectionKey = section
-    ? CONTACT_SECTIONS.find((s) => s.test.test(section))?.key
-    : undefined;
-  if (sectionKey && /^(NAME|E-?MAIL|MAIL|PHONE|TEL|TELEPHONE)$/.test(label)) {
-    const contact = values[sectionKey] as AccountOpeningDocxContact | undefined;
-    const value = contactValue(contact, label);
-    return value && value.trim()
-      ? { kind: 'FILL', value: value.trim() }
-      : { kind: 'BLANK', reason: 'NO_PROFILE_VALUE' };
   }
 
   return { kind: 'BLANK', reason: 'UNRECOGNISED_FIELD' };

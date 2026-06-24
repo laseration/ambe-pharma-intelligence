@@ -113,6 +113,57 @@ test('fillAccountOpeningDocx resolves a contact field via its section header', (
   );
 });
 
+test('a contact TELEPHONE resolves to that contact, not the company switchboard', () => {
+  const docx = buildDocx([label('DIRECTOR'), label('TELEPHONE'), control()]);
+
+  const result = fillAccountOpeningDocx({
+    docxBytes: docx,
+    values: {
+      telephone: '0208-COMPANY-SWITCHBOARD',
+      director: { name: 'D', phone: '0777-DIRECTOR-MOBILE' },
+    },
+  });
+
+  const phone = result.filledFields.find(
+    (f) => f.label === 'TELEPHONE' && f.section?.includes('DIRECTOR'),
+  );
+  assert.equal(phone?.value, '0777-DIRECTOR-MOBILE');
+});
+
+test('a company-level TELEPHONE (no contact section) still fills the company number', () => {
+  const docx = buildDocx([label('TELEPHONE'), control()]);
+
+  const result = fillAccountOpeningDocx({
+    docxBytes: docx,
+    values: { telephone: '0208-COMPANY-SWITCHBOARD' },
+  });
+
+  assert.equal(
+    fieldByLabel(result.filledFields, 'TELEPHONE')?.value,
+    '0208-COMPANY-SWITCHBOARD',
+  );
+});
+
+test('payment-mandate and personal-identity fields stay blank by policy', () => {
+  const docx = buildDocx([
+    label('DIRECT DEBIT INSTRUCTION'),
+    control(),
+    label('DATE OF BIRTH'),
+    control(),
+  ]);
+
+  const result = fillAccountOpeningDocx({ docxBytes: docx, values: VALUES });
+
+  assert.equal(
+    fieldByLabel(result.blankFields, 'DIRECT DEBIT INSTRUCTION')?.reason,
+    'POLICY_MUST_STAY_BLANK',
+  );
+  assert.equal(
+    fieldByLabel(result.blankFields, 'DATE OF BIRTH')?.reason,
+    'POLICY_MUST_STAY_BLANK',
+  );
+});
+
 test('fillAccountOpeningDocx reports NO_FILLABLE_CONTROLS when there are no placeholders', () => {
   const docx = buildDocx([label('COMPANY NAME'), label('Just some text')]);
 
