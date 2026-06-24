@@ -15,6 +15,10 @@ import {
   sanitizePollingErrorMessage,
 } from '../polling/status';
 import {
+  POLLING_FAILURE_ALERT_THRESHOLD,
+  sendPollingFailureAlert,
+} from '../polling/failureAlert';
+import {
   getMicrosoftGraphAccessToken,
   isMicrosoftGraphConfigured,
 } from './graph';
@@ -690,13 +694,20 @@ export function createEmailInboundPollingWorker(
       });
     } finally {
       inFlight = false;
-      markPollingRunFinished('email-inbound', {
+      const runSnapshot = markPollingRunFinished('email-inbound', {
         itemsSeen,
         itemsProcessed,
         itemsSkipped,
         itemsFailed,
         duplicateItemsSkipped,
       });
+
+      // Alert once per failure streak, on the exact crossing of the threshold
+      // (consecutiveFailures resets to 0 on a successful run). Non-blocking — an
+      // alert-send failure must never affect polling.
+      if (runSnapshot.consecutiveFailures === POLLING_FAILURE_ALERT_THRESHOLD) {
+        void sendPollingFailureAlert(runSnapshot).catch(() => undefined);
+      }
 
       if (scheduleNext && !stopped) {
         timer = setTimeout(() => {
