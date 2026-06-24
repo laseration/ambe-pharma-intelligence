@@ -238,6 +238,24 @@ function buildDocumentClassificationReviewItem(input: {
   };
 }
 
+// Map the document classifier's commercial routing to an import type, so a
+// confidently-recognised price list / report can be imported even when its
+// subject and filename carry no recognisable keywords.
+function importTypeForClassifierRouting(
+  routing: ClassificationDecision['routing'],
+): EmailInboundImportType | null {
+  switch (routing) {
+    case 'SUPPLIER_IMPORT':
+      return 'supplier-price-list';
+    case 'INVENTORY_IMPORT':
+      return 'inventory';
+    case 'SALES_IMPORT':
+      return 'sales';
+    default:
+      return null;
+  }
+}
+
 async function runImport(
   dependencies: Pick<
     EmailInboundDependencies,
@@ -1029,6 +1047,32 @@ export function createEmailInboundService(
                         : 'Extracted text from the image attachment but found no safe structured commercial rows.',
                   }
                 : decision;
+        }
+
+        // Recognition fallback: when the subject/filename keywords are
+        // inconclusive, fall back to the document classifier's verdict for a
+        // CSV/XLSX attachment instead of parking a recognised import in review.
+        // Safe because it fires only when (a) the classifier's uncontested top
+        // class is a commercial import type, (b) there are no conflicts, and
+        // (c) the file actually parsed into structured rows — so we never
+        // auto-import an ambiguous or non-tabular attachment.
+        if (
+          !decision.inferredImportType &&
+          (attachment.fileType === 'CSV' || attachment.fileType === 'XLSX') &&
+          documentClassification.conflicts.length === 0 &&
+          (parsedAttachment?.rows.length ?? 0) > 0
+        ) {
+          const classifierImportType = importTypeForClassifierRouting(
+            documentClassification.routing,
+          );
+          if (classifierImportType) {
+            decision = {
+              processingStatus: 'RECEIVED',
+              inferredImportType: classifierImportType,
+              confidence: 'HIGH',
+              reason: `Import type recognised from the document classifier (${documentClassification.primaryClass}).`,
+            };
+          }
         }
 
         const baseItem = {
