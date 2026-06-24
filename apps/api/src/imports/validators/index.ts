@@ -9,6 +9,7 @@ import type {
   SupplierPriceListRowInput,
 } from '../types';
 import {
+  addIssue,
   createValidationContext,
   getIssues,
   optionalBoolean,
@@ -145,6 +146,15 @@ export function validateInventoryRows(
         ['quantityAvailable', 'availableQuantity'],
         'quantityAvailable',
       ) ?? (quantityOnHand !== null ? quantityOnHand - quantityReserved : 0);
+    // A negative available quantity is physically impossible — it means reserved
+    // exceeds on-hand (contradictory data). Reject rather than persist it.
+    if (quantityAvailable < 0) {
+      addIssue(
+        context,
+        'quantityAvailable cannot be negative (reserved exceeds on-hand).',
+        'quantityAvailable',
+      );
+    }
     const unitCost = optionalDecimal(context, ['unitCost', 'cost'], 'unitCost');
     const totalValue =
       optionalDecimal(
