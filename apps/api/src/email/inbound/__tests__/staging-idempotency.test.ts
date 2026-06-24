@@ -1518,6 +1518,51 @@ test('unresolved supplier review reason stays consistent across storage and queu
   );
 });
 
+test('a supplier cue with irregular whitespace still resolves to the canonical supplier', async (t) => {
+  const state = installDbMocks(t);
+  const originalMappings = env.emailInboundSupplierMappings;
+  const originalAllowedSenders = env.emailInboundAllowedSenders;
+
+  // Mapping name carries a double space; the canonical supplier was stored with
+  // collapsed whitespace. The lookup must still match it (not route to review).
+  env.emailInboundSupplierMappings = [
+    { pattern: 'pricing@acme.test', supplierName: 'Acme  Pharma' },
+  ];
+  env.emailInboundAllowedSenders = ['pricing@acme.test'];
+  state.suppliers.push({
+    id: 'supplier-ws',
+    name: 'Acme Pharma',
+    normalizedName: 'acme pharma',
+  });
+  state.products.push({
+    id: 'product-ws',
+    name: 'Amlodipine 5mg tablets 28',
+    normalizedName: 'amlodipine|5mg|tablet|28',
+    baseName: 'amlodipine',
+    manufacturer: null,
+  });
+
+  t.after(() => {
+    env.emailInboundSupplierMappings = originalMappings;
+    env.emailInboundAllowedSenders = originalAllowedSenders;
+  });
+
+  await stageInboundEmail(
+    {
+      sourceSystem: 'MICROSOFT_GRAPH',
+      externalMessageId: 'graph-whitespace-supplier',
+      messageId: 'internet-whitespace-supplier',
+      from: 'pricing@acme.test',
+      subject: 'Offer',
+      bodyText: 'Amlodipine 5mg tabs 28 - GBP 8.40',
+    },
+    createInboundResult(),
+  );
+
+  assert.equal(state.offers.length, 1);
+  assert.notEqual(state.offers[0]?.reviewReason, 'unresolved_supplier');
+});
+
 test('mapped supplier cue without canonical supplier record stays unresolved', async (t) => {
   const state = installDbMocks(t);
   const originalMappings = env.emailInboundSupplierMappings;

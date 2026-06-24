@@ -104,6 +104,67 @@ test('supplier CSV attachment auto-imports through the import pipeline', async (
   );
 });
 
+test('trusted sender mapping outranks an untrusted supplierName column in the attachment', async () => {
+  const calls: string[] = [];
+  const service = createEmailInboundService({
+    allowedSenders: ['supplier@example.com'],
+    supplierMappings: [
+      { pattern: 'supplier@example.com', supplierName: 'Acme Labs' },
+    ],
+    logger: createLogger(),
+    importSupplierPriceList: async ({ supplierName }) => {
+      calls.push(supplierName ?? '');
+      return {
+        importBatchId: 'batch-precedence',
+        summary: { totalRows: 1, validRows: 1, invalidRows: 0, warnings: [] },
+        errors: [],
+      };
+    },
+    importInventory: async () => {
+      throw new Error('inventory import should not run');
+    },
+    importSales: async () => {
+      throw new Error('sales import should not run');
+    },
+    // The sheet names a DIFFERENT supplier (e.g. the manufacturer) in its rows.
+    parseUploadedFile: async () =>
+      parsedFile([
+        {
+          supplierName: 'Generic Manufacturer Co',
+          productName: 'Paracetamol 500mg Tablets',
+          unitPrice: '2.35',
+        } as ParsedTableRow,
+      ]),
+  });
+
+  const csv = [
+    'supplierName,productName,unitPrice',
+    'Generic Manufacturer Co,Paracetamol 500mg Tablets,2.35',
+  ].join('\n');
+
+  const result = await service.ingestMessage({
+    messageId: 'msg-precedence',
+    from: 'supplier@example.com',
+    subject: 'Supplier price list April',
+    bodyText: 'Latest supplier price list attached.',
+    attachments: [
+      {
+        fileName: 'supplier-price-list.csv',
+        mimeType: 'text/csv',
+        content: Buffer.from(csv).toString('base64'),
+      },
+    ],
+  });
+
+  assert.equal(result.items[0]?.processingStatus, 'IMPORTED');
+  // The known sender's mapping wins — NOT the manufacturer named in the rows.
+  assert.deepEqual(calls, ['Acme Labs']);
+  assert.match(
+    result.items[0]?.reason ?? '',
+    /trusted supplier mapping was used for Acme Labs/i,
+  );
+});
+
 test('trusted domain sender is allowed for direct supplier emails', async () => {
   let called = false;
   const service = createEmailInboundService({
